@@ -1,0 +1,20 @@
+# サイレント・軽量・完全自動化用最小設定
+lang: ja
+interval_min: 60
+max_download: 3
+video_dir: data/videos
+mfcc_dir: data/mfcc
+model_dir: models
+voice_features_csv: data/voice_features.csv
+people_metadata_csv: data/people_metadata.csv
+python_path: python
+extract_mfcc_py: internal/audio/extract_mfcc.py
+extract_people_py: internal/audio/extract_people_info.py
+diffusion_infer_py: internal/audio/diffusion_infer.py
+video_crawler_py: internal/audio/video_crawler.py
+cycle_report: cycle_report.log
+duplicate_threshold: 0.95
+
+# 今後の拡張項目例
+# notify_slack: false
+# notify_email: false
