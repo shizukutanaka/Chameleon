@@ -36,7 +36,7 @@ if __name__ == "__main__":
     mfcc = librosa.feature.mfcc(y, sr=sr, n_mfcc=20)
     mfcc_mean = np.mean(mfcc, axis=1)
 
-    # --- 重複判定 ---
+    # --- Duplicate Check ---
     import os
     def cosine_similarity(a, b):
         return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))

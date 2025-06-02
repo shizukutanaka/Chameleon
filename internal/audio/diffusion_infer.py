@@ -1,11 +1,11 @@
 import argparse
 import sys
 
-# === ローカルDiffusionモデル推論サンプル ===
-# ここでso-vits-svcやBark, StableTTS等のローカルCLIを呼び出してください。
-# 例: models/ ディレクトリに重みや設定ファイルを配置
-#
-# so-vits-svc例:
+# === Local Diffusion Model Inference Sample ===
+# Call local CLI tools such as so-vits-svc, Bark, StableTTS, etc. here.
+# Example: Place model weights and config files in the models/ directory.
+
+# so-vits-svc example:
 #   import subprocess
 #   cmd = [
 #       'python', 'svc_infer_cli.py',
@@ -17,8 +17,8 @@ import sys
 #       '--output', args.output
 #   ]
 #   subprocess.run(cmd, check=True)
-#
-# Bark例:
+
+# Bark example:
 #   import subprocess
 #   cmd = [
 #       'python', 'bark_infer.py',
@@ -28,12 +28,12 @@ import sys
 #       '--output', args.output
 #   ]
 #   subprocess.run(cmd, check=True)
-#
-# 必要なモデルファイルは models/ に配置してください。
-#
-# --- 以下はダミーwav生成 ---
 
-# config.yamlを読み込む関数
+# Place all required model files in the models/ directory.
+
+# --- Dummy wav generation below ---
+
+# Load config.yaml file
 def load_config(path):
     try:
         with open(path, 'r', encoding='utf-8') as f:

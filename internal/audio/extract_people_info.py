@@ -14,12 +14,12 @@ def load_config(path):
     except Exception:
         return {}
 
-# 出演者名抽出用の簡易正規表現（日本語・英語対応）
+# Simple regex patterns for extracting actor names (supports Japanese and English)
 ACTOR_PATTERNS = [
-    r"出演[:：]\s*([\w\u3000-\u30FF\u4E00-\u9FFF\uFF66-\uFF9F\s、,]+)", # 日本語
-    r"Starring[:：]?\s*([\w\s,]+)", # 英語
-    r"出演者[:：]?\s*([\w\s,\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF]+)", # 日本語
-    r"Cast[:：]?\s*([\w\s,]+)", # 英語
+    r"出演[:：]\s*([\w\u3000-\u30FF\u4E00-\u9FFF\uFF66-\uFF9F\s、,]+)", # Japanese
+    r"Starring[:：]?\s*([\w\s,]+)", # English
+    r"出演者[:：]?\s*([\w\s,\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF]+)", # Japanese
+    r"Cast[:：]?\s*([\w\s,]+)", # English
 ]
 
 # Wikipedia API

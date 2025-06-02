@@ -3,7 +3,7 @@ import yt_dlp
 import os
 import yaml
 
-# config.yamlを読み込む関数
+# Function to load config.yaml
 def load_config(path):
     try:
         with open(path, 'r', encoding='utf-8') as f:
