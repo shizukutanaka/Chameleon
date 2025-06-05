@@ -31,6 +31,29 @@
 
 ---
 
+## マイク音声のワンストップ変換機能
+
+- `internal/audio/mic2vc.py` を使うことで、マイクから録音した音声を「学習済みの声」にワンストップで変換・再生できます。
+- 低遅延かつローカル完結で動作します。
+
+### 使い方（コマンド例）
+```sh
+python internal/audio/mic2vc.py --target_voice モデル名 --duration 5
+```
+- `--target_voice` … 変換先の声モデル名（voice_models/配下に保存）
+- `--duration` … 録音時間（秒、デフォルト5秒）
+
+録音→変換→再生まで自動で行われます。
+
+### 必要要件
+- Pythonパッケージ: sounddevice, soundfile
+- so-vits-svcやRVC等の音声変換モデル本体と学習済みモデル
+
+### カスタマイズ例
+- `--samplerate`, `--channels`, `--tmp_dir` などで詳細な録音・変換設定が可能
+
+---
+
 ## 使い方
 
 ### 1. 依存パッケージのインストール
@@ -98,6 +121,45 @@ python internal/audio/extract_mfcc.py --input foo.wav --output foo.csv --config 
 - `extract_mfcc.py`は、特徴量CSV（`voice_features_csv`）内の既存ベクトルとコサイン類似度を計算。
 - `duplicate_threshold`（例: 0.95）以上の類似度があれば「重複」としてスキップし、無駄なデータ増加を防止。
 - 新規データのみ特徴量CSVに自動追記。
+
+---
+
+## 【新機能】ボイスチェンジャー（音声変換）
+
+Chameleonで収集・学習した音声データを元に、任意の音声ファイルを「学習済みの声」に変換できるボイスチェンジャー機能を追加しました。
+
+### 必要なもの
+- so-vits-svc や RVC などのオープンソース音声変換ツール（別途セットアップが必要）
+- `voice_models/` ディレクトリに変換先の声モデル（学習済みモデル）を保存
+
+### 使い方（コマンドライン例）
+```sh
+python internal/audio/voice_changer.py --input 入力音声.wav --target_voice モデル名 --output 出力.wav
+```
+- `--input`: 変換したい音声ファイル（wav, mp3等）
+- `--target_voice`: 変換先の声モデル名（`voice_models/` 配下に保存）
+- `--output`: 変換後の音声ファイル名
+
+### マイク音声の変換（ワンストップ）
+
+マイクから直接録音した音声を「学習済みの声」に変換し、そのまま再生できます。
+
+```sh
+python internal/audio/mic2vc.py --target_voice モデル名 --duration 5
+```
+- `--target_voice`: 変換先の声モデル名
+- `--duration`: 録音時間（秒、デフォルト5秒）
+
+録音→変換→再生まで自動で行われます。
+
+### モデルの作成方法
+- Chameleonで収集した音声データをso-vits-svcやRVC等のOSSに渡して学習し、`voice_models/`に保存してください。
+- 詳細な手順は各OSSのREADMEを参照してください。
+
+### 注意事項
+- モデルの学習や音声変換にはGPUが推奨されます。
+- OSS本体のセットアップは各プロジェクトの手順に従ってください。
+
 
 ### config.yamlの新パラメータ例
 ```yaml

@@ -2,11 +2,11 @@
 lang: ja
 interval_min: 60
 max_download: 3
-video_dir: data/videos
-mfcc_dir: data/mfcc
-model_dir: models
-voice_features_csv: data/voice_features.csv
-people_metadata_csv: data/people_metadata.csv
+video_dir: E:/ChameleonData/videos
+mfcc_dir: E:/ChameleonData/mfcc
+model_dir: E:/ChameleonData/models
+voice_features_csv: E:/ChameleonData/voice_features.csv
+people_metadata_csv: E:/ChameleonData/people_metadata.csv
 python_path: python
 extract_mfcc_py: internal/audio/extract_mfcc.py
 extract_people_py: internal/audio/extract_people_info.py

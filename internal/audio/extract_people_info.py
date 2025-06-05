@@ -112,7 +112,9 @@ def main():
     config = load_config(args.config)
     validate_config(config)
     output_csv = args.output or config.get('people_metadata_csv', 'models/people_metadata.csv')
-    os.makedirs(os.path.dirname(output_csv), exist_ok=True)
+    output_dir = os.path.dirname(output_csv)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
     names = extract_names(args.desc)
 

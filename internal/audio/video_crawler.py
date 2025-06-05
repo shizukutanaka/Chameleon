@@ -32,7 +32,10 @@ def main():
     validate_config(config)
     lang = args.lang or config.get('lang', 'ja')
     max_dl = args.max if args.max is not None else config.get('max_download', 3)
+    # Determine output directory for downloads
+    # If --outdir is specified, use it; otherwise, use config.yaml's video_dir
     outdir = args.outdir or config.get('video_dir', 'data/videos')
+    # Create the directory if it does not exist
     os.makedirs(outdir, exist_ok=True)
 
     # URL優先、なければ自動巡回
@@ -56,6 +59,21 @@ def main():
             ydl.download([target])
     except Exception:
         sys.exit(1)
+
+    # Whisper transcription
+    import whisper
+    import glob
+    model = whisper.load_model("base")
+    audio_exts = [".mp3", ".wav", ".m4a", ".opus"]
+    for ext in audio_exts:
+        for audio_file in glob.glob(os.path.join(outdir, f"*{ext}")):
+            txt_file = os.path.splitext(audio_file)[0] + ".txt"
+            if os.path.exists(txt_file):
+                continue  # Skip already transcribed
+            print(f"Transcribing {audio_file} ...")
+            result = model.transcribe(audio_file, language=lang)
+            with open(txt_file, "w", encoding="utf-8") as f:
+                f.write(result["text"])
 
 if __name__ == '__main__':
     main()
