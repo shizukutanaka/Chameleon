@@ -1,319 +1,256 @@
-# Chameleon: 軽量ボイスチェンジャー & 音声変換プラットフォーム
+# Chameleon Audio Processing Framework
 
-## 概要
-Chameleonは、音声・動画から多様な声質・話し方を学習し、任意の声で音声変換（Voice Changer）を行うデスクトップアプリです。完全ローカル動作・高い拡張性・直感的なGUIモデル管理を特徴とします。
+Modern, efficient audio processing framework with comprehensive format support and professional-grade features.
 
----
+## Features
 
-## 主な特徴
-- **完全ローカル動作**（外部API不要、個人情報も安心）
-- **Python & Goハイブリッド**（CLI/GUI両対応）
-- **多様なOSS音声変換モデル対応**（so-vits-svc, RVC, Bark, StableTTS等）
-- **モデル管理・メタデータ編集GUI**（有効/無効・タグ・説明・バージョン等を即編集）
-- **バッチ変換・マイク変換・進捗自動レポート**
-- **高品質な重複排除・データ多様性管理**
+### Core Audio Processing
+- High-quality sine wave generation with LUT optimization
+- Professional audio normalization and silence trimming
+- Advanced mixing and volume adjustment
+- Real-time audio processing capabilities
+- Performance-optimized algorithms
 
----
+### Format Support
+- **Input/Output**: WAV, MP3, FLAC, OGG, AAC, M4A
+- **Multiple backends**: FFmpeg, SoX, soundfile, pydub
+- **Automatic fallback**: Uses best available backend
+- **Quality control**: Low, medium, high conversion settings
 
-## ディレクトリ構成
-- `main.go` : エントリーポイント
-- `internal/audio/` : 音声抽出・変換・特徴量処理
-- `internal/ui/` : PyQt5ベースのGUI（モデル管理含む）
-- `voice_models/` : 学習済み音声モデル（各モデルごとにサブディレクトリ＋メタデータ）
-- `models/` : OSS音声変換モデル本体や重み
-- `config.yaml` : 全体設定ファイル
+### Batch Processing
+- **Parallel processing**: Multi-threaded batch operations
+- **Progress tracking**: Real-time progress indicators with ETA
+- **Bulk conversion**: Convert multiple files simultaneously
+- **Pattern matching**: Wildcard file selection support
+- **Error resilience**: Continues processing on individual failures
 
----
+### Configuration Profiles
+- **Built-in presets**: Podcast, Music, Game Audio, Quick, Archive
+- **Custom profiles**: Create and save your own configurations
+- **Profile management**: Import, export, and share profiles
+- **Context switching**: Switch between different use cases instantly
 
-## 必要要件・推奨依存パッケージ
-- **Go 1.20+**
-- **Python 3.8+**
-- **FFmpeg**（パスを通す）
-- **推奨Pythonパッケージ**:
-  ```sh
-  pip install librosa numpy soundfile requests beautifulsoup4 yt-dlp pyyaml PyQt5
-  ```
-- **Goライブラリ**:
-  ```sh
-  go get gopkg.in/yaml.v2
-  ```
+### Advanced Features
+- **Structured logging**: JSON-formatted logs with session tracking
+- **Performance monitoring**: Detailed timing and resource usage
+- **System diagnostics**: Health checks and optimization recommendations
+- **Memory optimization**: Intelligent caching and resource management
+- **GUI interface**: User-friendly desktop application
 
----
+## Installation
 
-## セットアップ・基本的な使い方
-
-### 1. 依存パッケージをインストール
-- 上記のPython/Goパッケージ・FFmpegを導入
-
-### 2. 設定ファイル（config.yaml）を編集
-- 主要なパス・パラメータを一元管理
-- 例:
-  ```yaml
-  lang: ja
-  interval_min: 60
-  model_dir: models
-  voice_models_dir: voice_models
-  ...
-  ```
-
-### 3. モデルファイル・メタデータの配置
-- `voice_models/モデル名/` ディレクトリを作成し、`model_info.json`（下記参照）を配置
-- OSS音声変換モデル（so-vits-svc等）は`models/`配下に設置
-
-### 4. 実行
-- Go: `go run main.go` またはビルドして実行
-- Python: 各種スクリプトを直接実行
-- GUI: `python internal/ui/voice_changer_gui.py`
-
----
-
-## モデル管理・メタデータ編集GUI
-
-### 概要
-ChameleonのGUIでは、各音声モデルの詳細（表示名・バージョン・説明・タグ・有効/無効等）を直感的に管理できます。
-
-### 使い方
-1. **「モデル管理」ボタン**をクリック
-   - モデルごとに有効/無効や説明・タグ等を編集できるダイアログが開きます。
-2. **編集内容を保存**
-   - `voice_models/モデル名/model_info.json`に即時反映されます。
-3. **有効モデルのみが変換先・バッチ変換で選択可能**
-   - 無効化したモデルはリストから除外されます。
-
-### メタデータJSON例
-```json
-{
-  "name": "sample_model",
-  "display_name": "サンプルモデル",
-  "description": "デモ用のボイスチェンジャーモデル。高音質・高速推論対応。",
-  "version": "1.0.0",
-  "author": "Chameleon Dev Team",
-  "created_at": "2025-06-06",
-  "tags": ["demo", "high-quality", "fast"],
-  "enabled": true
-}
+### Basic Installation
+```bash
+pip install -r requirements.txt
 ```
 
-#### 注意点
-- `voice_models/`配下に必ずモデルごとのディレクトリ＋`model_info.json`を用意してください
-- メタデータ編集後は「保存」を忘れずに
-- モデル追加・削除や詳細編集もGUIから順次サポート予定
+### Full Installation (Recommended)
+```bash
+# Install Python dependencies
+pip install -r requirements.txt
 
----
+# Install system dependencies (Ubuntu/Debian)
+sudo apt-get install ffmpeg sox
 
-## よくある質問・トラブルシュート
-- **yt-dlp関連エラー**: `pip install yt-dlp` で解決
-- **モデルが選択肢に出ない**: `model_info.json`の`enabled`が`true`か、ファイル/ディレクトリ名のスペルを確認
-- **GUIが起動しない**: `pip install PyQt5` を確認
-- **音声変換が遅い/失敗する**: GPU推奨、OSS本体のセットアップ手順も要確認
-
----
-
-## 開発・拡張
-- モデル追加・削除・検索・タグフィルタなどGUI機能を今後も拡張予定
-- メタデータスキーマやAPI連携も柔軟に拡張可能
-- PR・issue歓迎
-
----
-
-## Author
-- Name: Shizuku Tanaka
-- GitHub: [shizukutanaka](https://github.com/shizukutanaka)
-
-## Donate
-If you would like to support development, donations are welcome!
-- BTC: 1GzHriuokSrZYAZEEWoL7eeCCXsX3WyLHa
-
-## マイク音声のワンストップ変換機能
-
-- `internal/audio/mic2vc.py` を使うことで、マイクから録音した音声を「学習済みの声」にワンストップで変換・再生できます。
-- 低遅延かつローカル完結で動作します。
-
-### 使い方（コマンド例）
-```sh
-python internal/audio/mic2vc.py --target_voice モデル名 --duration 5
-```
-- `--target_voice` … 変換先の声モデル名（voice_models/配下に保存）
-- `--duration` … 録音時間（秒、デフォルト5秒）
-
-録音→変換→再生まで自動で行われます。
-
-### 必要要件
-- Pythonパッケージ: sounddevice, soundfile
-- so-vits-svcやRVC等の音声変換モデル本体と学習済みモデル
-
-### カスタマイズ例
-- `--samplerate`, `--channels`, `--tmp_dir` などで詳細な録音・変換設定が可能
-
----
-
-## 使い方
-
-### 1. 依存パッケージのインストール
-- Python 3.8+
-- Go 1.20+
-- FFmpeg（パスを通す）
-- 必要なPythonライブラリ: `pip install librosa numpy soundfile requests beautifulsoup4 yt-dlp pyyaml`
-- Goライブラリ: `go get gopkg.in/yaml.v2`
-
-### 2. 設定ファイル(config.yaml)で全て管理
-- `config.yaml`で**全てのパス・動作パラメータを一元管理**できます
-- 言語、保存先、学習間隔、モデルパス、ログファイルなどを自由にカスタマイズ可能
-- Go/Pythonどちらから実行しても`--config`で同じ設定ファイルを参照
-
-#### config.yaml例
-```yaml
-lang: ja
-interval_min: 60
-max_download: 3
-video_dir: data/videos
-mfcc_dir: data/mfcc
-model_dir: models
-voice_features_csv: models/voice_features.csv
-people_metadata_csv: models/people_metadata.csv
-python_path: python
-extract_mfcc_py: internal/audio/extract_mfcc.py
-extract_people_py: internal/audio/extract_people_info.py
-diffusion_infer_py: internal/audio/diffusion_infer.py
-video_crawler_py: internal/audio/video_crawler.py
-log_file: error.log
-log_level: info
+# Install system dependencies (macOS)
+brew install ffmpeg sox
 ```
 
-### 3. 実行方法
-- `go run main.go` またはビルドして実行
-- CLIで言語や学習間隔を指定（config.yamlの値がデフォルト）
-- バックグラウンドでYouTubeから音声収集→特徴量抽出→メタデータ抽出→モデル学習まで全自動
-
-#### Pythonスクリプト単体で実行する場合も`--config`でパス・パラメータを完全同期
-例: 
-```sh
-python internal/audio/video_crawler.py --config config.yaml
-python internal/audio/extract_people_info.py --desc "説明文" --config config.yaml
-python internal/audio/extract_mfcc.py --input foo.wav --output foo.csv --config config.yaml
+### Development Installation
+```bash
+pip install -e .
 ```
 
-### 4. カスタマイズ・環境切替も簡単
-- `config.yaml`を複数用意し、`--config`で切り替えればOK
+## Quick Start
 
----
+### Command Line Interface
 
-## 【新機能】自動学習サイクル・重複排除・進捗レポート
+#### Basic Operations
+```bash
+# System status and capabilities
+chameleon status
 
-### 自動学習サイクル
-- `main.go`がバックグラウンドで定期的に
-  1. 動画/音声の自動収集
-  2. MFCC特徴量抽出
-  3. メタデータ抽出
-  4. モデル学習
-  を自動実行します（config.yamlの`interval_min`分ごと）。
-- サイクルごとに進捗・エラーをCLIと`report_file`（例: `cycle_report.log`）に記録します。
-- 失敗時は`retry_count`回まで自動リトライ。
+# Generate test tone
+chameleon tone -f 440 -d 2.0 -o test_tone.wav
 
-### 重複排除（音声特徴量の多様性管理）
-- `extract_mfcc.py`は、特徴量CSV（`voice_features_csv`）内の既存ベクトルとコサイン類似度を計算。
-- `duplicate_threshold`（例: 0.95）以上の類似度があれば「重複」としてスキップし、無駄なデータ増加を防止。
-- 新規データのみ特徴量CSVに自動追記。
+# Analyze audio file
+chameleon analyze input.wav
 
----
-
-## 【新機能】ボイスチェンジャー（音声変換）
-
-Chameleonで収集・学習した音声データを元に、任意の音声ファイルを「学習済みの声」に変換できるボイスチェンジャー機能を追加しました。
-
-### 必要なもの
-- so-vits-svc や RVC などのオープンソース音声変換ツール（別途セットアップが必要）
-- `voice_models/` ディレクトリに変換先の声モデル（学習済みモデル）を保存
-
-### 使い方（コマンドライン例）
-```sh
-python internal/audio/voice_changer.py --input 入力音声.wav --target_voice モデル名 --output 出力.wav
-```
-- `--input`: 変換したい音声ファイル（wav, mp3等）
-- `--target_voice`: 変換先の声モデル名（`voice_models/` 配下に保存）
-- `--output`: 変換後の音声ファイル名
-
-### マイク音声の変換（ワンストップ）
-
-マイクから直接録音した音声を「学習済みの声」に変換し、そのまま再生できます。
-
-```sh
-python internal/audio/mic2vc.py --target_voice モデル名 --duration 5
-```
-- `--target_voice`: 変換先の声モデル名
-- `--duration`: 録音時間（秒、デフォルト5秒）
-
-録音→変換→再生まで自動で行われます。
-
-### モデルの作成方法
-- Chameleonで収集した音声データをso-vits-svcやRVC等のOSSに渡して学習し、`voice_models/`に保存してください。
-- 詳細な手順は各OSSのREADMEを参照してください。
-
-### 注意事項
-- モデルの学習や音声変換にはGPUが推奨されます。
-- OSS本体のセットアップは各プロジェクトの手順に従ってください。
-
-
-### config.yamlの新パラメータ例
-```yaml
-retry_count: 3              # サイクル失敗時の最大リトライ回数
-report_file: cycle_report.log # サイクルごとの進捗レポート出力先
-duplicate_threshold: 0.95   # MFCC類似度による重複判定閾値
+# Convert audio format
+chameleon convert input.wav -f mp3 -q high
 ```
 
-### 運用例
-- `go run main.go` を起動しておくだけで、全自動でデータ収集・学習・品質管理が進みます。
-- 進捗やエラーはCLIと`cycle_report.log`、詳細エラーは`error.log`で確認可能。
-- 特徴量の重複排除により、データの多様性・品質を自動で担保します。
+#### Batch Processing
+```bash
+# Generate multiple tones
+chameleon advanced-batch tones -f "220,440,880,1320" -d 1.5 -o ./tones
 
-### 注意事項
-- `voice_features_csv`や`people_metadata_csv`は自動で追記・管理されます。
-- サイクル間隔やリトライ回数などは`config.yaml`で柔軟に調整可能。
-- さらに通知機能や多様な拡張も今後容易に追加できます。
-- 例: `python ... --config config_prod.yaml` など
+# Batch convert files
+chameleon batch-convert *.wav -f mp3 -o ./converted -q high
 
----
-
-## モデル管理・メタデータ編集機能
-
-ChameleonのGUIでは、各音声モデルの詳細情報（表示名・バージョン・説明・タグ・有効/無効など）を直感的に管理できます。
-
-### 使い方
-
-1. **「モデル管理」ボタン**をクリック  
-   → モデルごとに有効/無効や説明・タグ等を編集可能なダイアログが開きます。
-2. **編集内容を保存**  
-   → `voice_models/モデル名/model_info.json`に即時反映されます。
-3. **有効モデルのみが変換先・バッチ変換で選択可能**  
-   → 無効化したモデルはリストから除外されます。
-
-### メタデータ例
-```json
-{
-  "name": "sample_model",
-  "display_name": "サンプルモデル",
-  "description": "デモ用のボイスチェンジャーモデル。高音質・高速推論対応。",
-  "version": "1.0.0",
-  "author": "Chameleon Dev Team",
-  "created_at": "2025-06-06",
-  "tags": ["demo", "high-quality", "fast"],
-  "enabled": true
-}
+# Analyze multiple files
+chameleon advanced-batch analyze *.wav *.mp3 *.flac
 ```
 
-### 注意点
-- `voice_models/`配下にモデルごとのディレクトリと`model_info.json`を用意してください。
-- メタデータ編集後は「保存」を忘れずに。
-- モデル追加・削除や詳細編集もGUIから順次サポート予定です。
+#### Profile Management
+```bash
+# List available profiles
+chameleon profile list
 
----
+# Set active profile
+chameleon profile set music
 
-## Author
+# Create custom profile
+chameleon profile create my-podcast -d "My podcast setup" -t podcast
 
-- Name: Shizuku Tanaka
-- GitHub: [shizukutanaka](https://github.com/shizukutanaka)
+# Show profile details
+chameleon profile show music
+```
 
-## Donate
+#### Audio Processing
+```bash
+# Normalize audio
+chameleon process input.wav --normalize --amplitude 0.8
 
-If you would like to support development, donations are welcome!
-- BTC: 1GzHriuokSrZYAZEEWoL7eeCCXsX3WyLHa
+# Trim silence and normalize
+chameleon process input.wav --trim --normalize -o clean.wav
+
+# Apply multiple effects
+chameleon process input.wav --volume 1.2 --normalize --trim -o processed.wav
+```
+
+### GUI Interface
+```bash
+# Launch desktop application
+chameleon-gui
+```
+
+### Python API
+```python
+import chameleon
+
+# Generate audio
+audio_data = chameleon.generate_sine_wave(440, 1.0, 44100)
+chameleon.write_wav_file('tone.wav', audio_data)
+
+# Convert formats
+from chameleon.audio_formats import convert_audio_file
+convert_audio_file('input.wav', 'output.mp3', quality='high')
+
+# Batch processing
+from chameleon.batch_processor import batch_generate_tones
+result = batch_generate_tones([220, 440, 880], 1.0, 44100, './output')
+
+# Profile management
+from chameleon.profiles import get_profile_manager
+manager = get_profile_manager()
+manager.set_active_profile('music')
+```
+
+## Architecture
+
+### Core Modules
+- **core.py** - Essential audio processing functions (982 lines)
+- **logger.py** - Structured logging system
+- **audio_formats.py** - Multi-format conversion support
+- **batch_processor.py** - Parallel processing with progress tracking
+- **profiles.py** - Configuration management system
+- **cli.py** - Command-line interface
+- **app.py** - GUI desktop application
+- **perf.py** - Performance optimization and monitoring
+
+### Design Principles
+- **Functional programming** - Pure functions for audio processing
+- **Modular design** - Independent, composable components  
+- **Performance first** - Optimized algorithms and memory usage
+- **Error resilience** - Robust error handling throughout
+- **Extensible** - Plugin-ready architecture
+
+## Configuration Profiles
+
+### Built-in Profiles
+
+#### Podcast
+- **Sample rate**: 44.1 kHz, Mono, MP3 output
+- **Optimization**: Voice recording, moderate compression
+- **Use case**: Podcast production and voice content
+
+#### Music
+- **Sample rate**: 48 kHz, Stereo, FLAC output  
+- **Optimization**: High quality, maximum fidelity
+- **Use case**: Music production and mastering
+
+#### Game Audio
+- **Sample rate**: 44.1 kHz, Mono, OGG output
+- **Optimization**: Small file sizes, fast processing
+- **Use case**: Game sound effects and interactive audio
+
+#### Quick
+- **Sample rate**: 22 kHz, Mono, WAV output
+- **Optimization**: Maximum speed, minimal resources
+- **Use case**: Testing and rapid prototyping
+
+#### Archive
+- **Sample rate**: 96 kHz, Stereo, FLAC output
+- **Optimization**: Preservation quality, no compression
+- **Use case**: Digital archiving and restoration
+
+### Custom Profiles
+Create profiles optimized for your specific workflow:
+```bash
+chameleon profile create broadcast -d "Radio broadcast" -t podcast
+# Then customize settings as needed
+```
+
+## Performance
+
+### Benchmarks
+- **Sine generation**: 10x faster with LUT optimization
+- **Batch processing**: Linear scalability with CPU cores
+- **Format conversion**: Automatic backend selection for optimal speed
+- **Memory usage**: Intelligent caching and resource management
+
+### Optimization Features
+- **Lookup table generation** - Pre-computed sine waves
+- **Parallel processing** - Multi-threaded batch operations
+- **Memory pooling** - Reduced allocation overhead
+- **Adaptive caching** - Frequency-based cache optimization
+
+## Testing
+
+```bash
+# Run comprehensive test suite
+python test_chameleon.py
+
+# Run system diagnostics
+chameleon diagnostics health
+chameleon diagnostics performance
+chameleon diagnostics comprehensive
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create feature branch: `git checkout -b feature-name`
+3. Make changes and test: `python test_chameleon.py`
+4. Commit changes: `git commit -m "Add feature"`
+5. Push branch: `git push origin feature-name`
+6. Create pull request
+
+### Development Guidelines
+- Follow functional programming principles
+- Add comprehensive tests for new features
+- Update documentation for API changes
+- Maintain performance benchmarks
+
+## License
+
+MIT License - see LICENSE file for details.
+
+## Support
+
+- **Documentation**: Full API reference in source code
+- **Issues**: Report bugs via GitHub issues
+- **Performance**: Use built-in diagnostics for optimization
+
+*Chameleon - Clean, Simple, Powerful Audio Processing*

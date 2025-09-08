@@ -1,20 +1,184 @@
-# サイレント・軽量・完全自動化用最小設定
-lang: ja
-interval_min: 60
-max_download: 3
-video_dir: E:/ChameleonData/videos
-mfcc_dir: E:/ChameleonData/mfcc
-model_dir: E:/ChameleonData/models
-voice_features_csv: E:/ChameleonData/voice_features.csv
-people_metadata_csv: E:/ChameleonData/people_metadata.csv
-python_path: python
-extract_mfcc_py: internal/audio/extract_mfcc.py
-extract_people_py: internal/audio/extract_people_info.py
-diffusion_infer_py: internal/audio/diffusion_infer.py
-video_crawler_py: internal/audio/video_crawler.py
-cycle_report: cycle_report.log
-duplicate_threshold: 0.95
+# Chameleon Audio Processor Configuration
+# Production-ready configuration with optimized defaults
 
-# 今後の拡張項目例
-# notify_slack: false
-# notify_email: false
+app:
+  name: "Chameleon Audio Processor"
+  version: "2.0.0"
+  lang: "en"
+  debug_mode: false
+  profile: "balanced"  # balanced, performance, quality, minimal
+
+audio:
+  # Default audio settings
+  sample_rate: 44100
+  channels: 1
+  format: "wav"
+  bit_depth: 16
+  quality: "high"
+  
+  # Generation defaults
+  default_frequency: 440.0
+  default_duration: 1.0
+  default_amplitude: 0.8
+  
+  # Audio limits
+  max_frequency: 96000.0
+  min_frequency: 1.0
+  max_duration: 3600.0  # 1 hour
+  min_duration: 0.001
+  
+  # Processing options
+  use_lut_optimization: true
+  normalize_output: true
+  auto_trim_silence: false
+
+formats:
+  # Supported input formats
+  input_formats: ["wav", "mp3", "flac", "ogg", "aac", "m4a"]
+  
+  # Default output format preferences
+  output_format: "wav"
+  fallback_format: "wav"
+  
+  # Quality settings per format
+  mp3_bitrate: 320
+  ogg_quality: 8
+  flac_compression: 5
+
+paths:
+  output_dir: "./output"
+  temp_dir: "./temp"
+  profiles_dir: "./profiles"
+  logs_dir: "./logs"
+  
+  # Path organization
+  organize_by_date: false
+  organize_by_format: true
+  create_subdirs: true
+
+performance:
+  # Processing optimization
+  enable_cache: true
+  max_cache_size: 64
+  parallel_processing: true
+  max_workers: 0  # Auto-detect CPU cores
+  
+  # Memory management
+  memory_limit_mb: 512
+  file_size_limit_mb: 200
+  chunk_size_mb: 10
+  
+  # Speed vs quality tradeoffs
+  use_fast_mode: true
+  enable_optimizations: true
+  preload_lut: true
+
+batch:
+  # Batch processing settings
+  default_batch_size: 10
+  show_progress: true
+  continue_on_error: true
+  max_concurrent_jobs: 4
+  
+  # Progress reporting
+  update_interval_ms: 100
+  detailed_progress: true
+
+conversion:
+  # Audio conversion settings
+  auto_normalize: false
+  preserve_metadata: true
+  overwrite_existing: false
+  backup_originals: false
+  
+  # Quality control
+  validate_output: true
+  verify_conversion: true
+  
+security:
+  # File system security
+  enable_path_validation: true
+  restrict_to_audio_files: true
+  max_path_length: 260
+  allow_symlinks: false
+  
+  # Processing limits
+  max_file_size_mb: 200
+  max_processing_time_sec: 600
+  sandbox_temp_files: true
+
+logging:
+  # Logging configuration
+  level: "INFO"
+  file: "chameleon.log"
+  max_log_size_mb: 50
+  backup_count: 5
+  
+  # Log content control
+  enable_performance_logging: true
+  enable_audio_logging: false
+  enable_debug_logging: false
+  log_file_operations: true
+  
+  # Output formatting
+  use_structured_logging: true
+  include_timestamps: true
+  include_process_info: false
+
+ui:
+  # User interface settings
+  show_progress: true
+  use_colors: true
+  compact_output: false
+  
+  # Progress display
+  progress_bar_width: 40
+  show_eta: true
+  show_rate: true
+  
+  # Output formatting
+  table_format: "grid"
+  decimal_places: 2
+  file_size_units: "MB"
+
+profiles:
+  # Default profiles configuration
+  podcast:
+    sample_rate: 44100
+    channels: 1
+    format: "mp3"
+    quality: "medium"
+    normalize: true
+  
+  music:
+    sample_rate: 48000
+    channels: 2
+    format: "flac"
+    quality: "lossless"
+    normalize: false
+    
+  quick:
+    sample_rate: 22050
+    channels: 1
+    format: "wav"
+    quality: "low"
+    fast_mode: true
+
+# Environment-specific overrides
+development:
+  app:
+    debug_mode: true
+  logging:
+    level: "DEBUG"
+    enable_debug_logging: true
+  performance:
+    enable_cache: false
+
+production:
+  security:
+    enable_path_validation: true
+    max_file_size_mb: 100
+  logging:
+    level: "WARNING"
+  performance:
+    max_workers: 8
