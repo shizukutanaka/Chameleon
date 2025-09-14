@@ -1,0 +1,20 @@
+{
+  "audio_classifier_demo": [
+    {
+      "model_id": "audio_classifier_demo_v1757744996",
+      "version": "v1757744996",
+      "type": "audio_classifier",
+      "created_at": 1757744996,
+      "path": "demo_models/audio_classifier_demo_v1757744996.pkl",
+      "metadata": {
+        "accuracy": 0.6666666666666666,
+        "epochs": 50,
+        "classes": [
+          "silence",
+          "noise",
+          "tone"
+        ]
+      }
+    }
+  ]
+}

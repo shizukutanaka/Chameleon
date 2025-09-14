@@ -1,28 +1,35 @@
-# Core dependencies
-PyYAML>=6.0
+# Core audio processing dependencies
+numpy>=1.20.0
+scipy>=1.7.0
 
-# Audio processing (optional but recommended)
-soundfile>=0.12.0
-sounddevice>=0.4.0
-librosa>=0.10.0
-numpy>=1.21.0
+# Audio file I/O support
+soundfile>=0.10.3
 
-# Format conversion (optional)  
-pydub>=0.25.1
+# Real-time audio processing (optional)
+sounddevice>=0.4.4
+pygame>=2.0.0
 
-# System monitoring (optional)
-psutil>=5.9.0
+# Performance optimization and JIT compilation
+numba>=0.55.0
 
-# Progress indicators (optional)
-tqdm>=4.64.0
+# System resource monitoring
+psutil>=5.8.0
 
-# GUI support (optional)
-matplotlib>=3.5.0
+# Configuration management
+pyyaml>=6.0
 
-# Note: External dependencies for advanced features:
-# - FFmpeg: Required for comprehensive format conversion
-# - SoX: Alternative audio processing backend
-# 
-# Installation guide:
-# Basic: pip install -r requirements.txt
-# Full:  pip install -r requirements.txt && apt-get install ffmpeg sox
+# Development and testing
+pytest>=7.0.0
+pytest-cov>=3.0.0
+pytest-xdist>=2.5.0
+pytest-timeout>=2.1.0
+
+# Code quality and formatting (development)
+flake8>=4.0.0
+black>=22.0.0
+isort>=5.10.0
+mypy>=0.950
+
+# Security scanning (development)
+safety>=2.0.0
+bandit>=1.7.0

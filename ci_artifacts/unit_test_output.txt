@@ -1,0 +1,147 @@
+
+============================================================
+TEST SUMMARY
+============================================================
+Tests Run: 12
+Failures: 0
+Errors: 11
+Success Rate: 8.3%
+test_apply_eq (__main__.TestAudioProcessor.test_apply_eq)
+Test equalizer ... ERROR
+test_apply_gain (__main__.TestAudioProcessor.test_apply_gain)
+Test gain application ... ERROR
+test_compress_audio (__main__.TestAudioProcessor.test_compress_audio)
+Test dynamic range compression ... ERROR
+test_normalize_audio (__main__.TestAudioProcessor.test_normalize_audio)
+Test audio normalization ... ERROR
+test_buffer_management (__main__.TestStreamProcessor.test_buffer_management)
+Test buffer overflow handling ... ERROR
+test_real_time_processing (__main__.TestStreamProcessor.test_real_time_processing)
+Test real-time processing latency ... ERROR
+test_stream_initialization (__main__.TestStreamProcessor.test_stream_initialization)
+Test stream processor initialization ... ok
+test_formant_shift (__main__.TestVoiceProcessor.test_formant_shift)
+Test formant shifting ... ERROR
+test_gender_change (__main__.TestVoiceProcessor.test_gender_change)
+Test gender transformation ... ERROR
+test_pitch_shift (__main__.TestVoiceProcessor.test_pitch_shift)
+Test pitch shifting ... ERROR
+test_fft_computation (__main__.TestFFTAnalysis.test_fft_computation)
+Test FFT computation accuracy ... ERROR
+test_spectral_features (__main__.TestFFTAnalysis.test_spectral_features)
+Test spectral feature extraction ... ERROR
+
+======================================================================
+ERROR: test_apply_eq (__main__.TestAudioProcessor.test_apply_eq)
+Test equalizer
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/c/Users/irosa/Desktop/claude/Chameleon/test_framework.py", line 193, in test_apply_eq
+    equalized = self.processor.apply_eq(signal, eq_bands)
+                ^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'AudioProcessor' object has no attribute 'apply_eq'
+
+======================================================================
+ERROR: test_apply_gain (__main__.TestAudioProcessor.test_apply_gain)
+Test gain application
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/c/Users/irosa/Desktop/claude/Chameleon/test_framework.py", line 172, in test_apply_gain
+    amplified = self.processor.apply_gain(signal, gain_db)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'AudioProcessor' object has no attribute 'apply_gain'. Did you mean: '_apply_gain'?
+
+======================================================================
+ERROR: test_compress_audio (__main__.TestAudioProcessor.test_compress_audio)
+Test dynamic range compression
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/c/Users/irosa/Desktop/claude/Chameleon/test_framework.py", line 211, in test_compress_audio
+    compressed = self.processor.compress(signal, threshold=-20, ratio=4)
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'AudioProcessor' object has no attribute 'compress'
+
+======================================================================
+ERROR: test_normalize_audio (__main__.TestAudioProcessor.test_normalize_audio)
+Test audio normalization
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/c/Users/irosa/Desktop/claude/Chameleon/test_framework.py", line 161, in test_normalize_audio
+    normalized = self.processor.normalize(signal)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'AudioProcessor' object has no attribute 'normalize'
+
+======================================================================
+ERROR: test_buffer_management (__main__.TestStreamProcessor.test_buffer_management)
+Test buffer overflow handling
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/c/Users/irosa/Desktop/claude/Chameleon/test_framework.py", line 272, in test_buffer_management
+    self.processor.start()
+    ^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'StreamProcessor' object has no attribute 'start'
+
+======================================================================
+ERROR: test_real_time_processing (__main__.TestStreamProcessor.test_real_time_processing)
+Test real-time processing latency
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/c/Users/irosa/Desktop/claude/Chameleon/test_framework.py", line 247, in test_real_time_processing
+    self.processor.start()
+    ^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'StreamProcessor' object has no attribute 'start'
+
+======================================================================
+ERROR: test_formant_shift (__main__.TestVoiceProcessor.test_formant_shift)
+Test formant shifting
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/c/Users/irosa/Desktop/claude/Chameleon/test_framework.py", line 317, in test_formant_shift
+    shifted = self.processor.formant_shift(signal, 1.5)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'VoiceProcessor' object has no attribute 'formant_shift'
+
+======================================================================
+ERROR: test_gender_change (__main__.TestVoiceProcessor.test_gender_change)
+Test gender transformation
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/c/Users/irosa/Desktop/claude/Chameleon/test_framework.py", line 327, in test_gender_change
+    female_voice = self.processor.change_gender(signal, 'female')
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'VoiceProcessor' object has no attribute 'change_gender'
+
+======================================================================
+ERROR: test_pitch_shift (__main__.TestVoiceProcessor.test_pitch_shift)
+Test pitch shifting
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/c/Users/irosa/Desktop/claude/Chameleon/test_framework.py", line 307, in test_pitch_shift
+    shifted = self.processor.pitch_shift(signal, 12)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'VoiceProcessor' object has no attribute 'pitch_shift'
+
+======================================================================
+ERROR: test_fft_computation (__main__.TestFFTAnalysis.test_fft_computation)
+Test FFT computation accuracy
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/c/Users/irosa/Desktop/claude/Chameleon/test_framework.py", line 337, in setUp
+    self.analyzer = fft_analysis.FFTAnalyzer()
+                    ^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'fft_analysis' has no attribute 'FFTAnalyzer'
+
+======================================================================
+ERROR: test_spectral_features (__main__.TestFFTAnalysis.test_spectral_features)
+Test spectral feature extraction
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/c/Users/irosa/Desktop/claude/Chameleon/test_framework.py", line 337, in setUp
+    self.analyzer = fft_analysis.FFTAnalyzer()
+                    ^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'fft_analysis' has no attribute 'FFTAnalyzer'
+
+----------------------------------------------------------------------
+Ran 12 tests in 0.172s
+
+FAILED (errors=11)

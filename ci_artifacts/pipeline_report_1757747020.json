@@ -1,0 +1,39 @@
+{
+  "timestamp": 1757747020.6618457,
+  "commit_hash": "43308bdd9a19d2dec88285ea7894b743f4a160a5",
+  "branch": "main",
+  "overall_result": "passed",
+  "total_duration": 0.8021934032440186,
+  "artifacts_path": "/mnt/c/Users/irosa/Desktop/claude/Chameleon/ci_artifacts",
+  "stages": [
+    {
+      "stage": "syntax",
+      "result": "passed",
+      "duration": 0.3307688236236572,
+      "details": "All 43 Python files passed syntax check",
+      "artifacts": [],
+      "metrics": {
+        "files_checked": 43,
+        "errors": 0
+      }
+    },
+    {
+      "stage": "quality",
+      "result": "passed",
+      "duration": 0.3289155960083008,
+      "details": "Code quality score: 90.0/100\n\nIssues found:\nbenchmark_suite.py has 1075 lines (consider splitting)\nmain.py has 2062 lines (consider splitting)",
+      "artifacts": [
+        "/mnt/c/Users/irosa/Desktop/claude/Chameleon/ci_artifacts/quality_report.json"
+      ],
+      "metrics": {
+        "total_files": 43,
+        "total_lines": 22648,
+        "total_functions": 977,
+        "total_classes": 170,
+        "avg_lines_per_file": 526.6976744186046,
+        "issues_found": 2,
+        "quality_score": 90.0
+      }
+    }
+  ]
+}
