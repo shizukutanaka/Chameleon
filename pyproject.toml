@@ -1,0 +1,102 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chameleon-audio"
+version = "2.0.0"
+description = "Lightweight, efficient audio processing toolkit"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Chameleon Audio Team", email = "audio@chameleon.dev"}
+]
+maintainers = [
+    {name = "Chameleon Audio Team", email = "audio@chameleon.dev"}
+]
+keywords = [
+    "audio", "signal-processing", "wav", "effects",
+    "music", "sound", "dsp", "realtime"
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Topic :: Multimedia :: Sound/Audio :: Analysis",
+    "Topic :: Multimedia :: Sound/Audio :: Sound Synthesis",
+    "Topic :: Scientific/Engineering :: Signal Processing"
+]
+requires-python = ">=3.7"
+dependencies = []
+
+[project.optional-dependencies]
+monitoring = ["psutil>=5.8.0"]
+config = ["pyyaml>=6.0"]
+optimized = ["numpy>=1.19.0"]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=3.0.0",
+    "flake8>=4.0.0",
+    "black>=22.0.0",
+    "bandit>=1.7.0"
+]
+all = ["psutil>=5.8.0", "pyyaml>=6.0", "numpy>=1.19.0"]
+
+[project.urls]
+Homepage = "https://github.com/chameleon-audio/chameleon"
+Documentation = "https://chameleon-audio.readthedocs.io"
+Repository = "https://github.com/chameleon-audio/chameleon"
+"Bug Tracker" = "https://github.com/chameleon-audio/chameleon/issues"
+
+[project.scripts]
+chameleon = "chameleon:main"
+chameleon-gui = "audio_gui:main"
+
+[tool.setuptools]
+packages = ["."]
+include-package-data = true
+
+[tool.setuptools.package-data]
+"*" = ["*.wav", "*.json", "*.yaml", "*.md"]
+
+[tool.black]
+line-length = 120
+target-version = ["py37", "py38", "py39", "py310", "py311"]
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  | build
+  | dist
+  | venv
+  | .git
+  | __pycache__
+)/
+'''
+
+[tool.flake8]
+max-line-length = 120
+extend-ignore = ["E203", "W503"]
+exclude = [".git", "__pycache__", "build", "dist", "venv"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["."]
+omit = ["tests/*", "examples/*", "scripts/*", "setup.py"]
+
+[tool.bandit]
+exclude_dirs = ["tests", "examples"]
+severity = "medium"
