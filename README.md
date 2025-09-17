@@ -41,11 +41,11 @@ Lightweight, practical audio processing toolkit for WAV files.
 ## Installation
 
 ```bash
-# No dependencies required for core functionality
+# Core functionality (no dependencies)
 python3 chameleon.py --help
 
-# For parallel batch processing (optional)
-pip install multiprocessing
+# Optional dependencies for enhanced features
+pip install -r requirements.txt
 ```
 
 ## Usage

@@ -38,6 +38,9 @@ def test_basic_processing():
     print("Testing basic audio processing...")
 
     # Import main module
+    import sys
+    import os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from chameleon import AudioProcessor
 
     # Create test file
@@ -105,6 +108,9 @@ def test_effects():
     """Test audio effects"""
     print("\nTesting audio effects...")
 
+    import sys
+    import os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from audio_effects import AudioEffects
 
     # Create test samples
@@ -171,6 +177,9 @@ def test_converter():
     """Test audio converter"""
     print("\nTesting audio converter...")
 
+    import sys
+    import os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from audio_converter import AudioConverter
 
     try:
@@ -212,6 +221,9 @@ def test_batch_processor():
     """Test batch processor"""
     print("\nTesting batch processor...")
 
+    import sys
+    import os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from batch_processor_optimized import OptimizedBatchProcessor
 
     # Create test directory
