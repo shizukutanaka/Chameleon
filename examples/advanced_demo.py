@@ -16,7 +16,7 @@ from chameleon import AudioProcessor
 from audio_effects import AudioEffects
 from audio_analyzer import AudioAnalyzer
 from audio_stream import AudioStream
-from batch_processor_optimized import OptimizedBatchProcessor
+from chameleon import BatchProcessor
 
 def create_complex_audio():
     """Create a complex test audio with multiple frequencies"""

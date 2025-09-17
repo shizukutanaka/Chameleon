@@ -224,7 +224,7 @@ def test_batch_processor():
     import sys
     import os
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from batch_processor_optimized import OptimizedBatchProcessor
+    from chameleon import BatchProcessor
 
     # Create test directory
     test_dir = Path('test_batch')
@@ -235,7 +235,7 @@ def test_batch_processor():
         for i in range(3):
             create_test_wav(str(test_dir / f'test_{i}.wav'), duration=0.5)
 
-        processor = OptimizedBatchProcessor(num_workers=1)
+        processor = BatchProcessor(num_workers=1)
 
         # Test directory processing
         results = processor.process_directory(

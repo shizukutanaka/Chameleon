@@ -38,7 +38,7 @@ services:
     environment:
       - CHAMELEON_MODE=worker
       - WORKER_CONCURRENCY=4
-    command: python batch_processor_optimized.py /data/batch_config.json
+    command: python chameleon.py batch /data -o /output --parallel
     deploy:
       replicas: 2
       resources:

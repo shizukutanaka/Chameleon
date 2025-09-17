@@ -62,7 +62,7 @@ python3 chameleon.py process input.wav --operation amplify --gain 6
 python3 chameleon.py process input.wav --operation fade --fade-in 1000 --fade-out 2000
 
 # Batch processing
-python3 batch_processor_optimized.py process /audio/folder --operation echo --params '{"delay_ms": 300}'
+python3 chameleon.py batch /audio/folder --operation normalize --output /output/folder
 
 # Apply effects
 python3 chameleon.py process input.wav --operation echo --mix-with drums.wav
@@ -96,7 +96,7 @@ resampled = converter.resample(samples, 44100, 22050)
 - `chameleon.py` - Main audio processor with core functions
 - `audio_effects.py` - DSP effects collection
 - `audio_converter.py` - Format conversion utilities
-- `batch_processor_optimized.py` - Parallel batch processing
+- `chameleon.py` - Main processor with batch processing support
 - `test_audio.py` - Test suite
 
 ## Testing

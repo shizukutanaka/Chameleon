@@ -18,7 +18,6 @@ from chameleon import AudioProcessor
 from audio_effects import AudioEffects
 from audio_analyzer import AudioAnalyzer
 from audio_converter import AudioConverter
-from audio_optimized import OptimizedProcessor
 
 class Benchmark:
     def __init__(self):
@@ -27,7 +26,6 @@ class Benchmark:
         self.effects = AudioEffects()
         self.analyzer = AudioAnalyzer()
         self.converter = AudioConverter()
-        self.optimized = OptimizedProcessor()
 
     def create_test_samples(self, duration=1.0, sample_rate=44100):
         """Create test audio samples"""
@@ -129,31 +127,30 @@ class Benchmark:
         self.results['analysis'] = results
 
     def benchmark_optimization(self):
-        """Compare optimized vs standard implementations"""
-        print("\nBenchmarking Optimized vs Standard...")
-        samples = self.create_test_samples(2.0)
+        """Test numpy optimization if available"""
+        print("\nChecking optimization status...")
 
-        # Test normalize
-        print("  Normalize comparison:")
-        standard = self.time_operation(
-            lambda: self.processor.normalize(samples.copy()),
-            iterations=50
-        )
-        optimized = self.time_operation(
-            lambda: self.optimized.normalize_fast(samples.copy()),
-            iterations=50
-        )
+        try:
+            import numpy as np
+            print("  NumPy available: Yes")
 
-        improvement = ((standard['mean'] - optimized['mean']) / standard['mean']) * 100
-        print(f"    Standard: {standard['mean']*1000:.2f}ms")
-        print(f"    Optimized: {optimized['mean']*1000:.2f}ms")
-        print(f"    Improvement: {improvement:.1f}%")
+            # Test with numpy optimization
+            samples = self.create_test_samples(2.0)
+            result = self.time_operation(
+                lambda: self.processor.normalize(samples.copy()),
+                iterations=50
+            )
+            print(f"  Processing speed: {result['mean']*1000:.2f}ms avg")
 
-        self.results['optimization'] = {
-            'normalize_standard': standard,
-            'normalize_optimized': optimized,
-            'improvement_percent': improvement
-        }
+            self.results['optimization'] = {
+                'numpy_available': True,
+                'normalize_time': result
+            }
+        except ImportError:
+            print("  NumPy available: No (install numpy for better performance)")
+            self.results['optimization'] = {
+                'numpy_available': False
+            }
 
     def benchmark_file_io(self):
         """Benchmark file I/O operations"""

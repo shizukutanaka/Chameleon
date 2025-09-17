@@ -18,7 +18,7 @@ from chameleon import AudioProcessor
 from audio_effects import AudioEffects
 from audio_analyzer import AudioAnalyzer
 from audio_converter import AudioConverter
-from batch_processor_optimized import OptimizedBatchProcessor
+from chameleon import BatchProcessor
 
 # ============================================================================
 # PODCAST PRODUCTION WORKFLOW

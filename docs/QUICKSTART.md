@@ -157,7 +157,7 @@ Create a `batch_config.json`:
 Run batch processing:
 
 ```bash
-python3 batch_processor_optimized.py batch_config.json
+python3 chameleon.py batch ./raw_audio -o ./processed --parallel
 ```
 
 ## GUI Interface
