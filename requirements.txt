@@ -1,35 +1,19 @@
-# Core audio processing dependencies
-numpy>=1.20.0
-scipy>=1.7.0
+# Optimized Chameleon Audio System - Lightweight Dependencies
+# Core functionality uses built-in Python modules only
 
-# Audio file I/O support
-soundfile>=0.10.3
-
-# Real-time audio processing (optional)
-sounddevice>=0.4.4
-pygame>=2.0.0
-
-# Performance optimization and JIT compilation
-numba>=0.55.0
-
-# System resource monitoring
+# Optional: System monitoring (lightweight)
 psutil>=5.8.0
 
-# Configuration management
+# Optional: Configuration support
 pyyaml>=6.0
 
-# Development and testing
-pytest>=7.0.0
-pytest-cov>=3.0.0
-pytest-xdist>=2.5.0
-pytest-timeout>=2.1.0
+# Development tools (optional - install separately if needed)
+# pytest>=7.0.0
+# flake8>=4.0.0
+# black>=22.0.0
 
-# Code quality and formatting (development)
-flake8>=4.0.0
-black>=22.0.0
-isort>=5.10.0
-mypy>=0.950
+# Security scanning (optional)
+# bandit>=1.7.0
 
-# Security scanning (development)
-safety>=2.0.0
-bandit>=1.7.0
+# NOTE: The core audio engine uses only Python standard library
+# This provides maximum compatibility and minimal dependencies
