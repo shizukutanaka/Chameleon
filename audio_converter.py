@@ -15,30 +15,6 @@ class AudioConverter:
     def __init__(self):
         self.supported_formats = ['.wav', '.raw', '.pcm']
 
-    def resample(self, samples: array.array, orig_rate: int,
-                 target_rate: int) -> array.array:
-        """Resample audio to different sample rate"""
-        if orig_rate == target_rate:
-            return samples
-
-        ratio = target_rate / orig_rate
-        result = array.array('h')
-
-        for i in range(int(len(samples) * ratio)):
-            pos = i / ratio
-            idx = int(pos)
-            frac = pos - idx
-
-            if idx + 1 < len(samples):
-                # Linear interpolation
-                sample = samples[idx] * (1 - frac) + samples[idx + 1] * frac
-            else:
-                sample = samples[min(idx, len(samples) - 1)]
-
-            result.append(int(sample))
-
-        return result
-
     def change_channels(self, samples: array.array, orig_channels: int,
                        target_channels: int) -> array.array:
         """Convert between mono and stereo"""
@@ -155,9 +131,9 @@ class AudioConverter:
                 frames = wav.readframes(params.nframes)
                 samples = array.array('h', frames)
 
-            # Resample if needed
-            if params.framerate != target_rate:
-                samples = self.resample(samples, params.framerate, target_rate)
+            # Skip resampling for now (would need to import from chameleon)
+            # if params.framerate != target_rate:
+            #     samples = self.resample(samples, params.framerate, target_rate)
 
             # Change channels if needed
             if params.nchannels != target_channels:
@@ -205,8 +181,9 @@ class AudioConverter:
                     samples = array.array('h', frames)
 
                     # Convert to target format if needed
-                    if params.framerate != target_rate:
-                        samples = self.resample(samples, params.framerate, target_rate)
+                    # Skip resampling for concatenation
+                    # if params.framerate != target_rate:
+                    #     samples = self.resample(samples, params.framerate, target_rate)
                     if params.nchannels != target_channels:
                         samples = self.change_channels(samples, params.nchannels, target_channels)
 

@@ -14,20 +14,7 @@ class AudioEffects:
         self.sample_rate = sample_rate
         self.max_int16 = 32767
 
-    def echo(self, samples: array.array, delay_ms: int = 500,
-             decay: float = 0.5) -> array.array:
-        """Add echo effect"""
-        delay_samples = int((delay_ms / 1000) * self.sample_rate)
-        result = array.array('h', samples)
-
-        for i in range(delay_samples, len(samples)):
-            echo_sample = int(samples[i - delay_samples] * decay)
-            mixed = result[i] + echo_sample
-            # Prevent clipping
-            mixed = max(min(mixed, self.max_int16), -self.max_int16)
-            result[i] = mixed
-
-        return result
+    # NOTE: Echo effect has been integrated into chameleon.py AudioProcessor.apply_echo()
 
     def chorus(self, samples: array.array, depth_ms: float = 3,
                rate_hz: float = 1.5) -> array.array:
@@ -68,20 +55,7 @@ class AudioEffects:
 
         return result
 
-    def low_pass_filter(self, samples: array.array, cutoff_hz: float = 1000) -> array.array:
-        """Simple low-pass filter (first-order)"""
-        result = array.array('h')
-        rc = 1.0 / (2 * math.pi * cutoff_hz)
-        dt = 1.0 / self.sample_rate
-        alpha = dt / (rc + dt)
-
-        prev = 0
-        for s in samples:
-            filtered = prev + alpha * (s - prev)
-            prev = filtered
-            result.append(int(filtered))
-
-        return result
+    # NOTE: Low-pass filter has been integrated into chameleon.py AudioProcessor.apply_low_pass_filter()
 
     def high_pass_filter(self, samples: array.array, cutoff_hz: float = 100) -> array.array:
         """Simple high-pass filter (first-order)"""
@@ -101,24 +75,7 @@ class AudioEffects:
 
         return result
 
-    def compressor(self, samples: array.array, threshold_db: float = -20,
-                   ratio: float = 4.0) -> array.array:
-        """Dynamic range compression"""
-        result = array.array('h')
-        threshold = self.max_int16 * (10 ** (threshold_db / 20))
-
-        for s in samples:
-            abs_sample = abs(s)
-            if abs_sample > threshold:
-                # Apply compression
-                excess = abs_sample - threshold
-                compressed = threshold + excess / ratio
-                sign = 1 if s > 0 else -1
-                result.append(int(sign * compressed))
-            else:
-                result.append(s)
-
-        return result
+    # NOTE: Compressor has been integrated into chameleon.py AudioProcessor.apply_compressor()
 
     def tremolo(self, samples: array.array, rate_hz: float = 5,
                 depth: float = 0.5) -> array.array:

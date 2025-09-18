@@ -14,7 +14,7 @@ class AudioAnalyzer:
         self.sample_rate = sample_rate
 
     def get_rms(self, samples: array.array) -> float:
-        """Calculate Root Mean Square (volume level)"""
+        """Calculate Root Mean Square (RMS)"""
         if not samples:
             return 0.0
         sum_squares = sum(s * s for s in samples)
@@ -27,28 +27,24 @@ class AudioAnalyzer:
         return max(abs(min(samples)), abs(max(samples)))
 
     def get_zero_crossings(self, samples: array.array) -> int:
-        """Count zero crossings (rough frequency indicator)"""
+        """Count zero crossings"""
         if len(samples) < 2:
             return 0
-
         crossings = 0
-        prev_sign = samples[0] >= 0
-
-        for sample in samples[1:]:
-            current_sign = sample >= 0
-            if current_sign != prev_sign:
+        for i in range(1, len(samples)):
+            if (samples[i-1] >= 0 > samples[i]) or (samples[i-1] < 0 <= samples[i]):
                 crossings += 1
-            prev_sign = current_sign
-
         return crossings
 
     def estimate_frequency(self, samples: array.array) -> float:
         """Estimate fundamental frequency using zero-crossing rate"""
-        crossings = self.get_zero_crossings(samples)
+        if not samples:
+            return 0.0
+        zero_crossings = self.get_zero_crossings(samples)
         duration = len(samples) / self.sample_rate
-        if duration > 0:
-            return (crossings / 2) / duration
-        return 0.0
+        if duration == 0:
+            return 0.0
+        return zero_crossings / (2 * duration)
 
     def autocorrelation(self, samples: array.array, max_lag: Optional[int] = None) -> List[float]:
         """Calculate autocorrelation for pitch detection"""

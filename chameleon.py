@@ -38,6 +38,19 @@ CHANNELS = 1
 SAMPLE_WIDTH = 2
 MAX_INT16 = 32767
 
+# Standard sample rates
+STANDARD_SAMPLE_RATES = [8000, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000]
+
+# Audio quality presets
+QUALITY_PRESETS = {
+    'phone': {'sample_rate': 8000, 'channels': 1, 'bit_depth': 16},
+    'voice': {'sample_rate': 16000, 'channels': 1, 'bit_depth': 16},
+    'radio': {'sample_rate': 22050, 'channels': 2, 'bit_depth': 16},
+    'cd': {'sample_rate': 44100, 'channels': 2, 'bit_depth': 16},
+    'studio': {'sample_rate': 48000, 'channels': 2, 'bit_depth': 24},
+    'hifi': {'sample_rate': 96000, 'channels': 2, 'bit_depth': 24}
+}
+
 class AudioProcessor:
     """High-performance audio processor with automatic optimization"""
 
@@ -47,6 +60,34 @@ class AudioProcessor:
         self._cache = {}  # Cache for repeated operations
         self._error_count = 0
         self._last_error = None
+        self._operation_cache = {}  # Cache for operation results
+        self._cache_hits = 0
+        self._cache_misses = 0
+
+    @staticmethod
+    def db_to_linear(db: float) -> float:
+        """Convert dB to linear scale"""
+        return 10 ** (db / 20)
+
+    @staticmethod
+    def linear_to_db(linear: float) -> float:
+        """Convert linear to dB scale"""
+        if linear <= 0:
+            return -float('inf')
+        return 20 * math.log10(linear)
+
+    @staticmethod
+    def format_duration(seconds: float) -> str:
+        """Format duration as MM:SS or HH:MM:SS"""
+        if seconds < 3600:
+            minutes = int(seconds // 60)
+            secs = int(seconds % 60)
+            return f"{minutes:02d}:{secs:02d}"
+        else:
+            hours = int(seconds // 3600)
+            minutes = int((seconds % 3600) // 60)
+            secs = int(seconds % 60)
+            return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
     def _to_numpy(self, samples: Union[array.array, 'np.ndarray']) -> 'np.ndarray':
         """Convert to numpy array if available"""
@@ -78,9 +119,39 @@ class AudioProcessor:
         except Exception:
             return None
 
+    def get_optimal_chunk_size(self, file_size: int, available_memory: int = None) -> int:
+        """Calculate optimal chunk size for processing"""
+        if available_memory is None:
+            available_memory = 64 * 1024 * 1024  # Default 64MB
+        target_memory = available_memory // 4
+        samples_per_chunk = target_memory // 2
+        samples_per_chunk = (samples_per_chunk // 44100) * 44100
+        return max(44100, min(samples_per_chunk, 44100 * 60))
+
+    def detect_format(self, filepath: str) -> Optional[str]:
+        """Lightweight audio format detection"""
+        try:
+            with open(filepath, 'rb') as f:
+                header = f.read(12)
+                if header.startswith(b'RIFF') and len(header) >= 12 and header[8:12] == b'WAVE':
+                    return 'wav'
+                elif header.startswith(b'ID3') or header.startswith(b'\xff\xfb'):
+                    return 'mp3'
+                elif header.startswith(b'fLaC'):
+                    return 'flac'
+                elif header.startswith(b'OggS'):
+                    return 'ogg'
+                return None
+        except:
+            return None
+
     def load_wav(self, filepath: str) -> Tuple[array.array, Dict]:
         """Load WAV file with caching and error recovery"""
         try:
+            # Quick format check
+            if self.detect_format(filepath) != 'wav':
+                logger.warning(f"File {filepath} may not be a valid WAV file")
+
             # Check cache first
             cache_key = f"load_{filepath}_{os.path.getmtime(filepath)}"
             if cache_key in self._cache:
@@ -155,9 +226,19 @@ class AudioProcessor:
 
     def normalize(self, samples: Union[array.array, 'np.ndarray'],
                   target_peak: float = 0.95) -> Union[array.array, 'np.ndarray']:
-        """Normalize audio with automatic optimization"""
+        """Normalize audio with automatic optimization and caching"""
         if not samples or len(samples) == 0:
             return samples
+
+        # Cache key based on first/last samples and length
+        cache_key = ('normalize', len(samples), samples[0] if samples else 0,
+                     samples[-1] if samples else 0, target_peak)
+
+        if cache_key in self._operation_cache:
+            self._cache_hits += 1
+            return self._operation_cache[cache_key]
+
+        self._cache_misses += 1
 
         # Use numpy if available for faster processing
         if self.use_numpy and HAS_NUMPY:
@@ -167,14 +248,20 @@ class AudioProcessor:
                 return samples
             scale = (target_peak * MAX_INT16) / peak
             result = (data * scale).clip(-MAX_INT16, MAX_INT16).astype(np.int16)
-            return self._from_numpy(result) if isinstance(samples, array.array) else result
+            result = self._from_numpy(result) if isinstance(samples, array.array) else result
         else:
-            # Pure Python fallback
+            # Pure Python fallback with optimized list comprehension
             peak = max(abs(min(samples)), abs(max(samples)))
             if peak == 0:
                 return samples
             scale = (target_peak * MAX_INT16) / peak
-            return array.array('h', [int(max(min(s * scale, MAX_INT16), -MAX_INT16)) for s in samples])
+            result = array.array('h', [max(min(int(s * scale), MAX_INT16), -MAX_INT16) for s in samples])
+
+        # Cache result if small enough
+        if len(samples) < 100000:  # Cache only small operations
+            self._operation_cache[cache_key] = result
+
+        return result
 
     def amplify(self, samples: Union[array.array, 'np.ndarray'], gain_db: float) -> Union[array.array, 'np.ndarray']:
         """Apply gain with optimization"""
@@ -284,7 +371,7 @@ class AudioProcessor:
 
         if self.use_numpy and HAS_NUMPY:
             data = self._to_numpy(samples)
-            # Simple linear interpolation for speed change
+            # High-quality linear interpolation
             old_length = len(data)
             new_length = int(old_length / speed_factor)
             old_indices = np.arange(0, old_length)
@@ -292,13 +379,38 @@ class AudioProcessor:
             result = np.interp(new_indices, old_indices, data).astype(np.int16)
             return self._from_numpy(result) if isinstance(samples, array.array) else result
         else:
-            # Simple decimation/interpolation
+            # Improved linear interpolation fallback
+            if not samples:
+                return array.array('h')
+
+            ratio = speed_factor
+            output_length = int(len(samples) / ratio)
             result = array.array('h')
-            for i in range(int(len(samples) / speed_factor)):
-                index = int(i * speed_factor)
-                if index < len(samples):
-                    result.append(samples[index])
+
+            for i in range(output_length):
+                source_pos = i * ratio
+                source_index = int(source_pos)
+                fraction = source_pos - source_index
+
+                if source_index >= len(samples) - 1:
+                    result.append(samples[-1])
+                else:
+                    # Linear interpolation
+                    sample1 = samples[source_index]
+                    sample2 = samples[source_index + 1]
+                    interpolated = int(sample1 + (sample2 - sample1) * fraction)
+                    result.append(max(-32767, min(32767, interpolated)))
+
             return result
+
+    def resample(self, samples: Union[array.array, 'np.ndarray'],
+                 original_rate: int, target_rate: int) -> Union[array.array, 'np.ndarray']:
+        """High-quality resampling with optimization"""
+        if original_rate == target_rate:
+            return samples
+
+        speed_factor = original_rate / target_rate
+        return self.change_speed(samples, speed_factor)
 
     def mix(self, samples1: Union[array.array, 'np.ndarray'],
             samples2: Union[array.array, 'np.ndarray'],
@@ -319,6 +431,54 @@ class AudioProcessor:
                 result.append(max(min(mixed, MAX_INT16), -MAX_INT16))
             return result
 
+    def validate_audio(self, samples: Union[array.array, 'np.ndarray']) -> Dict:
+        """Comprehensive audio quality validation"""
+        if not samples or len(samples) == 0:
+            return {'valid': False, 'issues': ['Empty audio']}
+
+        issues = []
+
+        # Check for clipping
+        max_val = 32767 * 0.98
+        clipped_samples = sum(1 for s in samples if abs(s) >= max_val)
+        clip_ratio = clipped_samples / len(samples)
+
+        if clip_ratio > 0.01:  # More than 1% clipped
+            issues.append(f"High clipping detected: {clip_ratio:.2%}")
+        elif clip_ratio > 0:
+            issues.append(f"Minor clipping detected: {clip_ratio:.2%}")
+
+        # Check for silence
+        silent_threshold = 32767 * (10 ** (-60 / 20))  # -60dB
+        silent_samples = sum(1 for s in samples if abs(s) < silent_threshold)
+        silence_ratio = silent_samples / len(samples)
+
+        if silence_ratio > 0.95:
+            issues.append(f"Excessive silence: {silence_ratio:.1%}")
+
+        # Check dynamic range
+        if self.use_numpy and HAS_NUMPY:
+            data = self._to_numpy(samples).astype(np.float32)
+            rms = np.sqrt(np.mean(data ** 2))
+            peak = np.abs(data).max()
+        else:
+            squared_sum = sum(s * s for s in samples)
+            rms = math.sqrt(squared_sum / len(samples))
+            peak = max(abs(min(samples)), abs(max(samples)))
+
+        if rms > 0:
+            dynamic_range = 20 * math.log10(peak / rms)
+            if dynamic_range < 3:
+                issues.append(f"Poor dynamic range: {dynamic_range:.1f}dB")
+
+        return {
+            'valid': len(issues) == 0,
+            'issues': issues,
+            'clip_ratio': clip_ratio,
+            'silence_ratio': silence_ratio,
+            'dynamic_range': dynamic_range if rms > 0 else 0
+        }
+
     def get_statistics(self, samples: Union[array.array, 'np.ndarray']) -> Dict:
         """Get audio statistics with optimization"""
         if not samples or len(samples) == 0:
@@ -335,13 +495,226 @@ class AudioProcessor:
             peak = max(abs(min(samples)), abs(max(samples)))
             avg = sum(abs(s) for s in samples) / len(samples)
 
+        # Add quality metrics
+        validation = self.validate_audio(samples)
+
+        # Add frequency analysis
+        zero_crossings = self._count_zero_crossings(samples)
+        estimated_freq = self._estimate_frequency(samples, zero_crossings)
+
         return {
             'rms': float(rms),
             'peak': float(peak),
             'avg': float(avg),
             'duration': len(samples) / self.sample_rate,
-            'samples': len(samples)
+            'samples': len(samples),
+            'rms_db': 20 * math.log10(rms / 32767) if rms > 0 else -float('inf'),
+            'peak_db': 20 * math.log10(peak / 32767) if peak > 0 else -float('inf'),
+            'zero_crossings': zero_crossings,
+            'estimated_frequency': estimated_freq,
+            'quality': validation
         }
+
+    def _count_zero_crossings(self, samples: Union[array.array, 'np.ndarray']) -> int:
+        """Count zero crossings for frequency estimation"""
+        if len(samples) < 2:
+            return 0
+
+        crossings = 0
+        prev_sign = samples[0] >= 0
+
+        for sample in samples[1:]:
+            current_sign = sample >= 0
+            if current_sign != prev_sign:
+                crossings += 1
+            prev_sign = current_sign
+
+        return crossings
+
+    def _estimate_frequency(self, samples: Union[array.array, 'np.ndarray'], zero_crossings: int) -> float:
+        """Estimate fundamental frequency using zero-crossing rate"""
+        duration = len(samples) / self.sample_rate
+        if duration > 0 and zero_crossings > 0:
+            return (zero_crossings / 2) / duration
+        return 0.0
+
+    def detect_voice_activity(self, samples: Union[array.array, 'np.ndarray']) -> Dict:
+        """Detect voice activity in audio"""
+        if not samples or len(samples) == 0:
+            return {'voice_detected': False, 'confidence': 0.0}
+
+        stats = self.get_statistics(samples)
+
+        # Voice detection heuristics
+        freq = stats.get('estimated_frequency', 0)
+        rms = stats.get('rms', 0)
+        zero_crossings = stats.get('zero_crossings', 0)
+
+        # Voice frequency range (roughly 80-500 Hz for fundamental)
+        freq_score = 1.0 if 80 <= freq <= 500 else 0.0
+
+        # Energy level check
+        energy_score = min(1.0, rms / 5000) if rms > 100 else 0.0
+
+        # Zero crossing rate check (voice has moderate crossing rate)
+        zcr = zero_crossings / len(samples) if len(samples) > 0 else 0
+        zcr_score = 1.0 if 0.01 <= zcr <= 0.2 else 0.0
+
+        confidence = (freq_score + energy_score + zcr_score) / 3.0
+
+        return {
+            'voice_detected': confidence > 0.5,
+            'confidence': confidence,
+            'frequency': freq,
+            'energy': rms,
+            'zero_crossing_rate': zcr
+        }
+
+    def convert_channels(self, samples: Union[array.array, 'np.ndarray'],
+                        orig_channels: int, target_channels: int) -> Union[array.array, 'np.ndarray']:
+        """Convert between mono and stereo"""
+        if orig_channels == target_channels:
+            return samples
+
+        is_numpy = HAS_NUMPY and isinstance(samples, np.ndarray)
+        result = [] if is_numpy else array.array('h')
+
+        if orig_channels == 1 and target_channels == 2:
+            # Mono to stereo: duplicate channel
+            if is_numpy:
+                result = np.repeat(samples, 2)
+            else:
+                for s in samples:
+                    result.append(s)
+                    result.append(s)
+
+        elif orig_channels == 2 and target_channels == 1:
+            # Stereo to mono: average channels
+            if is_numpy:
+                result = ((samples[::2] + samples[1::2]) / 2).astype(np.int16)
+            else:
+                for i in range(0, len(samples) - 1, 2):
+                    mono = (samples[i] + samples[i + 1]) // 2
+                    result.append(mono)
+
+        return np.array(result) if is_numpy else result
+
+    def split_stereo(self, stereo_samples: Union[array.array, 'np.ndarray']) -> Tuple[Union[array.array, 'np.ndarray'], Union[array.array, 'np.ndarray']]:
+        """Split stereo audio into left and right channels"""
+        is_numpy = HAS_NUMPY and isinstance(stereo_samples, np.ndarray)
+
+        if is_numpy:
+            left = stereo_samples[::2]
+            right = stereo_samples[1::2]
+        else:
+            left = array.array('h', [stereo_samples[i] for i in range(0, len(stereo_samples), 2)])
+            right = array.array('h', [stereo_samples[i] for i in range(1, len(stereo_samples), 2)])
+
+        return left, right
+
+    def merge_channels(self, left: Union[array.array, 'np.ndarray'],
+                      right: Union[array.array, 'np.ndarray']) -> Union[array.array, 'np.ndarray']:
+        """Merge left and right channels into stereo"""
+        is_numpy = HAS_NUMPY and isinstance(left, np.ndarray)
+
+        if is_numpy:
+            stereo = np.empty(len(left) * 2, dtype=left.dtype)
+            stereo[::2] = left
+            stereo[1::2] = right
+            return stereo
+        else:
+            stereo = array.array('h')
+            for l, r in zip(left, right):
+                stereo.append(l)
+                stereo.append(r)
+            return stereo
+
+    def apply_echo(self, samples: Union[array.array, 'np.ndarray'],
+                   delay_ms: int = 500, decay: float = 0.5) -> Union[array.array, 'np.ndarray']:
+        """Add echo effect with automatic optimization"""
+        delay_samples = int((delay_ms / 1000) * self.sample_rate)
+
+        if self.use_numpy and HAS_NUMPY:
+            data = self._to_numpy(samples)
+            result = data.copy()
+
+            # Vectorized echo application
+            if delay_samples < len(data):
+                echo_part = data[:-delay_samples] * decay
+                result[delay_samples:] += echo_part.astype(np.int16)
+                # Prevent clipping
+                result = np.clip(result, -MAX_INT16, MAX_INT16)
+
+            return self._from_numpy(result) if isinstance(samples, array.array) else result
+        else:
+            # Pure Python fallback
+            result = array.array('h', samples)
+            for i in range(delay_samples, len(samples)):
+                echo_sample = int(samples[i - delay_samples] * decay)
+                mixed = result[i] + echo_sample
+                result[i] = max(min(mixed, MAX_INT16), -MAX_INT16)
+            return result
+
+    def apply_low_pass_filter(self, samples: Union[array.array, 'np.ndarray'],
+                             cutoff_hz: float = 1000) -> Union[array.array, 'np.ndarray']:
+        """Simple low-pass filter for noise reduction"""
+        rc = 1.0 / (2 * math.pi * cutoff_hz)
+        dt = 1.0 / self.sample_rate
+        alpha = dt / (rc + dt)
+
+        if self.use_numpy and HAS_NUMPY:
+            data = self._to_numpy(samples).astype(np.float32)
+            result = np.zeros_like(data)
+            result[0] = data[0]
+
+            # Vectorized filter computation
+            for i in range(1, len(data)):
+                result[i] = alpha * data[i] + (1 - alpha) * result[i-1]
+
+            result = np.clip(result, -MAX_INT16, MAX_INT16).astype(np.int16)
+            return self._from_numpy(result) if isinstance(samples, array.array) else result
+        else:
+            # Pure Python fallback
+            result = array.array('h')
+            prev_output = samples[0] if samples else 0
+            result.append(prev_output)
+
+            for sample in samples[1:]:
+                output = alpha * sample + (1 - alpha) * prev_output
+                prev_output = int(max(min(output, MAX_INT16), -MAX_INT16))
+                result.append(prev_output)
+
+            return result
+
+    def apply_compressor(self, samples: Union[array.array, 'np.ndarray'],
+                        threshold_db: float = -20, ratio: float = 0.3) -> Union[array.array, 'np.ndarray']:
+        """Dynamic range compressor for volume control"""
+        threshold = MAX_INT16 * (10 ** (threshold_db / 20))
+
+        if self.use_numpy and HAS_NUMPY:
+            data = self._to_numpy(samples).astype(np.float32)
+            abs_data = np.abs(data)
+
+            # Apply compression where signal exceeds threshold
+            mask = abs_data > threshold
+            compressed = np.where(mask,
+                                 np.sign(data) * (threshold + (abs_data - threshold) * ratio),
+                                 data)
+
+            result = np.clip(compressed, -MAX_INT16, MAX_INT16).astype(np.int16)
+            return self._from_numpy(result) if isinstance(samples, array.array) else result
+        else:
+            # Pure Python fallback
+            result = array.array('h')
+            for sample in samples:
+                abs_sample = abs(sample)
+                if abs_sample > threshold:
+                    sign = 1 if sample > 0 else -1
+                    compressed = sign * (threshold + (abs_sample - threshold) * ratio)
+                    result.append(int(max(min(compressed, MAX_INT16), -MAX_INT16)))
+                else:
+                    result.append(sample)
+            return result
 
 
 class BatchProcessor:
@@ -352,6 +725,53 @@ class BatchProcessor:
         self.processor = AudioProcessor()
         self.results = []
         self.errors = []
+
+    @staticmethod
+    def get_optimal_chunk_size(file_size: int, available_memory: int = None) -> int:
+        """Calculate optimal chunk size for processing large files"""
+        if available_memory is None:
+            # Default to 64MB chunks for large files
+            available_memory = 64 * 1024 * 1024
+
+        # Target using 25% of available memory
+        target_memory = available_memory // 4
+
+        # Each sample is 2 bytes (int16)
+        samples_per_chunk = target_memory // 2
+
+        # Align to second boundaries (44100 samples = 1 second at 44.1kHz)
+        samples_per_chunk = (samples_per_chunk // 44100) * 44100
+
+        # Minimum 1 second, maximum 60 seconds
+        return max(44100, min(samples_per_chunk, 44100 * 60))
+
+    def scan_directory(self, directory: str, recursive: bool = True) -> List[Dict]:
+        """Scan directory for audio files"""
+        audio_files = []
+        directory_path = Path(directory)
+
+        if not directory_path.exists():
+            return []
+
+        pattern = "**/*.wav" if recursive else "*.wav"
+
+        try:
+            for file_path in directory_path.glob(pattern):
+                if file_path.is_file():
+                    fmt = self.processor.detect_format(str(file_path))
+                    if fmt == 'wav':
+                        stat = os.stat(file_path)
+                        audio_files.append({
+                            'path': str(file_path),
+                            'size': stat.st_size,
+                            'format': fmt,
+                            'supported': True,
+                            'modified': stat.st_mtime
+                        })
+        except Exception as e:
+            logger.error(f"Error scanning directory: {e}")
+
+        return audio_files
 
     def process_file(self, task: Dict) -> Dict:
         """Process single file with error recovery"""
@@ -550,12 +970,12 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description='Chameleon Audio Processor')
-    parser.add_argument('command', choices=['process', 'batch', 'info', 'chain'],
+    parser.add_argument('command', choices=['process', 'batch', 'info', 'chain', 'resample', 'scan'],
                        help='Command to execute')
     parser.add_argument('input', help='Input WAV file or directory')
     parser.add_argument('-o', '--output', help='Output file or directory')
     parser.add_argument('--operation', default='normalize',
-                       choices=['normalize', 'amplify', 'fade', 'trim', 'reverse', 'speed', 'mix', 'statistics'],
+                       choices=['normalize', 'amplify', 'fade', 'trim', 'reverse', 'speed', 'mix', 'statistics', 'validate'],
                        help='Processing operation')
     parser.add_argument('--gain', type=float, default=0, help='Gain in dB (for amplify)')
     parser.add_argument('--fade-in', type=int, default=0, help='Fade in duration (ms)')
@@ -567,6 +987,8 @@ def main():
     parser.add_argument('--parallel', action='store_true', help='Enable parallel processing')
     parser.add_argument('--workers', type=int, help='Number of parallel workers')
     parser.add_argument('--report', help='Generate report file')
+    parser.add_argument('--target-rate', type=int, help='Target sample rate for resample')
+    parser.add_argument('--recursive', action='store_true', help='Recursive directory scan')
     parser.add_argument('-v', '--verbose', action='store_true', help='Verbose output')
 
     args = parser.parse_args()
@@ -600,6 +1022,16 @@ def main():
         elif args.operation == 'statistics':
             stats = processor.get_statistics(samples)
             print(json.dumps(stats, indent=2))
+            sys.exit(0)
+        elif args.operation == 'validate':
+            validation = processor.validate_audio(samples)
+            print(f"Valid: {validation['valid']}")
+            if validation['issues']:
+                print("Issues:")
+                for issue in validation['issues']:
+                    print(f"  - {issue}")
+            else:
+                print("No quality issues detected")
             sys.exit(0)
         else:
             logger.error(f"Unknown operation: {args.operation}")
@@ -638,15 +1070,73 @@ def main():
 
     elif args.command == 'info':
         # Display file information
-        info = processor._get_file_info(args.input)
-        if info:
-            samples, _ = processor.load_wav(args.input)
-            stats = processor.get_statistics(samples)
-            info.update(stats)
-            print(json.dumps(info, indent=2))
+        fmt = processor.detect_format(args.input)
+        print(f"Format: {fmt or 'Unknown'}")
+
+        if fmt == 'wav':
+            info = processor._get_file_info(args.input)
+            if info:
+                samples, _ = processor.load_wav(args.input)
+                stats = processor.get_statistics(samples)
+                info.update(stats)
+
+                print(f"Sample Rate: {info.get('sample_rate')} Hz")
+                print(f"Channels: {info.get('channels')}")
+                print(f"Duration: {info.get('duration', 0):.2f} seconds")
+                print(f"RMS Level: {stats.get('rms_db', 0):.1f} dB")
+                print(f"Peak Level: {stats.get('peak_db', 0):.1f} dB")
+
+                quality = stats.get('quality', {})
+                if quality.get('issues'):
+                    print("Quality Issues:")
+                    for issue in quality['issues']:
+                        print(f"  - {issue}")
+                else:
+                    print("Quality: Good")
+
+                if args.verbose:
+                    print(json.dumps(info, indent=2))
+            else:
+                logger.error(f"Failed to read {args.input}")
+                sys.exit(1)
         else:
-            logger.error(f"Failed to read {args.input}")
+            print("Unsupported format for detailed analysis")
+
+    elif args.command == 'resample':
+        # Resample audio file
+        if not args.output or not args.target_rate:
+            logger.error("Resample command requires --output and --target-rate")
             sys.exit(1)
+
+        samples, info = processor.load_wav(args.input)
+        if not samples:
+            logger.error(f"Failed to load {args.input}")
+            sys.exit(1)
+
+        # Resample
+        resampled = processor.resample(samples, info['sample_rate'], args.target_rate)
+
+        # Save
+        if processor.save_wav(args.output, resampled, args.target_rate):
+            logger.info(f"Resampled {args.input} -> {args.output}")
+            logger.info(f"Rate: {info['sample_rate']} -> {args.target_rate} Hz")
+        else:
+            logger.error(f"Failed to save {args.output}")
+            sys.exit(1)
+
+    elif args.command == 'scan':
+        # Scan directory for audio files
+        batch_processor = BatchProcessor(num_workers=args.workers)
+        files = batch_processor.scan_directory(args.input, args.recursive)
+
+        print(f"Found {len(files)} audio files:")
+        for file_info in files:
+            size_mb = file_info['size'] / (1024 * 1024)
+            print(f"  {file_info['path']} ({size_mb:.1f} MB)")
+
+        if args.verbose:
+            total_size = sum(f['size'] for f in files)
+            print(f"\nTotal size: {total_size / (1024 * 1024):.1f} MB")
 
     elif args.command == 'chain':
         # Chain processing (read operations from JSON)
