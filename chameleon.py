@@ -129,18 +129,33 @@ class AudioProcessor:
         return max(44100, min(samples_per_chunk, 44100 * 60))
 
     def detect_format(self, filepath: str) -> Optional[str]:
-        """Lightweight audio format detection"""
+        """Enhanced audio format detection with more formats"""
         try:
             with open(filepath, 'rb') as f:
-                header = f.read(12)
+                header = f.read(16)
+
+                # WAV format
                 if header.startswith(b'RIFF') and len(header) >= 12 and header[8:12] == b'WAVE':
                     return 'wav'
-                elif header.startswith(b'ID3') or header.startswith(b'\xff\xfb'):
+                # MP3 format
+                elif header.startswith(b'ID3') or header.startswith(b'\xff\xfb') or header.startswith(b'\xff\xf3'):
                     return 'mp3'
+                # FLAC format
                 elif header.startswith(b'fLaC'):
                     return 'flac'
+                # OGG/Vorbis format
                 elif header.startswith(b'OggS'):
                     return 'ogg'
+                # AIFF format
+                elif header.startswith(b'FORM') and header[8:12] == b'AIFF':
+                    return 'aiff'
+                # AU format
+                elif header.startswith(b'.snd'):
+                    return 'au'
+                # Raw PCM (heuristic)
+                elif all(b < 128 for b in header[:4]):
+                    return 'raw'
+
                 return None
         except:
             return None
@@ -403,6 +418,47 @@ class AudioProcessor:
 
             return result
 
+    def detect_voice_activity(self, samples: Union[array.array, 'np.ndarray'],
+                            window_size: int = 1024) -> List[Tuple[int, int]]:
+        """Detect voice activity segments in audio"""
+        if not samples or len(samples) == 0:
+            return []
+
+        segments = []
+        in_voice = False
+        segment_start = 0
+
+        # Energy and zero-crossing thresholds
+        energy_threshold = 0.01 * MAX_INT16 * MAX_INT16
+        zcr_low = 0.01
+        zcr_high = 0.1
+
+        for i in range(0, len(samples) - window_size, window_size):
+            window = samples[i:i + window_size]
+
+            # Calculate energy
+            energy = sum(s * s for s in window)
+
+            # Calculate zero crossing rate
+            zero_crossings = sum(1 for j in range(1, len(window))
+                                if (window[j-1] >= 0) != (window[j] >= 0))
+            zcr = zero_crossings / len(window)
+
+            # Voice detection logic
+            is_voice = energy > energy_threshold and zcr_low < zcr < zcr_high
+
+            if is_voice and not in_voice:
+                segment_start = i
+                in_voice = True
+            elif not is_voice and in_voice:
+                segments.append((segment_start, i))
+                in_voice = False
+
+        if in_voice:
+            segments.append((segment_start, len(samples)))
+
+        return segments
+
     def resample(self, samples: Union[array.array, 'np.ndarray'],
                  original_rate: int, target_rate: int) -> Union[array.array, 'np.ndarray']:
         """High-quality resampling with optimization"""
@@ -538,8 +594,8 @@ class AudioProcessor:
             return (zero_crossings / 2) / duration
         return 0.0
 
-    def detect_voice_activity(self, samples: Union[array.array, 'np.ndarray']) -> Dict:
-        """Detect voice activity in audio"""
+    def detect_voice_simple(self, samples: Union[array.array, 'np.ndarray']) -> Dict:
+        """Simple voice detection returning a dictionary"""
         if not samples or len(samples) == 0:
             return {'voice_detected': False, 'confidence': 0.0}
 
@@ -684,6 +740,40 @@ class AudioProcessor:
                 prev_output = int(max(min(output, MAX_INT16), -MAX_INT16))
                 result.append(prev_output)
 
+            return result
+
+    def reduce_noise(self, samples: Union[array.array, 'np.ndarray'],
+                     noise_floor_db: float = -40) -> Union[array.array, 'np.ndarray']:
+        """Simple noise reduction using spectral gating"""
+        if not samples or len(samples) == 0:
+            return samples
+
+        # Convert noise floor to linear
+        noise_threshold = self.db_to_linear(noise_floor_db) * MAX_INT16
+
+        if self.use_numpy and HAS_NUMPY:
+            data = self._to_numpy(samples)
+            # Apply soft gating
+            mask = np.abs(data) > noise_threshold
+            result = data * mask
+            # Smooth transitions
+            for i in range(1, len(result) - 1):
+                if not mask[i] and (mask[i-1] or mask[i+1]):
+                    result[i] = data[i] * 0.5
+            return self._from_numpy(result) if isinstance(samples, array.array) else result
+        else:
+            result = array.array('h')
+            for i, s in enumerate(samples):
+                if abs(s) > noise_threshold:
+                    result.append(s)
+                elif i > 0 and i < len(samples) - 1:
+                    # Smooth transition
+                    if abs(samples[i-1]) > noise_threshold or abs(samples[i+1]) > noise_threshold:
+                        result.append(s // 2)
+                    else:
+                        result.append(0)
+                else:
+                    result.append(0)
             return result
 
     def apply_compressor(self, samples: Union[array.array, 'np.ndarray'],
