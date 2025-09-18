@@ -9,6 +9,7 @@ import json
 import logging
 import math
 import os
+import struct
 import sys
 import time
 import wave
@@ -105,19 +106,83 @@ class AudioProcessor:
 
     @lru_cache(maxsize=32)
     def _get_file_info(self, filepath: str) -> Optional[Dict]:
-        """Get cached file information"""
+        """Get cached file information with metadata"""
         try:
             with wave.open(filepath, 'rb') as wav:
                 params = wav.getparams()
-                return {
+                info = {
                     'channels': params.nchannels,
                     'sample_rate': params.framerate,
                     'duration': params.nframes / params.framerate,
                     'nframes': params.nframes,
-                    'sample_width': params.sampwidth
+                    'sample_width': params.sampwidth,
+                    'format': 'wav',
+                    'size_bytes': os.path.getsize(filepath) if os.path.exists(filepath) else 0
                 }
+
+                # Add basic metadata if available
+                try:
+                    info['metadata'] = self._read_wav_metadata(filepath)
+                except:
+                    info['metadata'] = {}
+
+                return info
         except Exception:
             return None
+
+    def _read_wav_metadata(self, filepath: str) -> Dict[str, str]:
+        """Read basic WAV metadata from LIST INFO chunks"""
+        metadata = {}
+        info_tags = {
+            'INAM': 'title', 'IART': 'artist', 'IPRD': 'album',
+            'ICRD': 'date', 'IGNR': 'genre', 'ICMT': 'comment'
+        }
+
+        try:
+            with open(filepath, 'rb') as f:
+                # Skip RIFF header
+                f.seek(12)
+
+                while True:
+                    chunk_header = f.read(8)
+                    if len(chunk_header) < 8:
+                        break
+
+                    chunk_id = chunk_header[:4]
+                    chunk_size = struct.unpack('<I', chunk_header[4:8])[0]
+
+                    if chunk_id == b'LIST':
+                        list_type = f.read(4)
+                        if list_type == b'INFO':
+                            # Read INFO subchunks
+                            remaining = chunk_size - 4
+                            while remaining > 0:
+                                if remaining < 8:
+                                    break
+
+                                subchunk_header = f.read(8)
+                                subchunk_id = subchunk_header[:4]
+                                subchunk_size = struct.unpack('<I', subchunk_header[4:8])[0]
+
+                                if subchunk_id in info_tags:
+                                    data = f.read(subchunk_size).rstrip(b'\x00')
+                                    try:
+                                        metadata[info_tags[subchunk_id]] = data.decode('utf-8', errors='ignore')
+                                    except:
+                                        pass
+                                else:
+                                    f.seek(subchunk_size, 1)
+
+                                remaining -= 8 + subchunk_size
+                            break
+                        else:
+                            f.seek(chunk_size - 4, 1)
+                    else:
+                        f.seek(chunk_size, 1)
+        except:
+            pass
+
+        return metadata
 
     def get_optimal_chunk_size(self, file_size: int, available_memory: int = None) -> int:
         """Calculate optimal chunk size for processing"""
