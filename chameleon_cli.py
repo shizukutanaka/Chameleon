@@ -15,6 +15,9 @@ from audio_visualizer import AudioReport, TextVisualizer
 from audio_recorder import SimpleRecorder, AudioCapture
 from batch_processor import SmartBatchProcessor, BatchOperations
 from realtime_processor import StreamProcessor, RealtimeEffects
+from audio_quality import AudioQualityMetrics, AudioRepair
+from memory_optimizer import LargeFileProcessor
+from format_converter import FormatConverter
 
 
 def cmd_info(args):
@@ -211,6 +214,154 @@ def cmd_batch(args):
     return 0 if success else 1
 
 
+def cmd_quality(args):
+    """Analyze and repair audio quality"""
+    if not os.path.exists(args.input):
+        print(f"File not found: {args.input}")
+        return 1
+
+    processor = AudioProcessor()
+    samples, info = processor.load_wav(args.input)
+
+    if not samples:
+        print(f"Could not load audio: {args.input}")
+        return 1
+
+    if args.repair:
+        # Auto-repair audio
+        repair = AudioRepair()
+        repaired, fixes = repair.auto_repair(samples)
+
+        print("Applied fixes:")
+        for fix in fixes:
+            print(f"  - {fix}")
+
+        # Save repaired audio
+        output_path = args.output or f"{Path(args.input).stem}_repaired.wav"
+        success = processor.save_wav(output_path, repaired, info['sample_rate'])
+
+        if success:
+            print(f"Repaired audio saved: {output_path}")
+            return 0
+        else:
+            print("Failed to save repaired audio")
+            return 1
+    else:
+        # Analyze quality
+        quality = AudioQualityMetrics()
+        metrics = quality.analyze_quality(samples)
+
+        print(f"Quality Analysis: {args.input}")
+        print(f"Score: {metrics['quality_score']:.1f}/100 ({metrics['quality_rating']})")
+        print(f"SNR: {metrics['snr_db']:.1f}dB")
+        print(f"Clipping: {metrics['clipping_percent']:.1f}%")
+        print(f"Dynamic Range: {metrics['dynamic_range_db']:.1f}dB")
+        print(f"Silence: {metrics['silence_percent']:.1f}%")
+
+        print("\nRecommendations:")
+        for rec in metrics['recommendations']:
+            print(f"  - {rec}")
+
+        return 0
+
+def cmd_format(args):
+    """Convert audio formats"""
+    converter = FormatConverter()
+
+    if args.list_formats:
+        formats = converter.get_supported_formats()
+        tools = converter.detect_external_tools()
+
+        print("Available conversion tools:")
+        for tool, available in tools.items():
+            status = "✓" if available else "✗"
+            print(f"  {status} {tool}")
+
+        print(f"\nSupported formats:")
+        print(f"  Input:  {', '.join(formats['input'])}")
+        print(f"  Output: {', '.join(formats['output'])}")
+        return 0
+
+    if not args.input or not args.format:
+        print("Input file and target format required")
+        return 1
+
+    if not os.path.exists(args.input):
+        print(f"File not found: {args.input}")
+        return 1
+
+    # Show conversion info
+    if args.info:
+        info = converter.get_conversion_info(args.input, args.format)
+        if 'error' in info:
+            print(f"Error: {info['error']}")
+            return 1
+
+        print(f"Conversion Analysis:")
+        print(f"  {info['input_format']} → {info['target_format']}")
+        print(f"  Input size: {info['input_size_mb']:.1f}MB")
+        print(f"  Estimated output: {info['estimated_output_mb']:.1f}MB")
+        print(f"  Duration: {info['duration_s']:.1f}s")
+        print(f"  Can convert: {info['can_convert']}")
+        if info['requires_external_tool']:
+            print(f"  Requires external tool")
+        return 0
+
+    # Perform conversion
+    output_path = args.output or f"{Path(args.input).stem}.{args.format.lstrip('.')}"
+    success = converter.convert_file(
+        args.input, output_path, args.format,
+        sample_rate=args.sample_rate,
+        channels=args.channels,
+        quality=args.quality or 'high'
+    )
+
+    if success:
+        print(f"Conversion successful: {output_path}")
+        return 0
+    else:
+        print("Conversion failed")
+        return 1
+
+def cmd_large(args):
+    """Process large audio files efficiently"""
+    processor = LargeFileProcessor()
+
+    if not os.path.exists(args.input):
+        print(f"File not found: {args.input}")
+        return 1
+
+    if args.estimate:
+        # Estimate processing time
+        estimate = processor.estimate_processing_time(args.input, args.operation)
+        if 'error' in estimate:
+            print(f"Error: {estimate['error']}")
+            return 1
+
+        print(f"Processing Estimate:")
+        print(f"  File size: {estimate['file_size_mb']:.1f}MB")
+        print(f"  Duration: {estimate['file_duration_s']:.1f}s")
+        print(f"  Estimated time: {estimate['estimated_time_s']:.1f}s")
+        print(f"  Processing speed: {estimate['processing_speed']:.1f}x realtime")
+        return 0
+
+    # Process large file
+    kwargs = {}
+    if args.operation == 'normalize':
+        kwargs['target_peak'] = args.peak or 0.95
+    elif args.operation == 'denoise':
+        kwargs['noise_floor_db'] = args.noise_floor or -40
+    elif args.operation == 'amplify':
+        kwargs['gain_db'] = args.gain or 6
+    elif args.operation == 'compress':
+        kwargs['threshold_db'] = args.threshold or -20
+        kwargs['ratio'] = args.ratio or 0.3
+
+    output_path = args.output or f"{Path(args.input).stem}_processed.wav"
+    success = processor.process_large_file(args.input, args.operation, output_path, **kwargs)
+
+    return 0 if success else 1
+
 def cmd_realtime(args):
     """Real-time processing demo"""
     # Create processor with preset
@@ -334,6 +485,36 @@ Examples:
     batch_parser.add_argument('--recursive', action='store_true', help='Process recursively')
     batch_parser.add_argument('--noise-floor', type=float, help='Noise floor for denoising')
 
+    # Quality command
+    quality_parser = subparsers.add_parser('quality', help='Analyze and repair audio quality')
+    quality_parser.add_argument('input', help='Input audio file')
+    quality_parser.add_argument('--repair', action='store_true', help='Auto-repair audio issues')
+    quality_parser.add_argument('-o', '--output', help='Output file for repaired audio')
+
+    # Format command
+    format_parser = subparsers.add_parser('format', help='Convert audio formats')
+    format_parser.add_argument('input', nargs='?', help='Input audio file')
+    format_parser.add_argument('--format', help='Target format (e.g., wav, mp3, flac)')
+    format_parser.add_argument('-o', '--output', help='Output file path')
+    format_parser.add_argument('--sample-rate', type=int, help='Target sample rate')
+    format_parser.add_argument('--channels', type=int, help='Target channel count')
+    format_parser.add_argument('--quality', choices=['low', 'medium', 'high'], help='Conversion quality')
+    format_parser.add_argument('--list-formats', action='store_true', help='List supported formats')
+    format_parser.add_argument('--info', action='store_true', help='Show conversion info')
+
+    # Large file command
+    large_parser = subparsers.add_parser('large', help='Process large audio files efficiently')
+    large_parser.add_argument('input', help='Input audio file')
+    large_parser.add_argument('--operation', choices=['normalize', 'denoise', 'amplify', 'compress'],
+                             required=True, help='Processing operation')
+    large_parser.add_argument('-o', '--output', help='Output file path')
+    large_parser.add_argument('--estimate', action='store_true', help='Estimate processing time only')
+    large_parser.add_argument('--peak', type=float, help='Normalization peak (0.0-1.0)')
+    large_parser.add_argument('--noise-floor', type=float, help='Noise floor in dB')
+    large_parser.add_argument('--gain', type=float, help='Amplification gain in dB')
+    large_parser.add_argument('--threshold', type=float, help='Compression threshold in dB')
+    large_parser.add_argument('--ratio', type=float, help='Compression ratio')
+
     # Realtime command
     rt_parser = subparsers.add_parser('realtime', help='Real-time processing demo')
     rt_parser.add_argument('--preset', choices=['voice', 'music', 'podcast'],
@@ -354,6 +535,9 @@ Examples:
         'visualize': cmd_visualize,
         'record': cmd_record,
         'batch': cmd_batch,
+        'quality': cmd_quality,
+        'format': cmd_format,
+        'large': cmd_large,
         'realtime': cmd_realtime
     }
 
