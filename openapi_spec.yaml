@@ -1,0 +1,682 @@
+  /health:
+    get:
+      summary: Service Health Check
+      description: Lightweight readiness probe that reports uptime and timestamp for monitoring systems.
+      operationId: healthCheck
+      tags:
+        - System
+      security: []
+      responses:
+        '200':
+          description: Service is available
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  uptime_seconds:
+                    type: number
+                    format: float
+                    example: 123.45
+                  timestamp:
+                    type: string
+                    format: date-time
+                    example: "2025-01-15T04:30:00Z"
+openapi: 3.0.3
+info:
+  title: Chameleon Audio Processing API
+  description: |
+    Government-focused audio processing REST API with hardened input validation and session security.
+
+    ## Security Features
+    - **Clearance-Aware Authentication**: Session tokens bound to user, device, and idle timeout policies
+    - **Audit Logging**: Comprehensive activity monitoring and compliance tracking
+    - **Rate Limiting**: Protection against abuse and DoS attacks
+    - **Input Validation**: Strict validation of uploads, URLs, and filesystem paths
+
+    ## Core Capabilities
+    - **Real-time Audio Analysis**: Peak, RMS, and metadata reporting using optimized processing
+    - **High-Performance Normalization**: Parallel processing with optional SIMD acceleration
+    - **Batch Processing**: Queue-based processing for multiple files (analysis and normalization)
+    - **System Monitoring**: Real-time status and performance metrics
+
+  version: 1.0.0
+  contact:
+    name: Chameleon Security Team
+    email: security@chameleon-audio.com
+    url: file://./docs/user_manual.md
+  license:
+    name: MIT License
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://localhost:8443
+    description: Local development server (HTTPS required in production)
+
+security:
+  - BearerAuth: []
+    ApiKeyAuth: []
+
+paths:
+  /:
+    get:
+      summary: API Information
+      description: Get basic API information and health status
+      operationId: getAPIInfo
+      tags:
+        - System
+      security: []
+      responses:
+        '200':
+          description: API information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service:
+                    type: string
+                    example: "Chameleon Audio API"
+                  version:
+                    type: string
+                    example: "1.0.0"
+                  status:
+                    type: string
+                    example: "operational"
+                  classification:
+                    type: string
+                    example: "RESTRICTED"
+                  documentation:
+                    type: string
+                    format: uri
+                    example: "file://./docs/user_manual.md"
+                  security:
+                    type: string
+                    example: "government_grade"
+
+  /auth/login:
+    post:
+      summary: User Authentication
+      description: |
+        Authenticate user with government credentials and security clearance.
+        Returns secure session token for API access.
+      operationId: authenticateUser
+      tags:
+        - Authentication
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthenticationRequest'
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthenticationResponse'
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Too many login attempts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/logout:
+    post:
+      summary: User Logout
+      description: Invalidate user session and revoke access token
+      operationId: logoutUser
+      tags:
+        - Authentication
+      responses:
+        '200':
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Logged out successfully"
+
+  /audio/upload:
+    post:
+      summary: Upload Audio File
+      description: |
+        Upload audio file for processing. Files are validated for type, size, and security.
+        Supports WAV and FLAC formats.
+      operationId: uploadAudioFile
+      tags:
+        - Audio Processing
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Audio file (max 100MB)
+      responses:
+        '200':
+          description: File uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  file_id:
+                    type: string
+                    example: "550e8400-e29b-41d4-a716-446655440000.wav"
+                  original_name:
+                    type: string
+                    example: "audio_sample.wav"
+                  size:
+                    type: integer
+                    example: 15728640
+        '400':
+          description: Invalid file format or size
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '413':
+          description: File too large
+  /audio/analyze:
+    post:
+      summary: Analyze Audio File
+      description: |
+        Perform comprehensive audio analysis including peak levels, RMS,
+        and metadata extraction using high-performance algorithms.
+      operationId: analyzeAudio
+      tags:
+        - Audio Processing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - file_name
+              properties:
+                file_name:
+                  type: string
+                  example: "550e8400-e29b-41d4-a716-446655440000.wav"
+                enable_simd:
+                  type: boolean
+                  default: true
+                  description: Enable SIMD optimization for faster processing
+                parallel_processing:
+                  type: boolean
+                  default: true
+                  description: Enable parallel processing
+      responses:
+        '200':
+          description: Analysis completed
+          content:
+            application/json:
+              schema:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuditLogEntry'
+                  total:
+                    type: integer
+                    example: 1247
+                  filtered:
+                    type: integer
+                    example: 100
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Government-issued authentication token
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Optional deployment-controlled API key header for additional access control
+
+  schemas:
+    AuthenticationRequest:
+      type: object
+      required:
+        - username
+        - password
+        - clearance_level
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+          example: "operator.smith"
+        password:
+          type: string
+          minLength: 8
+          format: password
+          example: "SecureP@ssw0rd123"
+        clearance_level:
+          type: string
+          enum: [UNCLASSIFIED, CONFIDENTIAL, SECRET, TOP_SECRET]
+          example: "SECRET"
+
+    AuthenticationResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        user_info:
+          type: object
+          properties:
+            username:
+              type: string
+              example: "operator.smith"
+            clearance_level:
+              type: string
+              example: "SECRET"
+            session_id:
+              type: string
+              format: uuid
+              example: "550e8400-e29b-41d4-a716-446655440000"
+        expires_at:
+          type: string
+          format: date-time
+          example: "2025-01-15T14:30:00Z"
+        error:
+          type: string
+          example: null
+
+    AudioAnalysisRequest:
+      type: object
+      required:
+        - file_name
+      properties:
+        file_name:
+          type: string
+          example: "550e8400-e29b-41d4-a716-446655440000.wav"
+        enable_simd:
+          type: boolean
+          default: true
+          description: Enable SIMD optimization for faster processing
+        parallel_processing:
+          type: boolean
+          default: true
+          description: Enable parallel processing
+
+    AudioAnalysisResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        duration:
+          type: number
+          format: float
+          example: 120.5
+          description: Duration in seconds
+        sample_rate:
+          type: integer
+          example: 44100
+          description: Sample rate in Hz
+        channels:
+          type: integer
+          example: 2
+          description: Number of audio channels
+        bit_depth:
+          type: integer
+          example: 16
+          description: Bit depth
+        peak_level:
+          type: number
+          format: float
+          example: 0.87
+          description: Peak level (0.0 to 1.0)
+        rms_level:
+          type: number
+          format: float
+          example: 0.23
+          description: RMS level (0.0 to 1.0)
+        file_size:
+          type: integer
+          example: 15728640
+          description: File size in bytes
+        processing_time:
+          type: number
+          format: float
+          example: 2.3
+          description: Processing time in seconds
+        processing_method:
+          type: string
+          example: "parallel_simd"
+          description: Processing method used
+        error:
+          type: string
+          example: null
+
+    AudioNormalizationRequest:
+      type: object
+      required:
+        - file_name
+      properties:
+        file_name:
+          type: string
+          example: "550e8400-e29b-41d4-a716-446655440000.wav"
+        target_peak:
+          type: number
+          format: float
+          minimum: 0.1
+          maximum: 1.0
+          default: 0.95
+          description: Target peak level (0.1 to 1.0)
+        output_format:
+          type: string
+          enum: [wav, flac]
+          default: wav
+          description: Output audio format
+        enable_simd:
+          type: boolean
+          default: true
+        parallel_processing:
+          type: boolean
+          default: true
+
+    AudioNormalizationResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        output_file:
+          type: string
+          example: "normalized_550e8400-e29b-41d4-a716-446655440000.wav"
+        scale_factor:
+          type: number
+          format: float
+          example: 1.23
+          description: Applied scale factor
+        original_peak:
+          type: number
+          format: float
+          example: 0.77
+        target_peak:
+          type: number
+          format: float
+          example: 0.95
+        processing_time:
+          type: number
+          format: float
+          example: 4.1
+        error:
+          type: string
+          example: null
+
+    BatchJobRequest:
+      type: object
+      required:
+        - files
+        - operation
+      properties:
+        files:
+          type: array
+          items:
+            type: string
+          example: ["file1.wav", "file2.wav", "file3.wav"]
+          description: List of file names to process
+        operation:
+          type: string
+          enum: [analyze, normalize, convert]
+          example: "normalize"
+        options:
+          type: object
+          additionalProperties: true
+          example: {"target_peak": 0.95, "output_format": "wav"}
+
+    BatchJobResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        job_id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        total_files:
+          type: integer
+          example: 3
+        estimated_duration:
+          type: number
+          format: float
+          example: 15.0
+          description: Estimated processing time in seconds
+        error:
+          type: string
+          example: null
+
+    BatchJobStatus:
+      type: object
+      properties:
+        job_id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        status:
+          type: string
+          enum: [queued, processing, completed, failed]
+          example: "processing"
+        progress:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          example: 0.67
+          description: Progress percentage (0.0 to 1.0)
+        completed_files:
+          type: integer
+          example: 2
+        total_files:
+          type: integer
+          example: 3
+        current_file:
+          type: string
+          example: "file3.wav"
+        results:
+          type: array
+          items:
+            type: object
+        error:
+          type: string
+          example: null
+        started_at:
+          type: string
+          format: date-time
+          example: "2025-10-05T03:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2025-10-05T03:02:30Z"
+                type: string
+              result:
+                type: object
+        error:
+          type: string
+        api_key:
+
+    SystemStatusResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "operational"
+        uptime:
+          type: number
+          format: float
+          example: 86400.5
+          description: Server uptime in seconds
+        active_jobs:
+          type: integer
+          example: 3
+        queued_jobs:
+          type: integer
+          example: 7
+        completed_jobs:
+          type: integer
+          example: 1247
+        error_rate:
+          type: number
+          format: float
+          example: 0.02
+          description: Error rate (0.0 to 1.0)
+        memory_usage:
+          type: number
+          format: float
+          example: 0.68
+          description: Memory usage percentage
+        cpu_usage:
+          type: number
+          format: float
+          example: 0.45
+          description: CPU usage percentage
+        active_sessions:
+          type: integer
+          example: 12
+          description: Number of active authenticated sessions
+        last_request_timestamp:
+          type: string
+          format: date-time
+          example: "2025-10-05T03:00:00Z"
+          description: ISO timestamp of the most recent authenticated request
+        security_status:
+          type: string
+          example: "secure"
+        version:
+          type: string
+          example: "1.0.0"
+        last_job_error:
+          type: string
+          nullable: true
+          example: "File not found"
+          description: Last job failure message, if any
+        circuit_breaker_open:
+          type: boolean
+          example: false
+          description: Whether the batch circuit breaker is currently preventing new work
+        request_latency_ms:
+          type: number
+          format: float
+          nullable: true
+          example: 42.7
+          description: EWMA of recent request latency in milliseconds
+
+    AuditLogEntry:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: "2025-01-15T10:30:45Z"
+        user:
+          type: string
+          example: "operator.smith"
+        operation:
+          type: string
+          example: "ANALYZE"
+        resource:
+          type: string
+          example: "audio_file.wav"
+        result:
+          type: string
+          enum: [SUCCESS, FAILED, WARNING, INFO]
+          example: "SUCCESS"
+        details:
+          type: string
+          example: "Audio analysis completed successfully"
+        ip_address:
+          type: string
+          format: ipv4
+          example: "192.168.1.100"
+        session_id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Invalid credentials"
+        error_code:
+          type: string
+          example: "AUTH_001"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2025-01-15T10:30:45Z"
+
+  responses:
+    UnauthorizedError:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "Authentication token required"
+            error_code: "AUTH_002"
+
+    ForbiddenError:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "Insufficient clearance level"
+            error_code: "AUTH_003"
+
+tags:
+  - name: Authentication
+    description: User authentication and session management
+  - name: Audio Processing
+    description: Single file audio analysis and processing
+  - name: Batch Processing
+    description: Multi-file batch processing operations
+  - name: System

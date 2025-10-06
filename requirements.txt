@@ -1,19 +1,10 @@
-# Optimized Chameleon Audio System - Lightweight Dependencies
-# Core functionality uses built-in Python modules only
+# Chameleon Audio System v3.0 - Minimal Dependencies
+# Lightweight WAV-focused audio processing
 
-# Optional: System monitoring (lightweight)
-psutil>=5.8.0
+# Basic dependencies (optional - system works without them)
+# colorama>=0.4.4        # For colored terminal output
+# PyYAML>=6.0           # For configuration files
 
-# Optional: Configuration support
-pyyaml>=6.0
-
-# Development tools (optional - install separately if needed)
-# pytest>=7.0.0
-# flake8>=4.0.0
-# black>=22.0.0
-
-# Security scanning (optional)
-# bandit>=1.7.0
-
-# NOTE: The core audio engine uses only Python standard library
-# This provides maximum compatibility and minimal dependencies
+# Note: Core system uses only Python standard library
+# For extended format support, install: ffmpeg
+# For professional audio features, consult the documentation before adding third-party packages

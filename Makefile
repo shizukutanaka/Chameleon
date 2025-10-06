@@ -1,89 +1,66 @@
-.PHONY: help install test benchmark clean docker-build docker-run api setup
+# Chameleon Audio Tool - Commercial Build System
+
+.PHONY: help install develop test test-all lint format security benchmark docs build publish docker clean
 
 help:
-	@echo "Chameleon Audio System - Make Commands"
-	@echo ""
-	@echo "Setup & Installation:"
-	@echo "  make setup      - Run initial setup and verification"
-	@echo "  make install    - Install optional dependencies"
-	@echo ""
-	@echo "Testing & Quality:"
-	@echo "  make test       - Run all tests"
-	@echo "  make benchmark  - Run performance benchmarks"
-	@echo "  make lint       - Run code quality checks"
-	@echo ""
-	@echo "Docker:"
-	@echo "  make docker-build - Build Docker image"
-	@echo "  make docker-run   - Run Docker container"
-	@echo "  make docker-compose - Start all services"
-	@echo ""
-	@echo "Development:"
-	@echo "  make api        - Start API server"
-	@echo "  make gui        - Launch GUI interface"
-	@echo "  make examples   - Run example scripts"
-	@echo ""
-	@echo "Maintenance:"
-	@echo "  make clean      - Clean temporary files"
-	@echo "  make format     - Format code with black"
-
-setup:
-	python3 scripts/setup.py
+	@echo "Chameleon Audio Tool - Commercial Build Targets"
+	@echo "  install     Install package in development mode"
+	@echo "  develop     Install development dependencies and hooks"
+	@echo "  test        Run unit and integration tests"
+	@echo "  test-all    Run full test suite with coverage report"
+	@echo "  lint        Run static analysis (flake8, mypy)"
+	@echo "  format      Format source using black and isort"
+	@echo "  security    Execute security scanners (bandit, safety)"
+	@echo "  benchmark   Execute performance benchmarks"
+	@echo "  docs        Build HTML documentation"
+	@echo "  build       Build distribution packages"
+	@echo "  publish     Publish artifacts to PyPI"
+	@echo "  docker      Build production Docker image"
+	@echo "  clean       Remove build artifacts and caches"
 
 install:
-	pip install -r requirements.txt
-	pip install -r requirements_optional.txt
+	pip install -e .
+
+develop:
+	pip install -e .[dev]
+	pre-commit install || true
 
 test:
-	python3 tests/test_audio.py
+	pytest tests -v
 
-benchmark:
-	python3 scripts/benchmark.py
+test-all:
+	pytest tests -v --cov=audio_tool --cov-report=term --cov-report=html
 
 lint:
-	@which flake8 > /dev/null || pip install flake8
-	flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-	flake8 . --count --exit-zero --max-complexity=10 --max-line-length=120 --statistics
+	flake8 audio_tool.py tests
+	mypy audio_tool.py tests --ignore-missing-imports
 
 format:
-	@which black > /dev/null || pip install black
-	black --line-length 120 *.py examples/*.py scripts/*.py tests/*.py
+	black audio_tool.py tests
+	isort audio_tool.py tests
 
-docker-build:
+security:
+	bandit -r audio_tool.py tests
+	safety check --full-report || true
+
+benchmark:
+	pytest tests/performance -v --benchmark-only --benchmark-save-data
+
+docs:
+	sphinx-build -b html docs docs/_build/html
+
+build:
+	python -m build
+
+publish: build
+	twine upload dist/*
+
+docker:
 	docker build -t chameleon-audio:latest .
-
-docker-run:
-	docker run -it --rm -v $(PWD)/data:/data chameleon-audio:latest
-
-docker-compose:
-	docker-compose up
-
-api:
-	python3 api_server.py
-
-gui:
-	python3 audio_gui.py
-
-examples:
-	@echo "Running basic examples..."
-	python3 examples/basic_usage.py
-	@echo ""
-	@echo "Running advanced demo..."
-	python3 examples/advanced_demo.py
-	@echo ""
-	@echo "Running real-world examples..."
-	python3 examples/real_world_examples.py
+	docker tag chameleon-audio:latest chameleon-audio:1.0.0
 
 clean:
-	rm -f *.wav *.pyc *.pyo
-	rm -rf __pycache__ .pytest_cache
-	rm -f test_audio.wav test_output.wav
-	rm -f benchmark_report.json config.json
-	rm -f commercial_*_broadcast.wav
-	rm -f podcast_*.wav master_*.wav
-	rm -f complex_audio.wav streamed_output.wav adaptive_output.wav
-	rm -f test_batch_*.wav batch_config.json
-	rm -f broadcast_delivery_report.json
-	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-	find . -type f -name "*.pyc" -delete 2>/dev/null || true
-
-.DEFAULT_GOAL := help
+	rm -rf build dist *.egg-info
+	rm -rf .pytest_cache .mypy_cache .coverage htmlcov
+	rm -rf docs/_build
+	find . -type d -name '__pycache__' -prune -exec rm -rf {} +

@@ -1,0 +1,54 @@
+# Chameleon Audio System - Package Manifest
+# Specifies additional files to include in distribution
+
+# Core Documentation
+include README.md
+include LICENSE
+include CHANGELOG.md
+
+# Core Application
+include audio_tool.py
+include test_audio.py
+
+# Requirements Files
+include requirements.txt
+include requirements_optional.txt
+
+# Configuration Files
+include pyproject.toml
+include setup.py
+
+# Docker and Deployment
+include Dockerfile
+include docker-compose.yml
+
+# CI/CD
+include .github/workflows/*.yml
+
+# Exclude Development Files
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude *.pyd
+global-exclude __pycache__
+global-exclude .git*
+global-exclude .DS_Store
+global-exclude *.so
+global-exclude .tox
+global-exclude .coverage
+global-exclude .pytest_cache
+
+# Exclude Build Artifacts
+global-exclude build/*
+global-exclude dist/*
+global-exclude *.egg-info/*
+
+# Exclude IDE Files
+global-exclude .vscode/*
+global-exclude .idea/*
+global-exclude *.swp
+global-exclude *.swo
+
+# Exclude Temporary Files
+global-exclude *~
+global-exclude *.tmp
+global-exclude *.temp

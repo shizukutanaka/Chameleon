@@ -1,0 +1,655 @@
+# Chameleon Audio Tool - Kubernetes Production Deployment
+# Enterprise-grade deployment with high availability and security
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: chameleon-system
+  labels:
+    name: chameleon-system
+    security.policy: strict
+    monitoring: enabled
+
+---
+# Security Context Constraints
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: chameleon-service-account
+  namespace: chameleon-system
+  labels:
+    app: chameleon
+    version: v2.0.0
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: chameleon-cluster-role
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets", "services", "pods"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["pods", "nodes"]
+  verbs: ["get", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: chameleon-cluster-role-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: chameleon-cluster-role
+subjects:
+- kind: ServiceAccount
+  name: chameleon-service-account
+  namespace: chameleon-system
+
+---
+# ConfigMap for application configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chameleon-config
+  namespace: chameleon-system
+  labels:
+    app: chameleon
+    version: v2.0.0
+data:
+  production.yaml: |
+    version: "2.0.0"
+    environment: "production"
+    deployment_id: "k8s-cluster"
+
+    security:
+      enable_authentication: true
+      enable_encryption: true
+      enable_audit_logging: true
+      enable_rate_limiting: true
+      session_timeout: 1800
+      rate_limit_requests_per_minute: 1000
+      enable_intrusion_detection: true
+
+    performance:
+      enable_parallel_processing: true
+      enable_simd: true
+      enable_caching: true
+      max_concurrent_operations: 100
+      worker_threads: 0
+      max_memory_usage_mb: 4096
+      cache_size_mb: 1024
+
+    network:
+      bind_address: "0.0.0.0"
+      port: 8080
+      enable_tls: false
+      connection_timeout: 30
+
+    logging:
+      level: "INFO"
+      enable_console: true
+      enable_file: true
+      log_file: "/app/logs/chameleon.log"
+      enable_json_logging: true
+      enable_structured_logging: true
+
+    monitoring:
+      enable_metrics: true
+      enable_health_checks: true
+      enable_prometheus: true
+      prometheus_port: 9090
+      metrics_interval: 30
+      health_check_interval: 15
+
+    backup:
+      enable_backups: true
+      backup_interval: 1800
+      backup_location: "/app/backups"
+      backup_retention_days: 30
+      enable_remote_backup: false
+
+---
+# Secret for sensitive configuration
+apiVersion: v1
+kind: Secret
+metadata:
+  name: chameleon-secrets
+  namespace: chameleon-system
+  labels:
+    app: chameleon
+    version: v2.0.0
+type: Opaque
+data:
+  # Base64 encoded values
+  master-key: Q0hhbWVsZW9uU2VjdXJlS2V5MjAyNQ==
+  api-token: Q0hhbWVsZW9uQVBJVG9rZW4yMDI1
+  encryption-key: Q0hhbWVsZW9uRW5jcnlwdGlvbktleTIwMjU=
+
+---
+# Persistent Volume Claims
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: chameleon-data-pvc
+  namespace: chameleon-system
+  labels:
+    app: chameleon
+    version: v2.0.0
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: fast-ssd
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: chameleon-logs-pvc
+  namespace: chameleon-system
+  labels:
+    app: chameleon
+    version: v2.0.0
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: standard
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: chameleon-backups-pvc
+  namespace: chameleon-system
+  labels:
+    app: chameleon
+    version: v2.0.0
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 200Gi
+  storageClassName: backup-storage
+
+---
+# Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chameleon-deployment
+  namespace: chameleon-system
+  labels:
+    app: chameleon
+    version: v2.0.0
+    tier: production
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: chameleon
+      version: v2.0.0
+  template:
+    metadata:
+      labels:
+        app: chameleon
+        version: v2.0.0
+        tier: production
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: chameleon-service-account
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: chameleon
+        image: chameleon/audio-tool:v2.0.0
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        env:
+        - name: CHAMELEON_ENV
+          value: "production"
+        - name: CHAMELEON_CONFIG_DIR
+          value: "/app/config"
+        - name: CHAMELEON_LOG_LEVEL
+          value: "INFO"
+        - name: CHAMELEON_SECURITY_ENABLED
+          value: "true"
+        - name: CHAMELEON_PARALLEL_PROCESSING
+          value: "true"
+        - name: CHAMELEON_MAX_WORKERS
+          value: "8"
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        envFrom:
+        - secretRef:
+            name: chameleon-secrets
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config
+          readOnly: true
+        - name: data-volume
+          mountPath: /app/data
+        - name: logs-volume
+          mountPath: /app/logs
+        - name: backups-volume
+          mountPath: /app/backups
+        - name: temp-volume
+          mountPath: /app/temp
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+            ephemeral-storage: "10Gi"
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
+            ephemeral-storage: "20Gi"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          successThreshold: 1
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /health
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 30
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: config-volume
+        configMap:
+          name: chameleon-config
+          defaultMode: 0444
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: chameleon-data-pvc
+      - name: logs-volume
+        persistentVolumeClaim:
+          claimName: chameleon-logs-pvc
+      - name: backups-volume
+        persistentVolumeClaim:
+          claimName: chameleon-backups-pvc
+      - name: temp-volume
+        emptyDir:
+          sizeLimit: 5Gi
+      terminationGracePeriodSeconds: 60
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - chameleon
+              topologyKey: kubernetes.io/hostname
+      tolerations:
+      - key: "workload.chameleon.io/audio-processing"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+
+---
+# Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: chameleon-hpa
+  namespace: chameleon-system
+  labels:
+    app: chameleon
+    version: v2.0.0
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: chameleon-deployment
+  minReplicas: 3
+  maxReplicas: 50
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+      selectPolicy: Min
+
+---
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: chameleon-service
+  namespace: chameleon-system
+  labels:
+    app: chameleon
+    version: v2.0.0
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+    prometheus.io/path: "/metrics"
+spec:
+  type: ClusterIP
+  selector:
+    app: chameleon
+    version: v2.0.0
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+    protocol: TCP
+  - name: metrics
+    port: 9090
+    targetPort: metrics
+    protocol: TCP
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
+
+---
+# Load Balancer Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: chameleon-loadbalancer
+  namespace: chameleon-system
+  labels:
+    app: chameleon
+    version: v2.0.0
+    service: loadbalancer
+spec:
+  type: LoadBalancer
+  selector:
+    app: chameleon
+    version: v2.0.0
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+    protocol: TCP
+  loadBalancerSourceRanges:
+  - 10.0.0.0/8
+  - 172.16.0.0/12
+  - 192.168.0.0/16
+
+---
+# Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: chameleon-network-policy
+  namespace: chameleon-system
+  labels:
+    app: chameleon
+    version: v2.0.0
+spec:
+  podSelector:
+    matchLabels:
+      app: chameleon
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-system
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring-system
+    - podSelector:
+        matchLabels:
+          app: chameleon
+    ports:
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 9090
+  egress:
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
+    - protocol: UDP
+      port: 53
+  - to:
+    - podSelector:
+        matchLabels:
+          app: chameleon
+    ports:
+    - protocol: TCP
+      port: 8080
+
+---
+# Pod Disruption Budget
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: chameleon-pdb
+  namespace: chameleon-system
+  labels:
+    app: chameleon
+    version: v2.0.0
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: chameleon
+      version: v2.0.0
+
+---
+# ServiceMonitor for Prometheus
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: chameleon-service-monitor
+  namespace: chameleon-system
+  labels:
+    app: chameleon
+    version: v2.0.0
+spec:
+  selector:
+    matchLabels:
+      app: chameleon
+      version: v2.0.0
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+    scheme: http
+    tlsConfig:
+      insecureSkipVerify: true
+  namespaceSelector:
+    matchNames:
+    - chameleon-system
+
+---
+# PrometheusRule for alerting
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: chameleon-prometheus-rules
+  namespace: chameleon-system
+  labels:
+    app: chameleon
+    version: v2.0.0
+spec:
+  groups:
+  - name: chameleon.rules
+    interval: 30s
+    rules:
+    - alert: ChameleonHighCPU
+      expr: rate(process_cpu_seconds_total{job="chameleon-service"}[5m]) * 100 > 80
+      for: 5m
+      labels:
+        severity: warning
+        service: chameleon
+      annotations:
+        summary: "Chameleon CPU usage is high"
+        description: "Chameleon CPU usage has been above 80% for 5 minutes"
+
+    - alert: ChameleonHighMemory
+      expr: process_resident_memory_bytes{job="chameleon-service"} / (1024^3) > 6
+      for: 5m
+      labels:
+        severity: warning
+        service: chameleon
+      annotations:
+        summary: "Chameleon memory usage is high"
+        description: "Chameleon memory usage is above 6GB"
+
+    - alert: ChameleonPodDown
+      expr: up{job="chameleon-service"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        service: chameleon
+      annotations:
+        summary: "Chameleon pod is down"
+        description: "Chameleon pod has been down for more than 1 minute"
+
+    - alert: ChameleonHighErrorRate
+      expr: rate(http_requests_total{job="chameleon-service",status=~"5.."}[5m]) > 0.1
+      for: 2m
+      labels:
+        severity: critical
+        service: chameleon
+      annotations:
+        summary: "Chameleon high error rate"
+        description: "Chameleon error rate is above 10% for 2 minutes"
+
+---
+# Ingress for external access
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: chameleon-ingress
+  namespace: chameleon-system
+  labels:
+    app: chameleon
+    version: v2.0.0
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/rate-limit: "1000"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - chameleon.production.company.com
+    secretName: chameleon-tls-secret
+  rules:
+  - host: chameleon.production.company.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: chameleon-service
+            port:
+              number: 80

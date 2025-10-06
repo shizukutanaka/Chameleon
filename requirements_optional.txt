@@ -1,5 +1,0 @@
-# Optional dependencies for enhanced performance
-# Core functionality works without these
-
-# Performance optimization
-numpy>=1.19.0  # 10-100x faster operations

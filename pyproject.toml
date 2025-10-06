@@ -1,102 +1,96 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = [
+    "setuptools>=60.0.0",
+    "wheel>=0.37.0",
+    "build>=0.7.0"
+]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "chameleon-audio"
-version = "2.0.0"
-description = "Lightweight, efficient audio processing toolkit"
+version = "1.0.0"
+description = "Commercial-grade WAV audio processing CLI with enterprise security, performance monitoring, and multilingual UX"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "Chameleon Audio Team", email = "audio@chameleon.dev"}
+    {name = "Chameleon Audio Team", email = "contact@chameleon-audio.com"}
 ]
 maintainers = [
-    {name = "Chameleon Audio Team", email = "audio@chameleon.dev"}
+    {name = "Chameleon Audio Team", email = "contact@chameleon-audio.com"}
 ]
 keywords = [
-    "audio", "signal-processing", "wav", "effects",
-    "music", "sound", "dsp", "realtime"
+    "audio", "processing", "wav", "sound", "waveform", "multimedia",
+    "analysis", "conversion", "editing", "batch-processing", "cli-tool",
+    "security", "performance", "optimization", "professional", "enterprise",
+    "benchmarking", "monitoring"
 ]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: Information Technology",
     "Intended Audience :: Science/Research",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Topic :: Multimedia :: Sound/Audio :: Analysis",
+    "Topic :: Multimedia :: Sound/Audio :: Conversion",
+    "Topic :: Multimedia :: Sound/Audio :: Editors",
+    "Topic :: System :: Archiving",
+    "Topic :: Utilities",
     "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.7",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
-    "Topic :: Multimedia :: Sound/Audio",
-    "Topic :: Multimedia :: Sound/Audio :: Analysis",
-    "Topic :: Multimedia :: Sound/Audio :: Sound Synthesis",
-    "Topic :: Scientific/Engineering :: Signal Processing"
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Environment :: Console",
+    "Natural Language :: English",
+    "Natural Language :: Japanese",
+    "Natural Language :: Chinese (Simplified)",
+    "Natural Language :: Spanish",
+    "Natural Language :: French",
+    "Natural Language :: German",
+    "Natural Language :: Italian",
+    "Natural Language :: Portuguese",
+    "Natural Language :: Russian",
+    "Natural Language :: Korean"
 ]
-requires-python = ">=3.7"
+requires-python = ">=3.8"
 dependencies = []
 
 [project.optional-dependencies]
-monitoring = ["psutil>=5.8.0"]
-config = ["pyyaml>=6.0"]
-optimized = ["numpy>=1.19.0"]
 dev = [
-    "pytest>=7.0.0",
-    "pytest-cov>=3.0.0",
-    "flake8>=4.0.0",
-    "black>=22.0.0",
-    "bandit>=1.7.0"
+    "black>=24.8",
+    "isort>=5.13",
+    "flake8>=7.0",
+    "mypy>=1.10",
+    "pytest>=8.2",
+    "pytest-cov>=5.0",
+    "pytest-benchmark>=4.0",
+    "psutil>=5.9",
+    "memory-profiler>=0.61",
+    "bandit>=1.7",
+    "safety>=3.2",
+    "twine>=5.1",
+    "build>=1.2",
+    "sphinx>=7.3",
+    "sphinx-rtd-theme>=2.0",
+    "myst-parser>=2.0"
 ]
-all = ["psutil>=5.8.0", "pyyaml>=6.0", "numpy>=1.19.0"]
-
-[project.urls]
-Homepage = "https://github.com/chameleon-audio/chameleon"
-Documentation = "https://chameleon-audio.readthedocs.io"
-Repository = "https://github.com/chameleon-audio/chameleon"
-"Bug Tracker" = "https://github.com/chameleon-audio/chameleon/issues"
 
 [project.scripts]
-chameleon = "chameleon:main"
-chameleon-gui = "audio_gui:main"
+chameleon = "audio_tool:main"
+
+[project.urls]
+Documentation = "file://./docs/user_manual.md"
 
 [tool.setuptools]
-packages = ["."]
+py-modules = ["audio_tool"]
 include-package-data = true
 
 [tool.setuptools.package-data]
-"*" = ["*.wav", "*.json", "*.yaml", "*.md"]
-
-[tool.black]
-line-length = 120
-target-version = ["py37", "py38", "py39", "py310", "py311"]
-include = '\.pyi?$'
-extend-exclude = '''
-/(
-  | build
-  | dist
-  | venv
-  | .git
-  | __pycache__
-)/
-'''
-
-[tool.flake8]
-max-line-length = 120
-extend-ignore = ["E203", "W503"]
-exclude = [".git", "__pycache__", "build", "dist", "venv"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py", "*_test.py"]
-python_functions = ["test_*"]
-addopts = "-v --tb=short"
-
-[tool.coverage.run]
-source = ["."]
-omit = ["tests/*", "examples/*", "scripts/*", "setup.py"]
-
-[tool.bandit]
-exclude_dirs = ["tests", "examples"]
-severity = "medium"
+"*" = ["*.md", "*.txt", "*.json", "*.cfg", "*.ini"]
