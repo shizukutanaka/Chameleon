@@ -2566,17 +2566,19 @@ if __name__ == "__main__":
 
     if stats:
         print("\nPerformance:")
-class AIMusicAnalyzer:
-    """AI音楽分析機能 - スペクトル特徴、時間的特徴、音楽構造分析を提供"""
 
-    def __init__(self):
-        if not HAS_LIBROSA:
-            raise ImportError("LibROSAがインストールされていません。音楽分析機能を使用するにはインストールしてください。")
 
+class ParallelBatchProcessor:
+    """並列バッチ処理でパフォーマンスを最適化"""
+
+    def __init__(self, processor: WAVProcessor, max_workers: int = None):
+        self.processor = processor
+        self.max_workers = max_workers or min(32, (os.cpu_count() or 1) + 4)
         self.logger = logging.getLogger(__name__)
-        self.processor = WAVProcessor()
 
-    def analyze_audio_features(self, file_path: str) -> Dict[str, Any]:
+    async def process_directory_async(self, directory: str, operation: str, **kwargs) -> List[ProcessingResult]:
+        """並列でディレクトリを非同期処理"""
+        directory_path = Path(directory)
         """オーディオファイルから包括的な特徴を抽出"""
         if not security_validator.validate_path(file_path):
             raise ValueError("無効なファイルパス")
@@ -4835,24 +4837,8 @@ class CloudAudioServices:
         except Exception as e:
             self.logger.error(f"クラウド音楽分析エラー: {e}")
 
-class RealtimeAudioProcessor:
-    """リアルタイム音楽処理システム - WebSocketベースのストリーミング処理"""
-
-    def __init__(self, host: str = "localhost", port: int = 8765):
-        if not HAS_WEBSOCKETS:
-            raise ImportError("websocketsがインストールされていません。リアルタイム機能を使用するにはインストールしてください。")
-
-        self.host = host
-        self.port = port
-        self.logger = logging.getLogger(__name__)
-        self.processor = WAVProcessor()
-        self.ai_analyzer = ai_analyzer
-        self.ai_generator = ai_music_generator
-
-        # 接続管理
-        self.clients: Dict[str, WebSocketServerProtocol] = {}
-        self.client_queues: Dict[str, queue.Queue] = {}
-        self.event_handlers: Dict[str, List[Callable]] = {}
+# Note: First RealtimeAudioProcessor definition (line 4224) is the primary implementation
+# Second duplicate definition and orphaned methods have been removed
 
         # 処理スレッド
         self.processing_thread = None
