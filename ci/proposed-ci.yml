@@ -1,0 +1,60 @@
+name: Chameleon CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+          # The core CLI runs on the standard library alone; numpy enables the
+          # full main.py audio pipeline used by the integration check below.
+          pip install numpy
+
+      - name: Byte-compile all modules
+        run: python -m compileall -q .
+
+      - name: Import smoke check (standard-library core)
+        run: |
+          for m in security_validator audio_utils config_manager plugin_system core main batch_automation; do
+            python -c "import $m" && echo "OK   $m"
+          done
+
+      - name: Stdlib validation suite
+        run: python validation_test.py
+
+      - name: Unit tests
+        run: python -m pytest -q
+
+      - name: CLI integration check
+        run: |
+          python - <<'PY'
+          from validation_test import create_test_wav
+          create_test_wav("ci_tone.wav", duration=1.0)
+          PY
+          python main.py analyze ci_tone.wav --detailed
+          mkdir -p ci_out
+          python main.py process --normalize ci_tone.wav --output-dir ci_out
+          test -f ci_out/ci_tone_normalized.wav && echo "normalize output present"

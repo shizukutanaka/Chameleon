@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "chameleon-audio"
 version = "1.0.0"
-description = "Commercial-grade WAV audio processing CLI with enterprise security, performance monitoring, and multilingual UX"
+description = "WAV audio processing CLI with path-validation security, batch processing and MIDI analysis"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
@@ -25,7 +25,7 @@ keywords = [
     "benchmarking", "monitoring"
 ]
 classifiers = [
-    "Development Status :: 5 - Production/Stable",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: End Users/Desktop",
     "Intended Audience :: Information Technology",
@@ -83,14 +83,26 @@ dev = [
 ]
 
 [project.scripts]
-chameleon = "audio_tool:main"
+chameleon = "main:cli"
 
 [project.urls]
-Documentation = "file://./docs/user_manual.md"
+Source = "https://github.com/shizukutanaka/Chameleon"
+Issues = "https://github.com/shizukutanaka/Chameleon/issues"
 
 [tool.setuptools]
-py-modules = ["audio_tool"]
+py-modules = [
+    "main", "core", "security_validator", "plugin_system", "midi_analysis",
+    "music_generator", "config_manager", "api_server", "batch_automation",
+    "codec_support", "spectral_editor", "spectral_utils", "audio_enhancer",
+    "audio_restoration", "realtime_effects", "mastering_chain",
+    "advanced_audio_features", "performance_optimizer", "stability_enhancer",
+    "ux_improvements", "audio_utils",
+]
 include-package-data = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "test_core.py"]
+python_files = ["test_*.py"]
 
 [tool.setuptools.package-data]
 "*" = ["*.md", "*.txt", "*.json", "*.cfg", "*.ini"]
