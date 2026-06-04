@@ -2,8 +2,13 @@
 
 ## Current State
 
-**Status**: Optimized and Production-Ready
-**Last Updated**: 2025-10-05
+**Status**: Beta — core CLI imports and runs; GUI and REST API are work in progress
+**Last Updated**: 2026-06-04
+
+> Note: a recent restoration pass repaired a broken import chain (missing local
+> modules, no `main.py` entry point) and removed a large amount of
+> non-functional experimental code from `core.py`. Security primitives now live
+> in `security_validator.py`. See CHANGELOG.md for details.
 
 ## Project Cleanup Summary
 
@@ -74,9 +79,9 @@
 - `audio_utils.py` - Lightweight WAV utilities (no dependencies)
 
 **Security & Configuration**:
+- `security_validator.py` - Path/file validation, trusted-root enforcement, secure file operations
 - `plugin_system.py` - Sandboxed plugin execution with AST validation
 - `config_manager.py` - Configuration management and validation
-- `secure_core.py` - Secure file operations and audit logging
 
 **Audio Features**:
 - `codec_support.py` - Audio codec handling
