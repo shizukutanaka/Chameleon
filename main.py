@@ -4,6 +4,8 @@ Chameleon Audio Processing System - Main Entry Point
 Advanced audio processing with real-time capabilities and ML features
 """
 
+from __future__ import annotations
+
 import os
 import sys
 import time
@@ -179,7 +181,7 @@ except ImportError:
     warnings.warn("PyAudio not installed. Real-time audio disabled.")
 
 # Core constants
-VERSION = "3.0.0"
+VERSION = "1.0.0"
 MAX_FILE_SIZE = 500 * 1024 * 1024  # Align with core constraints (500MB)
 CHUNK_SIZE = 8192
 DEFAULT_SAMPLE_RATE = 44100
@@ -1700,3 +1702,27 @@ async def main():
 
     elif args.command == "server":
         print(f"Starting API server on {args.host}:{args.port}")
+        try:
+            import uvicorn  # type: ignore
+        except ImportError:
+            print("The API server requires fastapi and uvicorn. "
+                  "Install them with: pip install -r api_requirements.txt")
+            exit_code = 1
+        else:
+            uvicorn.run(
+                "api_server:app",
+                host=args.host,
+                port=args.port,
+                workers=getattr(args, "workers", 1),
+            )
+
+    return exit_code
+
+
+def cli() -> int:
+    """Synchronous console-script entry point (wraps the async ``main``)."""
+    return asyncio.run(main())
+
+
+if __name__ == "__main__":
+    sys.exit(cli())
