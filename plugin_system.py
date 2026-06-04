@@ -694,9 +694,7 @@ def create_plugin():
         # Shutdown executor
         self.executor.shutdown(wait=True)
 
-class SecurityError(Exception):
-    """Plugin security violation"""
-    pass
+# SecurityError is imported from security_validator (single canonical type).
 
 def demo_plugin_system():
     """Demonstrate plugin system capabilities"""

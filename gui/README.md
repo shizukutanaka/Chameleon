@@ -1,32 +1,24 @@
 # Chameleon Audio GUI
 
-Government-grade audio processing interface built with React and Electron.
+A React + Electron desktop interface for the Chameleon audio toolkit.
 
-## 🔒 Security Classification: RESTRICTED
+> **Status: experimental / work in progress.** This is UI scaffolding. The
+> components render, but the Electron backend integration with the Python CLI
+> is not yet wired up, and the "security/clearance" concepts below are planned
+> UI ideas, not implemented controls. Do not rely on them for access control.
 
-This application is designed for government and military use with maximum security controls.
-
-## Features
+## Features (planned)
 
 ### Core Functionality
-- **Secure Authentication**: Government-grade multi-factor authentication
-- **Audio Processing**: Real-time analysis, normalization, and format conversion
-- **Batch Processing**: Queue-based processing for multiple files
-- **Security Controls**: Role-based access control with clearance levels
-- **Audit Logging**: Comprehensive activity monitoring and logging
-- **System Monitoring**: Real-time system status and performance metrics
-
-### Security Features
-- **Multi-level Clearance**: UNCLASSIFIED → TOP SECRET access levels
-- **Encrypted Communication**: All data transmission secured with AES-256
-- **Session Management**: Secure token-based authentication with timeout
-- **Audit Trail**: Complete logging of all user activities
-- **Access Controls**: Permission-based feature access
+- **Audio Processing**: analysis, normalization, and format conversion
+- **Batch Processing**: queue-based processing for multiple files
+- **Audit Logging**: activity logging view
+- **System Monitoring**: system status and performance metrics
 
 ### User Interface
-- **Modern Design**: Material-UI components with government theme
+- **Modern Design**: Material-UI components
 - **Responsive Layout**: Works on desktop and tablet devices
-- **Dark/Light Modes**: Government-approved color schemes
+- **Dark/Light Modes**: Light and dark color schemes
 - **Accessibility**: WCAG 2.1 AA compliant interface
 - **Real-time Updates**: Live status updates and progress indicators
 
@@ -71,7 +63,7 @@ npm run dist
 ### Frontend Stack
 - **React 18**: Modern UI framework with hooks
 - **TypeScript**: Type-safe development
-- **Material-UI 5**: Government-compliant design system
+- **Material-UI 5**: component library
 - **React Router**: Client-side routing
 - **Recharts**: Data visualization and charts
 
@@ -81,11 +73,11 @@ npm run dist
 - **Context Isolation**: Maximum security with process separation
 - **Auto-updater**: Secure application updates
 
-### Backend Integration
-- **Python Integration**: Seamless connection to audio processing backend
-- **Authentication API**: Integration with government authentication system
-- **File Processing**: Secure file handling and temporary storage
-- **Audit API**: Real-time logging to government audit systems
+### Backend Integration (planned, not yet wired up)
+- **Python Integration**: connection to the audio processing backend
+- **Authentication API**: integration with an external authentication service
+- **File Processing**: file handling and temporary storage
+- **Audit API**: logging of processing activity
 
 ## Security Architecture
 
@@ -148,7 +140,7 @@ npm run dist
 - ESLint/Prettier for code formatting
 - Component-based architecture
 - Comprehensive error handling
-- Government-approved dependencies only
+- Vetted dependencies only
 
 ### Testing Requirements
 - Unit tests for all components
@@ -170,11 +162,10 @@ npm run build
 npm run electron-pack
 ```
 
-### Government Deployment
-- Code signing with government certificates
+### Packaged Distribution
+- Code signing with a release certificate
 - Package verification and integrity checking
-- Secure distribution through approved channels
-- Installation validation and audit logging
+- Installation validation and logging
 
 ## Support
 
@@ -190,6 +181,5 @@ npm run electron-pack
 
 ---
 
-**Classification**: RESTRICTED - Government Use Only
-**Last Updated**: January 2025
+**Status**: Experimental UI scaffolding (backend integration in progress)
 **Document Control**: GUI-README-2025-001

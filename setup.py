@@ -25,7 +25,7 @@ def read_version() -> str:
         match = re.search(r'VERSION\s*=\s*"([^"]+)"', content)
         if match:
             return match.group(1)
-    return "3.0.0"
+    return "1.0.0"
 
 
 setup(
@@ -67,8 +67,10 @@ setup(
     py_modules=[
         "main",
         "core",
+        "security_validator",
         "plugin_system",
         "midi_analysis",
+        "music_generator",
         "config_manager",
         "api_server",
         "batch_automation",
@@ -78,6 +80,12 @@ setup(
         "audio_enhancer",
         "audio_restoration",
         "realtime_effects",
+        "mastering_chain",
+        "advanced_audio_features",
+        "performance_optimizer",
+        "stability_enhancer",
+        "ux_improvements",
+        "audio_utils",
     ],
     python_requires=">=3.8",
     install_requires=[
@@ -104,7 +112,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "chameleon=main:main",
+            "chameleon=main:cli",
         ],
     },
     include_package_data=True,

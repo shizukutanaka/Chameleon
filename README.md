@@ -1,10 +1,10 @@
-# Otedama Audio Processing System
+# Chameleon Audio Processing System
 
 Production-grade audio processing system for professional and enterprise use.
 
 ## Overview
 
-Otedama is a secure, high-performance audio processing system designed for professional audio workflows. Built with security, reliability, and performance as core principles.
+Chameleon is a secure, high-performance audio processing system designed for professional audio workflows. Built with security, reliability, and performance as core principles.
 
 **Status:** Production Ready
 **License:** MIT
@@ -29,7 +29,7 @@ Otedama is a secure, high-performance audio processing system designed for profe
 - RBAC for enterprise deployment
 
 ### Performance
-- Parallel batch processing (4-8x faster)
+- Parallel batch processing across multiple worker threads
 - Memory-efficient streaming for large files
 - SIMD-optimized operations
 - Intelligent caching
@@ -48,8 +48,8 @@ Otedama is a secure, high-performance audio processing system designed for profe
 
 ```bash
 # Clone repository
-git clone https://github.com/yourorg/otedama.git
-cd otedama
+git clone https://github.com/shizukutanaka/Chameleon.git
+cd Chameleon
 
 # Setup virtual environment
 python3 -m venv .venv
@@ -82,10 +82,10 @@ python main.py batch /path/to/audio/ normalize --dry-run
 
 ```bash
 # Build image
-docker build -t otedama:latest .
+docker build -t chameleon:latest .
 
 # Run container
-docker run -v /audio:/data otedama:latest analyze /data/file.wav
+docker run -v /audio:/data chameleon:latest analyze /data/file.wav
 ```
 
 ## Configuration
@@ -103,7 +103,7 @@ export CHAMELEON_CHUNK_SIZE=131072  # 128KB
 export CHAMELEON_PERFORMANCE_MODE=fast  # fast, balanced, safe
 
 # API Server
-export CHAMELEON_API_KEY_FILE=/etc/otedama/api_keys.json
+export CHAMELEON_API_KEY_FILE=/etc/chameleon/api_keys.json
 export CHAMELEON_ALLOWED_ORIGINS=https://your-domain.example.com
 ```
 
@@ -156,15 +156,15 @@ results = parallel.process_files_parallel(
 ## Architecture
 
 ### Core Modules
-- **core.py** - Security validation, file I/O, safe operations
+- **core.py** - WAV processing, file I/O, safe operations
 - **main.py** - CLI entry point with all commands
-- **api_server.py** - REST API with authentication
-- **plugin_system.py** - Sandboxed plugin execution
+- **security_validator.py** - Path/file validation, secure file operations
+- **api_server.py** - Optional REST API (requires fastapi/uvicorn)
+- **plugin_system.py** - Sandboxed plugin execution with AST validation
 
 ### Security Modules
-- **security_hardening.py** - Rate limiting, encryption, secrets
-- **enhanced_security.py** - RBAC, API keys, compliance
-- **advanced_validation.py** - Deep file inspection, integrity
+- **security_validator.py** - Path validation, trusted-root enforcement, size limits
+- **advanced_validation.py** - Deeper file inspection and integrity checks
 
 ### Performance Modules
 - **performance_optimizer.py** - Parallel processing, SIMD, caching
@@ -219,16 +219,14 @@ pip install psutil
 ## Testing
 
 ```bash
-# Basic validation
+# Basic validation (standard library only)
 python validation_test.py
 
-# Core functionality
+# Unit tests (core + security primitives)
 python test_core.py
 
-# Security modules
-python -m security_hardening
-python -m enhanced_security
-python -m advanced_validation
+# Full test suite
+pytest
 ```
 
 ## Monitoring
@@ -262,10 +260,10 @@ MIT License - See LICENSE for details
 
 ## Support
 
-- **Issues**: https://github.com/yourorg/otedama/issues
+- **Issues**: https://github.com/shizukutanaka/Chameleon/issues
 - **Documentation**: See `docs/` directory
 - **Security Issues**: Report via GitHub Security Advisories
 
 ---
 
-**Otedama Audio Processing System** - Professional audio processing with security and performance for production environments.
+**Chameleon Audio Processing System** - Professional audio processing with security and performance for production environments.
