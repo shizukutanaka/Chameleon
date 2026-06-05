@@ -96,9 +96,10 @@ directly verifiable.
    The current transcription is monophonic. Integrate Spotify **basic-pitch**
    (instrument-agnostic polyphonic note + pitch-bend transcription; reads
    WAV/MP3/FLAC/OGG; emits MIDI). CPU ~0.5-2× RT, ~model a few hundred MB,
-   no TF dependency by default. arXiv: **2202.06183** (Bittner et al., ICASSP
-   2022); github.com/spotify/basic-pitch. (Baseline reference:
-   Onsets-and-Frames, arXiv 1710.11153.)
+   no TF dependency by default. arXiv: **2203.09893** (Bittner et al., "A
+   Lightweight Instrument-Agnostic Model for Polyphonic Note Transcription and
+   Multipitch Estimation", ICASSP 2022); github.com/spotify/basic-pitch.
+   (Baseline reference: Onsets-and-Frames, arXiv 1710.11153.)
 
 10. **Learned key + beat/tempo tracking** *(`midi_analysis.py`)*
     Replace heuristic key detection with a learned CNN (**key-cnn**; arXiv
