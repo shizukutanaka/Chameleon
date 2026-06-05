@@ -62,9 +62,22 @@ class WAVValidator:
         except Exception:
             return False
 
+    # Hardening limits for the hand-rolled RIFF parser. Declared chunk sizes in
+    # a WAV header are attacker-controllable; never trust them beyond the real
+    # file size, and bound the chunk-walk so a crafted/looping file cannot hang.
+    MAX_CHUNKS = 4096
+    VALID_BITS_PER_SAMPLE = {8, 16, 24, 32}
+    MAX_CHANNELS = 256
+
     @staticmethod
     def get_wav_info(file_path: str) -> Optional[WAVInfo]:
-        """Extract WAV file information"""
+        """Extract WAV file information.
+
+        The RIFF chunk walk is bounded against the actual file size (declared
+        chunk sizes are validated, never trusted) and honours word alignment, so
+        truncated or maliciously-crafted headers yield ``None`` rather than wrong
+        values, unbounded seeks, or a hang.
+        """
         try:
             if not WAVValidator.is_valid_wav_file(file_path):
                 return None
@@ -75,6 +88,8 @@ class WAVValidator:
             with open(file_path, 'rb') as f:
                 # Read RIFF header
                 riff_header = f.read(12)
+                if len(riff_header) < 12:
+                    return None
                 if riff_header[:4] != b'RIFF' or riff_header[8:12] != b'WAVE':
                     return None
 
@@ -85,7 +100,12 @@ class WAVValidator:
                 format_type = "Unknown"
                 data_size = 0
 
-                while True:
+                pos = 12  # byte offset of the next chunk header
+                chunks_seen = 0
+
+                while pos + 8 <= file_size and chunks_seen < WAVValidator.MAX_CHUNKS:
+                    chunks_seen += 1
+                    f.seek(pos)
                     chunk_header = f.read(8)
                     if len(chunk_header) < 8:
                         break
@@ -93,30 +113,45 @@ class WAVValidator:
                     chunk_id = chunk_header[:4]
                     chunk_size = struct.unpack('<I', chunk_header[4:8])[0]
 
+                    body_start = pos + 8
+                    # Never trust the declared size beyond what the file holds.
+                    available = max(0, file_size - body_start)
+                    effective_size = min(chunk_size, available)
+
                     if chunk_id == b'fmt ':
-                        fmt_data = f.read(min(chunk_size, 16))
+                        fmt_data = f.read(min(effective_size, 16))
                         if len(fmt_data) >= 16:
                             audio_format = struct.unpack('<H', fmt_data[0:2])[0]
                             channels = struct.unpack('<H', fmt_data[2:4])[0]
                             sample_rate = struct.unpack('<I', fmt_data[4:8])[0]
                             bits_per_sample = struct.unpack('<H', fmt_data[14:16])[0]
-
                             format_type = "PCM" if audio_format == 1 else f"Format {audio_format}"
 
-                        if chunk_size > 16:
-                            f.seek(chunk_size - 16, 1)
-
                     elif chunk_id == b'data':
-                        data_size = chunk_size
+                        data_size = effective_size
                         break
 
-                    else:
-                        f.seek(chunk_size, 1)
+                    # Advance to the next chunk. RIFF chunks are word-aligned, so
+                    # an odd size carries a trailing pad byte. Use the *declared*
+                    # size for stride (capped to the file) and require forward
+                    # progress to defeat zero-size loops.
+                    stride = chunk_size + (chunk_size & 1)
+                    next_pos = body_start + min(stride, available + 1)
+                    if next_pos <= pos:
+                        break
+                    pos = next_pos
+
+                # Reject implausible format fields rather than computing nonsense.
+                if channels > WAVValidator.MAX_CHANNELS:
+                    return None
+                if bits_per_sample and bits_per_sample not in WAVValidator.VALID_BITS_PER_SAMPLE:
+                    return None
 
                 # Calculate duration
                 if sample_rate > 0 and channels > 0 and bits_per_sample > 0:
                     bytes_per_sample = bits_per_sample // 8
-                    total_samples = data_size // (channels * bytes_per_sample)
+                    frame_size = channels * bytes_per_sample
+                    total_samples = data_size // frame_size if frame_size else 0
                     duration_seconds = total_samples / sample_rate
                 else:
                     duration_seconds = 0.0
@@ -132,8 +167,9 @@ class WAVValidator:
                     data_size=data_size
                 )
 
-        except Exception:
+        except (OSError, ValueError, struct.error):
             return None
+
 
 
 class SimpleWAVWriter:

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Security
+
+- Hardened the hand-rolled WAV/RIFF parser in `audio_utils.py`: declared chunk
+  sizes are now validated against the actual file size (never trusted for
+  reads/seeks), RIFF word-alignment padding is honoured, the chunk walk is
+  bounded (no hang on zero-size/looping chunks), and implausible format fields
+  are rejected. Added `tests/test_wav_robustness.py` (valid parsing + truncated,
+  oversized, odd-sized, and fuzzed inputs). Addresses the audio-parser CVE class
+  (cf. libsndfile CVE-2021-3246 / CVE-2014-9496 / CVE-2017-8363).
+
 ### Fixed
 
 - Restored the broken import chain: `main.py`, `core.py`, `plugin_system.py` and
