@@ -291,6 +291,36 @@ class SecurityValidator:
             resolved.append(target)
         return resolved
 
+    @_hybridmethod
+    def validate_url(self, url: str, allow_localhost: bool = False) -> str:
+        """Validate an http(s) URL / origin and return it normalised.
+
+        Raises :class:`SecurityError` for anything that is not a well-formed
+        http/https URL, or that points at localhost/loopback unless
+        *allow_localhost* is set.
+        """
+        from urllib.parse import urlsplit
+
+        if not isinstance(url, str) or not url.strip():
+            raise SecurityError("Empty URL")
+        candidate = url.strip()
+        try:
+            parts = urlsplit(candidate)
+        except ValueError as exc:
+            raise SecurityError(f"Malformed URL: {url}") from exc
+
+        if parts.scheme not in ("http", "https"):
+            raise SecurityError(f"Unsupported URL scheme: {parts.scheme or '(none)'}")
+        host = parts.hostname
+        if not host:
+            raise SecurityError(f"URL has no host: {url}")
+        if any(ch in candidate for ch in _SUSPICIOUS_CHARS):
+            raise SecurityError(f"Suspicious characters in URL: {url}")
+        if not allow_localhost and host.lower() in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+            raise SecurityError(f"Loopback host not allowed: {host}")
+        return candidate
+
+
 
 class SecureFileOperations:
     """File open helpers bound to a :class:`SecurityValidator`."""
@@ -309,6 +339,9 @@ class SecureFileOperations:
         operation = "write" if writing else "read"
         self.validator.validate_file_path(path, operation=operation)
 
+        # encoding is only valid for text modes; ignore it for binary opens.
+        open_encoding = None if "b" in mode else encoding
+
         if writing:
             flags = os.O_WRONLY
             flags |= os.O_CREAT | (os.O_APPEND if "a" in mode else os.O_TRUNC)
@@ -317,9 +350,9 @@ class SecureFileOperations:
             if hasattr(os, "O_BINARY"):
                 flags |= os.O_BINARY
             fd = os.open(os.fspath(path), flags, 0o600)
-            handle = os.fdopen(fd, mode, encoding=encoding)
+            handle = os.fdopen(fd, mode, encoding=open_encoding)
         else:
-            handle = open(path, mode, encoding=encoding)
+            handle = open(path, mode, encoding=open_encoding)
 
         try:
             yield handle

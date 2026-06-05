@@ -1098,8 +1098,10 @@ class AudioProcessor:
             destination = Path(explicit_path)
         else:
             if output_dir:
-                if not SecurityValidator.validate_directory(output_dir):
-                    raise ValueError(f"Unsafe output directory: {output_dir}")
+                try:
+                    SecurityValidator.validate_directory(output_dir)
+                except SecurityError as exc:
+                    raise ValueError(f"Unsafe output directory: {output_dir}") from exc
                 destination_dir = Path(output_dir)
                 destination_dir.mkdir(parents=True, exist_ok=True)
             else:
@@ -1674,7 +1676,7 @@ async def main():
             # Generate MIDI file from scratch
             if not args.output:
                 print("Error: --output required for generate operation")
-                return
+                return 1
 
             print("🎼 Generating MIDI demo...")
 

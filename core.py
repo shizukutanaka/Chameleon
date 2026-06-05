@@ -246,41 +246,7 @@ class MemoryManager:
             return self.vectorized_cache[cache_key]['array']
         return None
 
-    def _memory_map_file(self, file_path: str, offset: int = 0, size: Optional[int] = None) -> bytes:
-        """Memory map file for efficient access."""
-        import mmap
 
-        with open(file_path, 'rb') as f:
-            mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
-            try:
-                if offset > 0:
-                    mm.seek(offset)
-                if size is None:
-                    available = max(0, mm.size() - mm.tell())
-                    data = mm.read(available)
-                else:
-                    data = mm.read(size)
-            finally:
-                mm.close()
-            return data
-
-    def _chunked_read(self, file_path: str, offset: int, size: int) -> bytes:
-        """Read file in optimized chunks with buffering."""
-        result = bytearray()
-        bytes_read = 0
-
-        with open(file_path, 'rb') as f:
-            f.seek(offset)
-
-            while bytes_read < size:
-                chunk_size = min(CHUNK_SIZE, size - bytes_read)
-                chunk = f.read(chunk_size)
-                if not chunk:
-                    break
-                result.extend(chunk)
-                bytes_read += len(chunk)
-
-        return bytes(result)
 
 
     def _memory_map_file(self, file_path: str, offset: int = 0, size: Optional[int] = None) -> bytes:
@@ -1392,7 +1358,9 @@ class BatchProcessor:
 
     def process_directory(self, directory: str, operation: str, **kwargs) -> List[ProcessingResult]:
         """Process all WAV files in directory."""
-        if not SecurityValidator.validate_directory(directory):
+        try:
+            SecurityValidator.validate_directory(directory)
+        except SecurityError:
             return [ProcessingResult(False, "Invalid directory provided")]
 
         path = Path(directory)
@@ -1406,7 +1374,9 @@ class BatchProcessor:
         output_dir = kwargs.get("output_dir")
         target_dir = None
         if output_dir:
-            if not SecurityValidator.validate_directory(output_dir):
+            try:
+                SecurityValidator.validate_directory(output_dir)
+            except SecurityError:
                 return [ProcessingResult(False, "Invalid output directory provided")]
             target_dir = Path(output_dir)
             parent = target_dir.resolve().parent
@@ -1631,7 +1601,9 @@ class BatchProcessor:
                 return await self._execute_operation_async(operation, file_path, kwargs)
 
         # Get file list
-        if not SecurityValidator.validate_directory(directory):
+        try:
+            SecurityValidator.validate_directory(directory)
+        except SecurityError:
             return [ProcessingResult(False, "Invalid directory provided")]
 
         path = Path(directory)
