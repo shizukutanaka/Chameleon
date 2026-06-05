@@ -172,3 +172,103 @@ directly verifiable.
    heavy deps, directly improves a core command.
 2. Wire `codec_support` into `analyze`/`process` so non-WAV input works (#2).
 3. Swap the `np.interp` resample fallback for soxr/resampy (#3).
+
+---
+
+# Part 2 — Robustness, security, metadata, QA, CLI/API
+
+A second research pass covered angles the feature-focused list above missed:
+parser robustness/security, plugin isolation, objective quality metrics, audio
+metadata/broadcast standards, and CLI/API design vs comparable tools. CVE and
+arXiv references below were verified by search.
+
+### Verified current state (Part 2)
+- The WAV reader is **hand-rolled with `struct`** and reads chunk sizes
+  unchecked: `audio_utils.py:94` does
+  `chunk_size = struct.unpack('<I', chunk_header[4:8])[0]` with **no validation
+  against the actual file size** before it is used for reads/seeks. `core.py`
+  has the same pattern.
+- `plugin_system.py` relies on an **AST allowlist + `resource` limits** running
+  in-process (threads) — this is hardening, not a security boundary.
+- `mutagen` is declared as a dependency but **no module imports it** — no tag,
+  BWF/bext, iXML, cue-point, or loudness-metadata support.
+- `main.py` is argparse-based: no progress bars, shell completion, config file,
+  or fully consistent exit codes; `--dry-run` is only on some commands.
+- `api_server.py` lacks magic-byte/content-type validation, a `/health`
+  endpoint, an async job queue for long jobs, and request-size middleware.
+
+## P2-Tier 1 — Robustness & honesty (high value, low effort, no heavy deps)
+
+P1. **Harden the hand-rolled WAV/RIFF parser** *(`core.py`, `audio_utils.py`,
+   `security_validator.py`)*
+   Malformed-RIFF parsing is the classic audio CVE class — e.g. **CVE-2014-9496**
+   and **CVE-2017-8363** (out-of-bounds reads, libsndfile), **CVE-2021-3246**
+   (heap overflow, libsndfile WAV). Chameleon's parser trusts declared chunk
+   sizes. Add: validate `chunk_size <= file_size - offset`; cap declared sizes;
+   overflow-safe size arithmetic; reject implausible sample-rate/channels/
+   bit-depth (whitelist); bounded reads everywhere. Low effort, pure-stdlib,
+   no behaviour change on valid files. Refs: NVD CVE-2014-9496 / CVE-2017-8363 /
+   CVE-2021-3246, RIFF spec.
+
+P2. **Fuzz & property-test the parser** *(`tests/`)*
+   Because the parser is hand-rolled, add **Hypothesis** property tests (random
+   bytes must never crash — only raise expected errors) and an **atheris**
+   coverage-guided fuzz target over the WAV reader, plus golden-file round-trip
+   tests (analyze→normalize→trim preserve duration/rate/channels) and
+   `--cov-fail-under` on the I/O path. Cost: free. Refs: github.com/google/atheris,
+   Hypothesis docs.
+
+P3. **Be honest about the plugin sandbox** *(`plugin_system.py`)*
+   An AST allowlist is widely understood **not** to be a security boundary
+   (RestrictedPython's own docs say so; the PyPy sandbox is unmaintained and was
+   "never a security boundary"). Add an explicit warning in the docs/class, and
+   offer real isolation as an optional execution backend: **subprocess +
+   seccomp** (Linux) or **nsjail**, with **WASM/wasmtime** as the strong-isolation
+   long-term option. Refs: restrictedpython.readthedocs.io, github.com/google/nsjail.
+
+P4. **Use the already-declared `mutagen` for metadata** *(`codec_support.py`,
+   new `metadata.py`)*
+   Read/write tags (ID3/Vorbis/MP4/RIFF-INFO) and **preserve metadata across
+   batch processing** (currently dropped). Add Broadcast Wave (BWF `bext`),
+   `cue`/`LIST-adtl` markers, and EBU R128 loudness metadata for production
+   workflows (libs: `wave-bwf-rf64`, `bwfsoundlib`). Refs: EBU Tech 3285 (BWF),
+   mutagen docs.
+
+P5. **CLI/UX modernization** *(`main.py`, new `cli_utils.py`)*
+   Versus sox/ffmpeg/Typer-style CLIs, add: consistent **exit codes**, expand
+   `--dry-run` to all mutating commands, **progress bars** (`rich`, degrade when
+   piped), **shell completion** (`argcomplete`), and optional **TOML config**
+   (`~/.chameleon/config.toml`, stdlib `tomllib`). Cost: low–medium. Refs:
+   rich.readthedocs.io, github.com/kislyuk/argcomplete.
+
+## P2-Tier 2 — Optional deps / medium effort
+
+P6. **Objective quality metrics — a `quality` command** *(new `quality_metrics.py`)*
+   Add reference-based and reference-less quality scoring to validate processing
+   (mastering/restoration/enhancement) and regression-test it: **SI-SDR**
+   (arXiv **1811.02508**, via `torchmetrics[audio]`), **STOI** (`pystoi`),
+   **ViSQOL v3** (arXiv **2004.09584**, Apache-2.0), and non-intrusive
+   **DNSMOS** (arXiv **2010.15258**), **NISQA** (arXiv **2104.09494**),
+   **TorchAudio-Squim** (arXiv **2304.01448**). Note: open `pesq`/`pypesq` is
+   semi-maintained and PESQ/P.862 is officially deprecated — prefer
+   ViSQOL/Squim. CPU-feasible. Maps to a `chameleon quality compare a.wav ref.wav`.
+
+P7. **REST API hardening & async jobs** *(`api_server.py`, new `async_jobs.py`)*
+   Add magic-byte + Content-Type validation (reject non-audio before
+   processing), request-size middleware, a `/health` and `/metrics` endpoint,
+   structured error bodies, and an **async job queue** (RQ/Redis) with
+   `POST /process → job_id` + `GET /jobs/{id}` for long operations, plus
+   streaming uploads (`aiofiles`) and token auth. Refs: python-rq.org, FastAPI
+   docs.
+
+## Verified references (Part 2)
+- Parser CVEs: NVD **CVE-2014-9496**, **CVE-2017-8363**, **CVE-2021-3246**
+  (libsndfile) — confirmed real, illustrate the RIFF-parsing risk class.
+- Quality-metric arXiv IDs confirmed: SI-SDR **1811.02508**, DNSMOS
+  **2010.15258**, NISQA **2104.09494**. ViSQOL **2004.09584** and
+  TorchAudio-Squim **2304.01448** cited from the source survey (re-verify before
+  pinning).
+- Anchor IDs in Part 1 re-verified by search: basic-pitch **2203.09893**
+  (corrected from an earlier wrong id), MT3 **2111.03017**, HT-Demucs
+  **2211.08553**, EnCodec **2210.13438**, Beat This! **2407.21658**,
+  DeepFilterNet2 **2205.05474**.
