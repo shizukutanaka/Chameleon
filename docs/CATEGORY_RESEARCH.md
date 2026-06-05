@@ -20,7 +20,7 @@ practical; bleeding-edge (2025–2026) ids should be re-checked before adopting.
 9. Music source separation (stems)
 10. Security, parser robustness & plugin sandboxing
 
-Progress: 6 / 10 categories complete.
+Progress: 10 / 10 categories complete.
 
 ---
 <!-- Category sections are appended below as each iteration completes. -->
@@ -197,3 +197,130 @@ Top improvement points:
   gating/masking for cleaner spectral repair.
 - Offer an optional **GPU STFT/CQT** backend (nnAudio/torchaudio) and
   phase-vocoder **time-stretch/pitch-shift** (pyrubberband).
+
+## 7. Audio-to-MIDI transcription (pitch / polyphonic)
+
+Current state: `midi_analysis.py` = monophonic autocorrelation pitch + custom
+MIDI writing.
+
+Sources (GitHub / arXiv):
+1. Spotify basic-pitch — arXiv 2203.09893 + github.com/spotify/basic-pitch —
+   lightweight polyphonic + pitch-bend, CPU.
+2. Onsets and Frames — arXiv 1710.11153 — split onset vs frame stacks for timing.
+3. MT3 — arXiv 2111.03017 — multi-instrument transcription (GPU).
+4. CREPE — arXiv 1802.06182 + github.com/marl/crepe — robust monophonic pitch CNN.
+5. librosa.pyin — probabilistic YIN with voicing confidence (drop-in for
+   autocorrelation).
+6. pretty_midi — github.com/craffel/pretty-midi — robust MIDI I/O (velocity,
+   bends, tempo).
+7. mido — github.com/mido/mido — MIDI messages + live port streaming.
+8. MAESTRO — arXiv 1810.12247 — aligned audio/MIDI dataset (train/eval).
+9. MELODIA — UPF MTG — predominant-melody extraction for polyphonic mixes.
+10. Drum transcription (e.g. Inverse Drum Machine, arXiv 2505.03337, re-verify) —
+    multi-voice drums.
+
+Top improvement points:
+- Replace monophonic autocorrelation with **basic-pitch** (polyphonic) and/or
+  **CREPE**/`librosa.pyin` (confident monophonic).
+- Adopt **onset/frame separation** for better note timing.
+- Use **pretty_midi**/**mido** for standard MIDI I/O + optional live streaming.
+
+## 8. Music IR (key/chord/beat/tempo/structure) & symbolic generation
+
+Current state: Krumhansl-Schmuckler key + chord templates; no beat/tempo/
+structure; basic `music_generator.py`.
+
+Sources (GitHub / arXiv):
+1. Directional-CNN key/tempo — arXiv 1903.10839 — learned key/tempo.
+2. madmom — arXiv 1605.07008 + github.com/CPJKU/madmom — beat/downbeat/tempo, CPU.
+3. Beat This! — arXiv 2407.21658 + github.com/CPJKU/beat_this — SOTA beat tracking.
+4. All-In-One — arXiv 2307.16425 + github.com/mir-aidj/all-in-one — beat+structure.
+5. Essentia — essentia.upf.edu + github.com/MTG/essentia — 600+ descriptors,
+   neural key/genre.
+6. music21 — github.com/cuthbertLab/music21 — chord/scale/Roman-numeral analysis.
+7. MusPy — arXiv 2008.01951 + github.com/salu133445/muspy — symbolic I/O + eval.
+8. Music Transformer — arXiv 1809.04281 — long-term coherent generation.
+9. MuseGAN — arXiv 1709.06298 + github.com/salu133445/musegan — multi-track gen.
+10. librosa — chroma_cqt / beat_track baselines + cross-validation.
+
+Top improvement points:
+- Add **beat/downbeat/tempo** (madmom or Beat This!) and **structure
+  segmentation** (All-In-One) — currently absent.
+- Upgrade key to **learned CNN** and chords to **music21/Essentia** functional
+  analysis instead of templates.
+- Strengthen `music_generator.py` with **music21** theory + (optionally) a
+  Transformer/MuseGAN backend, evaluated via **MusPy**.
+
+## 9. Music source separation (stems)
+
+Current state: none. (Improves transcription/key/chord accuracy as preprocessing.)
+
+Sources (GitHub / arXiv):
+1. Hybrid Transformer Demucs — arXiv 2211.08553 + github.com/facebookresearch/demucs
+   — SOTA-ish 4-stem, MIT.
+2. Open-Unmix — github.com/sigsep/open-unmix-pytorch — lightweight LSTM, CPU.
+3. Spleeter — github.com/deezer/spleeter — fast 2/4/5-stem, TF.
+4. Asteroid — github.com/asteroid-team/asteroid — modular separation toolkit.
+5. Band-Split RNN — arXiv 2209.15174 — strong frequency-domain model.
+6. Conv-TasNet — arXiv 1809.07454 — low-latency time-domain.
+7. Ultimate Vocal Remover — github.com/Anjok07/ultimatevocalremovergui —
+   production vocal isolation (MDX/Demucs).
+8. MUSDB18 + museval — github.com/sigsep — benchmark + SDR/SIR/SAR metrics.
+9. BS-RoFormer — arXiv 2309.02612 — SDX23 winner, top SDR (heavier).
+10. Mel-Band RoFormer — arXiv 2310.01809 — arbitrary stem counts.
+
+Top improvement points:
+- Add an optional **`audio_separation.py`** with a pluggable backend (Demucs
+  default; Open-Unmix/Spleeter lightweight) + GPU/CPU fallback; CLI `separate`.
+- Use stems as **preprocessing** to boost MIDI/key/chord accuracy on mixes.
+- Benchmark with **MUSDB18/museval**; enable karaoke/backing-track export.
+
+## 10. Security, parser robustness & plugin sandboxing
+
+Current state: hand-rolled `struct` WAV parser without chunk-vs-file bounds
+checks (verified); in-process AST-allowlist plugin sandbox; FastAPI uploads.
+
+Sources (CVE / GitHub / arXiv):
+1. CVE-2021-3246 (libsndfile WAV heap overflow) — nvd.nist.gov — bound chunk sizes.
+2. CVE-2014-9496 (libsndfile OOB read) — loop-bounds before each read.
+3. CVE-2017-8363 (libsndfile integer-overflow over-read) — safe size arithmetic.
+4. RestrictedPython advisory GHSA-wqc8-x2pr-7jqh — AST sandboxes are escapable.
+5. atheris — github.com/google/atheris — coverage-guided fuzzing of the parser.
+6. nsjail — github.com/google/nsjail — namespaces+seccomp real plugin isolation.
+7. python-magic — github.com/ahupp/python-magic — magic-byte upload validation.
+8. pip-audit / safety — PyPI — supply-chain dependency scanning in CI.
+9. FastAPI secure-upload patterns — size limits, uuid filenames, temp dirs, async.
+10. ML-audio security research — arXiv 2410.16341 (re-verify) — validate computed
+    features (NaN/Inf, ranges).
+
+Top improvement points:
+- **Harden the WAV parser**: validate `offset + chunk_size <= file_size`,
+  overflow-safe arithmetic, bounded reads, format whitelist (core.py/audio_utils.py).
+- **Don't trust the AST sandbox** as a boundary: document it and add an optional
+  **subprocess + seccomp / nsjail** strict isolation mode (plugin_system.py).
+- **Validate uploads** by magic bytes + size, random filenames, async jobs in
+  `api_server.py`; add **pip-audit** + **atheris fuzzing** to CI.
+
+---
+
+## Synthesis — highest-leverage improvements across categories
+
+Ranked by value ÷ effort, grounded in verified current behaviour:
+
+1. **LUFS/EBU R128 loudness normalization** (cat 2) — the core `normalize` is
+   non-compliant peak gain; pyloudnorm is cheap and validatable.
+2. **Harden + fuzz the hand-rolled WAV parser** (cat 10) — real CVE class;
+   bounded reads + atheris/Hypothesis.
+3. **Unify multi-format I/O** through `codec_support` (cat 1) — make all commands
+   accept FLAC/MP3/OGG, not just WAV.
+4. **High-quality resampling + dithering** (cat 3) — replace `np.interp`, add TPDF.
+5. **Polyphonic audio-to-MIDI** via basic-pitch + **beat/tempo** via madmom
+   (cats 7–8) — biggest functional upgrade to the music features.
+6. **Optional ML denoiser** (DeepFilterNet2/noisereduce) and **source
+   separation** (Demucs) as optional deps (cats 4, 9).
+7. **Real-time hardening** (lock-free + Cython nogil) and **objective quality
+   metrics** for regression-testing processing (cats 5, plus IMPROVEMENT_RESEARCH P6).
+
+All ML items are proposed as **optional dependencies** with graceful
+degradation, matching the project's design. arXiv ids for established work were
+verified; 2025–2026 ids marked "re-verify" should be confirmed before pinning.
