@@ -17,7 +17,7 @@ E8. Metadata & DAW / interoperability
 E9. Documentation, i18n & developer experience
 E10. Deployment, containers & cross-platform distribution
 
-Progress: 8 / 10 categories complete.
+Progress: 10 / 10 categories complete.
 
 ---
 <!-- Sections appended below as each completes. -->
@@ -216,3 +216,79 @@ Top improvement points:
 - **Preserve metadata across batch** (extract→sidecar JSON→re-embed) and add EBU
   R128 loudness tagging (loudgain/libebur128).
 - Use **music21** for metadata-preserving MIDI + **MusicXML** export (DAW interop).
+
+## E9. Documentation, i18n & developer experience
+
+Current state: scattered README/QUICKSTART/DEPLOYMENT_GUIDE/MIDI_USAGE +
+docs/en & docs/ja (partial stubs) + openapi_spec.yaml; no docs site, no
+CONTRIBUTING, no auto API docs.
+
+Sources (tools / docs):
+1. Sphinx + autodoc + napoleon — auto API docs from docstrings.
+2. MkDocs Material — github.com/squidfunk/mkdocs-material — docs site + search.
+3. Read the Docs — hosting, PR previews, versioned docs.
+4. Diátaxis — diataxis.fr — tutorial/how-to/reference/explanation structure.
+5. Redoc — render openapi_spec.yaml as interactive API reference.
+6. doctest — executable examples keep docs in sync.
+7. mkdocs-static-i18n — github.com/ultrabug/mkdocs-static-i18n — complete ja/ docs.
+8. towncrier — news-fragment changelog automation (avoids merge conflicts).
+9. GitHub community files — CONTRIBUTING/CODE_OF_CONDUCT/issue templates.
+10. pdoc3 — zero-config interim API docs.
+
+Top improvement points:
+- Adopt a **docs site** (MkDocs Material) structured by **Diátaxis**, hosted on
+  Read the Docs; render the **OpenAPI** spec via Redoc/FastAPI `/docs`.
+- **Standardize docstrings** (Google/NumPy) + autodoc + **doctest** so examples
+  are tested; complete the **ja/** translations via mkdocs-static-i18n.
+- Add **CONTRIBUTING/CODE_OF_CONDUCT/issue templates** and **towncrier** changelog.
+
+## E10. Deployment, containers & cross-platform distribution
+
+Current state: Dockerfile + k8s-deployment.yaml + DEPLOYMENT_GUIDE.md; needs
+audio system libs (libsndfile/portaudio/ffmpeg); k8s has hardcoded base64 secrets.
+
+Sources (docs / GitHub):
+1. Docker Python best practices — multi-stage, non-root USER, .dockerignore, HEALTHCHECK.
+2. Kubernetes liveness/readiness/startup probes — tune for audio-lib init time.
+3. Chainguard/distroless Python images — near-zero-CVE runtime + SBOM.
+4. hadolint — github.com/hadolint/hadolint — Dockerfile linting in CI.
+5. Trivy / Grype — image vulnerability scanning.
+6. Syft — github.com/anchore/syft — SBOM (SPDX/CycloneDX) generation.
+7. Reproducible Docker builds — pinned digest, locked deps, SOURCE_DATE_EPOCH.
+8. PyInstaller / Nuitka — standalone Windows/macOS CLI binaries.
+9. conda-forge / Homebrew / pipx — cross-platform install channels.
+10. Sigstore/cosign — keyless image signing + admission verification.
+
+Top improvement points:
+- Harden the image: **non-root user, .dockerignore, HEALTHCHECK, pinned digest**,
+  multi-stage wheels; consider **distroless/Chainguard** runtime.
+- Add **image scanning (Trivy) + SBOM (Syft) + signing (cosign)** to CI; move the
+  **hardcoded k8s secrets** to external secret management.
+- Broaden distribution: **pipx**, **conda-forge/Homebrew**, optional
+  **PyInstaller** binaries; tune **k8s probes** for audio-lib startup.
+
+---
+
+## Round 2 synthesis — highest-leverage engineering improvements
+
+Ranked by value ÷ effort:
+
+1. **Harden + fuzz the WAV parser** (E4) — also a security item; atheris +
+   Hypothesis on the hand-rolled `struct` parser is the top engineering risk.
+2. **Single-source packaging + dependency locking** (E3) — retire setup.py
+   duplication, lock deps (uv/pip-tools), structure extras; fixes a real
+   version-sync footgun.
+3. **CLI polish** (E1) — semantic exit codes + `--dry-run` everywhere + progress
+   bars: cheap, high day-to-day UX gain.
+4. **Vectorize hot DSP loops** (E5) — NumPy/numba replacing stdlib-`array` loops
+   (numpy-gated) for large speedups.
+5. **Observability hygiene** (E6) — kill bare-except, structured logging + secret
+   redaction; metrics endpoint for the API.
+6. **API hardening + async jobs** (E2) and **container scanning/SBOM/signing**
+   (E10) for production readiness.
+7. **Metadata preservation** (E8), **entry-point + isolated plugins** (E7), and a
+   **Diátaxis docs site with finished ja/ translations** (E9).
+
+Cross-link: several items reinforce Round 1 / IMPROVEMENT_RESEARCH (WAV parser
+hardening, metadata/BWF, quality metrics, plugin isolation). All heavier tools
+remain optional dependencies with graceful degradation.
