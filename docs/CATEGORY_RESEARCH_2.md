@@ -17,10 +17,35 @@ E8. Metadata & DAW / interoperability
 E9. Documentation, i18n & developer experience
 E10. Deployment, containers & cross-platform distribution
 
-Progress: 3 / 10 categories complete (E1 pending in this wave).
+Progress: 4 / 10 categories complete.
 
 ---
 <!-- Sections appended below as each completes. -->
+
+## E1. CLI & UX design
+
+Current state: argparse CLI (`main.py`); partial `--dry-run`/JSON; no progress
+bars, shell completion, config file, or fully consistent exit codes.
+
+Sources (GitHub / docs):
+1. Click — github.com/pallets/click — decorator subcommands, composition.
+2. Typer — github.com/fastapi/typer — type-hint native, validation.
+3. rich — github.com/Textualize/rich — progress bars, tables, consistent console.
+4. tqdm — github.com/tqdm/tqdm — lightweight progress.
+5. argcomplete — github.com/kislyuk/argcomplete — bash/zsh completion for argparse.
+6. clig.dev — Command Line Interface Guidelines (output/help/errors).
+7. tomllib (stdlib 3.11+) — TOML config files.
+8. pydantic-settings — env+file settings with validation/merge precedence.
+9. Dry-run / idempotency UX patterns (clig.dev, XDG base dirs).
+10. sysexits.h — POSIX semantic exit codes (64 usage, 65 data, 74 I/O).
+
+Top improvement points:
+- **Standardized semantic exit codes** + structured errors in a new `cli_utils.py`
+  (low effort, enables shell chaining); expand `--dry-run` to all mutating commands.
+- **Progress bars** (rich/tqdm) for batch ops; consistent console output.
+- **Config file** (`~/.chameleon/config.toml`, tomllib/pydantic-settings) with
+  CLI>env>file>default precedence; shell completion via argcomplete. (Click/Typer
+  migration is a larger, optional v2 step.)
 
 ## E2. REST API & web-service architecture
 
