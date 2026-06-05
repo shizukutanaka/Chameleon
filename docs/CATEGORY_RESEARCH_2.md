@@ -17,7 +17,7 @@ E8. Metadata & DAW / interoperability
 E9. Documentation, i18n & developer experience
 E10. Deployment, containers & cross-platform distribution
 
-Progress: 4 / 10 categories complete.
+Progress: 8 / 10 categories complete.
 
 ---
 <!-- Sections appended below as each completes. -->
@@ -120,3 +120,99 @@ Top improvement points:
 - Add **coverage gate** + **snapshot/round-trip** output tests (not just
   `result.success`), with numpy tolerance checks for DSP.
 - **pytest-benchmark** perf gate and **tox/nox** multi-version matrix in CI.
+
+## E5. Performance, parallelism & memory efficiency
+
+Current state: `performance_optimizer.py` (ParallelProcessor, ThreadPool/Process,
+`SIMDOperations` using stdlib `array`), MemoryManager LRU, chunked WAV; numpy optional.
+
+Sources (GitHub / docs / PEPs):
+1. NumPy vectorization/broadcasting — SIMD without interpreter overhead.
+2. Numba JIT — numba.pydata.org — @njit for tight DSP loops.
+3. Free-threading / no-GIL — PEP 703 (Python 3.13+) — thread scaling.
+4. Sub-interpreters — PEP 734 — per-interpreter GIL middle ground.
+5. multiprocessing vs threading (RealPython) — CPU-bound needs processes.
+6. joblib (loky) — auto-memmap >1MB, safe oversubscription.
+7. numpy.memmap / mmap — random-access large audio without RAM blowup.
+8. Scalene / py-spy / line_profiler — find Python vs native hotspots.
+9. ProcessPoolExecutor pitfalls — pickle only paths, load audio in worker.
+10. Chunked/streaming bounded memory — adaptive chunk size by available RAM.
+
+Top improvement points:
+- **Vectorize `SIMDOperations`** with NumPy (and optional **numba** JIT) — the
+  current stdlib-`array` loops lose SIMD; 10–100× on DSP hot paths (numpy-gated).
+- **Pass file paths, not audio buffers**, to process pools; consider **joblib
+  loky + memmap** for large files; add `CHAMELEON_MAX_MEMORY_MB` adaptive chunking.
+- Add a `--profile` (Scalene) path and validate **free-threading (3.13+)** scaling.
+
+## E6. Observability: logging, metrics, audit & error handling
+
+Current state: stdlib logging (RotatingFileHandler), custom StructuredLogger,
+audit logs, ~78 broad try/except (some bare).
+
+Sources (GitHub / docs):
+1. structlog — github.com/hynek/structlog — processor-pipeline structured logs.
+2. python-json-logger — JSON formatter for stdlib logging.
+3. OpenTelemetry Python — traces/metrics/logs, auto-instrumentation.
+4. prometheus client_python — Counter/Histogram, multiprocess mode + `/metrics`.
+5. Sentry SDK — error aggregation/dedup with context.
+6. asgi-correlation-id — request/correlation IDs across async.
+7. tamper-evident append-only audit (hash-chain/HMAC) — audit integrity.
+8. secret/PII redaction in logs (MaskerLogger) — never log secrets.
+9. logging dictConfig — declarative config, runtime levels.
+10. bare-except guidance (pylint) — specific exception taxonomy.
+
+Top improvement points:
+- Replace the custom JSON logger with **structlog/python-json-logger** and use
+  **dictConfig**; add **secret/PII redaction**.
+- **Exception taxonomy**: eliminate bare `except:`, catch specific types; optional
+  Sentry; correlation IDs in `api_server.py`.
+- **Metrics** (Prometheus `/metrics`) + **tamper-evident audit log** (HMAC/hash-chain).
+
+## E7. Configuration, plugin architecture & extensibility
+
+Current state: `plugin_system.py` AST-allowlist + resource limits, in-process,
+filesystem discovery; `config_manager.py` manual coercion.
+
+Sources (GitHub / docs):
+1. pluggy — github.com/pytest-dev/pluggy — hookspec/hookimpl plugin contracts.
+2. stevedore — entry-point plugin discovery (OpenStack).
+3. PyPA "creating & discovering plugins" — entry_points/importlib.metadata.
+4. RestrictedPython docs — AST sandbox is NOT a security boundary.
+5. Figma "containers and seccomp" — isolation tiers comparison.
+6. nsjail — namespaces+cgroups+seccomp, <100 ms startup.
+7. pydantic JSON Schema — typed/validated plugin config + param schemas.
+8. python-semver — enforce plugin API version compatibility.
+9. wasmtime/WASI — hard-isolation sandbox for untrusted plugins.
+10. Python Stable ABI (PEP 384) — version-independent C-extension plugins.
+
+Top improvement points:
+- **Entry-point plugin discovery** (importlib.metadata/pluggy) so plugins ship via
+  PyPI, replacing fragile filesystem scanning.
+- **Document the AST sandbox is resource-control only**, add optional
+  **subprocess+seccomp/nsjail/WASM** isolation modes for untrusted plugins.
+- **Pydantic-validated config** + **semver API compatibility** checks at load time.
+
+## E8. Metadata & DAW / interoperability
+
+Current state: `mutagen` declared but unused; no BWF/iXML/cue/loudness metadata;
+metadata dropped across batch; MIDI via custom writer.
+
+Sources (GitHub / standards):
+1. mutagen — ID3v2/RIFF-INFO (no bext/iXML/cue) — use what it can.
+2. EBU Tech 3285 (BWF/bext) — broadcast metadata + loudness fields.
+3. wave-bwf-rf64 — github.com/nrkno/wave-bwf-rf64 — bext/RF64/levl/chna read-write.
+4. wavinfo — github.com/iluvcapra/wavinfo — read bext/iXML/cue/ADM.
+5. loudgain — github.com/Moonbase59/loudgain — ReplayGain/EBU R128 (libebur128).
+6. BWFMetaEdit — github.com/MediaArea/BWFMetaEdit — validation rules reference.
+7. Essentia — Chromaprint + descriptors for fingerprint metadata.
+8. music21 — metadata-preserving MIDI + MusicXML export for DAWs.
+9. Chromaprint/AcoustID — fingerprint → MusicBrainz metadata lookup.
+10. Sidecar `.meta.json` pattern — portable metadata across lossy ops.
+
+Top improvement points:
+- New **`metadata.py`** unifying read/write of tags + **BWF bext / iXML / cue /
+  loudness** (wave-bwf-rf64 + wavinfo + mutagen).
+- **Preserve metadata across batch** (extract→sidecar JSON→re-embed) and add EBU
+  R128 loudness tagging (loudgain/libebur128).
+- Use **music21** for metadata-preserving MIDI + **MusicXML** export (DAW interop).
