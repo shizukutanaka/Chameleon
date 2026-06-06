@@ -14,8 +14,20 @@
   oversized, odd-sized, zero-rate, and fuzzed inputs). Addresses the audio-parser
   CVE class (cf. libsndfile CVE-2021-3246 / CVE-2014-9496 / CVE-2017-8363).
 
+### Added
+
+- `docs/SPECIFICATION.md`: a functional specification of the CLI / API contract,
+  including a normative exit-code taxonomy and a tracked list of conformance gaps.
+- `--version` flag on the CLI (prints `chameleon <VERSION>`); the program
+  description now reports the real version instead of a stale "v3.0".
+- `tests/test_cli_contract.py`: subprocess-level CLI contract tests.
+
 ### Fixed
 
+- Not-implemented `ml` operations (`classify`, `separate`, `transcribe`) now exit
+  with code 2 ("unavailable") and a clear message instead of printing a note and
+  exiting 0 (which falsely reported success). `server` without uvicorn likewise
+  exits 2. See the exit-code taxonomy in `docs/SPECIFICATION.md`.
 - Restored the broken import chain: `main.py`, `core.py`, `plugin_system.py` and
   `batch_automation.py` previously crashed on import because they referenced
   local modules that did not exist. Added a single canonical, dependency-free

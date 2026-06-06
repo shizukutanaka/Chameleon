@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+"""CLI contract tests (see docs/SPECIFICATION.md).
+
+Exercises the command-line surface as a subprocess so exit codes and stdout are
+verified exactly as a user/script would see them.
+"""
+
+from __future__ import annotations
+
+import math
+import os
+import struct
+import subprocess
+import sys
+import tempfile
+import unittest
+import wave
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+MAIN = REPO / "main.py"
+
+
+def _run(*args: str):
+    return subprocess.run(
+        [sys.executable, str(MAIN), *args],
+        cwd=str(REPO),
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+
+def _make_wav(path: Path, seconds: float = 0.2, rate: int = 8000) -> None:
+    n = int(seconds * rate)
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        frames = [int(10000 * math.sin(2 * math.pi * 440 * i / rate)) for i in range(n)]
+        w.writeframes(struct.pack("<" + "h" * n, *frames))
+
+
+class CliContractTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.wav = Path(self.tmp.name) / "in.wav"
+        _make_wav(self.wav)
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def test_version_exits_zero_and_prints_version(self):
+        r = _run("--version")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("chameleon 1.0.0", r.stdout + r.stderr)
+
+    def test_no_command_exits_one(self):
+        r = _run()
+        self.assertEqual(r.returncode, 1)
+
+    def test_unimplemented_ml_op_exits_unavailable(self):
+        # separate has no model in this build -> exit code 2 (not 0).
+        r = _run("ml", "separate", "--input", str(self.wav))
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn("Not implemented", r.stdout)
+
+    def test_transcribe_exits_unavailable(self):
+        r = _run("ml", "transcribe", "--input", str(self.wav))
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+
+    def test_unknown_command_is_usage_error(self):
+        r = _run("definitely-not-a-command")
+        # argparse rejects invalid choice with exit code 2.
+        self.assertEqual(r.returncode, 2)
+
+
+if __name__ == "__main__":
+    unittest.main()

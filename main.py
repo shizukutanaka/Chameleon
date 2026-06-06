@@ -182,6 +182,14 @@ except ImportError:
 
 # Core constants
 VERSION = "1.0.0"
+
+# Process exit codes (see docs/SPECIFICATION.md). 0 success; 1 runtime/usage
+# error; 2 a requested feature is not implemented or its optional dependency is
+# unavailable (distinguishable by scripts from a hard failure).
+EXIT_OK = 0
+EXIT_ERROR = 1
+EXIT_UNAVAILABLE = 2
+
 MAX_FILE_SIZE = 500 * 1024 * 1024  # Align with core constraints (500MB)
 CHUNK_SIZE = 8192
 DEFAULT_SAMPLE_RATE = 44100
@@ -1160,10 +1168,12 @@ class AudioProcessor:
 def create_cli():
     """Create comprehensive CLI interface"""
     parser = argparse.ArgumentParser(
-        description="Chameleon Audio Processing System v3.0",
+        prog="chameleon",
+        description=f"Chameleon Audio Processing System v{VERSION}",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
+    parser.add_argument("--version", action="version", version=f"chameleon {VERSION}")
     parser.add_argument("--max-workers", type=int, help="Limit worker threads for batch operations")
     parser.add_argument("--no-parallel", action="store_true", help="Disable parallel execution even when available")
 
@@ -1564,20 +1574,24 @@ async def main():
         audio, sr = processor.load_audio(args.input)
 
         if args.operation == "classify":
-            # Genre/instrument classification
+            # Genre/instrument classification is not implemented: feature
+            # extraction works, but there is no trained classifier in this build.
             if HAS_LIBROSA:
-                # Extract features
                 mfcc = librosa.feature.mfcc(y=librosa.to_mono(audio), sr=sr, n_mfcc=13)
-                print(f"MFCC shape: {mfcc.shape}")
-                print("Classification would require a trained model")
-            else:
-                print("Librosa required for classification")
+                print(f"MFCC features extracted (shape {mfcc.shape}).")
+            print("Not implemented: genre/instrument classification has no model "
+                  "in this build. See docs/IMPROVEMENT_RESEARCH.md (Essentia/learned models).")
+            exit_code = EXIT_UNAVAILABLE
 
         elif args.operation == "separate":
-            print("Source separation would require specialized models (e.g., Spleeter)")
+            print("Not implemented: source separation requires an optional model "
+                  "(e.g. Demucs/Spleeter). See docs/IMPROVEMENT_RESEARCH.md (cat 9).")
+            exit_code = EXIT_UNAVAILABLE
 
         elif args.operation == "transcribe":
-            print("Transcription would require speech recognition models")
+            print("Not implemented: transcription requires an optional model "
+                  "(e.g. basic-pitch). See docs/IMPROVEMENT_RESEARCH.md (cat 7).")
+            exit_code = EXIT_UNAVAILABLE
 
         elif args.operation == "enhance":
             # Simple enhancement
@@ -1709,7 +1723,7 @@ async def main():
         except ImportError:
             print("The API server requires fastapi and uvicorn. "
                   "Install them with: pip install -r api_requirements.txt")
-            exit_code = 1
+            exit_code = EXIT_UNAVAILABLE
         else:
             uvicorn.run(
                 "api_server:app",
