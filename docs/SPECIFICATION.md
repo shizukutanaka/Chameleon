@@ -59,9 +59,10 @@ Empty/missing directory → exit 1.
 ### 3.4 `stream [--input-device D] [--output-device D] [--effects JSON] [--monitor]`
 Real-time pass-through with effects. Requires PyAudio; absent → exit 2.
 
-### 3.5 `midi <operation> [--input F] [--output F] [--key K] [--mode {major,minor}] [--tempo BPM] [--length S]`
+### 3.5 `midi <operation> [--input F] [--output F] [--key K] [--mode {major,minor}] [--tempo BPM] [--length S] [--dry-run]`
 `operation ∈ {extract, analyze, compose, generate}`. `extract`/`analyze` require
-`--input`; `generate`/`compose` require `--output`. MIDI write requires `mido`.
+`--input`; `generate`/`compose` require `--output`. `--dry-run` previews without
+writing the MIDI file. MIDI write requires `mido`.
 
 ### 3.6 `ml <operation> --input F [--model M] [--output F]`
 `operation ∈ {classify, separate, transcribe, enhance}`. `enhance` =
@@ -104,11 +105,9 @@ Resolved:
   exiting `0`, i.e. reporting success for an unimplemented operation).
 - ✅ `server` without uvicorn now exits `2` (was `1`).
 - ✅ `analyze --json` stdout output (parity with `process --json`).
-- ✅ `batch --dry-run` (preview without writing).
+- ✅ `--dry-run` on `process`, `batch`, and `midi` (preview without writing).
 
 Known remaining gaps (tracked for future work):
-- `--dry-run` now on `process` and `batch`; still intended for `midi`
-  (compose/generate). [E1 in CATEGORY_RESEARCH_2]
 - `ml separate/transcribe/classify` need optional models to actually function
   (Demucs / basic-pitch / Essentia) — currently honestly report "not implemented".
 - `midi compose/generate` produce only simple demo output; `compose` ignores most

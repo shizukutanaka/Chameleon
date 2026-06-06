@@ -96,6 +96,13 @@ class CliContractTests(unittest.TestCase):
         self.assertIn("[dry-run]", r.stdout)
         self.assertEqual(list(out.iterdir()), [])  # no files written
 
+    def test_midi_generate_dry_run_writes_nothing(self):
+        out = Path(self.tmp.name) / "demo.mid"
+        r = _run("midi", "generate", "--output", str(out), "--dry-run")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("[dry-run]", r.stdout)
+        self.assertFalse(out.exists())  # no MIDI file written
+
 
 if __name__ == "__main__":
     unittest.main()

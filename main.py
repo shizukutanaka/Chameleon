@@ -1236,6 +1236,7 @@ def create_cli():
     midi.add_argument("--mode", choices=["major", "minor"], default="major")
     midi.add_argument("--tempo", type=float, default=120.0, help="Tempo in BPM")
     midi.add_argument("--length", type=float, default=8.0, help="Length in seconds")
+    midi.add_argument("--dry-run", action="store_true", help="Preview without writing the MIDI file")
 
     # Plugins command
     plugins_cmd = subparsers.add_parser("plugins", help="Inspect and audit plugins")
@@ -1654,7 +1655,9 @@ async def main():
                     print(f"  ... and {len(notes)-10} more notes")
 
                 # Save to MIDI file if output specified
-                if args.output:
+                if args.output and args.dry_run:
+                    print(f"[dry-run] Would write {len(notes)} notes to {args.output}")
+                elif args.output:
                     success = processor.generate_midi(notes, args.output)
                     if success:
                         print(f"MIDI file saved to {args.output}")
@@ -1709,7 +1712,9 @@ async def main():
 
             if melody:
                 print(f"Generated melody with {len(melody)} notes")
-                if args.output:
+                if args.output and args.dry_run:
+                    print(f"[dry-run] Would write composition ({len(melody)} notes) to {args.output}")
+                elif args.output:
                     success = processor.generate_midi(melody, args.output)
                     if success:
                         print(f"Composition saved to {args.output}")
@@ -1739,7 +1744,9 @@ async def main():
                 if note:
                     demo_notes.append(note)
 
-            if demo_notes:
+            if demo_notes and args.dry_run:
+                print(f"[dry-run] Would write demo ({len(demo_notes)} notes) to {args.output}")
+            elif demo_notes:
                 success = processor.generate_midi(demo_notes, args.output)
                 if success:
                     print(f"Demo MIDI file generated: {args.output}")

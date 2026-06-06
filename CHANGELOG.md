@@ -21,7 +21,8 @@
 - `--version` flag on the CLI (prints `chameleon <VERSION>`); the program
   description now reports the real version instead of a stale "v3.0".
 - `analyze --json` (machine-readable analysis on stdout, parity with
-  `process --json`) and `batch --dry-run` (preview without writing files).
+  `process --json`); `batch --dry-run` and `midi --dry-run` (preview without
+  writing files).
 - `tests/test_cli_contract.py`: subprocess-level CLI contract tests.
 
 ### Fixed
