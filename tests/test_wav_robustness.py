@@ -133,5 +133,69 @@ class WavParserRobustnessTests(unittest.TestCase):
                 self.fail(f"parser raised on fuzz input #{i}: {exc!r}")
 
 
+class CoreWavParserRobustnessTests(unittest.TestCase):
+    """Same hardening expectations for core.py's two WAV header readers."""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        from core import WAVProcessor  # imported here so a core import error is visible
+        self.proc = WAVProcessor()
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def test_valid_wav_parses_correctly(self):
+        audio = b"\x00\x01" * 800
+        path = self.dir / "ok.wav"
+        self.assertTrue(SimpleWAVWriter.write_wav(str(path), audio, 8000, 1, 16))
+        for reader in (self.proc._read_wav_header, self.proc._read_wav_header_optimized):
+            info = reader(str(path))
+            self.assertIsNotNone(info, reader.__name__)
+            self.assertEqual(info.sample_rate, 8000)
+            self.assertEqual(info.channels, 1)
+            self.assertEqual(info.bit_depth, 16)
+            self.assertAlmostEqual(info.duration, 800 / 8000, places=3)
+
+    def test_oversized_data_chunk_is_capped(self):
+        body = _fmt_chunk() + b"data" + struct.pack("<I", 0xFFFFFFFF) + (b"\x00" * 10)
+        path = _write_bytes(self.dir, "huge.wav", _riff(body))
+        info = self.proc._read_wav_header(path)
+        if info is not None:
+            self.assertLess(info.duration, 1.0)
+
+    def test_zero_rate_does_not_divide_by_zero(self):
+        # sample_rate = 0 in fmt -> must return None, not raise ZeroDivisionError.
+        body = _fmt_chunk(sample_rate=0) + b"data" + struct.pack("<I", 4) + b"\x00\x00\x00\x00"
+        path = _write_bytes(self.dir, "zerorate.wav", _riff(body))
+        self.assertIsNone(self.proc._read_wav_header(path))
+
+    def test_data_before_fmt_returns_none(self):
+        body = b"data" + struct.pack("<I", 4) + b"\x00\x00\x00\x00" + _fmt_chunk()
+        path = _write_bytes(self.dir, "datafirst.wav", _riff(body))
+        self.assertIsNone(self.proc._read_wav_header(path))
+
+    def test_zero_size_chunks_terminate_quickly(self):
+        body = (b"junk" + struct.pack("<I", 0)) * 5000
+        path = _write_bytes(self.dir, "zeros.wav", _riff(body))
+        start = time.monotonic()
+        self.proc._read_wav_header(path)
+        self.assertLess(time.monotonic() - start, 2.0)
+
+    def test_random_bytes_never_crash(self):
+        rng = random.Random(99)
+        for i in range(200):
+            n = rng.randint(0, 300)
+            data = bytes(rng.randint(0, 255) for _ in range(n))
+            if i % 2 == 0:
+                data = b"RIFF" + struct.pack("<I", n) + b"WAVE" + data
+            path = _write_bytes(self.dir, f"cfuzz_{i}.wav", data)
+            try:
+                self.proc._read_wav_header(path)
+                self.proc._read_wav_header_optimized(path)
+            except Exception as exc:  # noqa: BLE001
+                self.fail(f"core parser raised on fuzz input #{i}: {exc!r}")
+
+
 if __name__ == "__main__":
     unittest.main()

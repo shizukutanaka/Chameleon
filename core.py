@@ -475,8 +475,13 @@ class WAVProcessor:
 
             # Get file size efficiently
             file_size = os.path.getsize(file_path)
-            data_size = file_size - 44  # Assume standard header
-            duration = data_size / (sample_rate * channels * (bits_per_sample // 8))
+            data_size = max(0, file_size - 44)  # Assume standard header
+            # Guard against malformed fmt fields (zero rate/channels/depth) that
+            # would otherwise raise ZeroDivisionError on the duration calc.
+            frame_rate = sample_rate * channels * (bits_per_sample // 8)
+            if frame_rate <= 0:
+                return None
+            duration = data_size / frame_rate
 
             return AudioInfo(
                 duration=duration,
@@ -728,64 +733,75 @@ class WAVProcessor:
             return ProcessingResult(False, f"Silence trimming failed: {str(e)}")
 
     def _read_wav_header(self, file_path: str) -> Optional[AudioInfo]:
-        """Read WAV header efficiently - cached for performance."""
+        """Read WAV header efficiently.
+
+        The RIFF chunk walk is bounded against the real file size — declared
+        chunk sizes are never trusted for reads/seeks — honours word alignment,
+        and guards the duration calc, so truncated or crafted headers return
+        ``None`` instead of seeking past EOF, hanging, or dividing by zero.
+        """
         try:
+            actual_size = os.path.getsize(file_path)
             with open(file_path, 'rb') as f:
                 # Read RIFF header
                 riff_header = f.read(12)
                 if len(riff_header) != 12 or riff_header[:4] != b'RIFF' or riff_header[8:12] != b'WAVE':
                     return None
 
-                file_size = struct.unpack('<I', riff_header[4:8])[0] + 8
+                fmt_fields = None  # (channels, sample_rate, bits_per_sample)
+                pos = 12           # offset of the next chunk header
+                chunks_seen = 0
+                max_chunks = 4096
 
-                # Find fmt chunk
-                while True:
+                while pos + 8 <= actual_size and chunks_seen < max_chunks:
+                    chunks_seen += 1
+                    f.seek(pos)
                     chunk_header = f.read(8)
                     if len(chunk_header) != 8:
                         return None
 
                     chunk_id = chunk_header[:4]
                     chunk_size = struct.unpack('<I', chunk_header[4:8])[0]
+                    body_start = pos + 8
+                    available = max(0, actual_size - body_start)
+                    effective_size = min(chunk_size, available)
 
                     if chunk_id == b'fmt ':
-                        # Read format chunk
-                        fmt_data = f.read(chunk_size)
+                        fmt_data = f.read(min(effective_size, 16))
                         if len(fmt_data) < 16:
                             return None
-
                         format_tag, channels, sample_rate, byte_rate, block_align, bits_per_sample = \
                             struct.unpack('<HHIIHH', fmt_data[:16])
-
                         if format_tag != 1:  # Only PCM
                             return None
+                        fmt_fields = (channels, sample_rate, bits_per_sample)
 
-                        # Find data chunk
-                        while True:
-                            data_header = f.read(8)
-                            if len(data_header) != 8:
-                                return None
+                    elif chunk_id == b'data':
+                        if fmt_fields is None:
+                            return None  # data chunk before fmt chunk
+                        channels, sample_rate, bits_per_sample = fmt_fields
+                        frame_rate = sample_rate * channels * (bits_per_sample // 8)
+                        if frame_rate <= 0:
+                            return None
+                        duration = effective_size / frame_rate
+                        return AudioInfo(
+                            duration=duration,
+                            sample_rate=sample_rate,
+                            channels=channels,
+                            bit_depth=bits_per_sample,
+                            size_bytes=actual_size
+                        )
 
-                            data_id = data_header[:4]
-                            data_size = struct.unpack('<I', data_header[4:8])[0]
+                    # Advance word-aligned, capped to the file, with forward progress.
+                    stride = chunk_size + (chunk_size & 1)
+                    next_pos = body_start + min(stride, available + 1)
+                    if next_pos <= pos:
+                        return None
+                    pos = next_pos
 
-                            if data_id == b'data':
-                                duration = data_size / (sample_rate * channels * (bits_per_sample // 8))
+                return None
 
-                                return AudioInfo(
-                                    duration=duration,
-                                    sample_rate=sample_rate,
-                                    channels=channels,
-                                    bit_depth=bits_per_sample,
-                                    size_bytes=file_size
-                                )
-                            else:
-                                # Skip non-data chunk
-                                f.seek(data_size, 1)
-                    else:
-                        # Skip non-fmt chunk
-                        f.seek(chunk_size, 1)
-
-        except Exception:
+        except (OSError, ValueError, struct.error):
             return None
 
 
