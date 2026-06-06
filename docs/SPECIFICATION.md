@@ -37,11 +37,12 @@ with "the request can't be served as given".
 
 ## 3. Commands
 
-### 3.1 `analyze <files…> [--detailed] [--export FILE]`
+### 3.1 `analyze <files…> [--detailed] [--export FILE] [--json]`
 Print duration, sample rate, channels, peak/RMS (and, with `--detailed`, dynamic
 range / frequency range / tempo / spectral centroid when available). `--export`
-writes a JSON report. Per-file errors are reported; overall exit is 1 if any
-file failed, else 0.
+writes a JSON report to a file; `--json` emits the analysis as JSON to stdout
+(human-readable lines are suppressed in that mode). Per-file errors are reported;
+overall exit is 1 if any file failed, else 0.
 
 ### 3.2 `process <files…> [--normalize] [--denoise] [--effects JSON] [--convert …] [--output-dir DIR] [--parallel] [--dry-run] [--json]`
 Apply the selected operations and write outputs (default: alongside input, or to
@@ -49,10 +50,11 @@ Apply the selected operations and write outputs (default: alongside input, or to
 -readable summary. Conversion: `--convert-format` (wav), `--convert-sample-rate`,
 `--convert-bit-depth {16,24,32}`.
 
-### 3.3 `batch <directory> <operation> [--recursive] [--output-dir DIR] [--format F] [--quality {low,medium,high,lossless}] [--sample-rate N] [--bit-depth {16,24,32}]`
+### 3.3 `batch <directory> <operation> [--recursive] [--output-dir DIR] [--format F] [--quality {low,medium,high,lossless}] [--sample-rate N] [--bit-depth {16,24,32}] [--dry-run]`
 `operation ∈ {analyze, normalize, denoise, convert}`. Discovers supported audio
 files (recursively with `--recursive`) and processes them in parallel when
-enabled. Empty/missing directory → exit 1.
+enabled. `--dry-run` previews the planned operations without writing any files.
+Empty/missing directory → exit 1.
 
 ### 3.4 `stream [--input-device D] [--output-device D] [--effects JSON] [--monitor]`
 Real-time pass-through with effects. Requires PyAudio; absent → exit 2.
@@ -95,17 +97,18 @@ bounded/hardened (see §6).
 
 ## 7. Conformance gaps (implementation ≠ spec)
 
-Resolved in this change:
+Resolved:
 - ✅ `--version` flag (was missing) and accurate program description (was the
   stale "v3.0").
 - ✅ `ml classify/separate/transcribe` now exit `2` (were printing a message and
   exiting `0`, i.e. reporting success for an unimplemented operation).
 - ✅ `server` without uvicorn now exits `2` (was `1`).
+- ✅ `analyze --json` stdout output (parity with `process --json`).
+- ✅ `batch --dry-run` (preview without writing).
 
 Known remaining gaps (tracked for future work):
-- `--dry-run` exists only on `process`; spec intends it on all mutating commands
-  (`batch`, `midi`). [E1 in CATEGORY_RESEARCH_2]
-- `analyze` has `--export FILE` but no `--json` stdout (parity with `process --json`).
+- `--dry-run` now on `process` and `batch`; still intended for `midi`
+  (compose/generate). [E1 in CATEGORY_RESEARCH_2]
 - `ml separate/transcribe/classify` need optional models to actually function
   (Demucs / basic-pitch / Essentia) — currently honestly report "not implemented".
 - `midi compose/generate` produce only simple demo output; `compose` ignores most

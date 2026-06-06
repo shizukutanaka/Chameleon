@@ -74,6 +74,28 @@ class CliContractTests(unittest.TestCase):
         # argparse rejects invalid choice with exit code 2.
         self.assertEqual(r.returncode, 2)
 
+    def test_analyze_json_emits_machine_readable_output(self):
+        import json
+        r = _run("analyze", str(self.wav), "--json")
+        # stdout must be pure JSON (human lines are suppressed in --json mode).
+        payload = json.loads(r.stdout)
+        self.assertEqual(payload["command"], "analyze")
+        self.assertIsInstance(payload["results"], list)
+        self.assertGreaterEqual(len(payload["results"]), 1)
+        self.assertIn("file", payload["results"][0])
+
+    def test_batch_dry_run_writes_nothing(self):
+        src = Path(self.tmp.name) / "src"
+        out = Path(self.tmp.name) / "out"
+        src.mkdir()
+        out.mkdir()
+        _make_wav(src / "a.wav")
+        _make_wav(src / "b.wav")
+        r = _run("batch", str(src), "normalize", "--output-dir", str(out), "--dry-run")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("[dry-run]", r.stdout)
+        self.assertEqual(list(out.iterdir()), [])  # no files written
+
 
 if __name__ == "__main__":
     unittest.main()

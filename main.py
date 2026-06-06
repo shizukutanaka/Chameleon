@@ -1184,6 +1184,7 @@ def create_cli():
     analyze.add_argument("files", nargs="+", help="Audio files to analyze")
     analyze.add_argument("--detailed", action="store_true", help="Show detailed analysis")
     analyze.add_argument("--export", help="Export analysis to JSON file")
+    analyze.add_argument("--json", action="store_true", help="Emit the analysis as JSON to stdout")
 
     # Process command
     process = subparsers.add_parser("process", help="Process audio files")
@@ -1217,6 +1218,7 @@ def create_cli():
     batch.add_argument("--quality", choices=["low", "medium", "high", "lossless"], default="high")
     batch.add_argument("--sample-rate", type=int, help="Target sample rate for conversion")
     batch.add_argument("--bit-depth", type=int, choices=[16, 24, 32], help="Target bit depth for conversion")
+    batch.add_argument("--dry-run", action="store_true", help="Preview planned operations without writing files")
 
     # ML command
     ml = subparsers.add_parser("ml", help="Machine learning features")
@@ -1291,31 +1293,54 @@ async def main():
         results = processor.batch_process(files, "analyze")
 
         had_error = False
+        json_entries: List[Dict[str, Any]] = []
         for result in results:
             if "error" in result:
                 had_error = True
-                print(f"Error processing {result['file']}: {result['error']}")
+                if not args.json:
+                    print(f"Error processing {result['file']}: {result['error']}")
+                json_entries.append({"file": result.get("file"), "error": result["error"]})
             else:
                 metadata = result["metadata"]
-                print(f"\n{result['file']}:")
-                print(f"  Duration: {metadata.duration:.2f}s")
-                print(f"  Sample Rate: {metadata.sample_rate}Hz")
-                print(f"  Channels: {metadata.channels}")
-                print(f"  Peak Level: {metadata.peak_level:.3f}")
-                print(f"  RMS Level: {metadata.rms_level:.3f}")
-
+                entry: Dict[str, Any] = {
+                    "file": result.get("file"),
+                    "duration_seconds": round(metadata.duration, 6),
+                    "sample_rate": metadata.sample_rate,
+                    "channels": metadata.channels,
+                    "peak_level": round(metadata.peak_level, 6),
+                    "rms_level": round(metadata.rms_level, 6),
+                }
                 if args.detailed:
-                    print(f"  Dynamic Range: {metadata.dynamic_range:.1f}dB")
-                    print(f"  Frequency Range: {metadata.frequency_range[0]:.1f}-{metadata.frequency_range[1]:.1f}Hz")
-                    if metadata.tempo:
-                        print(f"  Tempo: {metadata.tempo:.1f} BPM")
-                    if metadata.spectral_centroid:
-                        print(f"  Spectral Centroid: {metadata.spectral_centroid:.1f}Hz")
+                    entry["dynamic_range_db"] = metadata.dynamic_range
+                    entry["frequency_range_hz"] = list(metadata.frequency_range)
+                    entry["tempo_bpm"] = metadata.tempo
+                    entry["spectral_centroid_hz"] = metadata.spectral_centroid
+                json_entries.append(entry)
+
+                if not args.json:
+                    print(f"\n{result['file']}:")
+                    print(f"  Duration: {metadata.duration:.2f}s")
+                    print(f"  Sample Rate: {metadata.sample_rate}Hz")
+                    print(f"  Channels: {metadata.channels}")
+                    print(f"  Peak Level: {metadata.peak_level:.3f}")
+                    print(f"  RMS Level: {metadata.rms_level:.3f}")
+
+                    if args.detailed:
+                        print(f"  Dynamic Range: {metadata.dynamic_range:.1f}dB")
+                        print(f"  Frequency Range: {metadata.frequency_range[0]:.1f}-{metadata.frequency_range[1]:.1f}Hz")
+                        if metadata.tempo:
+                            print(f"  Tempo: {metadata.tempo:.1f} BPM")
+                        if metadata.spectral_centroid:
+                            print(f"  Spectral Centroid: {metadata.spectral_centroid:.1f}Hz")
+
+        if args.json:
+            print(json.dumps({"command": "analyze", "results": json_entries}, indent=2, default=str))
 
         if args.export:
             with open(args.export, 'w') as f:
                 json.dump(results, f, indent=2, default=str)
-            print(f"\nAnalysis exported to {args.export}")
+            if not args.json:
+                print(f"\nAnalysis exported to {args.export}")
 
         if had_error:
             exit_code = 1
@@ -1547,7 +1572,8 @@ async def main():
         kwargs: Dict[str, Any] = {
             "output_dir": output_dir,
             "format": format_arg,
-            "quality": args.quality
+            "quality": args.quality,
+            "dry_run": args.dry_run,
         }
 
         if args.operation == "convert":
@@ -1559,10 +1585,14 @@ async def main():
             processor.config.parallel = False
         processor.update_worker_limits()
 
+        if args.dry_run:
+            print("[dry-run] No files will be written.")
+
         results = processor.batch_process(file_list, args.operation, **kwargs)
 
         successful = sum(1 for r in results if "error" not in r)
-        print(f"\nProcessed {successful}/{len(results)} files successfully")
+        verb = "Would process" if args.dry_run else "Processed"
+        print(f"\n{verb} {successful}/{len(results)} files successfully")
 
         if successful != len(results):
             exit_code = 1
