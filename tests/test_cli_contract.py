@@ -103,6 +103,23 @@ class CliContractTests(unittest.TestCase):
         self.assertIn("[dry-run]", r.stdout)
         self.assertFalse(out.exists())  # no MIDI file written
 
+    def test_non_wav_without_backend_reports_clearly(self):
+        # A non-WAV file is now accepted by the filter; without a decode backend
+        # it must produce a handled, actionable per-file error (not a crash or a
+        # silent skip). When a backend IS installed it may instead fail to decode
+        # the bogus bytes — either way it is reported, never a traceback.
+        flac = Path(self.tmp.name) / "fake.flac"
+        flac.write_bytes(self.wav.read_bytes())  # WAV bytes under a .flac name
+        r = _run("analyze", str(flac))
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("Error processing", r.stdout)
+
+    def test_unsupported_extension_is_not_processed(self):
+        bogus = Path(self.tmp.name) / "file.xyz"
+        bogus.write_bytes(self.wav.read_bytes())
+        r = _run("analyze", str(bogus))
+        self.assertNotEqual(r.returncode, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

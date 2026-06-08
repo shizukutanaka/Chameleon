@@ -193,7 +193,15 @@ EXIT_UNAVAILABLE = 2
 MAX_FILE_SIZE = 500 * 1024 * 1024  # Align with core constraints (500MB)
 CHUNK_SIZE = 8192
 DEFAULT_SAMPLE_RATE = 44100
-SUPPORTED_FORMATS = {'.wav', '.wave'}
+SUPPORTED_FORMATS = {'.wav', '.wave'}  # readable with the standard library alone
+
+# Formats that can additionally be read when an optional decode backend
+# (librosa / soundfile, plus ffmpeg for the compressed ones) is installed.
+# WAV always works; the rest degrade gracefully with a clear error otherwise.
+READABLE_FORMATS = SUPPORTED_FORMATS | {
+    '.flac', '.ogg', '.oga', '.aif', '.aiff', '.aifc',
+    '.mp3', '.m4a', '.aac', '.opus', '.wma',
+}
 
 @dataclass
 class AudioMetadata:
@@ -303,7 +311,8 @@ class AudioProcessor:
         """Load audio file with multiple backend support"""
         file_path = os.fspath(file_path)
 
-        if Path(file_path).suffix.lower() not in SUPPORTED_FORMATS:
+        suffix = Path(file_path).suffix.lower()
+        if suffix not in READABLE_FORMATS:
             raise ValueError(f"Unsupported file type: {file_path}")
 
         if not SecurityValidator.validate_path(file_path):
@@ -314,6 +323,15 @@ class AudioProcessor:
 
         if os.path.getsize(file_path) > MAX_FILE_SIZE:
             raise ValueError(f"File exceeds maximum allowed size: {file_path}")
+
+        # Non-WAV formats need an optional decode backend. Fail with a clear,
+        # actionable message rather than mis-parsing the bytes as WAV.
+        if suffix not in SUPPORTED_FORMATS and not (HAS_LIBROSA or HAS_SOUNDFILE):
+            raise ValueError(
+                f"Reading {suffix} files requires the 'librosa' or 'soundfile' "
+                f"package (pip install soundfile; ffmpeg is also needed for "
+                f"mp3/m4a/aac). Only WAV is supported out of the box."
+            )
 
         # Try librosa first (most features)
         if HAS_LIBROSA:
@@ -331,8 +349,13 @@ class AudioProcessor:
             except Exception as e:
                 self.logger.warning(f"Soundfile failed: {e}")
 
-        # Fallback to basic WAV reading
-        return self._load_wav_basic(file_path)
+        # Fallback to basic WAV reading (standard-library WAV only).
+        if Path(file_path).suffix.lower() in SUPPORTED_FORMATS:
+            return self._load_wav_basic(file_path)
+        raise ValueError(
+            f"Could not decode {file_path}: no available backend succeeded. "
+            f"Install 'librosa'/'soundfile' (and ffmpeg for compressed formats)."
+        )
 
     def _load_wav_basic(self, file_path: str) -> Tuple[np.ndarray, int]:
         """Basic WAV file loader without external dependencies"""
@@ -871,7 +894,7 @@ class AudioProcessor:
         for original in files:
             file_path = os.fspath(original)
 
-            if Path(file_path).suffix.lower() not in SUPPORTED_FORMATS:
+            if Path(file_path).suffix.lower() not in READABLE_FORMATS:
                 self.logger.warning(f"Skipping unsupported file type: {file_path}")
                 continue
 
@@ -1554,7 +1577,7 @@ async def main():
         pattern = "**/*" if args.recursive else "*"
 
         gathered_files: List[Path] = []
-        for ext in SUPPORTED_FORMATS:
+        for ext in READABLE_FORMATS:
             gathered_files.extend(directory.glob(f"{pattern}{ext}"))
 
         if not gathered_files:

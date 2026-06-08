@@ -23,6 +23,9 @@
 - `analyze --json` (machine-readable analysis on stdout, parity with
   `process --json`); `batch --dry-run` and `midi --dry-run` (preview without
   writing files).
+- Multi-format input: `analyze`/`process`/`batch` accept non-WAV formats
+  (FLAC/OGG/AIFF, and MP3/M4A/AAC with ffmpeg) when `librosa`/`soundfile` are
+  installed, with a clear actionable error when no decode backend is present.
 - `tests/test_cli_contract.py`: subprocess-level CLI contract tests.
 
 ### Fixed

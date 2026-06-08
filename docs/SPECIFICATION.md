@@ -106,14 +106,18 @@ Resolved:
 - ✅ `server` without uvicorn now exits `2` (was `1`).
 - ✅ `analyze --json` stdout output (parity with `process --json`).
 - ✅ `--dry-run` on `process`, `batch`, and `midi` (preview without writing).
+- ✅ Multi-format input: `analyze`/`process`/`batch` now accept non-WAV formats
+  (FLAC/OGG/AIFF and, with ffmpeg, MP3/M4A/AAC) when `librosa`/`soundfile` are
+  installed, and emit a clear, actionable error when no decode backend is
+  present (WAV still works stdlib-only).
 
 Known remaining gaps (tracked for future work):
 - `ml separate/transcribe/classify` need optional models to actually function
   (Demucs / basic-pitch / Essentia) — currently honestly report "not implemented".
 - `midi compose/generate` produce only simple demo output; `compose` ignores most
   musical parameters.
-- Multi-format input: the core `analyze`/`process` path is WAV-only even though
-  `codec_support` can read FLAC/MP3/OGG. [cat 1]
+- Compressed-format input (MP3/M4A/AAC) currently relies on librosa's audioread/
+  ffmpeg path; a direct `codec_support` (pydub) fallback is not yet wired in. [cat 1]
 - LUFS/EBU R128 loudness normalization is not wired into `normalize` (peak only).
   [cat 2]
 - Plugin isolation is AST-only (no process/seccomp/WASM sandbox). [E7]
