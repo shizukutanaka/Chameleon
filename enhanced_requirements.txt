@@ -72,3 +72,6 @@ cupy>=10.0.0
 # Development utilities
 pre-commit>=2.17.0
 mypy>=0.931
+
+# Loudness (EBU R128 / ITU-R BS.1770) for `process --target-lufs`
+pyloudnorm>=0.1.1

@@ -26,6 +26,10 @@
 - Multi-format input: `analyze`/`process`/`batch` accept non-WAV formats
   (FLAC/OGG/AIFF, and MP3/M4A/AAC with ffmpeg) when `librosa`/`soundfile` are
   installed, with a clear actionable error when no decode backend is present.
+- `process --target-lufs`: EBU R128 / ITU-R BS.1770 loudness normalization (new
+  `loudness.py`, optional `pyloudnorm`) — measures integrated loudness, applies
+  the matching gain, and peak-limits the result; degrades gracefully when
+  pyloudnorm is absent.
 - `tests/test_cli_contract.py`: subprocess-level CLI contract tests.
 
 ### Fixed

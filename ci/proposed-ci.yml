@@ -31,7 +31,7 @@ jobs:
           pip install pytest
           # The core CLI runs on the standard library alone; numpy enables the
           # full main.py audio pipeline used by the integration check below.
-          pip install numpy
+          pip install numpy pyloudnorm
 
       - name: Byte-compile all modules
         run: python -m compileall -q .

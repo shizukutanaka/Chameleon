@@ -44,11 +44,13 @@ writes a JSON report to a file; `--json` emits the analysis as JSON to stdout
 (human-readable lines are suppressed in that mode). Per-file errors are reported;
 overall exit is 1 if any file failed, else 0.
 
-### 3.2 `process <files…> [--normalize] [--denoise] [--effects JSON] [--convert …] [--output-dir DIR] [--parallel] [--dry-run] [--json]`
+### 3.2 `process <files…> [--normalize] [--target-lufs LUFS] [--denoise] [--effects JSON] [--convert …] [--output-dir DIR] [--parallel] [--dry-run] [--json]`
 Apply the selected operations and write outputs (default: alongside input, or to
-`--output-dir`). `--dry-run` previews without writing. `--json` emits a machine
--readable summary. Conversion: `--convert-format` (wav), `--convert-sample-rate`,
-`--convert-bit-depth {16,24,32}`.
+`--output-dir`). `--normalize` does peak normalization; `--target-lufs`
+loudness-normalizes to an integrated-loudness target (EBU R128 / ITU-R BS.1770,
+e.g. `-14`) with peak limiting (requires `pyloudnorm`). `--dry-run` previews
+without writing. `--json` emits a machine-readable summary. Conversion:
+`--convert-format` (wav), `--convert-sample-rate`, `--convert-bit-depth {16,24,32}`.
 
 ### 3.3 `batch <directory> <operation> [--recursive] [--output-dir DIR] [--format F] [--quality {low,medium,high,lossless}] [--sample-rate N] [--bit-depth {16,24,32}] [--dry-run]`
 `operation ∈ {analyze, normalize, denoise, convert}`. Discovers supported audio
@@ -110,6 +112,9 @@ Resolved:
   (FLAC/OGG/AIFF and, with ffmpeg, MP3/M4A/AAC) when `librosa`/`soundfile` are
   installed, and emit a clear, actionable error when no decode backend is
   present (WAV still works stdlib-only).
+- ✅ LUFS / EBU R128 loudness normalization: `process --target-lufs` (via
+  `loudness.py`/pyloudnorm) measures integrated loudness, applies matched gain
+  and peak limiting, and degrades gracefully when pyloudnorm is absent.
 
 Known remaining gaps (tracked for future work):
 - `ml separate/transcribe/classify` need optional models to actually function
@@ -118,8 +123,6 @@ Known remaining gaps (tracked for future work):
   musical parameters.
 - Compressed-format input (MP3/M4A/AAC) currently relies on librosa's audioread/
   ffmpeg path; a direct `codec_support` (pydub) fallback is not yet wired in. [cat 1]
-- LUFS/EBU R128 loudness normalization is not wired into `normalize` (peak only).
-  [cat 2]
 - Plugin isolation is AST-only (no process/seccomp/WASM sandbox). [E7]
 - REST API lacks magic-byte upload validation, `/health` readiness split, and an
   async job queue. [E2]

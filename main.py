@@ -946,14 +946,30 @@ class AudioProcessor:
                     "dry_run": True
                 }
 
-            processed = self.normalize_audio(audio, kwargs.get("target_peak", 0.95))
+            target_lufs = kwargs.get("target_lufs")
+            loudness_info = None
+            if target_lufs is not None:
+                import loudness as _loudness
+                if not _loudness.HAS_PYLOUDNORM:
+                    raise ValueError(
+                        "Loudness normalization (--target-lufs) requires 'pyloudnorm' "
+                        "(pip install pyloudnorm)."
+                    )
+                processed, loudness_info = _loudness.loudness_normalize(
+                    audio, sr, target_lufs=float(target_lufs)
+                )
+            else:
+                processed = self.normalize_audio(audio, kwargs.get("target_peak", 0.95))
             self.save_audio(processed, str(output_path), sr)
-            return {
+            result = {
                 "file": file_path,
                 "output": str(output_path),
                 "time": time.time() - start_time,
                 "dry_run": False
             }
+            if loudness_info is not None:
+                result["loudness"] = loudness_info
+            return result
 
         elif operation == "denoise":
             output_path = self._resolve_output_path(
@@ -1213,6 +1229,7 @@ def create_cli():
     process = subparsers.add_parser("process", help="Process audio files")
     process.add_argument("files", nargs="+", help="Audio files to process")
     process.add_argument("--normalize", action="store_true", help="Normalize audio")
+    process.add_argument("--target-lufs", type=float, help="Loudness-normalize to this LUFS (EBU R128, e.g. -14); requires pyloudnorm")
     process.add_argument("--denoise", action="store_true", help="Remove noise")
     process.add_argument("--effects", help="Apply effects (JSON file)")
     process.add_argument("--output-dir", help="Output directory")
@@ -1385,7 +1402,10 @@ async def main():
             "dry_run": args.dry_run
         }
 
-        if args.normalize:
+        if args.target_lufs is not None:
+            kwargs["target_lufs"] = args.target_lufs
+
+        if args.normalize or args.target_lufs is not None:
             operations.append("normalize")
         if args.denoise:
             operations.append("denoise")
