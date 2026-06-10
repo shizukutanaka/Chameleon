@@ -29,7 +29,8 @@
 - `process --target-lufs`: EBU R128 / ITU-R BS.1770 loudness normalization (new
   `loudness.py`, optional `pyloudnorm`) — measures integrated loudness, applies
   the matching gain, and peak-limits the result; degrades gracefully when
-  pyloudnorm is absent.
+  pyloudnorm is absent. `analyze` now also reports `loudness_lufs` when
+  pyloudnorm is available.
 - `tests/test_cli_contract.py`: subprocess-level CLI contract tests.
 
 ### Fixed

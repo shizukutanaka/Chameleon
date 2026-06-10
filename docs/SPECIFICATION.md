@@ -39,10 +39,11 @@ with "the request can't be served as given".
 
 ### 3.1 `analyze <files…> [--detailed] [--export FILE] [--json]`
 Print duration, sample rate, channels, peak/RMS (and, with `--detailed`, dynamic
-range / frequency range / tempo / spectral centroid when available). `--export`
-writes a JSON report to a file; `--json` emits the analysis as JSON to stdout
-(human-readable lines are suppressed in that mode). Per-file errors are reported;
-overall exit is 1 if any file failed, else 0.
+range / frequency range / tempo / spectral centroid when available). Integrated
+loudness (`loudness_lufs`, EBU R128) is reported when `pyloudnorm` is installed.
+`--export` writes a JSON report to a file; `--json` emits the analysis as JSON to
+stdout (human-readable lines are suppressed in that mode). Per-file errors are
+reported; overall exit is 1 if any file failed, else 0.
 
 ### 3.2 `process <files…> [--normalize] [--target-lufs LUFS] [--denoise] [--effects JSON] [--convert …] [--output-dir DIR] [--parallel] [--dry-run] [--json]`
 Apply the selected operations and write outputs (default: alongside input, or to

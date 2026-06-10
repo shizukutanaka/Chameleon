@@ -924,12 +924,22 @@ class AudioProcessor:
         # Perform operation
         if operation == "analyze":
             result = self.analyze_audio(audio, sr)
-            return {
+            analysis: Dict[str, Any] = {
                 "file": file_path,
                 "metadata": result,
                 "time": time.time() - start_time,
                 "dry_run": dry_run
             }
+            # Best-effort integrated loudness (EBU R128) when pyloudnorm is present.
+            try:
+                import loudness as _loudness
+                if _loudness.HAS_PYLOUDNORM:
+                    lufs = _loudness.measure_lufs(audio, sr)
+                    if lufs == lufs and lufs not in (float("inf"), float("-inf")):
+                        analysis["loudness_lufs"] = round(lufs, 2)
+            except Exception:  # loudness is purely informational; never fail analyze
+                pass
+            return analysis
 
         elif operation == "normalize":
             output_path = self._resolve_output_path(
@@ -1351,6 +1361,8 @@ async def main():
                     "peak_level": round(metadata.peak_level, 6),
                     "rms_level": round(metadata.rms_level, 6),
                 }
+                if "loudness_lufs" in result:
+                    entry["loudness_lufs"] = result["loudness_lufs"]
                 if args.detailed:
                     entry["dynamic_range_db"] = metadata.dynamic_range
                     entry["frequency_range_hz"] = list(metadata.frequency_range)
@@ -1365,6 +1377,8 @@ async def main():
                     print(f"  Channels: {metadata.channels}")
                     print(f"  Peak Level: {metadata.peak_level:.3f}")
                     print(f"  RMS Level: {metadata.rms_level:.3f}")
+                    if "loudness_lufs" in result:
+                        print(f"  Integrated Loudness: {result['loudness_lufs']:.1f} LUFS")
 
                     if args.detailed:
                         print(f"  Dynamic Range: {metadata.dynamic_range:.1f}dB")

@@ -120,6 +120,16 @@ class CliContractTests(unittest.TestCase):
         r = _run("analyze", str(bogus))
         self.assertNotEqual(r.returncode, 0)
 
+    def test_analyze_reports_loudness_when_available(self):
+        try:
+            import pyloudnorm  # noqa: F401
+        except ImportError:
+            self.skipTest("pyloudnorm not installed")
+        import json
+        r = _run("analyze", str(self.wav), "--json")
+        payload = json.loads(r.stdout)
+        self.assertIn("loudness_lufs", payload["results"][0])
+
 
 if __name__ == "__main__":
     unittest.main()
