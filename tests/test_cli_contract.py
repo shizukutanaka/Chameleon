@@ -126,7 +126,10 @@ class CliContractTests(unittest.TestCase):
         except ImportError:
             self.skipTest("pyloudnorm not installed")
         import json
-        r = _run("analyze", str(self.wav), "--json")
+        # Integrated loudness needs >= 400ms (BS.1770 gating block); use >= 1s.
+        long_wav = Path(self.tmp.name) / "long.wav"
+        _make_wav(long_wav, seconds=1.5)
+        r = _run("analyze", str(long_wav), "--json")
         payload = json.loads(r.stdout)
         self.assertIn("loudness_lufs", payload["results"][0])
 
