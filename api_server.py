@@ -45,15 +45,65 @@ from security_validator import (
     SecureFileOperations,
 )
 
-# Import our secure modules
+# Import our secure modules (optional). When they are unavailable the API runs
+# in fallback mode, wired to the standard-library audio core below.
 try:
     from government_auth import AuthenticationService, AuthorizationService
     from secure_core import SecureAudioProcessor, SecureValidator
     from high_performance_core import get_high_performance_processor, analyze_audio_fast, normalize_audio_fast
     HAS_SECURE_MODULES = True
 except ImportError:
-    print("WARNING: Secure modules not available. API will run in fallback mode.")
+    logging.getLogger(__name__).warning(
+        "Secure modules not available. API running in fallback mode (standard-library core)."
+    )
     HAS_SECURE_MODULES = False
+
+if not HAS_SECURE_MODULES:
+    # Wire the audio endpoints to the real standard-library core so they work
+    # without the optional high-performance modules. These adapters convert the
+    # core's ProcessingResult into the dict shape the endpoints expect.
+    import core as _core
+
+    async def analyze_audio_fast(file_path) -> Dict[str, Any]:
+        """Analyze an audio file using the standard-library core."""
+        result = await _core.analyze_async(str(file_path))
+        data = result.data or {}
+        response: Dict[str, Any] = {
+            'success': result.success,
+            'processing_time': result.duration_ms / 1000.0,
+            'processing_method': 'stdlib-core',
+        }
+        if result.success:
+            response.update({
+                'duration': data.get('duration'),
+                'sample_rate': data.get('sample_rate'),
+                'channels': data.get('channels'),
+                'bit_depth': data.get('bit_depth'),
+                'peak_level': data.get('peak_level'),
+                'rms_level': data.get('rms_level'),
+                'file_size': data.get('size_bytes'),
+            })
+        else:
+            response['error'] = result.message
+        return response
+
+    async def normalize_audio_fast(input_path, output_path, target_peak: float = 0.95) -> Dict[str, Any]:
+        """Normalize an audio file using the standard-library core."""
+        result = await _core.normalize_async(str(input_path), str(output_path), target_peak)
+        data = result.data or {}
+        response: Dict[str, Any] = {
+            'success': result.success,
+            'processing_time': result.duration_ms / 1000.0,
+        }
+        if result.success:
+            response.update({
+                'scale_factor': data.get('gain_applied'),
+                'original_peak': data.get('original_peak'),
+                'target_peak': data.get('target_peak', target_peak),
+            })
+        else:
+            response['error'] = result.message
+        return response
 
 # API metadata
 API_VERSION = "1.0.0"
@@ -340,7 +390,7 @@ _UPLOAD_FILES = SecureFileOperations(_REQUEST_VALIDATOR)
 
 def _cleanup_expired_sessions() -> None:
     """Remove expired sessions from active registry."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     idle_timeout = SECURITY_CONFIG.get('max_session_idle_seconds')
     expired_ids: List[str] = []
 
@@ -539,6 +589,26 @@ def _get_authorized_file_path(file_name: str, user: dict, allow_privileged: bool
     return path
 
 
+def _validate_cors_origin(origin: str) -> str:
+    """Validate a CORS origin (scheme://host[:port]) and return it normalized.
+
+    Only http/https origins with a host and no path/query/fragment are allowed.
+    Raises ChameleonSecurityError for anything else.
+    """
+    from urllib.parse import urlparse
+
+    parsed = urlparse(origin)
+    if parsed.scheme not in ('http', 'https') or not parsed.hostname:
+        raise ChameleonSecurityError(f"Invalid origin scheme or host: {origin}")
+    if parsed.path not in ('', '/') or parsed.query or parsed.fragment:
+        raise ChameleonSecurityError(f"Origin must not contain a path or query: {origin}")
+    # Reconstruct from validated components to drop any trailing slash/credentials.
+    netloc = parsed.hostname
+    if parsed.port:
+        netloc = f"{netloc}:{parsed.port}"
+    return f"{parsed.scheme}://{netloc}"
+
+
 def _get_allowed_origins() -> list[str]:
     raw_origins = os.environ.get('CHAMELEON_ALLOWED_ORIGINS', 'https://localhost:3000').split(',')
     sanitized: List[str] = []
@@ -547,7 +617,7 @@ def _get_allowed_origins() -> list[str]:
         if not origin:
             continue
         try:
-            sanitized.append(_REQUEST_VALIDATOR.validate_url(origin, allow_localhost=True))
+            sanitized.append(_validate_cors_origin(origin))
         except ChameleonSecurityError:
             logging.warning("Invalid origin supplied: %s", origin)
             continue
@@ -710,7 +780,7 @@ def log_audit_event(user: str, operation: str, resource: str, result: str,
     """Log security audit event"""
     request_id = REQUEST_ID_CTX.get()
     entry = AuditLogEntry(
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         user=user,
         operation=operation,
         resource=resource,
@@ -836,7 +906,7 @@ async def get_current_user(request: Request, credentials: HTTPAuthorizationCrede
             detail="Invalid authentication token"
         )
 
-    if datetime.utcnow() > session_data.get('expires_at', datetime.min):
+    if datetime.now(timezone.utc) > session_data.get('expires_at', datetime.min):
         api_state.remove_session(session_id)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -853,7 +923,7 @@ async def get_current_user(request: Request, credentials: HTTPAuthorizationCrede
         )
 
     session_data['secret'] = session_secret
-    session_data['last_seen_at'] = datetime.utcnow()
+    session_data['last_seen_at'] = datetime.now(timezone.utc)
 
     return {
         'username': session_data['username'],
@@ -961,17 +1031,17 @@ async def login(request: AuthenticationRequest, http_request: Request):
         token = generate_secure_token()
         secret = _derive_session_secret(request.username, session_id)
         token_signature = _compute_token_signature(token, secret)
-        expires_at = datetime.utcnow() + timedelta(seconds=SECURITY_CONFIG['session_timeout'])
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=SECURITY_CONFIG['session_timeout'])
 
         session_data = {
             'username': request.username,
             'clearance_level': request.clearance_level,
             'token': token,
             'expires_at': expires_at,
-            'created_at': datetime.utcnow(),
+            'created_at': datetime.now(timezone.utc),
             'secret': secret,
             'token_signature': token_signature,
-            'last_seen_at': datetime.utcnow(),
+            'last_seen_at': datetime.now(timezone.utc),
             'client_ip': client_ip,
         }
 
@@ -1083,9 +1153,8 @@ async def process_audio(
 ):
     """Process audio analysis"""
     try:
-        # Validate filename/URL
+        # Reject remote URLs; only previously uploaded files are processable.
         if payload.file_name.lower().startswith(('http://', 'https://')):
-            payload.file_name = _REQUEST_VALIDATOR.validate_url(payload.file_name)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Remote URLs are not supported; upload the file first."
@@ -1256,7 +1325,7 @@ async def submit_batch_job(
             'progress': 0.0,
             'completed_files': 0,
             'total_files': len(payload.files),
-            'created_at': datetime.utcnow(),
+            'created_at': datetime.now(timezone.utc),
             'results': [],
             'started_at': None,
             'updated_at': None,
@@ -1403,19 +1472,19 @@ async def process_batch_job(job_id: str):
         if api_state.circuit_breaker_open:
             job_data['status'] = 'failed'
             job_data['error'] = 'Circuit breaker open due to recent failures'
-            job_data['completed_at'] = datetime.utcnow()
+            job_data['completed_at'] = datetime.now(timezone.utc)
             api_state.stats['failed_jobs'] += 1
             _record_job_completion(job_id)
             return
 
         async with JOB_WORKER_SEMAPHORE:
             job_data['status'] = 'processing'
-            job_data['started_at'] = datetime.utcnow()
+            job_data['started_at'] = datetime.now(timezone.utc)
 
             for i, file_name in enumerate(job_data['files']):
                 file_path = _resolve_uploaded_path(file_name)
                 job_data['current_file'] = file_name
-                job_data['updated_at'] = datetime.utcnow()
+                job_data['updated_at'] = datetime.now(timezone.utc)
 
                 # Process file based on operation
                 if job_data['operation'] == 'analyze':
@@ -1458,7 +1527,7 @@ async def process_batch_job(job_id: str):
                 await asyncio.sleep(0.1)
 
             job_data['status'] = 'completed'
-            job_data['completed_at'] = datetime.utcnow()
+            job_data['completed_at'] = datetime.now(timezone.utc)
             api_state.stats['completed_jobs'] += 1
 
             # Remove from queue

@@ -25,6 +25,7 @@ import logging
 import warnings
 from logging.handlers import RotatingFileHandler
 
+import core
 from core import open_secure, SecurityValidator
 from plugin_system import PluginManager, PluginConfig, PluginLoader, SecurityError
 
@@ -887,6 +888,19 @@ class AudioProcessor:
         """Process a single file"""
         start_time = time.time()
 
+        # Standard-library fallback: the numpy-based pipeline below cannot run
+        # without numpy. analyze/normalize are delegated to the dependency-free
+        # core so the CLI works out of the box; other operations need numpy.
+        if not HAS_NUMPY:
+            if operation in ("analyze", "normalize"):
+                return self._process_single_file_stdlib(
+                    file_path, operation, start_time, dry_run=dry_run, **kwargs
+                )
+            raise ValueError(
+                f"Operation '{operation}' requires numpy. Install it with: "
+                "pip install -e .[audio]"
+            )
+
         # Load audio
         audio, sr = self.load_audio(file_path)
 
@@ -1037,6 +1051,45 @@ class AudioProcessor:
 
         else:
             raise ValueError(f"Unknown operation: {operation}")
+
+    def _process_single_file_stdlib(self, file_path: str, operation: str, start_time: float,
+                                    *, dry_run: bool = False, **kwargs) -> Dict:
+        """analyze/normalize via the dependency-free core (numpy unavailable)."""
+        if operation == "analyze":
+            result = core.analyze(file_path)
+            if not result.success:
+                return {"file": file_path, "error": result.message,
+                        "time": time.time() - start_time, "dry_run": dry_run}
+            info = result.data
+            metadata = AudioMetadata(
+                duration=info.duration,
+                sample_rate=info.sample_rate,
+                channels=info.channels,
+                bit_depth=info.bit_depth,
+                size_bytes=info.size_bytes,
+                format="wav",
+                peak_level=info.peak_level,
+                rms_level=info.rms_level,
+            )
+            return {"file": file_path, "metadata": metadata,
+                    "time": time.time() - start_time, "dry_run": dry_run}
+
+        # operation == "normalize"
+        output_path = self._resolve_output_path(
+            file_path,
+            suffix="_normalized.wav",
+            explicit_path=kwargs.get("output_path"),
+            output_dir=kwargs.get("output_dir"),
+        )
+        if dry_run:
+            return {"file": file_path, "planned_output": str(output_path),
+                    "time": time.time() - start_time, "dry_run": True}
+        result = core.normalize(file_path, str(output_path), kwargs.get("target_peak", 0.95))
+        if not result.success:
+            return {"file": file_path, "error": result.message,
+                    "time": time.time() - start_time, "dry_run": False}
+        return {"file": file_path, "output": str(output_path),
+                "time": time.time() - start_time, "dry_run": False}
 
     def save_audio(self, audio: np.ndarray, file_path: str, sr: int, *, bit_depth: int = 16) -> int:
         """Save audio to file with multiple backend support.

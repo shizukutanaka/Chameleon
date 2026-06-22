@@ -282,43 +282,6 @@ class MemoryManager:
 
         return bytes(result)
 
-
-    def _memory_map_file(self, file_path: str, offset: int = 0, size: Optional[int] = None) -> bytes:
-        """Memory map file for efficient access."""
-        import mmap
-
-        with open(file_path, 'rb') as f:
-            mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
-            try:
-                if offset > 0:
-                    mm.seek(offset)
-                if size is None:
-                    available = max(0, mm.size() - mm.tell())
-                    data = mm.read(available)
-                else:
-                    data = mm.read(size)
-            finally:
-                mm.close()
-            return data
-
-    def _chunked_read(self, file_path: str, offset: int, size: int) -> bytes:
-        """Read file in optimized chunks with buffering."""
-        result = bytearray()
-        bytes_read = 0
-
-        with open(file_path, 'rb') as f:
-            f.seek(offset)
-
-            while bytes_read < size:
-                chunk_size = min(CHUNK_SIZE, size - bytes_read)
-                chunk = f.read(chunk_size)
-                if not chunk:
-                    break
-                result.extend(chunk)
-                bytes_read += len(chunk)
-
-        return bytes(result)
-
     def cache_data(self, key: str, data: bytes):
         """Cache data with LRU eviction and size management."""
         data_size = len(data)
@@ -570,6 +533,7 @@ class WAVProcessor:
             return ProcessingResult(False, f"File system error: {str(e)}")
     async def analyze_async(self, file_path: str) -> ProcessingResult:
         """Asynchronously analyze WAV file with enhanced performance and error handling."""
+        start = time.perf_counter()
         try:
             # セキュリティチェックを非同期で実行
             security_check = await self._async_security_check(file_path)
@@ -584,7 +548,7 @@ class WAVProcessor:
             # 非同期でレベル計算を実行
             peak_level, rms_level = await self._async_calculate_levels(file_path, info)
 
-            duration_ms = int((time.perf_counter() - time.perf_counter()) * 1000)  # Simplified timing
+            duration_ms = int((time.perf_counter() - start) * 1000)
             return ProcessingResult(
                 True,
                 f"Asynchronous analysis complete in {duration_ms}ms",
