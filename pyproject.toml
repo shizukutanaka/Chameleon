@@ -20,9 +20,8 @@ maintainers = [
 ]
 keywords = [
     "audio", "processing", "wav", "sound", "waveform", "multimedia",
-    "analysis", "conversion", "editing", "batch-processing", "cli-tool",
-    "security", "performance", "optimization", "professional", "enterprise",
-    "benchmarking", "monitoring"
+    "analysis", "conversion", "batch-processing", "cli-tool",
+    "security", "midi"
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -48,21 +47,32 @@ classifiers = [
     "Operating System :: MacOS",
     "Operating System :: POSIX :: Linux",
     "Environment :: Console",
-    "Natural Language :: English",
-    "Natural Language :: Japanese",
-    "Natural Language :: Chinese (Simplified)",
-    "Natural Language :: Spanish",
-    "Natural Language :: French",
-    "Natural Language :: German",
-    "Natural Language :: Italian",
-    "Natural Language :: Portuguese",
-    "Natural Language :: Russian",
-    "Natural Language :: Korean"
+    "Natural Language :: English"
 ]
 requires-python = ">=3.8"
 dependencies = []
 
 [project.optional-dependencies]
+# Full audio pipeline used by main.py (analysis, resampling, real-time I/O).
+audio = [
+    "numpy>=1.21",
+    "scipy>=1.7",
+    "librosa>=0.9",
+    "soundfile>=0.10",
+    "pyaudio>=0.2.11",
+]
+# REST API server (api_server.py). The request models use pydantic v1 syntax
+# (Field(regex=...), @validator), so pydantic is pinned below 2.
+api = [
+    "fastapi>=0.75,<0.100",
+    "uvicorn[standard]>=0.17",
+    "pydantic>=1.9,<2",
+    "python-multipart>=0.0.6",
+]
+# Optional ML-backed enhancement features (guarded imports).
+ml = [
+    "torch>=1.11",
+]
 dev = [
     "black>=24.8",
     "isort>=5.13",
@@ -103,6 +113,10 @@ include-package-data = true
 [tool.pytest.ini_options]
 testpaths = ["tests", "test_core.py"]
 python_files = ["test_*.py"]
+markers = [
+    "integration: end-to-end tests that exercise multiple modules together",
+    "benchmark: performance benchmark tests",
+]
 
 [tool.setuptools.package-data]
 "*" = ["*.md", "*.txt", "*.json", "*.cfg", "*.ini"]

@@ -326,6 +326,12 @@ The project has been significantly optimized:
 - Core functionality preserved
 - Security and stability improved
 - Clear separation of concerns
-- Production-ready codebase
 
-The system now focuses on practical, implementable features with a clean architecture and realistic documentation.
+The standard-library CLI core is stable and tested. The REST API server
+(`api_server.py`) now falls back to the standard-library core when the optional
+high-performance modules are absent, so its analyze/normalize endpoints work
+with `pip install -e .[api]` alone. Real-time streaming and ML-backed features
+still require their optional dependencies.
+
+The system focuses on practical, implementable features with a clean
+architecture and realistic documentation.

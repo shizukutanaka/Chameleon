@@ -26,25 +26,25 @@ develop:
 	pre-commit install || true
 
 test:
-	pytest tests -v
+	pytest -v
 
 test-all:
-	pytest tests -v --cov=audio_tool --cov-report=term --cov-report=html
+	pytest -v --cov=. --cov-report=term --cov-report=html
 
 lint:
-	flake8 audio_tool.py tests
-	mypy audio_tool.py tests --ignore-missing-imports
+	flake8 main.py core.py security_validator.py tests
+	mypy main.py core.py security_validator.py --ignore-missing-imports
 
 format:
-	black audio_tool.py tests
-	isort audio_tool.py tests
+	black main.py core.py tests
+	isort main.py core.py tests
 
 security:
-	bandit -r audio_tool.py tests
+	bandit -r main.py core.py security_validator.py plugin_system.py
 	safety check --full-report || true
 
 benchmark:
-	pytest tests/performance -v --benchmark-only --benchmark-save-data
+	pytest -v -m benchmark --benchmark-only || echo "No benchmark tests defined"
 
 docs:
 	sphinx-build -b html docs docs/_build/html

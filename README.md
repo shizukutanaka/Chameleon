@@ -1,12 +1,17 @@
 # Chameleon Audio Processing System
 
-Production-grade audio processing system for professional and enterprise use.
+A WAV-focused audio processing CLI with a path-validation security layer.
 
 ## Overview
 
-Chameleon is a secure, high-performance audio processing system designed for professional audio workflows. Built with security, reliability, and performance as core principles.
+Chameleon is a WAV audio processing toolkit. Its core (analysis, normalization,
+batch processing, MIDI analysis) runs on the Python standard library alone, with
+a consistent path-validation security layer. Heavier capabilities (advanced
+spectral/ML processing, real-time streaming, the REST API) are opt-in and depend
+on optional packages — see [Configuration](#configuration).
 
-**Status:** Production Ready
+**Status:** Beta — the standard-library CLI is stable; the REST API and
+real-time streaming require optional dependencies.
 **License:** MIT
 **Platform Support:** Linux, macOS, Windows
 
@@ -21,25 +26,22 @@ Chameleon is a secure, high-performance audio processing system designed for pro
 - Plugin system for extensibility
 
 ### Security
-- Path validation and sanitization
+- Path validation and sanitization (trusted-root enforcement)
 - File size limits (500MB default)
-- Audit logging with rotation
-- Encryption at rest (optional)
+- Audit logging for API operations
 - Rate limiting for API endpoints
-- RBAC for enterprise deployment
+- Sandboxed plugin execution with AST import whitelisting
 
 ### Performance
 - Parallel batch processing across multiple worker threads
-- Memory-efficient streaming for large files
-- SIMD-optimized operations
-- Intelligent caching
+- Memory-efficient chunked/streaming processing for large files
+- In-memory caching with LRU eviction
 - Configurable worker threads
 
 ### Reliability
-- Graceful degradation when dependencies unavailable
-- Circuit breakers for fault tolerance
-- Automatic retry with exponential backoff
+- Graceful degradation when optional dependencies are unavailable
 - Comprehensive error handling
+- Health-check endpoint for orchestration
 - Health checks and metrics
 
 ## Quick Start
@@ -55,12 +57,25 @@ cd Chameleon
 python3 -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 
-# Install dependencies
-pip install -r requirements.txt
-
-# Verify installation
+# Core CLI needs no third-party packages (standard library only)
 python validation_test.py
 ```
+
+### Dependency tiers
+
+The core CLI runs on the standard library alone. Optional capabilities are
+grouped as installable extras (single source of truth in `pyproject.toml`):
+
+```bash
+pip install -e .          # core CLI only
+pip install -e .[audio]   # numpy/scipy/librosa/soundfile/pyaudio — full pipeline
+pip install -e .[api]     # fastapi/uvicorn/pydantic — REST API server
+pip install -e .[ml]      # torch — optional ML-backed features
+pip install -e .[dev]     # test/lint/build tooling
+```
+
+The legacy `enhanced_requirements.txt` and `api_requirements.txt` files are kept
+for reference only; prefer the extras above.
 
 ### Basic Usage
 

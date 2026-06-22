@@ -7,12 +7,15 @@ include LICENSE
 include CHANGELOG.md
 
 # Core Application
-include audio_tool.py
-include test_audio.py
+include main.py
+include core.py
+include test_core.py
+include validation_test.py
 
 # Requirements Files
 include requirements.txt
-include requirements_optional.txt
+include enhanced_requirements.txt
+include api_requirements.txt
 
 # Configuration Files
 include pyproject.toml
@@ -20,7 +23,6 @@ include setup.py
 
 # Docker and Deployment
 include Dockerfile
-include docker-compose.yml
 
 # CI/CD
 include .github/workflows/*.yml
