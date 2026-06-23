@@ -1270,9 +1270,12 @@ def create_cli():
     batch.add_argument("--sample-rate", type=int, help="Target sample rate for conversion")
     batch.add_argument("--bit-depth", type=int, choices=[16, 24, 32], help="Target bit depth for conversion")
 
-    # ML command
-    ml = subparsers.add_parser("ml", help="Machine learning features")
-    ml.add_argument("operation", choices=["classify", "separate", "transcribe", "enhance"])
+    # ML command — only 'enhance' is implemented; classify/separate/transcribe
+    # require trained models or external tools that are explicitly out of scope
+    # per CHARTER §4 (non-goals: AI transcription, source separation, ML features).
+    ml = subparsers.add_parser("ml", help="Audio enhancement (numpy/scipy required)")
+    ml.add_argument("operation", choices=["enhance"],
+                    help="enhance: apply noise reduction + normalization")
     ml.add_argument("--input", required=True, help="Input audio file")
     ml.add_argument("--model", help="Model to use")
     ml.add_argument("--output", help="Output file/directory")
@@ -1620,32 +1623,13 @@ async def main():
             exit_code = 1
 
     elif args.command == "ml":
-        print(f"ML operation '{args.operation}' on {args.input}")
-
-        # Load audio
+        # Only 'enhance' is a real operation; classify/separate/transcribe were removed
+        # because they require trained models or external services — CHARTER §4 non-goals.
         audio, sr = processor.load_audio(args.input)
 
-        if args.operation == "classify":
-            # Genre/instrument classification
-            if HAS_LIBROSA:
-                # Extract features
-                mfcc = librosa.feature.mfcc(y=librosa.to_mono(audio), sr=sr, n_mfcc=13)
-                print(f"MFCC shape: {mfcc.shape}")
-                print("Classification would require a trained model")
-            else:
-                print("Librosa required for classification")
-
-        elif args.operation == "separate":
-            print("Source separation would require specialized models (e.g., Spleeter)")
-
-        elif args.operation == "transcribe":
-            print("Transcription would require speech recognition models")
-
-        elif args.operation == "enhance":
-            # Simple enhancement
+        if args.operation == "enhance":
             enhanced = processor.remove_noise(audio, sr)
             enhanced = processor.normalize_audio(enhanced)
-
             output = args.output or args.input.replace(".wav", "_enhanced.wav")
             processor.save_audio(enhanced, output, sr)
             print(f"Enhanced audio saved to {output}")
