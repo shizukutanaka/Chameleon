@@ -111,6 +111,12 @@ here so the next contributor does not skip them:
   static gate that rejects formats the loader can actually decode.
 - **CLI vs API:** if the API is not going to be a hosted service, consider trimming its
   enterprise surface to match the local-tool threat model.
+  **Decided (2026-06):** the API is a local adapter over the stdlib core, not a hosted
+  service. Its RBAC / rate-limiting / audit-log exist to defend the §5 threat model
+  (path traversal via API callers, resource exhaustion, hostile plugins) — not to build a
+  multi-tenant platform. Do not grow the API surface beyond what that model requires. The
+  non-goal (§4) against "a second product" applies: the API must stay aligned with the
+  CLI core, not develop a divergent feature set.
 
 ## 8. Success metrics (is the charter working?)
 
