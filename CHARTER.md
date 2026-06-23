@@ -85,5 +85,29 @@ here so the next contributor does not skip them:
   ffmpeg/librosa? Pick one before adding features.
 - **Codec gap:** real audio is mostly MP3/FLAC. Either commit to optional-codec support
   as a first-class, documented path, or stay explicitly WAV-only — but stop straddling.
+  **Decided (2026-06):** optional-codec is now a first-class, *documented* path via the
+  `[audio]` extra. `main.py`'s `SUPPORTED_FORMATS` is gated on the installed backend, so
+  MP3/FLAC/OGG input works once `pip install -e .[audio]` is run, while the default
+  install stays honestly WAV-only (§3). The straddle is resolved; do not reintroduce a
+  static gate that rejects formats the loader can actually decode.
 - **CLI vs API:** if the API is not going to be a hosted service, consider trimming its
   enterprise surface to match the local-tool threat model.
+
+## 8. Success metrics (is the charter working?)
+
+§6 gates an individual change. These gate the *product*: they measure whether the cycle
+this charter exists to stop (fantasy features, claim/reality drift) is actually staying
+stopped. Check them at review time; a regression in any is a signal to pause feature work.
+
+1. **Soundness — zero red on the default branch.** Every commit keeps
+   `python -m compileall -q .`, `python validation_test.py`, and `python -m pytest -q`
+   green under the stdlib-only install. Target: 0 broken commits on the main branch.
+2. **Honesty — zero unbacked claims.** Every capability advertised in README / docs maps
+   to a passing test or a demonstrably working code path. Each supported format/feature
+   has a backing test or documented command. Target: 0 claims without backing.
+3. **Activation — first success in under 5 minutes.** A new user goes from clone to a
+   successful `analyze` on their own file in <5 min by following QUICKSTART (WAV by
+   default; MP3/FLAC via the `[audio]` extra), with no undocumented step.
+4. **Scope discipline — zero non-goal regressions.** No §4 non-goal
+   (quantum/neural/GPU/"enterprise"/multi-language inflation/fantasy pipelines) is
+   reintroduced. Target: 0, watchable by a grep over the tree in review or CI.
