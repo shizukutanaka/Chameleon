@@ -186,7 +186,18 @@ VERSION = "1.0.0"
 MAX_FILE_SIZE = 500 * 1024 * 1024  # Align with core constraints (500MB)
 CHUNK_SIZE = 8192
 DEFAULT_SAMPLE_RATE = 44100
+# WAV is always supported through the standard-library loader. Extra formats are
+# advertised only when a backend that can actually decode them is installed, so the
+# default dependency-free install stays honestly WAV-only (see CHARTER.md §3) while the
+# `[audio]` extra turns mp3/flac/ogg into a real, working input path instead of a gate
+# that rejects them at load time even though load_audio (below) is wired for them.
 SUPPORTED_FORMATS = {'.wav', '.wave'}
+if HAS_LIBROSA or HAS_SOUNDFILE:
+    # soundfile/libsndfile and librosa both decode these natively.
+    SUPPORTED_FORMATS |= {'.flac', '.ogg', '.oga', '.aiff', '.aif'}
+if HAS_LIBROSA:
+    # librosa reaches mp3/m4a via audioread/ffmpeg; soundfile alone may not.
+    SUPPORTED_FORMATS |= {'.mp3', '.m4a'}
 
 @dataclass
 class AudioMetadata:

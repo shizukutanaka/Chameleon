@@ -16,10 +16,27 @@ python3 -m venv .venv
 source .venv/bin/activate
 # Windows:
 .venv\Scripts\activate
+```
 
-# Install dependencies (optional - core works without)
+Chameleon ships in two honest tiers — pick one:
+
+**1. Default — WAV only, zero third-party dependencies.** The core analyze/normalize/
+batch/MIDI CLI runs on the Python standard library alone. Nothing to install.
+
+```bash
+# Optional: install the recommended (still small) runtime deps
 pip install -r requirements.txt
 ```
+
+**2. `[audio]` extra — adds MP3 / FLAC / OGG input.** Installs numpy/scipy/librosa/
+soundfile so the loader can decode compressed formats:
+
+```bash
+pip install -e .[audio]
+```
+
+> Without the `[audio]` extra, Chameleon is genuinely WAV-only and will report
+> `Unsupported file type` for an `.mp3` — it does not pretend otherwise.
 
 ## First Steps
 
@@ -49,6 +66,28 @@ python main.py process --normalize /path/to/input.wav
 # Batch processing
 python main.py batch /path/to/directory/ normalize --output-dir /path/to/output/
 ```
+
+### 4. Working with MP3 / FLAC (optional)
+
+Requires the `[audio]` extra (`pip install -e .[audio]`). Once installed, the same
+commands accept compressed input:
+
+```bash
+# Analyze an MP3 or FLAC directly
+python main.py analyze /path/to/song.mp3
+python main.py analyze /path/to/track.flac
+```
+
+**Input vs. output — what is guaranteed:**
+
+| Direction | Default install | With `[audio]` |
+|-----------|-----------------|----------------|
+| Read / `analyze` | WAV | WAV, MP3, FLAC, OGG, AIFF, M4A |
+| Write / `process` output | WAV | WAV, FLAC |
+
+Processing (`--normalize`, etc.) writes **WAV by default and FLAC when `[audio]` is
+installed**. MP3 *output* is intentionally not promised — it depends on your local
+libsndfile version, so the tool falls back to WAV rather than failing silently.
 
 ## Common Tasks
 
