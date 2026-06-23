@@ -64,6 +64,15 @@ The security layer (~1,100 lines across `security_validator.py`, `advanced_valid
   Mitigation: `plugin_system` sandbox.
 - **Resource exhaustion**: oversized files. Mitigation: 500MB size cap.
 
+**Wiring caveat (be honest about what actually runs):** of the three files above, only
+`security_validator.py` (path/size checks) is wired into the default batch/load paths
+(`main.py:_filter_safe_files`, `core.py:BatchProcessor`) and `plugin_system.py` into
+plugin loading. `advanced_validation.py`'s deeper inspection (`DeepFileInspector`,
+`IntegrityVerifier`, `SanitizationEngine`) is currently reachable only via
+`personal_config.py`, **not** the default processing path — so do not describe it as an
+always-on defense. Integrating it into the default path is an open item (§9) and needs
+its own tests before being relied upon.
+
 Out of model: defending a single user against their own local files. Do not add security
 machinery that only makes sense for a hosted multi-tenant service unless the API actually
 becomes one (which is itself a Non-goal here).
@@ -151,7 +160,20 @@ A (2026-06): Removed. These fields were accepted by `AudioAnalysisRequest` and
 parameter without acting on it is the same structural problem as the fantasy features
 this charter exists to prevent: a claim implied by the interface, unbacked by code.
 
+**Q: Does the §5 security layer actually run on the default path?**
+A (2026-06): Partly. `security_validator.py` and `plugin_system.py` are wired in;
+`advanced_validation.py` is not (only reachable via `personal_config.py`). §5 now states
+this caveat explicitly instead of implying all 1,100 lines defend every request. Whether
+to integrate `advanced_validation.py` into the default path is an open question below.
+
 ### Open questions (next contributor: decide before building)
+
+- **advanced_validation.py integration**: its deep file inspection / integrity / sanitize
+  passes are not wired into the default batch/load path. Should they be (closing the gap
+  between the §5 claim and the running code), or should the module be trimmed to match
+  what is actually used? Either way, add path-traversal and oversize-file unit tests that
+  exercise `SecurityValidator` directly — currently `validation_test.py` re-implements the
+  checks by hand rather than calling it.
 
 - **CI non-goal guard**: §8.4 says scope discipline is "watchable by a grep in review or
   CI." Should we wire an actual CI step that greps for `quantum|neural|GPU|enterprise`
