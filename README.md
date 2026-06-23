@@ -10,6 +10,10 @@ a consistent path-validation security layer. Heavier capabilities (advanced
 spectral/ML processing, real-time streaming, the REST API) are opt-in and depend
 on optional packages — see [Configuration](#configuration).
 
+For the project's intended scope, explicit non-goals, threat model and the bar any
+new feature must clear, see [CHARTER.md](CHARTER.md). It exists to stop the recurring
+add-then-remove cycle of unimplementable "enterprise/quantum/ML" features.
+
 **Status:** Beta — the standard-library CLI is stable; the REST API and
 real-time streaming require optional dependencies.
 **License:** MIT
