@@ -21,13 +21,18 @@ real-time streaming require optional dependencies.
 
 ## Features
 
-### Core Capabilities
+### Core (standard library, no third-party packages)
 - Audio analysis (duration, sample rate, bit depth, peak/RMS levels)
-- Audio processing (normalization, noise reduction, format conversion)
+- Audio normalization
 - Batch operations with parallel processing
 - MIDI extraction and analysis
-- Real-time audio streaming
 - Plugin system for extensibility
+
+### Optional (requires extras — see [Configuration](#configuration))
+- Noise reduction and resampling — requires `[audio]` (numpy/scipy)
+- MP3/FLAC/OGG input and format conversion — requires `[audio]`
+- Real-time audio streaming — requires `[audio]` (PyAudio)
+- REST API (health check, rate limiting, RBAC) — requires `[api]`
 
 ### Security
 - Path validation and sanitization (trusted-root enforcement)
