@@ -171,24 +171,40 @@ A (2026-06): Partly. `security_validator.py` and `plugin_system.py` are wired in
 `advanced_validation.py` is not (only reachable via `personal_config.py`). §5 now states
 this caveat explicitly instead of implying all 1,100 lines defend every request. Whether
 to integrate `advanced_validation.py` into the default path is an open question below.
+`tests/test_security.py` now exercises `SecurityValidator` directly (path shape, trusted
+roots, extension allowlist, size limit) rather than relying on `validation_test.py`'s
+hand-rolled re-implementation.
+
+**Q: Neural / source-separation modules still shipped despite §4?**
+A (2026-06): Removed `music_generator.py`, `audio_enhancer.py`, and
+`advanced_audio_features.py`. All three were orphaned (referenced only in packaging
+metadata, never imported by the CLI/core), untested, and claimed neural networks while
+either running `random.choice` placeholders or importing torch unconditionally (breaking
+the stdlib install). They were residue of the add-then-remove cycle §4 exists to stop —
+removed the same way quantum was.
+
+**Q: How is §8.4 scope discipline actually enforced?**
+A (2026-06): By `tests/test_no_fantasy_features.py`, which greps the Python sources for
+reintroduced §4 non-goals (torch/tensorflow imports, `nn.Module`/`nn.LSTM`, "neural
+network", spleeter, "quantum computing/processing") and fails the suite on a hit, while
+allowing lines that document a removal. This runs in the ordinary `pytest` suite, so it
+needs no `workflows` permission and executes on every commit.
 
 ### Open questions (next contributor: decide before building)
 
 - **advanced_validation.py integration**: its deep file inspection / integrity / sanitize
   passes are not wired into the default batch/load path. Should they be (closing the gap
   between the §5 claim and the running code), or should the module be trimmed to match
-  what is actually used? Either way, add path-traversal and oversize-file unit tests that
-  exercise `SecurityValidator` directly — currently `validation_test.py` re-implements the
-  checks by hand rather than calling it.
+  what is actually used?
 
-- **CI non-goal guard**: §8.4 says scope discipline is "watchable by a grep in review or
-  CI." Should we wire an actual CI step that greps for `quantum|neural|GPU|enterprise`
-  and fails if found? If yes, where does the allowlist live?
 - **CLI exit codes**: Unix convention maps error categories to distinct exit codes
   (e.g., file-not-found=2, permission=3). Currently the CLI returns 0 or 1 only. Is a
   richer exit-code table worth the added contract, or does it conflict with the
   "minimal dependency surface" identity?
-- **API threat model vs. local tool**: §7 notes the API's enterprise surface may be
-  larger than a local-tool threat model justifies. If the API is never going to be a
-  hosted service, which RBAC/rate-limiting pieces can be simplified without reducing the
-  security that *is* needed?
+
+- **Broken active CI workflow**: `.github/workflows/ci-cd.yml` is still the old 409-line
+  fantasy pipeline (k8s/staging/prod deploys, a missing `deployment_manager.py`,
+  `tests/smoke/` / `tests/health/` that do not exist). A working replacement sits at
+  `ci/proposed-ci.yml`; adopting it needs a maintainer with `workflows` permission to run
+  the copy documented in `ci/README.md` (the automation account that produced this branch
+  cannot push workflow changes).
