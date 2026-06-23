@@ -50,3 +50,30 @@ def test_batch_rejects_unknown_operation(tmp_path):
     assert len(results) == 1
     assert results[0].success is False
     assert "Unsupported operation" in results[0].message
+
+
+def test_batch_empty_directory_reports_no_files(tmp_path):
+    empty = tmp_path / "empty"
+    empty.mkdir()
+
+    results = _run_batch(empty, "analyze")
+
+    # An empty directory is a graceful failure: one result with success=False
+    # and a human-readable message, not an exception.
+    assert len(results) == 1
+    assert results[0].success is False
+    assert results[0].message  # non-empty message tells the user why
+
+
+def test_batch_skips_unsupported_file_types(tmp_path):
+    src = tmp_path / "mixed"
+    src.mkdir()
+    (src / "note.txt").write_text("not audio")
+    (src / "image.png").write_bytes(b"\x89PNG")
+    write_sine_wave(src / "real.wav", duration=0.2)
+
+    results = _run_batch(src, "analyze")
+
+    # Only the WAV should be processed; non-audio files are silently skipped.
+    assert len(results) == 1
+    assert results[0][0].success is True
