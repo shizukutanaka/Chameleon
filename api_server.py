@@ -184,8 +184,6 @@ class AuthenticationResponse(BaseModel):
 
 class AudioAnalysisRequest(BaseModel):
     file_name: str
-    enable_simd: bool = True
-    parallel_processing: bool = True
 
 class AudioAnalysisResponse(BaseModel):
     success: bool
@@ -204,8 +202,6 @@ class AudioNormalizationRequest(BaseModel):
     file_name: str
     target_peak: float = Field(0.95, ge=0.1, le=1.0)
     output_format: str = Field('wav', regex=r'^(wav|flac)$')
-    enable_simd: bool = True
-    parallel_processing: bool = True
 
 class AudioNormalizationResponse(BaseModel):
     success: bool
