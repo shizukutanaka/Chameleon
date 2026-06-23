@@ -15,9 +15,14 @@ security boundary around file access.
 
 The differentiator is **not** breadth of formats or speed (ffmpeg, sox and librosa win
 there). It is: *runs with zero third-party dependencies, validates every path against a
-trusted-root policy, and produces reproducible, audit-logged results suitable for
-locked-down or air-gapped environments.* If a change does not serve that, it is out of
-scope.
+trusted-root policy, and produces reproducible results with a verifiable access record
+suitable for locked-down or air-gapped environments.* If a change does not serve that, it
+is out of scope.
+
+**What "auditable" means here:** the `SecurityValidator` rejects paths outside configured
+trusted roots and logs each access decision. That is the audit trail — not a separate
+compliance layer. Do not add a heavier logging system without a concrete requirement;
+equally, do not claim richer audit capabilities than this.
 
 ## 2. Target user
 
@@ -83,6 +88,11 @@ here so the next contributor does not skip them:
 - **Reason to exist:** is "zero-dependency auditable WAV batch processing" a real need
   for a real user, or should the project pivot to being a thin, honest wrapper around
   ffmpeg/librosa? Pick one before adding features.
+  **Decided (2026-06):** the two are layers, not alternatives. The stdlib WAV core is the
+  differentiator (zero-dependency, auditable, air-gap safe). The `[audio]` extra is
+  convenience layered on top — it does not change the product's identity. The claim
+  "auditable WAV batch processing" belongs to the core only; the extra is not the
+  differentiator and should not be marketed as such.
 - **Codec gap:** real audio is mostly MP3/FLAC. Either commit to optional-codec support
   as a first-class, documented path, or stay explicitly WAV-only — but stop straddling.
   **Decided (2026-06):** optional-codec is now a first-class, *documented* path via the
@@ -111,3 +121,46 @@ stopped. Check them at review time; a regression in any is a signal to pause fea
 4. **Scope discipline — zero non-goal regressions.** No §4 non-goal
    (quantum/neural/GPU/"enterprise"/multi-language inflation/fantasy pipelines) is
    reintroduced. Target: 0, watchable by a grep over the tree in review or CI.
+
+## 9. Socratic record
+
+A living log of questions the Socratic review raised and how they were resolved. Update
+this section instead of re-litigating closed decisions.
+
+### Resolved questions
+
+**Q: What does "auditable" concretely mean in this codebase?**
+A (2026-06): The audit trail is `SecurityValidator`: every file-access attempt is checked
+against a trusted-root allowlist, and rejections are logged. That is the full scope of
+the claim. There is no separate compliance log; §1 was updated to say "verifiable access
+record" rather than "audit-logged results" to match the implementation. See §1 and §5.
+
+**Q: Codec gap — stay WAV-only or commit to optional-codec?**
+A (2026-06): Commit to optional-codec as a first-class, *documented* path via `[audio]`
+extra. Default install stays WAV-only. `main.py`'s `SUPPORTED_FORMATS` is now dynamic:
+gated on the installed backend so the gate matches reality. See §7.
+
+**Q: Reason to exist — differentiator core vs. thin librosa wrapper?**
+A (2026-06): Two layers, not a binary choice. The stdlib WAV core is the differentiator.
+The `[audio]` extra is layered convenience. Claims of "auditable / zero-dependency"
+belong to the core layer only. See §7.
+
+**Q: API ghost parameters — `enable_simd` / `parallel_processing` in request models?**
+A (2026-06): Removed. These fields were accepted by `AudioAnalysisRequest` and
+`AudioNormalizationRequest` but never forwarded to the processing core. Accepting a
+parameter without acting on it is the same structural problem as the fantasy features
+this charter exists to prevent: a claim implied by the interface, unbacked by code.
+
+### Open questions (next contributor: decide before building)
+
+- **CI non-goal guard**: §8.4 says scope discipline is "watchable by a grep in review or
+  CI." Should we wire an actual CI step that greps for `quantum|neural|GPU|enterprise`
+  and fails if found? If yes, where does the allowlist live?
+- **CLI exit codes**: Unix convention maps error categories to distinct exit codes
+  (e.g., file-not-found=2, permission=3). Currently the CLI returns 0 or 1 only. Is a
+  richer exit-code table worth the added contract, or does it conflict with the
+  "minimal dependency surface" identity?
+- **API threat model vs. local tool**: §7 notes the API's enterprise surface may be
+  larger than a local-tool threat model justifies. If the API is never going to be a
+  hosted service, which RBAC/rate-limiting pieces can be simplified without reducing the
+  security that *is* needed?
