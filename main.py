@@ -181,6 +181,17 @@ except ImportError:
     HAS_PYAUDIO = False
     warnings.warn("PyAudio not installed. Real-time audio disabled.")
 
+# Deep file inspection (stdlib-only). Used to validate that a file claiming a
+# .wav extension is actually a WAV container before it enters the batch
+# pipeline. Guarded like the other optional imports so a trimmed checkout still
+# degrades gracefully (CHARTER.md §6.2) — the batch filter simply skips the
+# extra format check when it is unavailable.
+try:
+    from advanced_validation import DeepFileInspector
+    HAS_DEEP_INSPECTOR = True
+except ImportError:
+    HAS_DEEP_INSPECTOR = False
+
 # Core constants
 VERSION = "1.0.0"
 MAX_FILE_SIZE = 500 * 1024 * 1024  # Align with core constraints (500MB)
@@ -872,10 +883,12 @@ class AudioProcessor:
 
     def _filter_safe_files(self, files: List[str]) -> List[str]:
         safe: List[str] = []
+        inspector = DeepFileInspector() if HAS_DEEP_INSPECTOR else None
         for original in files:
             file_path = os.fspath(original)
+            suffix = Path(file_path).suffix.lower()
 
-            if Path(file_path).suffix.lower() not in SUPPORTED_FORMATS:
+            if suffix not in SUPPORTED_FORMATS:
                 self.logger.warning(f"Skipping unsupported file type: {file_path}")
                 continue
 
@@ -890,6 +903,24 @@ class AudioProcessor:
             if not SecurityValidator.validate_file_size(file_path):
                 self.logger.warning(f"Skipping file outside size limits: {file_path}")
                 continue
+
+            # Deep format inspection for native WAV files: reject anything whose
+            # bytes are not actually a WAV container (e.g. an executable renamed
+            # to .wav). Only gate on is_valid (the magic number); suspicious
+            # byte patterns are logged but never rejected, because a WAV's PCM
+            # payload can legitimately contain them. Skipped for mp3/flac/etc.,
+            # which the inspector does not understand (those rely on the
+            # `[audio]` backend instead).
+            if inspector is not None and suffix in {'.wav', '.wave'}:
+                result = inspector.validate_for_processing(Path(file_path))
+                if not result.is_valid:
+                    self.logger.warning(
+                        f"Skipping file failing format inspection: {file_path} "
+                        f"({'; '.join(result.errors)})"
+                    )
+                    continue
+                for note in result.warnings:
+                    self.logger.info(f"Inspection note for {file_path}: {note}")
 
             safe.append(file_path)
 
