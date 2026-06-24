@@ -100,20 +100,30 @@ class TestTrustedRoots:
         assert v.validate_path(str(p)) is False
 
     def test_prefix_collision_does_not_bypass_root(self, tmp_path):
-        """'/safe/audio' as root must not allow '/safe/audio-exploit/'."""
+        """'/safe/audio' as root must not allow '/safe/audio-exploit/'.
+
+        _is_within_trusted_roots uses os.path.commonpath (component-wise), so a
+        sibling directory whose name merely shares the root's string prefix is
+        correctly rejected. Regression guard for the str.startswith bug
+        (CHARTER §9).
+        """
         trusted = tmp_path / "audio"
         trusted.mkdir()
         sibling = tmp_path / "audio-exploit"
         sibling.mkdir()
         p = _write_wav(sibling / "song.wav")
         v = _validator(trusted_roots={str(trusted)})
-        # The prefix-only check in _is_within_trusted_roots is a known
-        # limitation (see CHARTER §9). This test documents the current
-        # behaviour so a future fix has a regression guard.
-        # The test passes whichever way the implementation decides — it just
-        # pins the behaviour so changes are visible.
-        result = v.validate_path(str(p))
-        assert isinstance(result, bool)  # at minimum: does not crash
+        assert v.validate_path(str(p)) is False
+
+    def test_root_itself_and_nested_file_accepted(self, tmp_path):
+        """A file genuinely nested under the root is still accepted after the
+        commonpath hardening (guards against an over-strict fix)."""
+        trusted = tmp_path / "audio"
+        nested = trusted / "sub" / "deep"
+        nested.mkdir(parents=True)
+        p = _write_wav(nested / "song.wav")
+        v = _validator(trusted_roots={str(trusted)})
+        assert v.validate_path(str(p)) is True
 
     def test_empty_trusted_roots_allows_any_path(self, tmp_path):
         p = _write_wav(tmp_path / "song.wav")

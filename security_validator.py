@@ -131,7 +131,22 @@ class SecurityValidator:
         if not self.config.trusted_roots:
             return True
         resolved_str = str(resolved)
-        return any(resolved_str.startswith(root) for root in self.config.trusted_roots)
+        for root in self.config.trusted_roots:
+            try:
+                root_str = str(Path(root).expanduser().resolve())
+            except (OSError, ValueError, RuntimeError):
+                continue
+            # Use commonpath (component-wise) rather than str.startswith: a plain
+            # prefix test wrongly accepts a sibling like ``/data/safe-evil`` for a
+            # ``/data/safe`` root because the string starts with the root. See
+            # CHARTER.md §9 (path-containment hardening).
+            try:
+                if os.path.commonpath([resolved_str, root_str]) == root_str:
+                    return True
+            except ValueError:
+                # Different drives (Windows) or otherwise incomparable paths.
+                continue
+        return False
 
     def _extension_allowed(self, path: Path) -> bool:
         allowed = self.config.allowed_extensions

@@ -204,6 +204,16 @@ bytes are logged, not rejected. `tests/test_advanced_validation_integration.py` 
 pass / reject / false-positive-guard cases. `IntegrityVerifier` and `SanitizationEngine`
 stay opt-in by design. This makes the §5 claim true instead of merely documented.
 
+**Q: Does the trusted-root check actually contain paths (§5 path-traversal)?**
+A (2026-06): It does now. `_is_within_trusted_roots` previously used
+`str.startswith`, which wrongly accepted a sibling like `/data/safe-evil` for a
+`/data/safe` root (a documented path-containment pitfall — see the Zenn/Qiita
+directory-traversal write-ups). Replaced with `os.path.commonpath` (component-wise
+containment) plus resolving each root, so prefix-collision siblings are rejected while
+genuinely nested files still pass. Regression guards:
+`tests/test_security.py::TestTrustedRoots::test_prefix_collision_does_not_bypass_root`
+and `test_root_itself_and_nested_file_accepted`.
+
 ### Open questions (next contributor: decide before building)
 
 - **advanced_validation.py parity in core**: `DeepFileInspector` now runs in
