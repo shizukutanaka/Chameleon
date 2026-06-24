@@ -64,14 +64,19 @@ The security layer (~1,100 lines across `security_validator.py`, `advanced_valid
   Mitigation: `plugin_system` sandbox.
 - **Resource exhaustion**: oversized files. Mitigation: 500MB size cap.
 
-**Wiring caveat (be honest about what actually runs):** of the three files above, only
-`security_validator.py` (path/size checks) is wired into the default batch/load paths
+**Wiring caveat (be honest about what actually runs):** `security_validator.py`
+(path/size checks) is wired into the default batch/load paths
 (`main.py:_filter_safe_files`, `core.py:BatchProcessor`) and `plugin_system.py` into
-plugin loading. `advanced_validation.py`'s deeper inspection (`DeepFileInspector`,
-`IntegrityVerifier`, `SanitizationEngine`) is currently reachable only via
-`personal_config.py`, **not** the default processing path — so do not describe it as an
-always-on defense. Integrating it into the default path is an open item (§9) and needs
-its own tests before being relied upon.
+plugin loading. As of 2026-06, `advanced_validation.py`'s `DeepFileInspector` is **also**
+wired into `main.py:_filter_safe_files`: for files claiming a `.wav` extension it
+validates the actual WAV magic number (via `validate_for_processing`, a checksum-free
+variant) and rejects containers that are not real WAVs — e.g. an executable renamed to
+`.wav`. It gates only on the magic number; suspicious byte patterns inside the payload are
+logged, never rejected, because a WAV's PCM data can legitimately contain them. The other
+two helpers (`IntegrityVerifier`, `SanitizationEngine`) remain opt-in via
+`personal_config.py` by design — they are checksum-manifest / metadata-stripping tools, not
+per-request gates — so do not describe them as always-on. Wiring `DeepFileInspector` into
+`core.py:BatchProcessor` for parity is an optional follow-up (§9).
 
 Out of model: defending a single user against their own local files. Do not add security
 machinery that only makes sense for a hosted multi-tenant service unless the API actually
@@ -190,12 +195,22 @@ network", spleeter, "quantum computing/processing") and fails the suite on a hit
 allowing lines that document a removal. This runs in the ordinary `pytest` suite, so it
 needs no `workflows` permission and executes on every commit.
 
+**Q: Should `advanced_validation.py` run on the default path (§5 gap)?**
+A (2026-06): Yes, partially. `DeepFileInspector` is now wired into
+`main.py:_filter_safe_files` via a checksum-free `validate_for_processing`, so the default
+batch path rejects files whose `.wav` extension lies about their contents. The gate keys
+only on the WAV magic number (zero false positives on real audio); suspicious payload
+bytes are logged, not rejected. `tests/test_advanced_validation_integration.py` covers the
+pass / reject / false-positive-guard cases. `IntegrityVerifier` and `SanitizationEngine`
+stay opt-in by design. This makes the §5 claim true instead of merely documented.
+
 ### Open questions (next contributor: decide before building)
 
-- **advanced_validation.py integration**: its deep file inspection / integrity / sanitize
-  passes are not wired into the default batch/load path. Should they be (closing the gap
-  between the §5 claim and the running code), or should the module be trimmed to match
-  what is actually used?
+- **advanced_validation.py parity in core**: `DeepFileInspector` now runs in
+  `main.py:_filter_safe_files` (the CLI batch path), but `core.py:BatchProcessor` —
+  reachable via `core.batch_process_async` — still validates only path/size. Wiring the
+  same format check there (or extracting one shared filter) would close the remaining
+  parity gap; left optional to keep the stdlib core minimal.
 
 - **CLI exit codes**: Unix convention maps error categories to distinct exit codes
   (e.g., file-not-found=2, permission=3). Currently the CLI returns 0 or 1 only. Is a
