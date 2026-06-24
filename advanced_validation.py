@@ -118,6 +118,68 @@ class DeepFileInspector:
                 metadata={}
             )
 
+    def validate_for_processing(self, file_path: Path) -> FileValidationResult:
+        """Lightweight format validation for the default batch/load path.
+
+        Identical to ``inspect_file`` except it skips the full-file SHA-256
+        checksum (``checksum_sha256`` is left empty), so it does not impose a
+        whole-file read on every file in a batch. ``is_valid`` carries the same
+        meaning as ``inspect_file``: it is False only when the magic number does
+        not identify a real WAV container (e.g. an executable renamed to .wav).
+        Suspicious byte patterns inside the data are reported as *warnings*, not
+        errors — a WAV's PCM payload can legitimately contain those byte
+        sequences — so callers should log them, not reject on them.
+        """
+
+        warnings: List[str] = []
+        errors: List[str] = []
+        metadata: Dict = {}
+
+        try:
+            stats = file_path.stat()
+            size = stats.st_size
+
+            file_type = self._identify_file_type(file_path)
+
+            if file_type not in ('WAV', 'WAV_BIG_ENDIAN'):
+                errors.append(f"Invalid file type: {file_type}")
+
+            suspicious = self._scan_for_suspicious_content(file_path)
+            if suspicious:
+                warnings.extend([f"Suspicious pattern: {p.decode('latin1', errors='ignore')}"
+                                 for p in suspicious])
+
+            if file_type.startswith('WAV'):
+                metadata.update(self._validate_wav_structure(file_path))
+
+            if stats.st_mode & 0o111:
+                warnings.append("File has executable permissions")
+
+            if file_path.name.startswith('.'):
+                warnings.append("Hidden file")
+
+            return FileValidationResult(
+                is_valid=len(errors) == 0,
+                file_type=file_type,
+                size_bytes=size,
+                checksum_sha256="",
+                warnings=warnings,
+                errors=errors,
+                metadata=metadata,
+            )
+
+        except Exception as e:
+            logger.error(f"Format validation failed: {e}")
+            return FileValidationResult(
+                is_valid=False,
+                file_type="UNKNOWN",
+                size_bytes=0,
+                checksum_sha256="",
+                warnings=[],
+                errors=[str(e)],
+                metadata={},
+            )
+
     def _calculate_checksum(self, file_path: Path) -> str:
         """Calculate SHA-256 checksum"""
 
