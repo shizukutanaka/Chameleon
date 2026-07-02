@@ -17,6 +17,7 @@ import asyncio
 import math
 import re
 import multiprocessing as mp
+from enum import IntEnum
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple, Union, TYPE_CHECKING
 from dataclasses import dataclass, asdict
@@ -33,6 +34,32 @@ if TYPE_CHECKING:
     import numpy as np
 else:
     np = None
+
+
+class ExitCode(IntEnum):
+    """Process exit codes for the CLI.
+
+    A small, conventional table (not the full BSD ``sysexits.h``) so that
+    scripts wrapping this tool can distinguish *why* a run failed without us
+    taking on a large contract. ``IntEnum`` members are plain ints, so they can
+    be returned or passed to ``sys.exit`` directly.
+
+      0  OK           success
+      1  ERROR        a processing step failed, or an unexpected error
+      2  USAGE        the command line was wrong / incomplete (argparse also
+                      uses 2 for its own parse errors)
+      3  INPUT        a supplied path failed pre-flight input validation
+      4  SECURITY     a path or file was rejected by the security policy
+      130 INTERRUPTED interrupted by the user (Ctrl-C); 128 + SIGINT, per the
+                      shell convention
+    """
+
+    OK = 0
+    ERROR = 1
+    USAGE = 2
+    INPUT = 3
+    SECURITY = 4
+    INTERRUPTED = 130
 
 
 _CONTROL_CHAR_PATTERN = re.compile(r"[\x00-\x1f\x7f]")
@@ -1352,9 +1379,9 @@ async def main():
 
     if not args.command:
         parser.print_help()
-        return 1
+        return ExitCode.USAGE
 
-    exit_code = 0
+    exit_code = ExitCode.OK
 
     # Create processor
     config = ProcessingConfig.from_environment()
@@ -1372,7 +1399,7 @@ async def main():
             _assert_unique_paths(files, "file input")
         except ValueError as exc:
             print(f"Input validation error: {exc}")
-            return 1
+            return ExitCode.INPUT
 
         results = processor.batch_process(files, "analyze")
 
@@ -1404,7 +1431,7 @@ async def main():
             print(f"\nAnalysis exported to {args.export}")
 
         if had_error:
-            exit_code = 1
+            exit_code = ExitCode.ERROR
 
     elif args.command == "process":
         operations: List[str] = []
@@ -1415,7 +1442,7 @@ async def main():
             _assert_unique_paths(files, "file input")
         except ValueError as exc:
             print(f"Input validation error: {exc}")
-            return 1
+            return ExitCode.INPUT
 
         kwargs: Dict[str, Any] = {
             "output_dir": output_dir,
@@ -1440,7 +1467,7 @@ async def main():
 
         if not operations:
             print("Error: specify at least one processing option (e.g., --normalize, --denoise, --effects, or --convert).")
-            return 1
+            return ExitCode.USAGE
 
         if args.no_parallel:
             processor.config.parallel = False
@@ -1476,7 +1503,7 @@ async def main():
                     print(f"Processed {result['file']} -> {output_path} ({result['time']:.2f}s){detail_suffix}")
 
             if had_error:
-                exit_code = 1
+                exit_code = ExitCode.ERROR
 
     elif args.command == "stream":
         try:
@@ -1485,7 +1512,7 @@ async def main():
             effects_path = _sanitize_optional_input(args.effects, "effects")
         except ValueError as exc:
             print(f"Input validation error: {exc}")
-            return 1
+            return ExitCode.INPUT
 
         if effects_path:
             with open(effects_path) as f:
@@ -1499,9 +1526,10 @@ async def main():
             await processor.process_stream(input_device, output_device, effects)
         except KeyboardInterrupt:
             print("\nStream stopped")
+            exit_code = ExitCode.INTERRUPTED
         except Exception as exc:
             print(f"Stream failed: {exc}")
-            exit_code = 1
+            exit_code = ExitCode.ERROR
 
     elif args.command == "plugins":
         try:
@@ -1513,7 +1541,7 @@ async def main():
             manager, sanitized_dirs = _initialize_plugin_manager(directories)
         except ValueError as exc:
             print(f"Plugin directory error: {exc}")
-            return 1
+            return ExitCode.INPUT
 
         if args.plugins_command == "list":
             plugins = manager.list_plugins()
@@ -1591,7 +1619,7 @@ async def main():
                         print(f"      Error: {error}")
 
             if any(not record["passed"] for record in audit_results) or had_failure:
-                exit_code = 1
+                exit_code = ExitCode.SECURITY
 
     elif args.command == "batch":
         try:
@@ -1601,15 +1629,15 @@ async def main():
             format_arg = _sanitize_optional_input(args.format, "format")
         except ValueError as exc:
             print(f"Input validation error: {exc}")
-            return 1
+            return ExitCode.INPUT
 
         if not directory.exists():
             print(f"Error: directory not found: {directory}")
-            return 1
+            return ExitCode.INPUT
 
         if not directory.is_dir():
             print(f"Error: specified path is not a directory: {directory}")
-            return 1
+            return ExitCode.INPUT
 
         pattern = "**/*" if args.recursive else "*"
 
@@ -1619,13 +1647,13 @@ async def main():
 
         if not gathered_files:
             print("Warning: no supported audio files found.")
-            return 1
+            return ExitCode.INPUT
 
         try:
             resolved_files = SecurityValidator.resolve_unique_paths([str(f) for f in gathered_files])
         except ValueError as exc:
             print(f"Input validation error: {exc}")
-            return 1
+            return ExitCode.INPUT
 
         file_list = [str(path) for path in resolved_files]
         print(f"Found {len(file_list)} audio files")
@@ -1651,7 +1679,7 @@ async def main():
         print(f"\nProcessed {successful}/{len(results)} files successfully")
 
         if successful != len(results):
-            exit_code = 1
+            exit_code = ExitCode.ERROR
 
     elif args.command == "ml":
         # Only 'enhance' is a real operation; classify/separate/transcribe were removed
@@ -1670,7 +1698,7 @@ async def main():
 
         if args.operation in ["extract", "analyze"] and not args.input:
             print("Error: --input required for extract/analyze operations")
-            return 1
+            return ExitCode.USAGE
 
         if args.operation == "extract":
             # Extract MIDI from audio
@@ -1753,7 +1781,7 @@ async def main():
             # Generate MIDI file from scratch
             if not args.output:
                 print("Error: --output required for generate operation")
-                return
+                return ExitCode.USAGE
 
             print("🎼 Generating MIDI demo...")
 
@@ -1786,7 +1814,7 @@ async def main():
         except ImportError:
             print("The API server requires fastapi and uvicorn. "
                   "Install them with: pip install -r api_requirements.txt")
-            exit_code = 1
+            exit_code = ExitCode.ERROR
         else:
             uvicorn.run(
                 "api_server:app",
@@ -1800,7 +1828,11 @@ async def main():
 
 def cli() -> int:
     """Synchronous console-script entry point (wraps the async ``main``)."""
-    return asyncio.run(main())
+    try:
+        return asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nInterrupted")
+        return ExitCode.INTERRUPTED
 
 
 if __name__ == "__main__":

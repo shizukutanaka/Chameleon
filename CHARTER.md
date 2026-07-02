@@ -214,6 +214,18 @@ genuinely nested files still pass. Regression guards:
 `tests/test_security.py::TestTrustedRoots::test_prefix_collision_does_not_bypass_root`
 and `test_root_itself_and_nested_file_accepted`.
 
+**Q: CLI exit codes — worth a richer table, or does it conflict with minimalism?**
+A (2026-07): Added a small `ExitCode(IntEnum)` in `main.py` — `OK=0`, `ERROR=1`,
+`USAGE=2`, `INPUT=3`, `SECURITY=4`, `INTERRUPTED=130` — and mapped every existing
+`return`/`exit_code=` site in `main()` to the matching category instead of the prior
+0/1-only scheme (this also fixed two bugs found in the process: the `midi generate`
+handler returning bare `None` — exit 0 — on a usage error, and `cli()` not catching
+`KeyboardInterrupt`, so Ctrl-C surfaced as a traceback instead of exit 130). No new
+dependency: `enum` is stdlib, so this doesn't conflict with §3's zero-dependency core.
+`tests/test_exit_codes.py` invokes the CLI as a real subprocess and asserts on
+`returncode` for each category — the first tests in the suite that exercise the actual
+`sys.exit(cli())` path rather than calling `main()`'s Python-level return value.
+
 ### Open questions (next contributor: decide before building)
 
 - **advanced_validation.py parity in core**: `DeepFileInspector` now runs in
@@ -221,11 +233,6 @@ and `test_root_itself_and_nested_file_accepted`.
   reachable via `core.batch_process_async` — still validates only path/size. Wiring the
   same format check there (or extracting one shared filter) would close the remaining
   parity gap; left optional to keep the stdlib core minimal.
-
-- **CLI exit codes**: Unix convention maps error categories to distinct exit codes
-  (e.g., file-not-found=2, permission=3). Currently the CLI returns 0 or 1 only. Is a
-  richer exit-code table worth the added contract, or does it conflict with the
-  "minimal dependency surface" identity?
 
 - **Broken active CI workflow**: `.github/workflows/ci-cd.yml` is still the old 409-line
   fantasy pipeline (k8s/staging/prod deploys, a missing `deployment_manager.py`,
