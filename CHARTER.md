@@ -270,8 +270,18 @@ action:
   match.
 - **User approved wiring in** (real, working, non-duplicative — fills an actual gap):
   `mastering_chain.py`, `ux_improvements.py`, `spectral_utils.py`. Each gets its own
-  wiring commit (CLI subcommand/flag + tests) rather than a blanket change; this entry is
-  updated with specifics as each lands.
+  wiring commit (CLI subcommand/flag + tests) rather than a blanket change.
+  - `ux_improvements.py` (2026-07, done): `main.py:AudioProcessor.batch_process` gained
+    an opt-in `show_progress` keyword that renders `ProgressBar` as files complete; the
+    CLI's `batch` command passes `show_progress=sys.stdout.isatty()` (so captured/piped
+    output and tests stay unaffected) and colorizes its final summary line with
+    `ColorText.success`/`ColorText.error`. `ErrorFormatter`/`TableFormatter`/
+    `SpinnerAnimation` remain real and importable but unused for now — `ErrorFormatter`'s
+    suggestion API needs an `Exception` instance, and `batch_process`'s result dicts only
+    carry `str(exc)`, so wiring it in would need a wider change to what errors carry
+    through the pipeline; left for a future pass rather than forced in. See
+    `tests/test_ux_wiring.py`.
+  - `mastering_chain.py`, `spectral_utils.py`: not yet wired; tracked here until done.
 - **Left orphaned, deliberately** (real and non-duplicative, but wiring in is a product
   scope decision, not a mechanical fix): `spectral_editor.py` (a full interactive
   spectral editor — selection regions, undo, visualization — a larger surface than the

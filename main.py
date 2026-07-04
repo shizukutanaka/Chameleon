@@ -219,6 +219,15 @@ try:
 except ImportError:
     HAS_DEEP_INSPECTOR = False
 
+# Terminal UX helpers (stdlib-only). Guarded for the same reason as the other
+# optional imports even though this one has no non-stdlib dependency — a
+# trimmed checkout should still run the CLI without progress bars/colour.
+try:
+    from ux_improvements import ProgressBar, ErrorFormatter, ColorText
+    HAS_UX_IMPROVEMENTS = True
+except ImportError:
+    HAS_UX_IMPROVEMENTS = False
+
 # Core constants
 VERSION = "1.0.0"
 MAX_FILE_SIZE = 500 * 1024 * 1024  # Align with core constraints (500MB)
@@ -865,8 +874,14 @@ class AudioProcessor:
             self.logger.error(f"Melody composition failed: {e}")
             return []
 
-    def batch_process(self, files: List[str], operation: str, **kwargs) -> List[Dict]:
-        """Process multiple files with secure validation and optional threading."""
+    def batch_process(self, files: List[str], operation: str, *,
+                      show_progress: bool = False, **kwargs) -> List[Dict]:
+        """Process multiple files with secure validation and optional threading.
+
+        *show_progress* renders a live terminal progress bar (opt-in; the CLI
+        enables it only when stdout is a real terminal, so captured/piped
+        output and tests stay unaffected).
+        """
 
         results: List[Dict] = []
         safe_files = self._filter_safe_files(files)
@@ -876,6 +891,10 @@ class AudioProcessor:
 
         if not safe_files:
             return [{"error": "No valid audio files to process."}]
+
+        progress = None
+        if show_progress and HAS_UX_IMPROVEMENTS:
+            progress = ProgressBar(total=len(safe_files), description=operation)
 
         use_parallel = self.config.parallel and len(safe_files) > 1
 
@@ -899,6 +918,8 @@ class AudioProcessor:
                     except Exception as exc:
                         self.logger.error(f"Failed to process {file_path}: {exc}")
                         results.append({"error": str(exc), "file": file_path})
+                    if progress is not None:
+                        progress.update()
         else:
             for file_path in safe_files:
                 try:
@@ -913,6 +934,11 @@ class AudioProcessor:
                 except Exception as exc:
                     self.logger.error(f"Failed to process {file_path}: {exc}")
                     results.append({"error": str(exc), "file": file_path})
+                if progress is not None:
+                    progress.update()
+
+        if progress is not None:
+            progress.finish()
 
         return results
 
@@ -1697,10 +1723,15 @@ async def main():
             processor.config.quality = args.quality
         processor.update_worker_limits()
 
-        results = processor.batch_process(file_list, args.operation, **kwargs)
+        results = processor.batch_process(
+            file_list, args.operation, show_progress=sys.stdout.isatty(), **kwargs
+        )
 
         successful = sum(1 for r in results if "error" not in r)
-        print(f"\nProcessed {successful}/{len(results)} files successfully")
+        summary = f"Processed {successful}/{len(results)} files successfully"
+        if HAS_UX_IMPROVEMENTS:
+            summary = ColorText.success(summary) if successful == len(results) else ColorText.error(summary)
+        print(f"\n{summary}")
 
         if successful != len(results):
             exit_code = ExitCode.ERROR
