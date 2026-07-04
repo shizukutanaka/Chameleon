@@ -296,7 +296,23 @@ action:
     spectral analysis at all — `--spectrum` gives it one, matching the differentiator §1
     already claims (deterministic analysis without mandatory heavy dependencies). See
     `tests/test_spectral_wiring.py`.
-  - `mastering_chain.py`: not yet wired; tracked here until done.
+  - `mastering_chain.py` (2026-07, done): exposed as `process --master
+    {default,streaming,cd,vinyl}`, a new operation alongside the existing
+    normalize/denoise/effects/convert. Guarded the same way `HAS_LIBROSA`/
+    `HAS_SOUNDFILE` already are — `mastering_chain.py` imports `numpy`
+    unconditionally, so `try: from mastering_chain import ...` simply fails
+    under the stdlib-only default install, exactly like the other optional
+    backends; no change needed inside `mastering_chain.py` itself, since scipy
+    is already optional *within* it (each processor degrades individually when
+    scipy is absent). `_process_single_file`'s existing "requires numpy" error
+    for non-analyze/normalize operations covers the `HAS_NUMPY=False` case for
+    free. Verified end-to-end: a synthetic tone processed through the
+    `streaming` preset produces a valid, playable stereo WAV with reported
+    LUFS/peak-change metrics. See `tests/test_mastering_wiring.py`. This
+    closes the last item on the wiring-in list from the orphaned-module
+    review; all three approved-for-wiring modules
+    (`ux_improvements.py`/`spectral_utils.py`/`mastering_chain.py`) are now
+    real, tested, importable parts of the CLI rather than unreferenced files.
 - **Left orphaned, deliberately** (real and non-duplicative, but wiring in is a product
   scope decision, not a mechanical fix): `spectral_editor.py` (a full interactive
   spectral editor — selection regions, undo, visualization — a larger surface than the

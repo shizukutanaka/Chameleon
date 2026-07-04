@@ -237,6 +237,17 @@ try:
 except ImportError:
     HAS_SPECTRAL_UTILS = False
 
+# Full mastering chain (EQ/compressor/limiter/loudness). Requires numpy —
+# mastering_chain.py imports it unconditionally, so this import simply fails
+# under the stdlib-only default install, same as HAS_LIBROSA/HAS_SOUNDFILE
+# above; scipy is optional *within* mastering_chain.py itself (it degrades
+# each processor individually when scipy is absent).
+try:
+    from mastering_chain import MasteringChain, create_mastering_preset
+    HAS_MASTERING_CHAIN = True
+except ImportError:
+    HAS_MASTERING_CHAIN = False
+
 # Core constants
 VERSION = "1.0.0"
 MAX_FILE_SIZE = 500 * 1024 * 1024  # Align with core constraints (500MB)
@@ -1099,6 +1110,41 @@ class AudioProcessor:
                 "dry_run": False
             }
 
+        elif operation == "master":
+            if not HAS_MASTERING_CHAIN:
+                raise ValueError(
+                    "The --master operation requires mastering_chain.py to be importable "
+                    "(needs numpy)."
+                )
+            output_path = self._resolve_output_path(
+                file_path,
+                suffix="_mastered.wav",
+                explicit_path=kwargs.get("output_path"),
+                output_dir=kwargs.get("output_dir")
+            )
+            if dry_run:
+                return {
+                    "file": file_path,
+                    "planned_output": str(output_path),
+                    "time": time.time() - start_time,
+                    "dry_run": True
+                }
+
+            preset = kwargs.get("master_preset", "default")
+            config = create_mastering_preset(preset)
+            chain = MasteringChain(config, sr)
+            processed, info = chain.process(audio)
+            self.save_audio(processed, str(output_path), sr)
+            return {
+                "file": file_path,
+                "output": str(output_path),
+                "time": time.time() - start_time,
+                "dry_run": False,
+                "lufs_before": info["input_analysis"]["lufs"],
+                "lufs_after": info["output_analysis"]["lufs"],
+                "peak_change_db": info["peak_change"],
+            }
+
         elif operation == "convert":
             target_format = kwargs.get("format", "wav") or "wav"
             target_sample_rate = kwargs.get("sample_rate")
@@ -1348,6 +1394,9 @@ def create_cli():
     process.add_argument("--target-peak", type=float,
                          help="Target peak level for --normalize, 0.0-1.0 (default 0.95)")
     process.add_argument("--denoise", action="store_true", help="Remove noise")
+    process.add_argument("--master", choices=["default", "streaming", "cd", "vinyl"],
+                         help="Apply a full mastering chain (EQ/compressor/limiter/loudness); "
+                              "requires numpy, scipy recommended for the full chain")
     process.add_argument("--effects", help="Apply effects (JSON file)")
     process.add_argument("--output-dir", help="Output directory")
     process.add_argument("--convert", action="store_true", help="Convert audio format or resolution")
@@ -1522,6 +1571,9 @@ async def main():
                 kwargs["target_peak"] = args.target_peak
         if args.denoise:
             operations.append("denoise")
+        if args.master:
+            operations.append("master")
+            kwargs["master_preset"] = args.master
         if effects_path:
             with open(effects_path) as f:
                 effects = json.load(f)
@@ -1558,6 +1610,9 @@ async def main():
                         converted_details.append(f"{result['sample_rate']}Hz")
                     if "bit_depth" in result:
                         converted_details.append(f"{result['bit_depth']}bit")
+                if operation == "master" and "lufs_after" in result:
+                    converted_details.append(f"{result['lufs_after']:.1f} LUFS")
+                    converted_details.append(f"{result['peak_change_db']:+.1f}dB peak")
                 if result.get("dry_run"):
                     converted_details.append("dry-run")
                 detail_suffix = f" [{', '.join(converted_details)}]" if converted_details else ""
