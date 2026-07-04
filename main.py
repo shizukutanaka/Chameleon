@@ -228,6 +228,15 @@ try:
 except ImportError:
     HAS_UX_IMPROVEMENTS = False
 
+# Deterministic spectral analysis (stdlib-only; uses numpy.fft when available,
+# a pure-Python DFT fallback otherwise). Guarded like the other optional
+# imports so a trimmed checkout still runs the CLI without --spectrum.
+try:
+    import spectral_utils
+    HAS_SPECTRAL_UTILS = True
+except ImportError:
+    HAS_SPECTRAL_UTILS = False
+
 # Core constants
 VERSION = "1.0.0"
 MAX_FILE_SIZE = 500 * 1024 * 1024  # Align with core constraints (500MB)
@@ -1328,6 +1337,9 @@ def create_cli():
     analyze.add_argument("files", nargs="+", help="Audio files to analyze")
     analyze.add_argument("--detailed", action="store_true", help="Show detailed analysis")
     analyze.add_argument("--export", help="Export analysis to JSON file")
+    analyze.add_argument("--spectrum", action="store_true",
+                         help="Also report dominant frequencies, bandwidth, and RMS "
+                              "via deterministic spectral analysis (stdlib-only)")
 
     # Process command
     process = subparsers.add_parser("process", help="Process audio files")
@@ -1460,6 +1472,25 @@ async def main():
                         print(f"  Tempo: {metadata.tempo:.1f} BPM")
                     if metadata.spectral_centroid:
                         print(f"  Spectral Centroid: {metadata.spectral_centroid:.1f}Hz")
+
+                if args.spectrum:
+                    if not HAS_SPECTRAL_UTILS:
+                        print("  Spectrum: unavailable (spectral_utils not importable)")
+                    else:
+                        samples_result = core.get_samples_for_analysis(result['file'])
+                        if not samples_result.success:
+                            print(f"  Spectrum: {samples_result.message}")
+                        else:
+                            report = spectral_utils.analyze_spectrum(
+                                samples_result.data["samples"],
+                                samples_result.data["sample_rate"],
+                            )
+                            print(f"  Spectrum RMS: {report.rms_level:.3f}")
+                            print(f"  Spectrum Bandwidth: {report.bandwidth[0]:.1f}-{report.bandwidth[1]:.1f}Hz")
+                            peaks = ", ".join(
+                                f"{peak.frequency_hz:.1f}Hz" for peak in report.dominant_peaks
+                            )
+                            print(f"  Dominant Frequencies: {peaks or 'none detected'}")
 
         if args.export:
             with open(args.export, 'w') as f:

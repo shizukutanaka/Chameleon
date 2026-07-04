@@ -281,7 +281,22 @@ action:
     carry `str(exc)`, so wiring it in would need a wider change to what errors carry
     through the pipeline; left for a future pass rather than forced in. See
     `tests/test_ux_wiring.py`.
-  - `mastering_chain.py`, `spectral_utils.py`: not yet wired; tracked here until done.
+  - `spectral_utils.py` (2026-07, done): added `core.py:WAVProcessor.get_samples_for_analysis`
+    (module-level `core.get_samples_for_analysis`) — a bounded (default 65,536 samples),
+    mono-mixed, *signed* waveform reader built on the same chunked-read pattern as
+    `_calculate_levels_safe`. It needed a new `_normalize_amplitude_signed` because the
+    existing `_normalize_amplitude` discards sign (`abs(value)`) — correct for peak/RMS,
+    wrong for spectral analysis, which needs the real waveform. Exposed as
+    `analyze --spectrum`, printing dominant frequencies/bandwidth/RMS via
+    `spectral_utils.analyze_spectrum`, guarded behind `HAS_SPECTRAL_UTILS`. Verified
+    end-to-end against synthetic tones (a 440Hz/880Hz sine correctly reports its peak
+    within 5Hz). Notably this closes a real gap, not just an orphaned-module cleanup:
+    `--detailed`'s existing `frequency_range`/`spectral_centroid` fields only populate
+    when librosa is installed, so the default stdlib-only install previously had *no*
+    spectral analysis at all — `--spectrum` gives it one, matching the differentiator §1
+    already claims (deterministic analysis without mandatory heavy dependencies). See
+    `tests/test_spectral_wiring.py`.
+  - `mastering_chain.py`: not yet wired; tracked here until done.
 - **Left orphaned, deliberately** (real and non-duplicative, but wiring in is a product
   scope decision, not a mechanical fix): `spectral_editor.py` (a full interactive
   spectral editor — selection regions, undo, visualization — a larger surface than the

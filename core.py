@@ -418,6 +418,18 @@ class WAVProcessor:
         return normalized if normalized <= 1.0 else 1.0
 
     @staticmethod
+    def _normalize_amplitude_signed(value: int, bit_depth: int) -> float:
+        """Like _normalize_amplitude but preserves sign (waveform, not magnitude)."""
+        if bit_depth <= 8:
+            scale = 128.0
+        else:
+            scale = float(1 << (bit_depth - 1))
+        if scale == 0:
+            return 0.0
+        normalized = value / scale
+        return max(-1.0, min(1.0, normalized))
+
+    @staticmethod
     def _encode_sample_value(value: int, bit_depth: int) -> bytes:
         if bit_depth == 8:
             clamped = max(-128, min(127, int(value)))
@@ -839,6 +851,74 @@ class WAVProcessor:
 
         except Exception:
             return 0.0, 0.0
+
+    def get_samples_for_analysis(self, file_path: str, max_samples: int = 65536) -> "ProcessingResult":
+        """Extract a bounded, mono-mixed, signed waveform for analysis tooling
+        (e.g. spectral_utils.analyze_spectrum). Mirrors _calculate_levels_safe's
+        chunked read but keeps the samples instead of only their peak/RMS, and
+        preserves sign (spectral analysis needs a real waveform, not magnitude).
+
+        Bounded by max_samples (per-frame, not per-channel) to keep memory and
+        analysis time predictable regardless of file size.
+        """
+        try:
+            if not security_validator.validate_path(file_path):
+                return ProcessingResult(False, "Invalid file path - security violation")
+            if not security_validator.validate_file_size(file_path):
+                return ProcessingResult(False, "File too large or empty")
+            if not security_validator.validate_audio_content(file_path):
+                return ProcessingResult(False, "Invalid or corrupted WAV file")
+
+            info = self._read_wav_header_optimized(file_path)
+            if not info:
+                return ProcessingResult(False, "Invalid WAV file format")
+
+            bytes_per_sample = max(1, info.bit_depth // 8) if info.bit_depth != 8 else 1
+            frame_size = bytes_per_sample * max(1, info.channels)
+            if frame_size == 0:
+                return ProcessingResult(False, "Invalid audio format")
+
+            samples: List[float] = []
+            with open(file_path, 'rb') as f:
+                f.seek(44)  # Standard WAV header size
+
+                while len(samples) < max_samples:
+                    chunk = f.read(CHUNK_SIZE)
+                    if not chunk:
+                        break
+
+                    available = (len(chunk) // frame_size) * frame_size
+                    if available == 0:
+                        continue
+
+                    mv = memoryview(chunk[:available])
+                    for frame_offset in range(0, available, frame_size):
+                        if len(samples) >= max_samples:
+                            break
+                        channel_sum = 0.0
+                        channel_count = 0
+                        for channel in range(info.channels):
+                            sample_offset = frame_offset + channel * bytes_per_sample
+                            sample_bytes = mv[sample_offset:sample_offset + bytes_per_sample].tobytes()
+                            sample_value = self._decode_sample_bytes(sample_bytes, info.bit_depth)
+                            if sample_value is None:
+                                continue
+                            channel_sum += self._normalize_amplitude_signed(sample_value, info.bit_depth)
+                            channel_count += 1
+                        if channel_count:
+                            samples.append(channel_sum / channel_count)
+                    del mv
+
+            if not samples:
+                return ProcessingResult(False, "No decodable audio samples found")
+
+            return ProcessingResult(
+                True, "Samples extracted",
+                {"samples": samples, "sample_rate": info.sample_rate}
+            )
+
+        except (OSError, PermissionError) as e:
+            return ProcessingResult(False, f"File system error: {e}")
 
     def _apply_gain_safe(self, input_path: str, output_path: str, info: AudioInfo, gain: float):
         """Apply gain to audio file with enhanced bit depth support and security."""
@@ -1980,6 +2060,11 @@ _ai_analyzer = AIMusicAnalyzer()
 def analyze(input_path: str) -> ProcessingResult:
     """Analyze a WAV file - main API."""
     return _processor.analyze(input_path)
+
+
+def get_samples_for_analysis(input_path: str, max_samples: int = 65536) -> ProcessingResult:
+    """Extract a bounded, mono, signed waveform for spectral/analysis tooling - main API."""
+    return _processor.get_samples_for_analysis(input_path, max_samples)
 
 
 def normalize(input_path: str, output_path: str, target_peak: float = 0.95) -> ProcessingResult:

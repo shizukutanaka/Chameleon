@@ -19,6 +19,8 @@ CORE_MODULES = [
     "core",
     "main",
     "batch_automation",
+    "spectral_utils",
+    "ux_improvements",
 ]
 
 
