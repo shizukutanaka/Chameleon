@@ -677,8 +677,14 @@ class AudioProcessor:
 
         return converted, new_sr, bit_depth
 
-    async def process_stream(self, input_callback, output_callback, effects: Optional[Dict] = None):
-        """Process audio stream in real-time"""
+    async def process_stream(self, input_device: Optional[int] = None,
+                             output_device: Optional[int] = None,
+                             effects: Optional[Dict] = None):
+        """Process audio stream in real-time.
+
+        *input_device*/*output_device* are PyAudio device indices; ``None``
+        uses PyAudio's default device for that direction.
+        """
         if not HAS_PYAUDIO:
             raise RuntimeError("PyAudio not installed. Cannot process streams.")
 
@@ -708,6 +714,8 @@ class AudioProcessor:
             rate=self.config.sample_rate,
             input=True,
             output=True,
+            input_device_index=input_device,
+            output_device_index=output_device,
             stream_callback=stream_callback
         )
 
@@ -1299,10 +1307,11 @@ def create_cli():
     process = subparsers.add_parser("process", help="Process audio files")
     process.add_argument("files", nargs="+", help="Audio files to process")
     process.add_argument("--normalize", action="store_true", help="Normalize audio")
+    process.add_argument("--target-peak", type=float,
+                         help="Target peak level for --normalize, 0.0-1.0 (default 0.95)")
     process.add_argument("--denoise", action="store_true", help="Remove noise")
     process.add_argument("--effects", help="Apply effects (JSON file)")
     process.add_argument("--output-dir", help="Output directory")
-    process.add_argument("--parallel", action="store_true", help="Process in parallel")
     process.add_argument("--convert", action="store_true", help="Convert audio format or resolution")
     process.add_argument("--convert-format", help="Target format (currently only wav supported)")
     process.add_argument("--convert-sample-rate", type=int, help="Target sample rate for conversion")
@@ -1312,21 +1321,23 @@ def create_cli():
 
     # Stream command
     stream = subparsers.add_parser("stream", help="Real-time audio processing")
-    stream.add_argument("--input-device", help="Input device index")
-    stream.add_argument("--output-device", help="Output device index")
+    stream.add_argument("--input-device", type=int, help="Input device index")
+    stream.add_argument("--output-device", type=int, help="Output device index")
     stream.add_argument("--effects", help="Effects configuration (JSON)")
-    stream.add_argument("--monitor", action="store_true", help="Show real-time meters")
 
     # Batch command
     batch = subparsers.add_parser("batch", help="Batch processing")
     batch.add_argument("directory", help="Directory to process")
-    batch.add_argument("operation", choices=["analyze", "normalize", "denoise", "convert"])
+    batch.add_argument("operation", choices=["analyze", "normalize", "denoise", "convert", "effects"])
     batch.add_argument("--recursive", action="store_true", help="Process recursively")
     batch.add_argument("--output-dir", help="Output directory")
     batch.add_argument("--format", help="Output format")
     batch.add_argument("--quality", choices=["low", "medium", "high", "lossless"], default="high")
+    batch.add_argument("--target-peak", type=float,
+                       help="Target peak level for the normalize operation, 0.0-1.0 (default 0.95)")
     batch.add_argument("--sample-rate", type=int, help="Target sample rate for conversion")
     batch.add_argument("--bit-depth", type=int, choices=[16, 24, 32], help="Target bit depth for conversion")
+    batch.add_argument("--effects", help="Effects configuration for the effects operation (JSON file)")
 
     # ML command — only 'enhance' is implemented; classify/separate/transcribe
     # require trained models or external tools that are explicitly out of scope
@@ -1335,7 +1346,6 @@ def create_cli():
     ml.add_argument("operation", choices=["enhance"],
                     help="enhance: apply noise reduction + normalization")
     ml.add_argument("--input", required=True, help="Input audio file")
-    ml.add_argument("--model", help="Model to use")
     ml.add_argument("--output", help="Output file/directory")
 
     # MIDI command
@@ -1451,6 +1461,8 @@ async def main():
 
         if args.normalize:
             operations.append("normalize")
+            if args.target_peak is not None:
+                kwargs["target_peak"] = args.target_peak
         if args.denoise:
             operations.append("denoise")
         if effects_path:
@@ -1506,9 +1518,9 @@ async def main():
                 exit_code = ExitCode.ERROR
 
     elif args.command == "stream":
+        input_device = args.input_device
+        output_device = args.output_device
         try:
-            input_device = _sanitize_optional_input(args.input_device, "input_device")
-            output_device = _sanitize_optional_input(args.output_device, "output_device")
             effects_path = _sanitize_optional_input(args.effects, "effects")
         except ValueError as exc:
             print(f"Input validation error: {exc}")
@@ -1627,6 +1639,7 @@ async def main():
             directory = Path(directory_arg)
             output_dir = _sanitize_optional_input(args.output_dir, "output_dir")
             format_arg = _sanitize_optional_input(args.format, "format")
+            effects_path = _sanitize_optional_input(args.effects, "effects")
         except ValueError as exc:
             print(f"Input validation error: {exc}")
             return ExitCode.INPUT
@@ -1661,7 +1674,6 @@ async def main():
         kwargs: Dict[str, Any] = {
             "output_dir": output_dir,
             "format": format_arg,
-            "quality": args.quality
         }
 
         if args.operation == "convert":
@@ -1669,8 +1681,20 @@ async def main():
             kwargs["sample_rate"] = args.sample_rate
             kwargs["bit_depth"] = args.bit_depth or 16
 
+        if args.operation == "normalize" and args.target_peak is not None:
+            kwargs["target_peak"] = args.target_peak
+
+        if args.operation == "effects":
+            if not effects_path:
+                print("Error: --effects <file> is required for the effects operation")
+                return ExitCode.USAGE
+            with open(effects_path) as f:
+                kwargs["effects"] = json.load(f)
+
         if args.no_parallel:
             processor.config.parallel = False
+        if args.quality:
+            processor.config.quality = args.quality
         processor.update_worker_limits()
 
         results = processor.batch_process(file_list, args.operation, **kwargs)
