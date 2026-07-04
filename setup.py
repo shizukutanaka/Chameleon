@@ -73,7 +73,6 @@ setup(
         "config_manager",
         "api_server",
         "batch_automation",
-        "codec_support",
         "spectral_editor",
         "spectral_utils",
         "audio_restoration",

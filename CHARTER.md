@@ -32,10 +32,11 @@ this touch" must be answerable. Not a general-purpose audio editor user.
 
 ## 3. Honest current limitations (do not paper over these)
 
-- **WAV only, by default.** `codec_support.py` reads MP3/FLAC/OGG *only* if soundfile /
-  pydub / ffmpeg are installed, and `load_audio` requires numpy. The default install
-  (`requirements.txt`) installs none of these, so out of the box the product is WAV-only.
-  Advertise this plainly; do not call it "multi-format" without the optional extras.
+- **WAV only, by default.** `main.py`'s own `HAS_LIBROSA`/`HAS_SOUNDFILE` gate gives
+  MP3/FLAC/OGG support *only* if the `[audio]` extra (soundfile/librosa) is installed, and
+  `load_audio` requires numpy. The default install (`requirements.txt`) installs none of
+  these, so out of the box the product is WAV-only. Advertise this plainly; do not call it
+  "multi-format" without the optional extras.
 - **Optional features are genuinely optional.** Anything needing numpy/scipy/librosa/
   pyaudio/mido/fastapi must degrade gracefully and be labelled as requiring extras.
 - **The REST API is a thin adapter over the stdlib core**, not an enterprise platform.
@@ -226,6 +227,27 @@ dependency: `enum` is stdlib, so this doesn't conflict with §3's zero-dependenc
 `returncode` for each category — the first tests in the suite that exercise the actual
 `sys.exit(cli())` path rather than calling `main()`'s Python-level return value.
 
+**Q: Was `codec_support.py` actually the MP3/FLAC/OGG mechanism §3 credited it as?**
+A (2026-07): No — and that was a §8.2 honesty bug in the charter's own text, not just in
+code. `codec_support.py` was never imported by `main.py` or anything else (only its own
+`__main__` demo block and the packaging lists referenced it); the real gating is
+`main.py`'s own `HAS_LIBROSA`/`HAS_SOUNDFILE` branches. `codec_support.py` also imported
+`numpy` unconditionally at module top level, so it broke import under the stdlib-only
+default install — the same defect class as the neural modules removed earlier this
+charter. Deleted the file, dropped it from `setup.py`/`pyproject.toml` py-modules, and
+corrected §3 to credit the mechanism that actually runs.
+
+**Q: Ghost CLI parameters / unreachable CLI options — same pattern as api_server's?**
+A (2026-07): Yes, found by a fresh excess/deficiency audit; fixed the same way the
+api_server ghost parameters were (§9, above): removed what nothing implements
+(`process --parallel`, `ml enhance --model`, `stream --monitor`), wired what core/main
+already supported but argparse never exposed (`--target-peak` on `process`/`batch`
+normalize, a `batch effects` operation), and fixed `stream --input-device`/
+`--output-device`, which weren't just unreachable but actively broken — `process_stream`'s
+parameters were misnamed (`input_callback`/`output_callback`) and never used in the
+method body, so device selection silently did nothing regardless of what the CLI passed.
+See `tests/test_cli_parity.py`.
+
 ### Open questions (next contributor: decide before building)
 
 - **advanced_validation.py parity in core**: `DeepFileInspector` now runs in
@@ -233,6 +255,18 @@ dependency: `enum` is stdlib, so this doesn't conflict with §3's zero-dependenc
   reachable via `core.batch_process_async` — still validates only path/size. Wiring the
   same format check there (or extracting one shared filter) would close the remaining
   parity gap; left optional to keep the stdlib core minimal.
+
+- **Orphaned module punch list**: a fresh audit found 9 more modules matching the exact
+  pattern `codec_support.py` and the earlier-removed neural modules had — listed in
+  `setup.py`/`pyproject.toml` py-modules, never imported by `main.py`/`core.py`/
+  `api_server.py`, zero test coverage: `spectral_editor.py`, `mastering_chain.py`,
+  `realtime_effects.py`, `audio_restoration.py`, `stability_enhancer.py`,
+  `ux_improvements.py`, `audio_utils.py`, `spectral_utils.py`, `config_manager.py`,
+  `batch_automation.py` (~5,100 lines total). Unlike the modules already deleted, none of
+  these were checked for whether they make a false capability *claim* — some may be
+  reasonable to wire in rather than delete. Each needs individual review (wire in vs.
+  delete) before acting; left out of this pass because that review, times 9 modules, is
+  its own body of work.
 
 - **Broken active CI workflow**: `.github/workflows/ci-cd.yml` is still the old 409-line
   fantasy pipeline (k8s/staging/prod deploys, a missing `deployment_manager.py`,
