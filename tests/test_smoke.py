@@ -15,8 +15,6 @@ import pytest
 # Modules that must import cleanly with only the standard library available.
 CORE_MODULES = [
     "security_validator",
-    "audio_utils",
-    "config_manager",
     "plugin_system",
     "core",
     "main",

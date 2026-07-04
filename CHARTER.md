@@ -248,6 +248,43 @@ parameters were misnamed (`input_callback`/`output_callback`) and never used in 
 method body, so device selection silently did nothing regardless of what the CLI passed.
 See `tests/test_cli_parity.py`.
 
+**Q: Orphaned module punch list — wire in, or delete, each of the 9?**
+A (2026-07): Reviewed individually (user-confirmed per module), rather than a blanket
+action:
+- **Deleted** (orphaned + duplicate of functionality already implemented and wired
+  elsewhere): `realtime_effects.py` (duplicated `main.py`'s already-wired
+  `process_stream`/`apply_effects` real-time pyaudio path — keeping two parallel
+  real-time engines would itself violate §4's "no second product"),
+  `stability_enhancer.py` (duplicated `core.py`'s already-wired `RecoveryManager` /
+  `ErrorAnalyzer` / `ServiceDegradationManager` / `StateRecoveryManager`),
+  `audio_utils.py` (duplicated `core.py:WAVProcessor`'s already-wired RIFF/WAV parsing,
+  which additionally has memory-mapped caching this module lacked), `config_manager.py`
+  (duplicated environment-variable config resolution that already exists in *two* other
+  places — `core.py` and `main.py:ProcessingConfig.from_environment` — so wiring it in
+  would have added a third, divergent source of truth instead of fixing that existing
+  fragmentation). All four also imported `numpy`/non-stdlib packages unconditionally
+  where guarded imports existed elsewhere, matching the exact defect class that killed
+  `codec_support.py`. `tests/test_smoke.py`'s `CORE_MODULES` list and
+  `personal_config.py`'s `audio-info` alias (which shelled out to the now-deleted
+  `audio_utils.py`, redundant with the existing `audio-analyze` alias) were updated to
+  match.
+- **User approved wiring in** (real, working, non-duplicative — fills an actual gap):
+  `mastering_chain.py`, `ux_improvements.py`, `spectral_utils.py`. Each gets its own
+  wiring commit (CLI subcommand/flag + tests) rather than a blanket change; this entry is
+  updated with specifics as each lands.
+- **Left orphaned, deliberately** (real and non-duplicative, but wiring in is a product
+  scope decision, not a mechanical fix): `spectral_editor.py` (a full interactive
+  spectral editor — selection regions, undo, visualization — a larger surface than the
+  CLI's batch-WAV job-to-be-done), `audio_restoration.py` (real DSP — click/hum/clip
+  repair — but imports numpy/scipy unconditionally and needs the same guard fix plus a
+  new CLI subcommand before it could ship), `batch_automation.py` (a genuine DAG/
+  scheduler engine, but wiring a generic task-orchestration framework into a
+  "dependency-light auditable CLI" risks exactly the §4 "second product" non-goal — its
+  own demo workflow references multi-format transcoding and "enhance audio quality" in
+  the same illustrative-but-fantasy-adjacent style already removed elsewhere). Recorded
+  here rather than turned into an open question, since the user has already decided:
+  leave orphaned until someone makes an explicit case for one of them.
+
 ### Open questions (next contributor: decide before building)
 
 - **advanced_validation.py parity in core**: `DeepFileInspector` now runs in
@@ -255,18 +292,6 @@ See `tests/test_cli_parity.py`.
   reachable via `core.batch_process_async` — still validates only path/size. Wiring the
   same format check there (or extracting one shared filter) would close the remaining
   parity gap; left optional to keep the stdlib core minimal.
-
-- **Orphaned module punch list**: a fresh audit found 9 more modules matching the exact
-  pattern `codec_support.py` and the earlier-removed neural modules had — listed in
-  `setup.py`/`pyproject.toml` py-modules, never imported by `main.py`/`core.py`/
-  `api_server.py`, zero test coverage: `spectral_editor.py`, `mastering_chain.py`,
-  `realtime_effects.py`, `audio_restoration.py`, `stability_enhancer.py`,
-  `ux_improvements.py`, `audio_utils.py`, `spectral_utils.py`, `config_manager.py`,
-  `batch_automation.py` (~5,100 lines total). Unlike the modules already deleted, none of
-  these were checked for whether they make a false capability *claim* — some may be
-  reasonable to wire in rather than delete. Each needs individual review (wire in vs.
-  delete) before acting; left out of this pass because that review, times 9 modules, is
-  its own body of work.
 
 - **Broken active CI workflow**: `.github/workflows/ci-cd.yml` is still the old 409-line
   fantasy pipeline (k8s/staging/prod deploys, a missing `deployment_manager.py`,
