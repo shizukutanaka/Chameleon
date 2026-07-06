@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chameleon-audio"
-version = "1.0.0"
+dynamic = ["version"]  # single source of truth: VERSION in main.py
 description = "WAV audio processing CLI with path-validation security, batch processing and MIDI analysis"
 readme = "README.md"
 license = {text = "MIT"}
@@ -98,6 +98,9 @@ chameleon = "main:cli"
 [project.urls]
 Source = "https://github.com/shizukutanaka/Chameleon"
 Issues = "https://github.com/shizukutanaka/Chameleon/issues"
+
+[tool.setuptools.dynamic]
+version = {attr = "main.VERSION"}
 
 [tool.setuptools]
 py-modules = [

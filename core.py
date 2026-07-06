@@ -543,32 +543,32 @@ class WAVProcessor:
 
     async def _async_security_check(self, file_path: str) -> bool:
         """非同期セキュリティチェックを実行"""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, security_validator.validate_path, file_path)
 
     async def _async_read_wav_header(self, file_path: str) -> Optional[AudioInfo]:
         """非同期でWAVヘッダーを読み込み"""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._read_wav_header_optimized, file_path)
 
     async def _async_calculate_levels(self, file_path: str, info: AudioInfo) -> Tuple[float, float]:
         """非同期でレベルを計算"""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._calculate_levels_safe, file_path, info)
 
     async def normalize_async(self, input_path: str, output_path: str, target_peak: float = 0.95) -> ProcessingResult:
         """Asynchronously normalize audio file."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self.normalize, input_path, output_path, target_peak)
 
     async def convert_to_mono_async(self, input_path: str, output_path: str) -> ProcessingResult:
         """Asynchronously convert to mono."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self.convert_to_mono, input_path, output_path)
 
     async def trim_silence_async(self, input_path: str, output_path: str, threshold: float = 0.01) -> ProcessingResult:
         """Asynchronously trim silence."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self.trim_silence, input_path, output_path, threshold)
 
     def normalize(self, input_path: str, output_path: str, target_peak: float = 0.95) -> ProcessingResult:
@@ -1429,7 +1429,7 @@ class StateRecoveryManager:
         return None
 
     def record_state(self, summary: Dict[str, Any]) -> Optional[Path]:
-        timestamp = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%S%fZ")
+        timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
         target_path = self.state_dir / f"batch_state_{timestamp}.json"
         payload = {
             "timestamp": timestamp,
@@ -2240,8 +2240,6 @@ class ParallelBatchProcessor:
 
         async def process_single_file(file_path: Path) -> ProcessingResult:
             async with semaphore:
-                loop = asyncio.get_event_loop()
-
                 # 処理タイプに基づいて適切な関数を選択
                 if operation == "analyze":
                     return await self.processor.analyze_async(str(file_path))
@@ -2280,17 +2278,17 @@ class ParallelBatchProcessor:
             return await self.process_directory_async(directory, operation, **kwargs)
 
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # 既にループが実行中の場合、新しいループを作成
-                new_loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(new_loop)
-                try:
-                    return new_loop.run_until_complete(run_async())
-                finally:
-                    new_loop.close()
-            else:
-                return loop.run_until_complete(run_async())
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                # 通常経路: 実行中のループが無い同期呼び出し
+                return asyncio.run(run_async())
+            # 既にループが実行中の場合、新しいループを作成
+            new_loop = asyncio.new_event_loop()
+            try:
+                return new_loop.run_until_complete(run_async())
+            finally:
+                new_loop.close()
         except Exception as e:
             logger.error(f"ディレクトリ並列処理エラー: {e}")
             return []
@@ -2309,7 +2307,7 @@ class StructuredLogger:
         class StructuredFormatter(logging.Formatter):
             def format(self, record):
                 log_entry = {
-                    "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                    "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
                     "level": record.levelname,
                     "logger": record.name,
                     "message": record.getMessage(),
@@ -2354,7 +2352,7 @@ class StructuredLogger:
         """セキュリティイベントをログ記録"""
         log_entry = {
             "event_type": event_type,
-            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
             "details": details
         }
         self.logger.warning(f"Security event: {event_type}", extra=log_entry)

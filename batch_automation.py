@@ -583,7 +583,7 @@ class TaskExecutor:
 
     async def execute_async(self, task: BatchTask) -> TaskResult:
         """Execute task asynchronously"""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self.execute, task)
 
     def cleanup(self) -> None:

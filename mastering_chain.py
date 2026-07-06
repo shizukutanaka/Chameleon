@@ -19,7 +19,10 @@ try:
     HAS_SCIPY = True
 except ImportError:
     HAS_SCIPY = False
-    warnings.warn("SciPy not available. Advanced mastering features disabled.")
+    # Normal state under a minimal install — log at debug, don't warn on
+    # import. Each processor degrades individually when scipy is absent.
+    logging.getLogger("chameleon.optional_deps").debug(
+        "SciPy not available. Advanced mastering features disabled.")
 
 try:
     import librosa

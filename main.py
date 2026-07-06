@@ -169,7 +169,15 @@ except ImportError:
     HAS_NUMPY = False
     if not TYPE_CHECKING:
         np = None
-    warnings.warn("NumPy not installed. Some features will be limited.")
+
+# Missing optional dependencies are the NORMAL state of the honest,
+# stdlib-only default install (CHARTER §3) — so record them at debug level
+# instead of spamming UserWarnings on every invocation. Features that
+# actually need a backend raise a clear, actionable error at the point of
+# use (e.g. "requires numpy. Install it with: pip install -e .[audio]").
+_optional_dep_logger = logging.getLogger("chameleon.optional_deps")
+if not HAS_NUMPY:
+    _optional_dep_logger.debug("NumPy not installed. Some features will be limited.")
 
 try:
     import scipy.signal as signal
@@ -177,21 +185,21 @@ try:
     HAS_SCIPY = True
 except ImportError:
     HAS_SCIPY = False
-    warnings.warn("SciPy not installed. Advanced processing features disabled.")
+    _optional_dep_logger.debug("SciPy not installed. Advanced processing features disabled.")
 
 try:
     import librosa
     HAS_LIBROSA = True
 except ImportError:
     HAS_LIBROSA = False
-    warnings.warn("Librosa not installed. ML features will be limited.")
+    _optional_dep_logger.debug("Librosa not installed. ML features will be limited.")
 
 try:
     import soundfile as sf
     HAS_SOUNDFILE = True
 except ImportError:
     HAS_SOUNDFILE = False
-    warnings.warn("SoundFile not installed. Audio I/O features limited.")
+    _optional_dep_logger.debug("SoundFile not installed. Audio I/O features limited.")
 
 # Import MIDI analysis module
 try:
@@ -199,14 +207,14 @@ try:
     HAS_MIDI = True
 except ImportError:
     HAS_MIDI = False
-    warnings.warn("MIDI analysis module not available.")
+    _optional_dep_logger.debug("MIDI analysis module not available.")
 
 try:
     import pyaudio
     HAS_PYAUDIO = True
 except ImportError:
     HAS_PYAUDIO = False
-    warnings.warn("PyAudio not installed. Real-time audio disabled.")
+    _optional_dep_logger.debug("PyAudio not installed. Real-time audio disabled.")
 
 # Deep file inspection (stdlib-only). Used to validate that a file claiming a
 # .wav extension is actually a WAV container before it enters the batch
@@ -1406,10 +1414,11 @@ class AudioProcessor:
 def create_cli():
     """Create comprehensive CLI interface"""
     parser = argparse.ArgumentParser(
-        description="Chameleon Audio Processing System v3.0",
+        description=f"Chameleon Audio Processing System v{VERSION}",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
+    parser.add_argument("--version", action="version", version=f"chameleon {VERSION}")
     parser.add_argument("--max-workers", type=int, help="Limit worker threads for batch operations")
     parser.add_argument("--no-parallel", action="store_true", help="Disable parallel execution even when available")
 
@@ -1532,7 +1541,7 @@ async def main():
             files = [_sanitize_cli_input(path, "files") for path in args.files]
             _assert_unique_paths(files, "file input")
         except ValueError as exc:
-            print(f"Input validation error: {exc}")
+            print(f"Input validation error: {exc}", file=sys.stderr)
             return ExitCode.INPUT
 
         results = processor.batch_process(files, "analyze")
@@ -1541,7 +1550,7 @@ async def main():
         for result in results:
             if "error" in result:
                 had_error = True
-                print(f"Error processing {result['file']}: {result['error']}")
+                print(f"Error processing {result['file']}: {result['error']}", file=sys.stderr)
             else:
                 metadata = result["metadata"]
                 print(f"\n{result['file']}:")
@@ -1594,7 +1603,7 @@ async def main():
             effects_path = _sanitize_optional_input(args.effects, "effects")
             _assert_unique_paths(files, "file input")
         except ValueError as exc:
-            print(f"Input validation error: {exc}")
+            print(f"Input validation error: {exc}", file=sys.stderr)
             return ExitCode.INPUT
 
         kwargs: Dict[str, Any] = {
@@ -1624,7 +1633,7 @@ async def main():
             kwargs["bit_depth"] = args.convert_bit_depth or 16
 
         if not operations:
-            print("Error: specify at least one processing option (e.g., --normalize, --denoise, --effects, or --convert).")
+            print("Error: specify at least one processing option (e.g., --normalize, --denoise, --effects, or --convert).", file=sys.stderr)
             return ExitCode.USAGE
 
         if args.no_parallel:
@@ -1638,7 +1647,7 @@ async def main():
             for result in results:
                 if "error" in result:
                     had_error = True
-                    print(f"Error: {result['error']}")
+                    print(f"Error: {result['error']}", file=sys.stderr)
                     continue
 
                 converted_details = []
@@ -1672,7 +1681,7 @@ async def main():
         try:
             effects_path = _sanitize_optional_input(args.effects, "effects")
         except ValueError as exc:
-            print(f"Input validation error: {exc}")
+            print(f"Input validation error: {exc}", file=sys.stderr)
             return ExitCode.INPUT
 
         if effects_path:
@@ -1689,7 +1698,7 @@ async def main():
             print("\nStream stopped")
             exit_code = ExitCode.INTERRUPTED
         except Exception as exc:
-            print(f"Stream failed: {exc}")
+            print(f"Stream failed: {exc}", file=sys.stderr)
             exit_code = ExitCode.ERROR
 
     elif args.command == "plugins":
@@ -1701,7 +1710,7 @@ async def main():
 
             manager, sanitized_dirs = _initialize_plugin_manager(directories)
         except ValueError as exc:
-            print(f"Plugin directory error: {exc}")
+            print(f"Plugin directory error: {exc}", file=sys.stderr)
             return ExitCode.INPUT
 
         if args.plugins_command == "list":
@@ -1790,15 +1799,15 @@ async def main():
             format_arg = _sanitize_optional_input(args.format, "format")
             effects_path = _sanitize_optional_input(args.effects, "effects")
         except ValueError as exc:
-            print(f"Input validation error: {exc}")
+            print(f"Input validation error: {exc}", file=sys.stderr)
             return ExitCode.INPUT
 
         if not directory.exists():
-            print(f"Error: directory not found: {directory}")
+            print(f"Error: directory not found: {directory}", file=sys.stderr)
             return ExitCode.INPUT
 
         if not directory.is_dir():
-            print(f"Error: specified path is not a directory: {directory}")
+            print(f"Error: specified path is not a directory: {directory}", file=sys.stderr)
             return ExitCode.INPUT
 
         pattern = "**/*" if args.recursive else "*"
@@ -1808,13 +1817,13 @@ async def main():
             gathered_files.extend(directory.glob(f"{pattern}{ext}"))
 
         if not gathered_files:
-            print("Warning: no supported audio files found.")
+            print("Warning: no supported audio files found.", file=sys.stderr)
             return ExitCode.INPUT
 
         try:
             resolved_files = SecurityValidator.resolve_unique_paths([str(f) for f in gathered_files])
         except ValueError as exc:
-            print(f"Input validation error: {exc}")
+            print(f"Input validation error: {exc}", file=sys.stderr)
             return ExitCode.INPUT
 
         file_list = [str(path) for path in resolved_files]
@@ -1835,7 +1844,7 @@ async def main():
 
         if args.operation == "effects":
             if not effects_path:
-                print("Error: --effects <file> is required for the effects operation")
+                print("Error: --effects <file> is required for the effects operation", file=sys.stderr)
                 return ExitCode.USAGE
             with open(effects_path) as f:
                 kwargs["effects"] = json.load(f)
@@ -1875,7 +1884,7 @@ async def main():
         print(f"MIDI operation '{args.operation}'")
 
         if args.operation in ["extract", "analyze"] and not args.input:
-            print("Error: --input required for extract/analyze operations")
+            print("Error: --input required for extract/analyze operations", file=sys.stderr)
             return ExitCode.USAGE
 
         if args.operation == "extract":
@@ -1958,7 +1967,7 @@ async def main():
         elif args.operation == "generate":
             # Generate MIDI file from scratch
             if not args.output:
-                print("Error: --output required for generate operation")
+                print("Error: --output required for generate operation", file=sys.stderr)
                 return ExitCode.USAGE
 
             print("🎼 Generating MIDI demo...")
@@ -1991,7 +2000,8 @@ async def main():
             import uvicorn  # type: ignore
         except ImportError:
             print("The API server requires fastapi and uvicorn. "
-                  "Install them with: pip install -r api_requirements.txt")
+                  "Install them with: pip install -r api_requirements.txt",
+                  file=sys.stderr)
             exit_code = ExitCode.ERROR
         else:
             uvicorn.run(
@@ -2009,7 +2019,7 @@ def cli() -> int:
     try:
         return asyncio.run(main())
     except KeyboardInterrupt:
-        print("\nInterrupted")
+        print("\nInterrupted", file=sys.stderr)
         return ExitCode.INTERRUPTED
 
 
