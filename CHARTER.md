@@ -326,6 +326,40 @@ action:
   here rather than turned into an open question, since the user has already decided:
   leave orphaned until someone makes an explicit case for one of them.
 
+**Q: Is the WAV core actually commercial-grade on real-world files?**
+A (2026-07): It wasn't — and the failure was silent, the worst kind. Every
+data-reading/writing path assumed "data starts at byte 44", so WAVs carrying
+LIST/INFO metadata, JUNK padding (routine in DAW exports), fact chunks, or
+18/40-byte fmt bodies got wrong peak/RMS analysis and corrupt
+normalize/mono/trim output with no error — while three chunk-walking parsers
+already existed in the repo with their knowledge discarded. Fixed by making
+`_read_wav_header` the canonical chunk-walking parser (fmt 16/18/40,
+WAVE_FORMAT_EXTENSIBLE PCM GUID accepted, float32 rejected cleanly, odd-chunk
+pad bytes, size clamping), recording `data_offset`/`data_size`/`fmt_offset`
+in `AudioInfo`, threading them through every reader/writer, sharing one
+header-copy-and-patch helper for writers (input header prefix preserved
+verbatim; trailing post-data chunks deliberately dropped — documented), and
+fixing frame splits at read-chunk boundaries (CHUNK_SIZE is not a multiple of
+24-bit frame sizes). `main._load_wav_basic` got a real decode table (8-bit
+offset, 24-bit sign extension, int32-vs-float32 by format tag, EXTENSIBLE via
+GUID, clear errors otherwise). `tests/test_wav_chunks.py` pins all of it with
+hand-assembled fixtures compared against plain-44-byte twins.
+
+**Q: Commercial-grade CLI behavior — stderr, --version, quiet default?**
+A (2026-07): Diagnostics now go to stderr (previously 0 of 76 prints did, so
+piping stdout captured error text); `--version` added and the stale "v3.0"
+help banner replaced, with pyproject switching to a dynamic version sourced
+from `main.VERSION` (one truth, matching setup.py); import-time optional-dep
+UserWarnings became debug-level logs (missing extras are the *normal* state
+of the honest default install — features raise actionable errors at the point
+of use instead); and the tree is deprecation-clean on Python 3.12/3.13
+(utcnow → now(timezone.utc), get_event_loop → get_running_loop/asyncio.run).
+README/QUICKSTART were re-synced to the actual CLI surface (--spectrum,
+--master, --target-peak, batch effects, exit-code table, `chameleon` console
+script) — docs had fallen *behind* the code, the inverse of the failure mode
+this charter was written against, and QUICKSTART still referenced the deleted
+`audio_utils.py`. `tests/test_cli_polish.py` pins the contract.
+
 ### Open questions (next contributor: decide before building)
 
 - **advanced_validation.py parity in core**: `DeepFileInspector` now runs in

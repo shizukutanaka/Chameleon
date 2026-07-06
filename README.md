@@ -88,19 +88,48 @@ for reference only; prefer the extras above.
 
 ### Basic Usage
 
+After `pip install -e .` the `chameleon` console command is available
+(equivalent to `python main.py`):
+
 ```bash
 # Analyze audio file
-python main.py analyze audio.wav --detailed
+chameleon analyze audio.wav --detailed
 
-# Normalize volume
-python main.py process --normalize audio.wav
+# Spectral report: dominant frequencies, bandwidth, RMS (stdlib-only)
+chameleon analyze audio.wav --spectrum
 
-# Batch process directory
-python main.py batch /path/to/audio/ normalize --output-dir /output/
+# Normalize volume (optionally to a specific peak)
+chameleon process --normalize audio.wav
+chameleon process --normalize --target-peak 0.8 audio.wav
+
+# Full mastering chain (requires [audio] extra; presets: default/streaming/cd/vinyl)
+chameleon process --master streaming audio.wav
+
+# Batch process directory (operations: analyze/normalize/denoise/convert/effects)
+chameleon batch /path/to/audio/ normalize --target-peak 0.9 --output-dir /output/
+chameleon batch /path/to/audio/ effects --effects chain.json --output-dir /output/
 
 # Preview changes (dry-run)
-python main.py batch /path/to/audio/ normalize --dry-run
+chameleon batch /path/to/audio/ normalize --dry-run
+
+# Version
+chameleon --version
 ```
+
+### Exit codes
+
+The CLI reports *why* it failed, for scripting (`main.ExitCode`):
+
+| Code | Meaning |
+|------|---------|
+| 0    | success |
+| 1    | a processing step failed / unexpected error |
+| 2    | usage error (bad or incomplete command line) |
+| 3    | input validation rejected a supplied path |
+| 4    | security policy rejected a path or plugin |
+| 130  | interrupted (Ctrl-C) |
+
+Diagnostics go to **stderr**; results and `--json` output go to **stdout**.
 
 ### Docker Deployment
 

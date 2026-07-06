@@ -51,10 +51,10 @@ python validation_test.py
 
 ```bash
 # Quick file info
-python audio_utils.py /path/to/file.wav
+python main.py analyze /path/to/file.wav
 
 # Detailed analysis
-python main.py analyze /path/to/file.wav
+python main.py analyze /path/to/file.wav --detailed
 ```
 
 ### 3. Basic Processing
@@ -94,21 +94,27 @@ libsndfile version, so the tool falls back to WAV rather than failing silently.
 ### File Analysis
 
 ```bash
-# Basic info
-python audio_utils.py test.wav
-
 # Detailed analysis with export
 python main.py analyze test.wav --detailed --export results.json
+
+# Spectral report: dominant frequencies, bandwidth, RMS (works on the
+# default stdlib-only install)
+python main.py analyze test.wav --spectrum
 ```
 
 ### Audio Processing
 
 ```bash
-# Normalize
+# Normalize (default peak 0.95, or choose your own)
 python main.py process --normalize input.wav
+python main.py process --normalize --target-peak 0.8 input.wav
 
 # Remove noise
 python main.py process --denoise input.wav
+
+# Full mastering chain — requires the [audio] extra
+# (presets: default, streaming, cd, vinyl)
+python main.py process --master streaming input.wav
 
 # Convert format/sample rate
 python main.py process --convert --convert-sample-rate 48000 input.wav
@@ -121,7 +127,14 @@ python main.py process --normalize --denoise input.wav --output-dir processed/
 
 ```bash
 # Process all WAV files in directory
+# (operations: analyze, normalize, denoise, convert, effects)
 python main.py batch /audio/directory/ normalize
+
+# Normalize a whole directory to a specific peak
+python main.py batch /audio/directory/ normalize --target-peak 0.9
+
+# Apply a JSON effects chain to every file
+python main.py batch /audio/directory/ effects --effects chain.json
 
 # Recursive processing
 python main.py batch /audio/directory/ normalize --recursive
@@ -129,6 +142,13 @@ python main.py batch /audio/directory/ normalize --recursive
 # Preview changes (dry run)
 python main.py batch /audio/directory/ normalize --dry-run
 ```
+
+### Scripting notes
+
+- `python main.py --version` prints the version.
+- Errors and warnings go to **stderr**; results stay on **stdout**.
+- Exit codes: 0 success, 1 processing error, 2 usage error, 3 input
+  validation, 4 security rejection, 130 interrupted (see README).
 
 ### MIDI Features
 
@@ -296,11 +316,11 @@ python main.py batch --help
 ### Complete Workflow
 
 ```bash
-# 1. Validate file
-python audio_utils.py input.wav
+# 1. Validate and inspect the file
+python main.py analyze input.wav
 
-# 2. Analyze content
-python main.py analyze input.wav --detailed
+# 2. Analyze content in depth
+python main.py analyze input.wav --detailed --spectrum
 
 # 3. Process with multiple operations
 python main.py process --normalize --denoise input.wav --output-dir processed/
