@@ -279,9 +279,17 @@ class DeepFileInspector:
                             if sample_rate not in [8000, 11025, 16000, 22050, 44100, 48000, 96000]:
                                 metadata["warning"] = f"Non-standard sample rate: {sample_rate}"
 
+                        # Skip any unread remainder of an oversized fmt body.
+                        remainder = chunk_size - len(fmt_data)
+                        if remainder > 0:
+                            f.seek(remainder, 1)
+
                     else:
                         # Skip other chunks
                         f.seek(chunk_size, 1)
+
+                    if chunk_size % 2 == 1:
+                        f.seek(1, 1)  # RIFF pad byte after odd-sized chunks
 
                 metadata["chunks"] = chunks_found
 

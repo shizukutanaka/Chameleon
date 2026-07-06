@@ -417,7 +417,16 @@ class AudioProcessor:
             if riff[:4] != b'RIFF' or riff[8:12] != b'WAVE':
                 raise ValueError("Not a valid WAV file")
 
-            # Find fmt chunk
+            # PCM subformat GUIDs for WAVE_FORMAT_EXTENSIBLE.
+            pcm_guid = (b'\x01\x00\x00\x00\x00\x00\x10\x00'
+                        b'\x80\x00\x00\xaa\x00\x38\x9b\x71')
+            float_guid = (b'\x03\x00\x00\x00\x00\x00\x10\x00'
+                          b'\x80\x00\x00\xaa\x00\x38\x9b\x71')
+
+            audio_format = None
+
+            # Walk the chunk list (fmt may be 16/18/40 bytes; LIST/JUNK/fact
+            # chunks may precede data; odd-sized chunks carry a pad byte).
             while True:
                 chunk_header = f.read(8)
                 if len(chunk_header) != 8:
@@ -430,29 +439,57 @@ class AudioProcessor:
                     fmt_data = f.read(chunk_size)
                     audio_format, channels, sample_rate, byte_rate, block_align, bits_per_sample = \
                         struct.unpack('<HHIIHH', fmt_data[:16])
+                    if audio_format == 0xFFFE:
+                        if len(fmt_data) < 40:
+                            raise ValueError("Truncated WAVE_FORMAT_EXTENSIBLE fmt chunk")
+                        guid = fmt_data[24:40]
+                        if guid == pcm_guid:
+                            audio_format = 1
+                        elif guid == float_guid:
+                            audio_format = 3
+                        else:
+                            raise ValueError("Unsupported WAV subformat")
 
                 elif chunk_id == b'data':
-                    # Read audio data
+                    if audio_format is None:
+                        raise ValueError("WAV data chunk before fmt chunk")
                     audio_bytes = f.read(chunk_size)
 
-                    # Convert to numpy array
-                    if bits_per_sample == 16:
-                        audio = np.frombuffer(audio_bytes, dtype=np.int16)
-                    elif bits_per_sample == 32:
-                        audio = np.frombuffer(audio_bytes, dtype=np.int32)
-                    else:
+                    # Decode by (format tag, bit depth) — anything else is an
+                    # explicit error rather than silent misdecoding.
+                    if audio_format == 1 and bits_per_sample == 8:
                         audio = np.frombuffer(audio_bytes, dtype=np.uint8)
+                        audio = (audio.astype(np.float32) - 128.0) / 128.0
+                    elif audio_format == 1 and bits_per_sample == 16:
+                        audio = np.frombuffer(audio_bytes, dtype=np.int16)
+                        audio = audio.astype(np.float32) / 32768.0
+                    elif audio_format == 1 and bits_per_sample == 24:
+                        raw = np.frombuffer(audio_bytes[:len(audio_bytes) // 3 * 3],
+                                            dtype=np.uint8).reshape(-1, 3).astype(np.int32)
+                        values = raw[:, 0] | (raw[:, 1] << 8) | (raw[:, 2] << 16)
+                        values = np.where(values >= 1 << 23, values - (1 << 24), values)
+                        audio = values.astype(np.float32) / float(1 << 23)
+                    elif audio_format == 1 and bits_per_sample == 32:
+                        audio = np.frombuffer(audio_bytes, dtype=np.int32)
+                        audio = audio.astype(np.float32) / 2147483648.0
+                    elif audio_format == 3 and bits_per_sample == 32:
+                        audio = np.frombuffer(audio_bytes, dtype=np.float32).copy()
+                    else:
+                        raise ValueError(
+                            f"Unsupported WAV format: tag={audio_format}, "
+                            f"bits={bits_per_sample}")
 
-                    # Normalize to float32
-                    audio = audio.astype(np.float32) / (2**(bits_per_sample-1))
-
-                    # Reshape for channels
+                    # Reshape for channels (drop a trailing partial frame).
                     if channels > 1:
-                        audio = audio.reshape(-1, channels).T
+                        usable = (len(audio) // channels) * channels
+                        audio = audio[:usable].reshape(-1, channels).T
 
                     return audio, sample_rate
                 else:
                     f.seek(chunk_size, 1)
+
+                if chunk_size % 2 == 1:
+                    f.seek(1, 1)  # RIFF pad byte after odd-sized chunks
 
         raise ValueError("Could not parse WAV file")
 

@@ -141,7 +141,13 @@ def open_secure(path: Union[str, Path], mode: str = "wb", *, encoding: Optional[
 
 @dataclass
 class AudioInfo:
-    """Essential audio information - no bloat."""
+    """Essential audio information - no bloat.
+
+    data_offset/data_size describe where the PCM payload actually lives —
+    real-world WAVs carry LIST/JUNK/fact chunks before ``data``, so readers
+    and writers must use these instead of assuming the classic 44-byte header.
+    fmt_offset is the file offset of the fmt chunk *body* (the ``<HHIIHH``).
+    """
     duration: float
     sample_rate: int
     channels: int
@@ -149,6 +155,10 @@ class AudioInfo:
     size_bytes: int
     peak_level: float = 0.0
     rms_level: float = 0.0
+    data_offset: int = 44
+    data_size: int = 0
+    fmt_offset: int = 20
+    format_tag: int = 1
 
 @dataclass
 class ProcessingResult:
@@ -446,57 +456,14 @@ class WAVProcessor:
         return b""
 
     def _read_wav_header_optimized(self, file_path: str) -> Optional[AudioInfo]:
-        """Read WAV header with memory optimization."""
-        try:
-            # Use memory manager for efficient reading
-            header_data = self.memory_manager.get_file_data(file_path, 0, 44)
+        """Read the WAV header via the canonical chunk-walking parser.
 
-            if header_data is None:
-                # Cache miss - read from disk
-                try:
-                    with open(file_path, 'rb') as f:
-                        header_data = f.read(44)
-                    self.memory_manager.cache_data(f"{file_path}:0:44", header_data)
-                except Exception:
-                    return None
-
-            if len(header_data) != 44:
-                return None
-
-            # Check RIFF signature
-            if header_data[:4] != b'RIFF':
-                return None
-
-            # Check WAVE signature
-            if header_data[8:12] != b'WAVE':
-                return None
-
-            # Check format chunk
-            if header_data[12:16] != b'fmt ':
-                return None
-
-            # Parse format information
-            format_tag, channels, sample_rate, byte_rate, block_align, bits_per_sample = \
-                struct.unpack('<HHIIHH', header_data[20:36])
-
-            if format_tag != 1:  # Only PCM
-                return None
-
-            # Get file size efficiently
-            file_size = os.path.getsize(file_path)
-            data_size = file_size - 44  # Assume standard header
-            duration = data_size / (sample_rate * channels * (bits_per_sample // 8))
-
-            return AudioInfo(
-                duration=duration,
-                sample_rate=sample_rate,
-                channels=channels,
-                bit_depth=bits_per_sample,
-                size_bytes=file_size
-            )
-
-        except Exception:
-            return None
+        Historically this read a fixed 44 bytes and assumed the data chunk
+        started right after — wrong for any file with LIST/JUNK/fact chunks or
+        a non-16-byte fmt body, which silently corrupted analysis. It now
+        delegates to _read_wav_header, the single source of truth.
+        """
+        return self._read_wav_header(file_path)
 
     def analyze(self, file_path: str) -> ProcessingResult:
         """Analyze WAV file - core functionality with enhanced security and error handling."""
@@ -737,63 +704,104 @@ class WAVProcessor:
             self.logger.error(f"Silence trimming failed: {e}")
             return ProcessingResult(False, f"Silence trimming failed: {str(e)}")
 
+    # WAVE_FORMAT_EXTENSIBLE subformat GUIDs (little-endian on-disk layout).
+    _PCM_SUBFORMAT_GUID = (b'\x01\x00\x00\x00\x00\x00\x10\x00'
+                           b'\x80\x00\x00\xaa\x00\x38\x9b\x71')
+    _FLOAT_SUBFORMAT_GUID = (b'\x03\x00\x00\x00\x00\x00\x10\x00'
+                             b'\x80\x00\x00\xaa\x00\x38\x9b\x71')
+    _MAX_WAV_CHUNKS = 256
+
     def _read_wav_header(self, file_path: str) -> Optional[AudioInfo]:
-        """Read WAV header efficiently - cached for performance."""
+        """Canonical WAV parser: walks the chunk list instead of assuming the
+        classic 44-byte layout.
+
+        Handles fmt bodies of 16/18/40 bytes (including WAVE_FORMAT_EXTENSIBLE,
+        whose PCM subformat GUID is treated as plain PCM), skips the RIFF pad
+        byte after odd-sized chunks, clamps a lying data-size field to the real
+        file size, and records data_offset/data_size/fmt_offset so downstream
+        readers and writers stop hardcoding byte 44. PCM-only by design: float
+        (tag 3) files are rejected cleanly rather than misdecoded.
+        """
         try:
+            file_size = os.path.getsize(file_path)
             with open(file_path, 'rb') as f:
-                # Read RIFF header
                 riff_header = f.read(12)
                 if len(riff_header) != 12 or riff_header[:4] != b'RIFF' or riff_header[8:12] != b'WAVE':
                     return None
 
-                file_size = struct.unpack('<I', riff_header[4:8])[0] + 8
+                fmt_seen = False
+                data_offset: Optional[int] = None
+                data_size = 0
+                fmt_offset = 20
+                format_tag = channels = sample_rate = bits_per_sample = 0
 
-                # Find fmt chunk
-                while True:
+                for _ in range(self._MAX_WAV_CHUNKS):
                     chunk_header = f.read(8)
                     if len(chunk_header) != 8:
-                        return None
+                        break
 
                     chunk_id = chunk_header[:4]
                     chunk_size = struct.unpack('<I', chunk_header[4:8])[0]
+                    if chunk_size > file_size:
+                        return None  # corrupt size field
 
                     if chunk_id == b'fmt ':
-                        # Read format chunk
-                        fmt_data = f.read(chunk_size)
-                        if len(fmt_data) < 16:
+                        if chunk_size < 16:
                             return None
-
-                        format_tag, channels, sample_rate, byte_rate, block_align, bits_per_sample = \
-                            struct.unpack('<HHIIHH', fmt_data[:16])
-
-                        if format_tag != 1:  # Only PCM
+                        fmt_offset = f.tell()
+                        body = f.read(min(chunk_size, 40))
+                        if len(body) < 16:
                             return None
-
-                        # Find data chunk
-                        while True:
-                            data_header = f.read(8)
-                            if len(data_header) != 8:
+                        format_tag, channels, sample_rate, _byte_rate, _block_align, bits_per_sample = \
+                            struct.unpack('<HHIIHH', body[:16])
+                        if format_tag == 0xFFFE:
+                            if len(body) < 40:
                                 return None
-
-                            data_id = data_header[:4]
-                            data_size = struct.unpack('<I', data_header[4:8])[0]
-
-                            if data_id == b'data':
-                                duration = data_size / (sample_rate * channels * (bits_per_sample // 8))
-
-                                return AudioInfo(
-                                    duration=duration,
-                                    sample_rate=sample_rate,
-                                    channels=channels,
-                                    bit_depth=bits_per_sample,
-                                    size_bytes=file_size
-                                )
+                            guid = body[24:40]
+                            if guid == self._PCM_SUBFORMAT_GUID:
+                                format_tag = 1
+                            elif guid == self._FLOAT_SUBFORMAT_GUID:
+                                format_tag = 3
                             else:
-                                # Skip non-data chunk
-                                f.seek(data_size, 1)
+                                return None
+                        remaining = chunk_size - len(body)
+                        if remaining > 0:
+                            f.seek(remaining, 1)
+                        fmt_seen = True
+                    elif chunk_id == b'data':
+                        data_offset = f.tell()
+                        data_size = min(chunk_size, max(0, file_size - data_offset))
+                        f.seek(data_size, 1)
                     else:
-                        # Skip non-fmt chunk
                         f.seek(chunk_size, 1)
+
+                    if chunk_size % 2 == 1:
+                        f.seek(1, 1)  # RIFF chunks are word-aligned
+
+                    if fmt_seen and data_offset is not None:
+                        break
+
+                if not fmt_seen or data_offset is None:
+                    return None
+                if format_tag != 1:  # PCM-only core; float32 rejected cleanly
+                    return None
+                if channels <= 0 or bits_per_sample not in (8, 16, 24, 32) or sample_rate <= 0:
+                    return None
+
+                frame_size = channels * (bits_per_sample // 8)
+                duration = data_size / (sample_rate * frame_size) if frame_size else 0.0
+
+                return AudioInfo(
+                    duration=duration,
+                    sample_rate=sample_rate,
+                    channels=channels,
+                    bit_depth=bits_per_sample,
+                    size_bytes=file_size,
+                    data_offset=data_offset,
+                    data_size=data_size,
+                    fmt_offset=fmt_offset,
+                    format_tag=format_tag,
+                )
 
         except Exception:
             return None
@@ -803,8 +811,9 @@ class WAVProcessor:
         """Calculate peak and RMS levels with enhanced bit depth support and memory protection."""
         try:
             with open(file_path, 'rb') as f:
-                # Skip to data chunk safely
-                f.seek(44)  # Standard WAV header size
+                # Seek to the actual data payload (not a hardcoded byte 44).
+                f.seek(info.data_offset)
+                remaining = info.data_size
 
                 max_val = 0.0
                 sum_squares = 0.0
@@ -814,15 +823,19 @@ class WAVProcessor:
                 bytes_per_sample = max(1, info.bit_depth // 8) if info.bit_depth != 8 else 1
                 frame_size = bytes_per_sample * max(1, info.channels)
 
-                if frame_size == 0:
+                if frame_size == 0 or remaining <= 0:
                     return 0.0, 0.0
 
-                while sample_count < max_samples:
-                    chunk = f.read(CHUNK_SIZE)
-                    if not chunk:
+                carry = b''
+                while sample_count < max_samples and remaining > 0:
+                    data = f.read(min(CHUNK_SIZE, remaining))
+                    if not data:
                         break
+                    remaining -= len(data)
+                    chunk = carry + data
 
                     available = (len(chunk) // frame_size) * frame_size
+                    carry = chunk[available:]  # keep the split frame for the next read
                     if available == 0:
                         continue
 
@@ -880,14 +893,19 @@ class WAVProcessor:
 
             samples: List[float] = []
             with open(file_path, 'rb') as f:
-                f.seek(44)  # Standard WAV header size
+                f.seek(info.data_offset)
+                remaining = info.data_size
 
-                while len(samples) < max_samples:
-                    chunk = f.read(CHUNK_SIZE)
-                    if not chunk:
+                carry = b''
+                while len(samples) < max_samples and remaining > 0:
+                    data = f.read(min(CHUNK_SIZE, remaining))
+                    if not data:
                         break
+                    remaining -= len(data)
+                    chunk = carry + data
 
                     available = (len(chunk) // frame_size) * frame_size
+                    carry = chunk[available:]
                     if available == 0:
                         continue
 
@@ -920,30 +938,67 @@ class WAVProcessor:
         except (OSError, PermissionError) as e:
             return ProcessingResult(False, f"File system error: {e}")
 
+    def _copy_patched_header(self, src, dst, info: AudioInfo, new_data_size: int,
+                             *, channels: Optional[int] = None) -> None:
+        """Copy the input header prefix verbatim and patch its size fields.
+
+        Copies everything up to the data payload (preserving LIST/JUNK/fact
+        chunks and non-16-byte fmt bodies exactly as they were), then patches:
+        the data chunk size at data_offset-4, the RIFF size at offset 4, and —
+        when *channels* is given (mono conversion) — the channel count, byte
+        rate, and block align inside the fmt body at fmt_offset.
+
+        Policy notes (deliberate, documented choices): chunks that trail the
+        data payload are dropped from the output — the processed file is a new
+        artifact; a fact chunk before data is preserved verbatim without
+        recomputing dwSampleLength (informational for PCM).
+        """
+        header = bytearray(src.read(info.data_offset))
+        if len(header) != info.data_offset:
+            raise ValueError("Invalid WAV header")
+
+        pad = new_data_size % 2
+        struct.pack_into('<I', header, 4, info.data_offset - 8 + new_data_size + pad)
+        struct.pack_into('<I', header, info.data_offset - 4, new_data_size)
+
+        if channels is not None:
+            bytes_per_sample = max(1, info.bit_depth // 8)
+            struct.pack_into('<H', header, info.fmt_offset + 2, channels)
+            struct.pack_into('<I', header, info.fmt_offset + 8,
+                             info.sample_rate * bytes_per_sample * channels)
+            struct.pack_into('<H', header, info.fmt_offset + 12,
+                             bytes_per_sample * channels)
+
+        dst.write(bytes(header))
+
     def _apply_gain_safe(self, input_path: str, output_path: str, info: AudioInfo, gain: float):
         """Apply gain to audio file with enhanced bit depth support and security."""
+        bytes_per_sample = max(1, info.bit_depth // 8) if info.bit_depth != 8 else 1
+        frame_size = bytes_per_sample * max(1, info.channels)
+        if frame_size == 0:
+            raise ValueError("Invalid audio format")
+
+        # Whole frames only; a trailing sub-frame fragment is dropped, so the
+        # size fields written up front are exact.
+        new_data_size = (info.data_size // frame_size) * frame_size
+
         with open(input_path, 'rb') as src, open_secure(output_path, 'wb') as dst:
-            # Copy header safely
-            header = src.read(44)  # Standard WAV header
-            if len(header) != 44:
-                raise ValueError("Invalid WAV header")
+            self._copy_patched_header(src, dst, info, new_data_size)
 
-            dst.write(header)
-
-            bytes_per_sample = max(1, info.bit_depth // 8) if info.bit_depth != 8 else 1
-            frame_size = bytes_per_sample * max(1, info.channels)
             processed_samples = 0
             max_samples = 10000000  # Safety limit per-channel
+            to_consume = new_data_size
+            carry = b''
 
-            if frame_size == 0:
-                raise ValueError("Invalid audio format")
-
-            while processed_samples < max_samples:
-                chunk = src.read(CHUNK_SIZE)
-                if not chunk:
+            while to_consume > 0 and processed_samples < max_samples:
+                data = src.read(min(CHUNK_SIZE, to_consume))
+                if not data:
                     break
+                to_consume -= len(data)
+                chunk = carry + data
 
                 available = (len(chunk) // frame_size) * frame_size
+                carry = chunk[available:]
                 if available == 0:
                     continue
 
@@ -969,50 +1024,36 @@ class WAVProcessor:
                 if processed_chunk:
                     dst.write(processed_chunk)
 
-                if available < len(chunk):
-                    dst.write(chunk[available:])
-
                 del mv
+
+            if new_data_size % 2:
+                dst.write(b'\x00')  # RIFF pad byte
 
     def _convert_to_mono(self, input_path: str, output_path: str, info: AudioInfo):
         """Convert stereo/multi-channel to mono."""
+        bytes_per_sample = max(1, info.bit_depth // 8) if info.bit_depth != 8 else 1
+        frame_size = bytes_per_sample * max(1, info.channels)
+        if frame_size == 0:
+            raise ValueError("Invalid audio format")
+
+        frames = info.data_size // frame_size
+        new_data_size = frames * bytes_per_sample
+
         with open(input_path, 'rb') as src, open_secure(output_path, 'wb') as dst:
-            # Read and modify header
-            header = bytearray(src.read(44))
+            self._copy_patched_header(src, dst, info, new_data_size, channels=1)
 
-            # Update channels to 1
-            struct.pack_into('<H', header, 22, 1)
+            to_consume = frames * frame_size
+            carry = b''
 
-            # Update byte rate and block align
-            byte_rate = info.sample_rate * (info.bit_depth // 8)
-            block_align = info.bit_depth // 8
-            struct.pack_into('<I', header, 28, byte_rate)
-            struct.pack_into('<H', header, 32, block_align)
-
-            # Update data chunk size
-            original_data_size = struct.unpack('<I', header[40:44])[0]
-            new_data_size = original_data_size // info.channels
-            struct.pack_into('<I', header, 40, new_data_size)
-
-            # Update file size
-            file_size = struct.unpack('<I', header[4:8])[0]
-            new_file_size = file_size - original_data_size + new_data_size
-            struct.pack_into('<I', header, 4, new_file_size)
-
-            dst.write(header)
-
-            bytes_per_sample = max(1, info.bit_depth // 8) if info.bit_depth != 8 else 1
-            frame_size = bytes_per_sample * max(1, info.channels)
-
-            if frame_size == 0:
-                raise ValueError("Invalid audio format")
-
-            while True:
-                chunk = src.read(CHUNK_SIZE)
-                if not chunk:
+            while to_consume > 0:
+                data = src.read(min(CHUNK_SIZE, to_consume))
+                if not data:
                     break
+                to_consume -= len(data)
+                chunk = carry + data
 
                 available = (len(chunk) // frame_size) * frame_size
+                carry = chunk[available:]
                 if available == 0:
                     continue
 
@@ -1040,10 +1081,10 @@ class WAVProcessor:
                 if mono_chunk:
                     dst.write(mono_chunk)
 
-                if available < len(chunk):
-                    dst.write(chunk[available:])
-
                 del mv
+
+            if new_data_size % 2:
+                dst.write(b'\x00')  # RIFF pad byte
 
     def _find_audio_boundaries(self, file_path: str, info: AudioInfo, threshold: float) -> Tuple[int, int]:
         """Find start and end of audio content above threshold."""
@@ -1052,7 +1093,8 @@ class WAVProcessor:
 
         try:
             with open(file_path, 'rb') as f:
-                f.seek(44)  # Skip header
+                f.seek(info.data_offset)
+                remaining = info.data_size
 
                 bytes_per_sample = max(1, info.bit_depth // 8) if info.bit_depth != 8 else 1
                 frame_size = bytes_per_sample * max(1, info.channels)
@@ -1060,15 +1102,19 @@ class WAVProcessor:
                 found_start = False
                 last_audio_sample = 0
 
-                if frame_size == 0:
+                if frame_size == 0 or remaining <= 0:
                     return 0, 0
 
-                while True:
-                    chunk = f.read(CHUNK_SIZE)
-                    if not chunk:
+                carry = b''
+                while remaining > 0:
+                    data = f.read(min(CHUNK_SIZE, remaining))
+                    if not data:
                         break
+                    remaining -= len(data)
+                    chunk = carry + data
 
                     available = (len(chunk) // frame_size) * frame_size
+                    carry = chunk[available:]
                     if available == 0:
                         continue
 
@@ -1105,40 +1151,30 @@ class WAVProcessor:
 
     def _extract_audio_range(self, input_path: str, output_path: str, info: AudioInfo, start_sample: int, end_sample: int):
         """Extract specific sample range from audio file."""
+        bytes_per_sample = max(1, info.bit_depth // 8)
+        frame_size = bytes_per_sample * max(1, info.channels)
+        sample_count = end_sample - start_sample
+
+        start_byte = start_sample * frame_size
+        # Never read past the actual data payload, whatever the caller asked.
+        new_data_size = min(sample_count * frame_size,
+                            max(0, info.data_size - start_byte))
+
         with open(input_path, 'rb') as src, open_secure(output_path, 'wb') as dst:
-            # Read and modify header
-            header = bytearray(src.read(44))
+            self._copy_patched_header(src, dst, info, new_data_size)
 
-            bytes_per_sample = info.bit_depth // 8
-            sample_count = end_sample - start_sample
-            new_data_size = sample_count * info.channels * bytes_per_sample
-            new_duration = sample_count / info.sample_rate
+            src.seek(info.data_offset + start_byte)
 
-            original_data_size = struct.unpack('<I', header[40:44])[0]
-
-            # Update data chunk size
-            struct.pack_into('<I', header, 40, new_data_size)
-
-            # Update file size
-            file_size = struct.unpack('<I', header[4:8])[0]
-            new_file_size = file_size - original_data_size + new_data_size
-            struct.pack_into('<I', header, 4, new_file_size)
-
-            dst.write(header)
-
-            # Seek to start position
-            start_byte = start_sample * info.channels * bytes_per_sample
-            src.seek(44 + start_byte)
-
-            # Copy audio data
             bytes_to_copy = new_data_size
             while bytes_to_copy > 0:
-                chunk_size = min(CHUNK_SIZE, bytes_to_copy)
-                chunk = src.read(chunk_size)
+                chunk = src.read(min(CHUNK_SIZE, bytes_to_copy))
                 if not chunk:
                     break
                 dst.write(chunk)
                 bytes_to_copy -= len(chunk)
+
+            if new_data_size % 2:
+                dst.write(b'\x00')  # RIFF pad byte
 
 class RecoveryManager:
     """Automatic recovery handler for essential operations."""
