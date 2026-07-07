@@ -146,17 +146,19 @@ docker run -v /audio:/data chameleon:latest analyze /data/file.wav
 ### Environment Variables
 
 ```bash
-# Security
+# Security (CLI/core — security_validator.SecurityConfig.from_environment)
 export CHAMELEON_TRUSTED_ROOTS="/trusted/audio:/workspace"
 export CHAMELEON_MAX_FILE_SIZE=524288000  # 500MB
 
-# Performance
+# Performance (CLI/core)
 export CHAMELEON_MAX_WORKERS=8
 export CHAMELEON_CHUNK_SIZE=131072  # 128KB
 export CHAMELEON_PERFORMANCE_MODE=fast  # fast, balanced, safe
 
-# API Server
-export CHAMELEON_API_KEY_FILE=/etc/chameleon/api_keys.json
+# API Server (api_server.py) — a separate process with its own settings.
+# CHAMELEON_MAX_FILE_SIZE above does NOT apply to it; its upload limit is
+# fixed in SECURITY_CONFIG['max_file_size'] (100MB).
+export CHAMELEON_API_KEY=your-generated-api-key   # the key value itself, not a file path
 export CHAMELEON_ALLOWED_ORIGINS=https://your-domain.example.com
 ```
 
@@ -287,16 +289,20 @@ pytest
 ### Health Checks
 
 ```bash
-# Check system health
-curl http://localhost:8080/health
-# {"status": "healthy", "version": "1.0.0", "uptime": 3600}
+# Default API server port is 8000 (override with `chameleon server --port`)
+curl http://localhost:8000/health
+# {"status": "ok", "uptime_seconds": 3600.1, "timestamp": "2026-07-08T12:00:00+00:00"}
 ```
 
 ### Audit Logs
 
-Located in `~/.chameleon/audit/`:
-- `security.log` - Security events
-- `compliance.jsonl` - Compliance audit trail
+The API server keeps an in-memory audit log (login, upload, analyze, normalize,
+download, batch-submit events) for the life of the process — it is not
+written to disk. Retrieve it while the server is running:
+
+```bash
+curl -H "X-API-Key: $CHAMELEON_API_KEY" http://localhost:8000/audit/log
+```
 
 ## Contributing
 

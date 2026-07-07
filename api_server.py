@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Chameleon Audio API Server
-Government-grade REST API with comprehensive security and documentation
+A thin, authenticated REST adapter over the stdlib WAV-processing core.
+See CHARTER.md §5 for the threat model this defends against.
 """
 
 import os
@@ -115,7 +116,11 @@ SECURITY_CONFIG = {
     'rate_limit_window_seconds': 60,
     'rate_limit_max_requests': 120,
     'max_file_size': 100 * 1024 * 1024,  # 100MB
-    'allowed_file_types': ['.wav', '.wave', '.flac'],
+    # WAV only: analyze_audio_fast/normalize_audio_fast go through the stdlib
+    # core, which cannot parse FLAC. Accepting .flac uploads here meant every
+    # such upload would predictably fail at analyze/normalize with "Invalid
+    # WAV file format" — reject it at the upload boundary instead.
+    'allowed_file_types': ['.wav', '.wave'],
     'session_timeout': 3600,  # 1 hour
     'max_session_idle_seconds': 900,
     'max_concurrent_jobs': 10,
@@ -155,7 +160,8 @@ def _enforce_rate_limit(identifier: str) -> None:
     max_requests = SECURITY_CONFIG.get('rate_limit_max_requests', 120)
     now = time.time()
 
-    window = api_state._rate_limit_windows.setdefault(identifier, deque())
+    windows = api_state._rate_limit_windows
+    window = windows.setdefault(identifier, deque())
 
     while window and now - window[0] > window_seconds:
         window.popleft()
@@ -168,6 +174,14 @@ def _enforce_rate_limit(identifier: str) -> None:
         )
 
     window.append(now)
+
+    # Opportunistic cleanup: every identifier gets its own deque, and a
+    # one-shot caller (e.g. a scanner hitting many usernames) would otherwise
+    # leave an empty entry behind forever. Drop stale, now-empty windows for
+    # other identifiers so this dict doesn't grow unboundedly.
+    if len(windows) > max(200, max_requests):
+        for stale_id in [k for k, w in windows.items() if not w]:
+            del windows[stale_id]
 
 # API Models
 class AuthenticationRequest(BaseModel):
@@ -201,7 +215,10 @@ class AudioAnalysisResponse(BaseModel):
 class AudioNormalizationRequest(BaseModel):
     file_name: str
     target_peak: float = Field(0.95, ge=0.1, le=1.0)
-    output_format: str = Field('wav', regex=r'^(wav|flac)$')
+    # WAV only: normalize_audio_fast writes through the stdlib core, which has
+    # no FLAC encoder. Previously accepted "flac" here produced a file with a
+    # .flac extension containing raw WAV bytes — an unbacked capability claim.
+    output_format: str = Field('wav', regex=r'^(wav)$')
 
 class AudioNormalizationResponse(BaseModel):
     success: bool
@@ -376,7 +393,9 @@ _AUDIT_FILES = SecureFileOperations(_AUDIT_VALIDATOR)
 
 _REQUEST_VALIDATOR = ChameleonSecurityValidator(
     ChameleonSecurityConfig(
-        allowed_extensions={'.wav', '.wave', '.flac', '.json', '.zip'},
+        # .flac dropped: the stdlib core this API adapts to cannot read or
+        # write FLAC (see SECURITY_CONFIG['allowed_file_types'] above).
+        allowed_extensions={'.wav', '.wave', '.json', '.zip'},
         log_security_events=False,
     )
 )
@@ -653,7 +672,7 @@ else:
 # FastAPI app initialization
 app = FastAPI(
     title="Chameleon Audio API",
-    description="Government-Focused Audio Processing REST API",
+    description="Authenticated REST API over the Chameleon stdlib WAV-processing core.",
     version=API_VERSION,
     docs_url="/docs" if not SECURITY_CONFIG['require_authentication'] else None,
     redoc_url="/redoc" if not SECURITY_CONFIG['require_authentication'] else None,
@@ -951,9 +970,8 @@ async def root():
         "service": "Chameleon Audio API",
         "version": API_VERSION,
         "status": "operational",
-        "classification": "RESTRICTED",
         "documentation": DOCUMENTATION_REFERENCE,
-        "security": "government_grade"
+        "authentication_required": SECURITY_CONFIG['require_authentication'],
     }
 
 
@@ -1060,6 +1078,8 @@ async def login(request: AuthenticationRequest, http_request: Request):
             expires_at=expires_at
         )
 
+    except HTTPException:
+        raise  # preserve 429 (rate limit) / 503 (capacity) status codes
     except Exception as e:
         logging.error(f"Login error: {e}")
         return AuthenticationResponse(
@@ -1252,11 +1272,13 @@ async def normalize_audio(
                 error=result.get('error', 'Normalization failed')
             )
 
+    except HTTPException:
+        raise  # preserve 400 (invalid destination) / 404 / 403 status codes
     except Exception as e:
         logging.error(f"Normalization error: {e}")
         return AudioNormalizationResponse(
             success=False,
-            error=str(e)
+            error="Normalization failed"
         )
 
 @app.get("/audio/download/{file_name}")
@@ -1282,11 +1304,13 @@ async def download_file(
             media_type='application/octet-stream'
         )
 
+    except HTTPException:
+        raise  # preserve 404 (not found) / 403 (unauthorized path) status codes
     except Exception as e:
         logging.error(f"Download error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
+            detail="Download failed"
         )
 
 @app.post("/batch/submit", response_model=BatchJobResponse)
@@ -1351,11 +1375,13 @@ async def submit_batch_job(
             estimated_duration=len(payload.files) * 5.0  # Estimate 5 seconds per file
         )
 
+    except HTTPException:
+        raise  # preserve 404 (missing file) / 403 (unauthorized) / 503 (queue full)
     except Exception as e:
         logging.error(f"Batch job submission error: {e}")
         return BatchJobResponse(
             success=False,
-            error=str(e)
+            error="Batch job submission failed"
         )
 
 @app.get("/batch/status/{job_id}", response_model=BatchJobStatus)
@@ -1470,6 +1496,8 @@ async def process_batch_job(job_id: str):
             job_data['error'] = 'Circuit breaker open due to recent failures'
             job_data['completed_at'] = datetime.now(timezone.utc)
             api_state.stats['failed_jobs'] += 1
+            if job_id in api_state.job_queue:
+                api_state.job_queue.remove(job_id)
             _record_job_completion(job_id)
             return
 
@@ -1537,6 +1565,8 @@ async def process_batch_job(job_id: str):
         job_data['status'] = 'failed'
         job_data['error'] = str(e)
         api_state.stats['failed_jobs'] += 1
+        if job_id in api_state.job_queue:
+            api_state.job_queue.remove(job_id)
         _record_job_completion(job_id)
 
 # Startup event

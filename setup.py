@@ -100,6 +100,9 @@ setup(
         "api": [
             "fastapi>=0.70.0",
             "uvicorn>=0.15.0",
+            # api_server.py's request models use pydantic v1 syntax
+            # (Field(regex=...)), which raises at import under pydantic 2.
+            "pydantic>=1.9,<2",
         ],
     },
     entry_points={

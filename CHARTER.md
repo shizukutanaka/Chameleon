@@ -360,7 +360,70 @@ script) — docs had fallen *behind* the code, the inverse of the failure mode
 this charter was written against, and QUICKSTART still referenced the deleted
 `audio_utils.py`. `tests/test_cli_polish.py` pins the contract.
 
+**Q: What are this product's actual user-facing surfaces (frontend audit)?**
+A (2026-07): CLI + a pure-JSON FastAPI REST server. No web UI ships: `gui/`
+is a self-labeled experimental React/TypeScript/Electron scaffold ("the
+Electron backend integration with the Python CLI is not yet wired up" — its
+own README), not built by the Dockerfile, not referenced by `api_server.py`
+(no `StaticFiles`/`Jinja2`/`HTMLResponse`). `core.py`'s `RealtimeMusicProcessor`
+(~L2769, a standalone `websockets`-based server) has zero callers from
+`main.py` or `api_server.py` — dead code. Decisions on removing `gui/` and
+`RealtimeMusicProcessor` are pending direct user confirmation (tooling
+prevented getting an answer in this pass); until then both are left as-is and
+`gui/README.md`'s own "experimental, unwired" disclosure stands as the
+honest label.
+
+**Q: Is api_server.py actually commercial-grade (HTTP-level audit)?**
+A (2026-07): It starts cleanly and every route calls a real backing function
+(no mocks) — but four handlers caught `HTTPException` inside a bare
+`except Exception`, silently flattening real status codes: login's 429
+(rate limit)/503 (capacity) became 200, and download/batch-submit/normalize's
+404/403 became 500 or 200 with the original HTTPException detail leaked into
+the response body. Fixed by re-raising `HTTPException` before the generic
+handler in all four (`login`, `download_file`, `submit_batch_job`,
+`normalize_audio`), and replacing the leaked `str(e)` in the two truly-generic
+branches with a fixed message. Also fixed: two resource leaks (`job_queue`
+never dropped a job_id on the circuit-breaker-open early return or the
+exception path — only success removed it; `_rate_limit_windows` grew one
+entry per distinct identifier forever with no pruning) and a real honesty gap
+— `output_format` accepted `"flac"` and `allowed_file_types` accepted `.flac`
+uploads, but `normalize_audio_fast`/`analyze_audio_fast` only ever call the
+stdlib WAV-only core, so a requested FLAC output was actually a WAV file
+wearing a `.flac` extension. Restricted both to WAV, matching what the code
+can actually do. Also removed unbacked "government-grade"/"classification:
+RESTRICTED" wording (module docstring, FastAPI title/description, `/`
+endpoint) — CHARTER §4's exact failure mode, just in prose instead of code —
+and corrected README's API section, which advertised a nonexistent
+`CHAMELEON_API_KEY_FILE` env var, a `CHAMELEON_MAX_FILE_SIZE` override that
+doesn't apply to the API process, a wrong default port (8080 vs the real
+8000), and a fabricated on-disk audit-log path (`~/.chameleon/audit/*.log`)
+when the audit log is actually in-memory only, retrievable via `GET
+/audit/log`. `setup.py`'s `[api]` extra was missing the `pydantic<2` pin that
+`pyproject.toml` already enforced — installing via setup.py could pull
+pydantic 2, under which `Field(regex=...)` raises at import and the server
+never starts; added the same pin.
+
+`tests/test_api_routes.py` adds the first HTTP-level test coverage this file
+has ever had (11 tests via FastAPI's `TestClient`): health/root, the dev
+login flow, the 429/404 regressions above, and the FLAC rejections. Requires
+`httpx<0.24` (pinned in the `dev` extra — newer httpx dropped the `app=`
+shortcut this project's pinned fastapi/starlette version needs) and skips
+cleanly without it, matching `test_api_fallback.py`'s existing
+`importorskip("fastapi")` convention.
+
 ### Open questions (next contributor: decide before building)
+
+- **gui/ scaffold — keep, delete, or actually wire up?** Experimental React/
+  TypeScript/Electron app, self-labeled unwired in its own README, not built
+  by the Dockerfile. Needs an explicit user decision (asked, not yet
+  answered): label honestly and leave as-is, delete like other orphaned
+  surfaces, or invest in actually wiring the Electron shell to the CLI/API.
+
+- **core.py's RealtimeMusicProcessor — dead code, delete?** A standalone
+  `websockets`-based server (~L2769) with zero callers from `main.py` or
+  `api_server.py`. Matches the exact orphaned-module pattern already resolved
+  for 9 other modules this charter tracked; needs the same explicit
+  confirmation before deletion.
 
 - **advanced_validation.py parity in core**: `DeepFileInspector` now runs in
   `main.py:_filter_safe_files` (the CLI batch path), but `core.py:BatchProcessor` —
