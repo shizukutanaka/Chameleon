@@ -13,10 +13,10 @@ description = "WAV audio processing CLI with path-validation security, batch pro
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "Chameleon Audio Team", email = "contact@chameleon-audio.com"}
+    {name = "Chameleon Audio Team"}
 ]
 maintainers = [
-    {name = "Chameleon Audio Team", email = "contact@chameleon-audio.com"}
+    {name = "Chameleon Audio Team"}
 ]
 keywords = [
     "audio", "processing", "wav", "sound", "waveform", "multimedia",

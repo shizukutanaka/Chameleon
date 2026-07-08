@@ -411,7 +411,33 @@ shortcut this project's pinned fastapi/starlette version needs) and skips
 cleanly without it, matching `test_api_fallback.py`'s existing
 `importorskip("fastapi")` convention.
 
+**Q: Fictional contact domains in packaging/spec metadata?**
+A (2026-07): Removed. `pyproject.toml`'s `authors`/`maintainers` and
+`openapi_spec.yaml`'s `info.contact` both listed
+`{name}@chameleon-audio.com` — a domain nobody registered or specified,
+asserting a support channel that doesn't exist. Dropped the `email` fields
+(kept the team-name labels; PEP 621 doesn't require `email`). While fixing
+this, found `openapi_spec.yaml` itself is orphaned (`grep` for
+`openapi_spec` across all `*.py` returns zero references — `api_server.py`
+serves its own live-generated OpenAPI schema via FastAPI, not this file) and
+structurally invalid YAML (a second top-level document starts at line 28
+with no `---` separator — pre-existing, confirmed via `git stash` that it
+predates this fix). It also repeats the "Government-focused"/hardened
+wording already removed from `api_server.py` and documents `SIMD
+acceleration`, a ghost parameter deleted from the API back in an earlier
+pass. Recorded as an open question below rather than fixed outright — it's a
+larger, orphaned-artifact call like the modules in the punch list above, not
+a one-line domain fix.
+
 ### Open questions (next contributor: decide before building)
+
+- **openapi_spec.yaml — orphaned, stale, and structurally broken**: not
+  referenced by any code (`api_server.py` generates its own OpenAPI schema
+  live), fails to parse as YAML past line 28 (a second top-level document
+  with no `---` separator), and repeats claims already removed elsewhere
+  (`government-focused`, `SIMD acceleration`). Candidate for deletion,
+  matching the pattern already applied to `codec_support.py` and the other
+  orphaned modules — needs the same explicit user confirmation before acting.
 
 - **gui/ scaffold — keep, delete, or actually wire up?** Experimental React/
   TypeScript/Electron app, self-labeled unwired in its own README, not built
