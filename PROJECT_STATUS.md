@@ -1,9 +1,11 @@
 # Chameleon Audio Processing System — Project Status
 
-**Status**: Beta. Standard-library CLI core is stable and tested (147 automated
+**Status**: Beta. Standard-library CLI core is stable and tested (154 automated
 tests, all green). REST API server works end-to-end with `pip install -e .[api]`.
-No web frontend ships (see §5).
-**Last updated**: 2026-07-08
+Container image now actually builds and runs (previously completely broken —
+see §2). No web frontend ships (see §5).
+**Last updated**: 2026-07-08 (revised same-day: plugin sandbox security fix,
+container image repair, packaging cleanup)
 **Read first**: `CHARTER.md` — the project's scope charter and full decision
 history (Socratic record, §9). This file is a status *snapshot*; `CHARTER.md`
 is the source of truth for *why* each decision was made.
@@ -44,7 +46,14 @@ action.
 |---|---|---|
 | Correctness (critical) | WAV read/write assumed data starts at byte 44; real-world WAVs with LIST/JUNK/fact chunks got silently wrong analysis and corrupted output | Canonical chunk-walking parser (`core.py:_read_wav_header`), `AudioInfo.data_offset`/`data_size` threaded through every reader/writer |
 | Correctness | `BatchProcessor.process_directory` (sync) never returned its result list (fell off the end, returned `None`) | Added `return results` |
-| Correctness | `BatchProcessor.process_directory` (sync) calls `self._execute_operation(...)`, a method that doesn't exist on the class | **NOT fixed** — zero callers found anywhere; recorded as an open question (§4 below), not silently patched |
+| Correctness | `BatchProcessor.process_directory` (sync) calls `self._execute_operation(...)`, a method that doesn't exist on the class | **NOT fixed** — zero callers found anywhere; recorded as an open question (§3 below), not silently patched |
+| Security (critical) | Plugin sandbox: `__import__("os")` (no literal `import` statement) bypassed the entire AST-based import check, running unrestricted code at plugin load time. Verified empirically. Also bypassable via `importlib.import_module` | Extended the AST walk to reject `__import__`/`eval`/`exec`/`compile`, `importlib.import_module`, and `__globals__`/`__builtins__`/`__subclasses__`/`__mro__`/`__bases__` attribute access. **Still AST-only, not a runtime sandbox** — documented, not overclaimed |
+| Correctness | `plugin_system.py` called `importlib.util.*` without ever importing `importlib.util` — worked by accident, broke on a fresh process | Added explicit `import importlib.util` |
+| Honesty | 3 of 5 shipped `demo_plugins/` failed the product's own `plugins audit` command (legacy `sys.path.append` boilerplate importing blocklisted `os`/`sys`) | Removed the dead boilerplate; now 5/5 pass |
+| Availability (critical) | `Dockerfile` referenced `chameleon_enhanced.py`/`enterprise_config.py` — files that never existed anywhere in this repo. Every container invocation failed at the health-check step regardless of command | Rewrote to run the real `main.py`/`api_server.py` entry points |
+| Honesty | Dockerfile: "Enterprise Edition"/"National-level"/"military-grade security" marketing language; a baked-in `production.yaml` with security toggles no code ever read | Removed |
+| Packaging | `advanced_validation.py` (where `DeepFileInspector` lives) was missing from `setup.py`/`pyproject.toml`'s `py-modules` — a built-wheel install would silently ship without it | Added to both lists |
+| Packaging | `api_requirements.txt` pinned `pydantic==2.5.0` (breaks `api_server.py`'s v1-only syntax) and had its own "Government-grade" wording; `enhanced_requirements.txt` carried torch/tensorflow/GPU packages for already-deleted modules; both contradicted `pyproject.toml` | Deleted both; `pyproject.toml` extras are the only supported path |
 | Security | Path-containment check used `str.startswith`, wrongly accepting `/data/safe-evil` as inside `/data/safe` | Replaced with `os.path.commonpath` |
 | Security/honesty | `api_server.py`: 4 HTTP handlers caught `HTTPException` inside a bare `except Exception`, silently turning 429/404/503 into 200/500 | Re-raise `HTTPException` before the generic handler in all 4 |
 | Honesty | `output_format` accepted `"flac"` but the stdlib core can only write WAV — produced a `.flac`-named WAV file | Restricted to WAV |
@@ -56,9 +65,12 @@ action.
 | CLI quality | Exit codes were 0/1 only; no `--version`; diagnostics printed to stdout (broke piping); import-time warning spam on the default install; Python 3.12+ deprecation warnings | `ExitCode` enum, `--version`, stderr routing, debug-level logging for missing optional deps, `datetime.now(timezone.utc)`/`asyncio.get_running_loop()` throughout |
 | Docs | README/QUICKSTART hadn't caught up to `--spectrum`/`--master`/`--target-peak`/`batch effects`/exit codes; QUICKSTART still told users to run deleted `audio_utils.py` | Synced |
 
-**Test count**: 22 → 147 passed. `python -m compileall -q .`, `python validation_test.py`,
+**Test count**: 22 → 154 passed. `python -m compileall -q .`, `python validation_test.py`,
 and `python -m pytest -q` are the standing verification gate — all green as of
-this snapshot.
+this snapshot. Container build verified via extracted-script syntax checks
+and a real `import main, core` (no Docker daemon available in this session
+to run an actual `docker build`; the Dockerfile fix has not been build-tested
+end-to-end — recommend a maintainer run `docker build .` once to confirm).
 
 ---
 
