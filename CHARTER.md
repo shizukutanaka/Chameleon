@@ -496,6 +496,44 @@ dead boilerplate; `python main.py plugins --directory demo_plugins audit`
 now reports all 5 as `PASSED` instead of 3 `FAILED`. `tests/test_plugins.py`
 gained 7 new tests covering the bypass fixes and a false-positive guard.
 
+**Q: Does the container image actually work (packaging/deployment audit)?**
+A (2026-07): It didn't. `Dockerfile` referenced `chameleon_enhanced.py` and
+`enterprise_config.py` (classes `EnhancedChameleon`/`EnterpriseConfiguration`)
+— names that appear nowhere else in this repository, ever; not deleted this
+session, they never existed. The embedded health-check ran under `set -e`
+and `sys.exit(1)`'d on the resulting `ImportError`, so **every** container
+invocation failed regardless of `CMD` (`server`/`cli`/anything). It also
+carried the same "Enterprise Edition"/"National-level"/"military-grade
+security" marketing language already removed from `api_server.py` — CHARTER
+§4's exact failure mode, in a different file. Rewrote the Dockerfile to run
+the real entry points (`main.py`, which already wraps `api_server.py` via
+its own `server` subcommand), removed the marketing language and an unread
+`production.yaml` (`enable_authentication`/`enable_encryption`/
+`enable_audit_logging` toggles that no code ever checked), fixed the stale
+`ARG VERSION=2.0.0` (real value: `main.VERSION` = `1.0.0`), dropped `EXPOSE
+9090` (a "metrics" port with no corresponding endpoint anywhere), and
+switched `COPY . .` to an explicit file list matching `setup.py`'s
+`py_modules` (avoids bundling `.git`/`tests`/`docs`/`gui`/dev artifacts into
+a "production" image; added a `.dockerignore` too as defense-in-depth).
+
+While auditing this, found `advanced_validation.py` — the module
+`DeepFileInspector` lives in, wired into the default batch path per an
+earlier §9 entry — was missing from both `setup.py` and `pyproject.toml`'s
+`py-modules` lists. A non-editable `pip install chameleon-audio` from a
+built wheel would have silently shipped without it. Added it to both lists
+(and the Dockerfile's COPY list).
+
+Also found and removed two requirements files that actively contradicted
+`pyproject.toml` (the established single source of truth for dependencies,
+per an earlier §9 entry): `api_requirements.txt` pinned `pydantic==2.5.0`
+(breaks `api_server.py`'s pydantic-v1-only `Field(regex=...)` syntax at
+import) and had its own "Government-grade" header comment; `enhanced_requirements.txt`
+carried torch/tensorflow/GPU packages for the already-deleted neural
+modules. `main.py`'s own missing-uvicorn error message pointed users at the
+now-removed `api_requirements.txt` — fixed to point at `pip install -e
+.[api]`. Also removed `pyproject.toml`'s `[ml]` extra (torch): zero
+consumers anywhere in the codebase since the neural modules were deleted.
+
 ### Open questions (next contributor: decide before building)
 
 - **Plugin sandbox is AST-only, not a runtime boundary**: `exec_module()`

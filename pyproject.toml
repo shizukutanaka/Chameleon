@@ -69,10 +69,6 @@ api = [
     "pydantic>=1.9,<2",
     "python-multipart>=0.0.6",
 ]
-# Optional ML-backed enhancement features (guarded imports).
-ml = [
-    "torch>=1.11",
-]
 dev = [
     "black>=24.8",
     "isort>=5.13",
@@ -108,7 +104,7 @@ version = {attr = "main.VERSION"}
 
 [tool.setuptools]
 py-modules = [
-    "main", "core", "security_validator", "plugin_system", "midi_analysis",
+    "main", "core", "security_validator", "advanced_validation", "plugin_system", "midi_analysis",
     "api_server", "batch_automation",
     "spectral_editor", "spectral_utils",
     "audio_restoration", "mastering_chain",

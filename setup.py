@@ -68,6 +68,7 @@ setup(
         "main",
         "core",
         "security_validator",
+        "advanced_validation",
         "plugin_system",
         "midi_analysis",
         "api_server",

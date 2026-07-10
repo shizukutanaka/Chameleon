@@ -2000,7 +2000,7 @@ async def main():
             import uvicorn  # type: ignore
         except ImportError:
             print("The API server requires fastapi and uvicorn. "
-                  "Install them with: pip install -r api_requirements.txt",
+                  "Install them with: pip install -e .[api]",
                   file=sys.stderr)
             exit_code = ExitCode.ERROR
         else:

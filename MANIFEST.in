@@ -14,8 +14,6 @@ include validation_test.py
 
 # Requirements Files
 include requirements.txt
-include enhanced_requirements.txt
-include api_requirements.txt
 
 # Configuration Files
 include pyproject.toml

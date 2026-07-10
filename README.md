@@ -79,12 +79,13 @@ grouped as installable extras (single source of truth in `pyproject.toml`):
 pip install -e .          # core CLI only
 pip install -e .[audio]   # numpy/scipy/librosa/soundfile/pyaudio — full pipeline
 pip install -e .[api]     # fastapi/uvicorn/pydantic — REST API server
-pip install -e .[ml]      # torch — optional ML-backed features
 pip install -e .[dev]     # test/lint/build tooling
 ```
 
-The legacy `enhanced_requirements.txt` and `api_requirements.txt` files are kept
-for reference only; prefer the extras above.
+`enhanced_requirements.txt`/`api_requirements.txt` were removed — they had
+drifted from `pyproject.toml` (a stale `pydantic==2.5.0` pin that breaks
+`api_server.py`'s v1-only syntax, unused GPU/ML packages left over from
+already-deleted modules). The extras above are the only supported path.
 
 ### Basic Usage
 
