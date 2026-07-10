@@ -1,337 +1,160 @@
-# Chameleon Audio Processing System - Project Status
+# Chameleon Audio Processing System — Project Status
 
-## Current State
+**Status**: Beta. Standard-library CLI core is stable and tested (147 automated
+tests, all green). REST API server works end-to-end with `pip install -e .[api]`.
+No web frontend ships (see §5).
+**Last updated**: 2026-07-08
+**Read first**: `CHARTER.md` — the project's scope charter and full decision
+history (Socratic record, §9). This file is a status *snapshot*; `CHARTER.md`
+is the source of truth for *why* each decision was made.
 
-**Status**: Beta — core CLI imports and runs; GUI and REST API are work in progress
-**Last Updated**: 2026-06-04
+This file is written to be self-contained: a fresh Claude session (Opus or
+Sonnet) with no prior context on this project should be able to read this file
+alone and know what state the codebase is in, what was recently fixed, what is
+known-broken-but-untouched, and what needs a human decision before further
+action.
 
-> Note: a recent restoration pass repaired a broken import chain (missing local
-> modules, no `main.py` entry point) and removed a large amount of
-> non-functional experimental code from `core.py`. Security primitives now live
-> in `security_validator.py`. See CHANGELOG.md for details.
+---
 
-## Project Cleanup Summary
+## 1. What this product actually is
 
-### Files Removed
+- **Core**: `main.py` (CLI) + `core.py` (stdlib-only WAV processing engine).
+  Runs with zero third-party dependencies for `analyze`/`normalize`/`batch`/
+  `midi`. This zero-dependency property is the product's differentiator
+  (CHARTER §1) — do not make it require numpy/scipy by default.
+- **Optional extras** (`pip install -e .[audio]`): numpy/scipy/librosa/
+  soundfile/pyaudio unlock `--master` (full mastering chain), noise
+  reduction, format conversion, real-time streaming.
+- **Optional REST API** (`pip install -e .[api]`): `api_server.py`, a FastAPI
+  JSON REST adapter over the same stdlib core. Ships with 11 HTTP-level
+  tests (`tests/test_api_routes.py`).
+- **No web frontend ships.** `gui/` is an experimental, self-admittedly
+  unwired React/TypeScript/Electron scaffold — not built by the Dockerfile,
+  not referenced by any Python code. See §5 for its disposition status.
+- **Security layer**: `security_validator.py` (trusted-root path containment,
+  size limits) + `advanced_validation.py` (`DeepFileInspector` — WAV
+  magic-number verification, wired into both the CLI batch path and
+  `core.py`'s `BatchProcessor`) + `plugin_system.py` (AST-sandboxed plugins).
 
-**Unrealistic/Marketing Documentation** (16 files):
-- QUANTUM_*.md
-- EXTREME_*.md
-- ULTIMATE_*.md
-- ULTRA_*.md
-- NEXT_GEN_*.md
-- DEEP_*.md
-- ENTERPRISE_*.md
-- Various implementation reports and status files
+---
 
-**Duplicate Implementations** (13 files):
-- chameleon.py
-- chameleon_cli.py
-- chameleon_clean.py
-- chameleon_clean_arch.py
-- chameleon_core.py
-- chameleon_core_final.py
-- chameleon_unified.py
-- unified_chameleon.py
-- chameleon_unix.py
-- chameleon_fast.py
-- chameleon_basic.py
-- chameleon_simple.py
-- chameleon_effects.py
+## 2. Recently fixed (this work cycle — see CHARTER §9 for full narrative)
 
-**Unrealistic Features** (6 files):
-- neural_codec.py
-- gpu_acceleration.py
-- ai_transcription.py
-- audio_separation.py
-- spatial_audio.py
-- high_performance_core.py
+| Category | Issue | Fix |
+|---|---|---|
+| Correctness (critical) | WAV read/write assumed data starts at byte 44; real-world WAVs with LIST/JUNK/fact chunks got silently wrong analysis and corrupted output | Canonical chunk-walking parser (`core.py:_read_wav_header`), `AudioInfo.data_offset`/`data_size` threaded through every reader/writer |
+| Correctness | `BatchProcessor.process_directory` (sync) never returned its result list (fell off the end, returned `None`) | Added `return results` |
+| Correctness | `BatchProcessor.process_directory` (sync) calls `self._execute_operation(...)`, a method that doesn't exist on the class | **NOT fixed** — zero callers found anywhere; recorded as an open question (§4 below), not silently patched |
+| Security | Path-containment check used `str.startswith`, wrongly accepting `/data/safe-evil` as inside `/data/safe` | Replaced with `os.path.commonpath` |
+| Security/honesty | `api_server.py`: 4 HTTP handlers caught `HTTPException` inside a bare `except Exception`, silently turning 429/404/503 into 200/500 | Re-raise `HTTPException` before the generic handler in all 4 |
+| Honesty | `output_format` accepted `"flac"` but the stdlib core can only write WAV — produced a `.flac`-named WAV file | Restricted to WAV |
+| Honesty | "Government-grade"/"classification: RESTRICTED" wording in `api_server.py` and fictional `chameleon-audio.com` contact emails in `pyproject.toml`/`openapi_spec.yaml` | Removed |
+| Scope discipline | 3 modules claiming "neural network" processing while running `random.choice` or importing torch unconditionally | Deleted |
+| Scope discipline | 4 more orphaned modules duplicating already-working, already-wired functionality (`realtime_effects.py`, `stability_enhancer.py`, `audio_utils.py`, `config_manager.py`) | Deleted (user-confirmed) |
+| Deficiency | `mastering_chain.py`/`ux_improvements.py`/`spectral_utils.py` were real, working, non-duplicate code but never imported | Wired in (`process --master`, batch progress bars, `analyze --spectrum`) |
+| Deficiency | `DeepFileInspector` ran in `main.py`'s batch filter but not in `core.py`'s `BatchProcessor` | Wired into both sync and async paths |
+| CLI quality | Exit codes were 0/1 only; no `--version`; diagnostics printed to stdout (broke piping); import-time warning spam on the default install; Python 3.12+ deprecation warnings | `ExitCode` enum, `--version`, stderr routing, debug-level logging for missing optional deps, `datetime.now(timezone.utc)`/`asyncio.get_running_loop()` throughout |
+| Docs | README/QUICKSTART hadn't caught up to `--spectrum`/`--master`/`--target-peak`/`batch effects`/exit codes; QUICKSTART still told users to run deleted `audio_utils.py` | Synced |
 
-**Duplicate Utilities** (12 files):
-- cli_interface.py
-- enhanced_cli.py
-- production_cli.py
-- audio_tool.py
-- security_tools.py
-- security_validator.py
-- performance_profiler.py
-- performance_monitor.py
-- memory_manager.py
-- resilience_manager.py
-- cleanup_files.py
-- final_cleanup.py
+**Test count**: 22 → 147 passed. `python -m compileall -q .`, `python validation_test.py`,
+and `python -m pytest -q` are the standing verification gate — all green as of
+this snapshot.
 
-**Broken Test Files** (2 files):
-- test_suite.py (imported non-existent modules)
-- comprehensive_tests.py (imported deleted modules)
+---
 
-**Total Removed**: 49 files
+## 3. Known-broken, deliberately left alone (recorded, not silently fixed)
 
-## Current Project Structure
+- **`BatchProcessor.process_directory` (sync)**: calls a nonexistent method,
+  `self._execute_operation`. Confirmed zero callers anywhere in the codebase
+  — only the async `process_directory_async` (via `core.batch_process_async`)
+  is actually used. Needs a decision: implement the sync method for parity,
+  or delete the dead one. Not fixed because it's new work outside whatever
+  task was in progress when it was found, not a one-line correction.
+- **`advanced_validation.py`'s `IntegrityVerifier`/`SanitizationEngine`**:
+  real code, only reachable via `personal_config.py`, not wired into the
+  default batch/load path. Left alone deliberately — security-affecting
+  wiring changes get extra scrutiny before being made by default.
+- **`.github/workflows/ci-cd.yml`**: still the old broken 409-line pipeline
+  (references a nonexistent `deployment_manager.py`, `tests/smoke/`,
+  `tests/health/`). A working replacement exists at `ci/proposed-ci.yml`.
+  **Cannot be applied by this automation account** — it lacks `workflows`
+  permission to push `.github/workflows/` changes. Needs a human maintainer
+  to run `cp ci/proposed-ci.yml .github/workflows/ci-cd.yml` and push.
 
-### Core Modules (20 Python files)
+---
 
-**Main Entry Point**:
-- `main.py` - Primary CLI with all commands (analyze, process, batch, stream, midi, plugins, server)
+## 4. Pending explicit user confirmation (deletion candidates, not yet actioned)
 
-**Core Processing**:
-- `core.py` - Security validation, file I/O, core audio operations
-- `audio_utils.py` - Lightweight WAV utilities (no dependencies)
+These three are orphaned/broken artifacts recommended for deletion, matching
+the exact pattern already applied to `codec_support.py` and 6 other removed
+modules — but destructive deletions in this project require explicit,
+per-item user confirmation before acting (a standing safety practice, not a
+technical limitation of any one file). As of this snapshot, confirmation has
+been requested but not yet obtained.
 
-**Security & Configuration**:
-- `security_validator.py` - Path/file validation, trusted-root enforcement, secure file operations
-- `plugin_system.py` - Sandboxed plugin execution with AST validation
-- `config_manager.py` - Configuration management and validation
+1. **`gui/`** — experimental React/TypeScript/Electron scaffold, self-labeled
+   "not yet wired up" in its own README, not built by the Dockerfile.
+2. **`core.py`'s `RealtimeMusicProcessor`** (~L2769–3112) — a standalone
+   `websockets`-based server with zero callers from `main.py` or
+   `api_server.py`.
+3. **`openapi_spec.yaml`** — referenced by no Python code (`api_server.py`
+   generates its own OpenAPI schema live via FastAPI), fails to parse as
+   valid YAML past line 28 (a second top-level document with no `---`
+   separator), and repeats claims already removed from `api_server.py`
+   ("Government-focused", a deleted SIMD-acceleration parameter).
 
-**Audio Features**:
-- `codec_support.py` - Audio codec handling
-- `audio_enhancer.py` - Enhancement algorithms
-- `audio_restoration.py` - Restoration tools
-- `realtime_effects.py` - Real-time effects processing
-- `spectral_editor.py` - Spectral analysis and editing
-- `spectral_utils.py` - Spectral processing utilities
-- `mastering_chain.py` - Mastering workflow
+If you are a future session picking this up: re-ask the user about these
+three before deleting anything. Do not delete on the strength of this
+document's "recommended" framing alone.
 
-**MIDI & Music**:
-- `midi_analysis.py` - MIDI extraction and musical analysis
-- `music_generator.py` - Music composition tools
+---
 
-**Automation & Integration**:
-- `batch_automation.py` - YAML/JSON workflow automation
-- `api_server.py` - REST API for remote operations
+## 5. Deliberately kept as-is (real code, but a product-scope call, not a bug)
 
-**Advanced Features**:
-- `advanced_audio_features.py` - Additional processing features
+Three more orphaned-but-real modules were reviewed and intentionally left
+unwired rather than deleted or integrated, because integrating them is a
+product-scope decision, not a mechanical fix:
 
-**Testing**:
-- `validation_test.py` - Basic validation without dependencies
-- `test_core.py` - Core functionality tests
+- **`spectral_editor.py`**: a full interactive spectral editor (selection
+  regions, undo, visualization) — larger surface than this CLI's batch-WAV
+  job-to-be-done.
+- **`audio_restoration.py`**: real DSP (click/hum/clip repair) but imports
+  numpy/scipy unconditionally (would need the same stdlib-install guard fix
+  as other modules before it could ship) and needs a new CLI subcommand.
+- **`batch_automation.py`**: a genuine DAG/scheduler engine, but wiring a
+  generic task-orchestration framework into a "dependency-light auditable
+  CLI" risks the exact "second product" scope creep CHARTER §4 forbids.
 
-**Setup**:
-- `setup.py` - Package configuration with proper dependencies
+---
 
-### Documentation (4 files)
+## 6. How to verify this snapshot is accurate
 
-- `README.md` - Main documentation (cleaned, no emojis)
-- `QUICKSTART.md` - Quick start guide
-- `MIDI_USAGE.md` - MIDI features documentation (cleaned)
-- `CHANGELOG.md` - Version history (cleaned)
-
-### Configuration Files
-
-- `requirements.txt` - Minimal dependencies
-- `pyproject.toml` - Project metadata
-- `Dockerfile` - Container configuration
-- `Makefile` - Build automation
-- `MANIFEST.in` - Package manifest
-- `.github/workflows/ci-cd.yml` - CI/CD pipeline
-
-## Key Features
-
-### Audio Processing
-- WAV file analysis and metadata extraction
-- Normalization and peak limiting
-- Noise reduction and restoration
-- Real-time effects processing
-- Spectral editing
-- Format conversion and resampling
-
-### MIDI & Music Analysis
-- Audio-to-MIDI extraction
-- Key and chord detection
-- Harmonic analysis
-- Melody generation
-- Composition tools
-
-### Security
-- Path validation and sandboxing
-- File size limits (500MB max)
-- Trusted directory enforcement
-- Audit logging
-- Plugin security with AST whitelisting
-
-### Performance
-- Parallel batch processing
-- Configurable worker threads
-- Chunked file processing
-- Resource monitoring
-- Graceful degradation
-
-### Integration
-- REST API server
-- Plugin system
-- Batch automation
-- JSON output for automation
-- Command-line interface
-
-## Technical Specifications
-
-### Dependencies
-
-**Core** (no dependencies required):
-- Python 3.8+ standard library
-- Basic WAV processing works standalone
-
-**Optional** (for advanced features):
-- NumPy - Numerical processing
-- SciPy - Signal processing
-- Librosa - Audio analysis
-- SoundFile - High-quality I/O
-- PyAudio - Real-time streaming
-- Mido - MIDI file support
-- FastAPI/Uvicorn - API server
-
-### Constraints
-
-- File format: WAV only (.wav, .wave)
-- Maximum file size: 500MB
-- Path requirement: Absolute paths only
-- Format: Uncompressed PCM
-
-### Performance Characteristics
-
-- Chunk size: 64KB default (configurable)
-- Worker threads: Auto-detected CPU count (configurable)
-- Memory efficient: Streaming processing for large files
-- Parallel: Multi-file batch operations
-
-## Quality Improvements
-
-### Code Quality
-- Removed duplicate implementations
-- Consolidated functionality
-- Type annotations throughout
-- Clear separation of concerns
-- Modular design
-
-### Documentation Quality
-- Removed emojis from all markdown
-- Removed marketing language
-- Clear, practical examples
-- Accurate feature descriptions
-- No version numbers in content
-
-### Project Hygiene
-- Removed broken tests
-- Removed unrealistic features
-- Removed redundant utilities
-- Clean git status
-- Organized file structure
-
-## Usage Examples
-
-### Basic Analysis
 ```bash
-python audio_utils.py file.wav
-python main.py analyze file.wav --detailed
+python -m compileall -q .          # syntax check, all files
+python validation_test.py          # 6 functional checks, stdlib only
+python -m pytest -q                # 147 passed, 1 skipped (pyaudio absent)
+python main.py --version           # single source of truth: VERSION in main.py
 ```
 
-### Processing
+## 7. Basic usage (current CLI surface)
+
 ```bash
-python main.py process --normalize --denoise input.wav
-python main.py batch /directory/ normalize --recursive
+chameleon analyze audio.wav --detailed --spectrum
+chameleon process --normalize --target-peak 0.8 audio.wav
+chameleon process --master streaming audio.wav      # requires [audio] extra
+chameleon batch /dir/ normalize --target-peak 0.9 --output-dir /out/
+chameleon batch /dir/ effects --effects chain.json
+chameleon midi extract --input audio.wav --output notes.mid
+chameleon server --port 8000                        # requires [api] extra
 ```
 
-### MIDI
-```bash
-python main.py midi extract --input audio.wav --output notes.mid
-python main.py midi analyze --input audio.wav
-```
+Exit codes: 0 success, 1 processing error, 2 usage error, 3 input validation,
+4 security rejection, 130 interrupted. Diagnostics go to stderr; results and
+`--json` output go to stdout.
 
-### API Server
-```bash
-python main.py server --port 8000 --workers 4
-```
+## 8. Dependencies
 
-## Development Status
-
-### Completed
-- Core audio processing
-- MIDI analysis and composition
-- Security framework
-- Plugin system
-- API server
-- Batch automation
-- Documentation cleanup
-- Test framework
-- Package configuration
-
-### Stable Features
-- WAV file I/O
-- Basic analysis
-- Normalization
-- Batch processing
-- MIDI extraction
-- Plugin security
-- Audit logging
-
-### Requires Optional Dependencies
-- Advanced spectral analysis
-- Real-time streaming
-- ML-based features
-- API server
-- MIDI composition
-
-## Recommendations
-
-### For Users
-1. Start with `validation_test.py` to verify installation
-2. Use `audio_utils.py` for quick file inspection
-3. Read `QUICKSTART.md` for common workflows
-4. Install optional dependencies as needed
-5. Configure trusted directories for security
-
-### For Developers
-1. Follow existing code patterns
-2. Add tests for new features
-3. Update documentation
-4. Maintain security practices
-5. Use type annotations
-
-### For Deployment
-1. Use virtual environment
-2. Configure environment variables
-3. Set up audit logging
-4. Define trusted directories
-5. Review plugin security
-
-## Next Steps
-
-### High Priority
-- Run comprehensive testing
-- Verify all module imports
-- Test with real audio files
-- Benchmark performance
-- Security audit
-
-### Medium Priority
-- Add more test coverage
-- Optimize chunked processing
-- Improve error messages
-- Add progress indicators
-- Plugin examples
-
-### Low Priority
-- Additional audio formats (via plugins)
-- GUI interface (separate project)
-- Cloud integration
-- Advanced ML features
-- Mobile support
-
-## Summary
-
-The project has been significantly optimized:
-- 49 duplicate/unrealistic files removed
-- Documentation cleaned and clarified
-- Core functionality preserved
-- Security and stability improved
-- Clear separation of concerns
-
-The standard-library CLI core is stable and tested. The REST API server
-(`api_server.py`) now falls back to the standard-library core when the optional
-high-performance modules are absent, so its analyze/normalize endpoints work
-with `pip install -e .[api]` alone. Real-time streaming and ML-backed features
-still require their optional dependencies.
-
-The system focuses on practical, implementable features with a clean
-architecture and realistic documentation.
+**Core** (`pip install -e .`): Python 3.8+ standard library only.
+**Optional extras**: `[audio]` (numpy/scipy/librosa/soundfile/pyaudio),
+`[api]` (fastapi/uvicorn/pydantic<2), `[ml]` (torch), `[dev]` (test/lint
+tooling, including `httpx<0.24` for API route tests).
