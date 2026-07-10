@@ -3,10 +3,6 @@ Simple Reverb Plugin for Chameleon Audio Processing System
 Demonstrates audio effect plugin implementation
 """
 
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from typing import List, Dict, Any
 from plugin_system import AudioEffectPlugin, PluginMetadata
 

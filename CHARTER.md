@@ -458,7 +458,55 @@ callers anywhere in the codebase):
    works around it by asserting result *counts* (proving the filtering
    stage works) rather than per-file success.
 
+**Q: Is the plugin sandbox (§5's threat model) actually a security boundary?**
+A (2026-07): It had a critical gap, now empirically verified and fixed.
+`_check_module_safety` only walked `ast.Import`/`ast.ImportFrom` nodes, so a
+plugin using `__import__("os")` — a builtin, no `import` statement required
+— loaded and ran completely unrestricted code at `exec_module()` time (i.e.
+at *load* time, before any sandboxed method was even called). Proof-of-concept:
+a plugin file with zero literal `import os`/`import subprocess` text wrote to
+disk and read `os.getpid()` successfully through `PluginLoader.load_plugin`.
+Also bypassable via `importlib.import_module("os")` (`importlib` itself was
+never on the restricted-modules list). Fixed by extending the AST walk to
+also reject calls to `__import__`/`eval`/`exec`/`compile`, calls to
+`importlib.import_module`/`importlib.__import__`, and attribute access to
+`__globals__`/`__builtins__`/`__subclasses__`/`__mro__`/`__bases__` (common
+sandbox-escape primitives). **This remains static AST analysis, not a
+runtime sandbox** — `exec_module()` still runs plugins with normal,
+unrestricted Python builtins; the fix closes the specific known bypasses,
+not arbitrarily obfuscated equivalents. Documented that limitation directly
+in the method's docstring rather than implying a stronger guarantee than
+exists. A true runtime sandbox (restricted globals/builtins during
+`exec_module`) would close the remaining gap but is a larger architectural
+change, not attempted here.
+
+While investigating this, found two more pre-existing, unrelated bugs:
+`plugin_system.py` called `importlib.util.spec_from_file_location` while
+only ever doing `import importlib` (not `import importlib.util`) — worked by
+accident whenever something else in the process happened to import
+`importlib.util` first, and failed with `module 'importlib' has no attribute
+'util'` when the CLI's plugin command ran as a genuinely fresh entry point.
+Fixed with an explicit `import importlib.util`. Separately, 3 of the 5
+shipped `demo_plugins/` (`spectrum_analyzer.py`, `simple_reverb.py`,
+`tone_generator.py`) failed the product's own `plugins audit` command — they
+carried legacy `sys.path.append(...)` boilerplate (for standalone-script
+execution, unneeded since `PluginLoader` loads by direct file path) that
+imported `os`/`sys`, both on the restricted-modules blocklist. Removed the
+dead boilerplate; `python main.py plugins --directory demo_plugins audit`
+now reports all 5 as `PASSED` instead of 3 `FAILED`. `tests/test_plugins.py`
+gained 7 new tests covering the bypass fixes and a false-positive guard.
+
 ### Open questions (next contributor: decide before building)
+
+- **Plugin sandbox is AST-only, not a runtime boundary**: `exec_module()`
+  gives plugin code full, unrestricted Python builtins once it passes the
+  static AST check above. A determined attacker could still reach dangerous
+  functionality through patterns the AST walk doesn't enumerate (e.g.
+  building attribute-access strings dynamically, walking live object graphs
+  via `type(x).__subclasses__()` chains not literally spelled out in source).
+  Closing this fully needs a runtime-restricted execution environment
+  (custom `__builtins__`/globals for `exec_module`), which is a real
+  architectural project, not a follow-up patch.
 
 - **openapi_spec.yaml — orphaned, stale, and structurally broken**: not
   referenced by any code (`api_server.py` generates its own OpenAPI schema

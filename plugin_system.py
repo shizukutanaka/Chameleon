@@ -1,12 +1,13 @@
 """
-🔌 Chameleon Plugin Architecture v3.0
-Advanced plugin system for extensible audio processing capabilities
+Chameleon Plugin Architecture
+AST-sandboxed plugin loading for extensible audio processing capabilities
 """
 
 import os
 import sys
 import json
 import importlib
+import importlib.util
 import inspect
 import threading
 import ast
@@ -399,11 +400,37 @@ class PluginLoader:
                 hasher.update(chunk)
         return hasher.hexdigest()
 
+    # Builtins/attributes that reach an import mechanism or arbitrary code
+    # execution without a literal `import` statement — none of these are
+    # caught by scanning ast.Import/ast.ImportFrom alone. Verified empirically:
+    # a plugin containing `__import__("os")` with zero `import` statements
+    # previously passed this check and ran unrestricted at module-exec time.
+    _DANGEROUS_CALL_NAMES = frozenset({
+        "__import__", "eval", "exec", "compile", "execfile",
+    })
+    _DANGEROUS_ATTR_CALLS = frozenset({
+        ("importlib", "import_module"),
+        ("importlib", "__import__"),
+        ("importlib.util", "spec_from_file_location"),
+        ("importlib.util", "module_from_spec"),
+    })
+
     def _check_module_safety(self, plugin_path: Path):
-        """Check if plugin uses safe imports"""
+        """Check if plugin uses safe imports.
+
+        This is static AST analysis, not a runtime sandbox: exec_module()
+        below runs the plugin with normal, unrestricted Python builtins.
+        These checks close the specific known bypasses (the __import__
+        builtin, importlib.import_module, eval/exec/compile) but cannot
+        catch arbitrarily obfuscated equivalents (e.g. string-built attribute
+        chains via getattr). Treat this as raising the bar against casual
+        misuse, not as a hard security boundary against a determined
+        adversary — do not claim otherwise.
+        """
         try:
             with open(plugin_path, 'r', encoding='utf-8') as f:
-                parsed = ast.parse(f.read(), filename=str(plugin_path))
+                source = f.read()
+                parsed = ast.parse(source, filename=str(plugin_path))
         except SyntaxError as exc:
             raise SecurityError(f"Plugin contains invalid syntax: {exc}") from exc
 
@@ -417,6 +444,35 @@ class PluginLoader:
                 module_name = (node.module or '').split('.')[0]
                 if module_name and not self.sandbox.is_safe_import(module_name):
                     raise SecurityError(f"Unsafe import detected: {module_name}")
+            elif isinstance(node, ast.Call):
+                func = node.func
+                if isinstance(func, ast.Name) and func.id in self._DANGEROUS_CALL_NAMES:
+                    raise SecurityError(
+                        f"Unsafe call detected: {func.id}() can bypass the import sandbox"
+                    )
+                if isinstance(func, ast.Attribute):
+                    base = self._dotted_name(func.value)
+                    if base and (base, func.attr) in self._DANGEROUS_ATTR_CALLS:
+                        raise SecurityError(
+                            f"Unsafe call detected: {base}.{func.attr}() can bypass the import sandbox"
+                        )
+            elif isinstance(node, ast.Attribute) and node.attr in (
+                "__globals__", "__builtins__", "__subclasses__", "__mro__", "__bases__",
+            ):
+                raise SecurityError(
+                    f"Unsafe attribute access detected: .{node.attr} can be used for sandbox escape"
+                )
+
+    @staticmethod
+    def _dotted_name(node: ast.AST) -> Optional[str]:
+        """Reconstruct a dotted name from an ast.Name/ast.Attribute chain,
+        e.g. Attribute(Name('importlib'), 'util') -> 'importlib.util'."""
+        if isinstance(node, ast.Name):
+            return node.id
+        if isinstance(node, ast.Attribute):
+            base = PluginLoader._dotted_name(node.value)
+            return f"{base}.{node.attr}" if base else None
+        return None
 
     def _validate_plugin_path(self, plugin_path: str) -> Path:
         try:
