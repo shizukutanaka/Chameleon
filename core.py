@@ -58,6 +58,15 @@ except ImportError:
     HAS_WEBSOCKETS = False
     websockets = None
 
+# Deep file inspection (stdlib-only). Mirrors main.py's guard: validates that
+# a file claiming a .wav extension is actually a WAV container before it
+# enters the batch pipeline. See BatchProcessor.process_directory.
+try:
+    from advanced_validation import DeepFileInspector
+    HAS_DEEP_INSPECTOR = True
+except ImportError:
+    HAS_DEEP_INSPECTOR = False
+
 # Quantum computing features removed in 2024 refactor
 # Using only practical, proven audio processing techniques
 HAS_QUANTUM = False
@@ -1519,6 +1528,7 @@ class BatchProcessor:
 
         self.recovery.reset_metrics()
         wav_files: List[Path] = []
+        inspector = DeepFileInspector() if HAS_DEEP_INSPECTOR else None
 
         pattern = "**/*.wav" if recursive else "*.wav"
         for candidate in path.glob(pattern):
@@ -1528,6 +1538,23 @@ class BatchProcessor:
                         continue
                 except OSError:
                     continue
+
+                # Deep format inspection, mirroring main.py's _filter_safe_files:
+                # reject a .wav-named file whose bytes are not actually a WAV
+                # container. Gate only on is_valid (the magic number);
+                # suspicious byte patterns are logged, not rejected, since a
+                # WAV's PCM payload can legitimately contain them.
+                if inspector is not None:
+                    inspection = inspector.validate_for_processing(candidate)
+                    if not inspection.is_valid:
+                        logger.warning(
+                            "Skipping file failing format inspection: %s (%s)",
+                            candidate, "; ".join(inspection.errors),
+                        )
+                        continue
+                    for note in inspection.warnings:
+                        logger.info("Inspection note for %s: %s", candidate, note)
+
                 wav_files.append(candidate)
                 if isinstance(max_files, int) and max_files > 0 and len(wav_files) >= max_files:
                     break
@@ -1701,6 +1728,8 @@ class BatchProcessor:
 
         self.processor.perf.record_operation("batch_process", duration_ms)
 
+        return results
+
     async def process_directory_async(self, directory: str, operation: str, **kwargs) -> List[ProcessingResult]:
         """Asynchronously process all WAV files in directory with concurrency control."""
         # Use asyncio.gather for concurrent processing with semaphore for resource control
@@ -1723,9 +1752,21 @@ class BatchProcessor:
             return [ProcessingResult(False, f"Unsupported operation: {operation}")]
 
         wav_files: List[Path] = []
+        inspector = DeepFileInspector() if HAS_DEEP_INSPECTOR else None
         pattern = "**/*.wav" if kwargs.get("recursive", True) else "*.wav"
         for candidate in path.glob(pattern):
             if candidate.is_file() and candidate.suffix.lower() in SUPPORTED_FORMATS:
+                if inspector is not None:
+                    inspection = inspector.validate_for_processing(candidate)
+                    if not inspection.is_valid:
+                        logger.warning(
+                            "Skipping file failing format inspection: %s (%s)",
+                            candidate, "; ".join(inspection.errors),
+                        )
+                        continue
+                    for note in inspection.warnings:
+                        logger.info("Inspection note for %s: %s", candidate, note)
+
                 wav_files.append(candidate)
                 if isinstance(kwargs.get("max_files"), int) and kwargs.get("max_files") > 0 and len(wav_files) >= kwargs["max_files"]:
                     break

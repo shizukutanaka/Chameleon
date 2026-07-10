@@ -429,6 +429,35 @@ pass. Recorded as an open question below rather than fixed outright — it's a
 larger, orphaned-artifact call like the modules in the punch list above, not
 a one-line domain fix.
 
+**Q: advanced_validation.py parity in core — was `core.py:BatchProcessor` ever
+wired up?**
+A (2026-07): Yes. `DeepFileInspector` already ran in `main.py:_filter_safe_files`
+(the CLI batch path) but not in `core.py:BatchProcessor.process_directory`/
+`process_directory_async` (reachable via `core.batch_process_async`, the
+module's own public batch API) — the last item on the parity list. Wired the
+same check (magic-number gate only, suspicious-pattern warnings logged not
+rejected — identical contract to main.py's side) into both the sync and
+async file-gathering loops, guarded by a new `core.HAS_DEEP_INSPECTOR` flag
+mirroring main.py's. See `tests/test_core_batch_deep_inspection.py`.
+
+While wiring this, found two pre-existing, unrelated bugs in
+`BatchProcessor.process_directory` (the *sync* method — not the async one
+actually used by `core.batch_process_async`, and confirmed to have zero
+callers anywhere in the codebase):
+1. It never returned `results` — fell off the end of the function, so every
+   call silently returned `None` regardless of outcome. Fixed (a one-line
+   `return results` restores the function's own declared
+   `-> List[ProcessingResult]` contract).
+2. Its per-file path calls `self._execute_operation(...)`, a method that
+   does not exist on `BatchProcessor` (only the async
+   `_execute_operation_async` does) — every call raises `AttributeError`,
+   caught and reported as a per-file failure. **Not fixed** — implementing a
+   sync `_execute_operation` is real new work, out of scope for a
+   DeepFileInspector parity pass, and the method has no callers to justify
+   the risk right now. Left as an open item below; `test_core_batch_deep_inspection.py`
+   works around it by asserting result *counts* (proving the filtering
+   stage works) rather than per-file success.
+
 ### Open questions (next contributor: decide before building)
 
 - **openapi_spec.yaml — orphaned, stale, and structurally broken**: not
@@ -451,11 +480,12 @@ a one-line domain fix.
   for 9 other modules this charter tracked; needs the same explicit
   confirmation before deletion.
 
-- **advanced_validation.py parity in core**: `DeepFileInspector` now runs in
-  `main.py:_filter_safe_files` (the CLI batch path), but `core.py:BatchProcessor` —
-  reachable via `core.batch_process_async` — still validates only path/size. Wiring the
-  same format check there (or extracting one shared filter) would close the remaining
-  parity gap; left optional to keep the stdlib core minimal.
+- **BatchProcessor.process_directory (sync) is unusable**: calls
+  `self._execute_operation(...)`, a method that doesn't exist on the class
+  (only `_execute_operation_async` does). Zero callers anywhere in the
+  codebase — only `process_directory_async` (via `core.batch_process_async`)
+  is reachable/used. Either implement a sync `_execute_operation` to match,
+  or delete the dead sync method entirely; needs a decision, not a silent fix.
 
 - **Broken active CI workflow**: `.github/workflows/ci-cd.yml` is still the old 409-line
   fantasy pipeline (k8s/staging/prod deploys, a missing `deployment_manager.py`,
