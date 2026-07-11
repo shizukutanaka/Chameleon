@@ -93,7 +93,16 @@ class MasteringConfig:
     dither_type: str = "tpdf"  # tpdf, rpdf, shaped
 
 class LoudnessMeter:
-    """Professional loudness measurement (ITU-R BS.1770)"""
+    """Approximate loudness measurement — NOT ITU-R BS.1770 compliant.
+
+    This meter borrows the block/gating structure of BS.1770 but uses a plain
+    200-2000 Hz Butterworth band-pass in place of true K-weighting (BS.1770-5
+    K-weighting is a ~high-pass "stage 1" filter plus a +4 dB high-shelf at
+    2 kHz). It also omits true-peak oversampling and multi-channel weighting.
+    Values are useful as a relative loudness indicator, not as certified LUFS.
+    A dependency-free, standard-conformant implementation is tracked as a
+    follow-up (see CHARTER §9).
+    """
 
     def __init__(self, sample_rate: int = 44100):
         self.sample_rate = sample_rate
@@ -101,25 +110,26 @@ class LoudnessMeter:
         self.setup_filters()
 
     def setup_filters(self):
-        """Setup K-weighting filters for loudness measurement"""
+        """Set up the approximate weighting filters (not true K-weighting)."""
         if not HAS_SCIPY:
             return
 
         # Pre-filter (high-pass at 20Hz)
         self.pre_b, self.pre_a = signal.butter(2, 20 / (self.sample_rate / 2), 'high')
 
-        # K-weighting filter
-        # Simplified K-weighting (in practice would need exact ITU coefficients)
+        # Approximate weighting: a 200-2000 Hz band-pass. This is NOT the
+        # BS.1770 K-weighting curve (which is a high-pass + 2 kHz high-shelf);
+        # it only crudely de-emphasises very low and very high energy.
         self.k_b, self.k_a = signal.butter(2, [200, 2000], 'band', fs=self.sample_rate)
 
     def measure_lufs(self, audio: np.ndarray) -> float:
-        """Measure integrated loudness in LUFS"""
+        """Return an approximate loudness figure (relative, not certified LUFS)."""
         if not HAS_SCIPY:
             # Fallback to simple RMS measurement
             rms = np.sqrt(np.mean(audio**2))
             return 20 * np.log10(rms + 1e-10) + 3.0  # Rough conversion
 
-        # Apply K-weighting
+        # Apply the approximate band-pass weighting (not true K-weighting)
         if audio.ndim == 1:
             audio = audio.reshape(1, -1)
 
@@ -169,20 +179,24 @@ class LoudnessMeter:
         return lufs
 
     def measure_peak(self, audio: np.ndarray) -> float:
-        """Measure true peak level"""
-        # For true peak, should oversample first
-        # Simplified version using sample peak
+        """Return the sample-peak level in dBFS (NOT true peak).
+
+        True-peak measurement requires >=4x oversampling to catch inter-sample
+        peaks; this returns the raw sample peak, which can under-read by up to
+        ~3 dB on heavily limited material.
+        """
         return 20 * np.log10(np.abs(audio).max() + 1e-10)
 
     def measure_range(self, audio: np.ndarray) -> float:
-        """Measure loudness range (LRA)"""
+        """Placeholder loudness range (LRA) — returns integrated loudness.
+
+        A real LRA needs the distribution of short-term (3 s) loudness values;
+        this simply echoes the integrated figure and should not be read as LRA.
+        """
         if not HAS_SCIPY:
             return 0.0
 
-        # This is a simplified version
-        # Real LRA requires short-term loudness measurement
-        lufs = self.measure_lufs(audio)
-        return lufs  # Placeholder
+        return self.measure_lufs(audio)  # Placeholder, not a true LRA
 
 class ParametricEQ:
     """Professional parametric equalizer"""

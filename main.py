@@ -639,15 +639,20 @@ class AudioProcessor:
         if not HAS_SCIPY:
             return audio
 
-        # Convert to frequency domain
-        stft = signal.stft(audio, fs=sr, nperseg=2048)[2]
+        # Convert to frequency domain. scipy's default hop is nperseg // 2,
+        # so with nperseg=2048 each STFT column advances by 1024 samples.
+        nperseg = 2048
+        hop = nperseg // 2  # scipy default noverlap = nperseg // 2
+        stft = signal.stft(audio, fs=sr, nperseg=nperseg)[2]
         magnitude = np.abs(stft)
         phase = np.angle(stft)
 
         # Estimate noise profile if not provided
         if noise_profile is None:
-            # Use first 0.5 seconds as noise profile
-            noise_frames = int(0.5 * sr / 512)
+            # Use the first ~0.5 seconds as the noise profile. Frame count must
+            # be derived from the actual hop (1024), not 512, or the window is
+            # ~2x too long.
+            noise_frames = max(1, int(0.5 * sr / hop))
             noise_profile = np.median(magnitude[:, :noise_frames], axis=1, keepdims=True)
 
         # Spectral subtraction
@@ -1657,7 +1662,8 @@ async def main():
                     if "bit_depth" in result:
                         converted_details.append(f"{result['bit_depth']}bit")
                 if operation == "master" and "lufs_after" in result:
-                    converted_details.append(f"{result['lufs_after']:.1f} LUFS")
+                    # Approximate loudness, not BS.1770-certified LUFS (see LoudnessMeter).
+                    converted_details.append(f"~{result['lufs_after']:.1f} LUFS (approx)")
                     converted_details.append(f"{result['peak_change_db']:+.1f}dB peak")
                 if result.get("dry_run"):
                     converted_details.append("dry-run")
