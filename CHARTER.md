@@ -534,7 +534,61 @@ now-removed `api_requirements.txt` — fixed to point at `pip install -e
 .[api]`. Also removed `pyproject.toml`'s `[ml]` extra (torch): zero
 consumers anywhere in the codebase since the neural modules were deleted.
 
+**Research-backed DSP accuracy (2026-07, standards + literature review).** A
+review of the current DSP against the relevant standards and literature
+(ITU-R BS.1770-5 [2023-11], EBU R128, the YIN/pYIN pitch literature, window
+functions, spectral-subtraction musical noise) found accuracy and honesty
+gaps in *already-shipped* features — the kind of "claim outruns
+implementation" this charter exists to stop — and they were closed without
+adding any new capability:
+
+- **Spectral analysis had no window function** (`spectral_utils.analyze_spectrum`,
+  rectangular window ⇒ spectral leakage) and snapped peaks to the nearest bin.
+  Added a Hann window before the transform (the de-facto default) and
+  parabolic interpolation for sub-bin frequency accuracy. Pure stdlib; RMS/DC
+  are still measured on the raw buffer. Covered by `tests/test_dsp_accuracy.py`.
+- **Pitch detection was a global-maximum autocorrelation** (`midi_analysis._estimate_pitch`),
+  which is prone to octave errors. Replaced with YIN (difference function →
+  cumulative mean normalisation → absolute threshold → parabolic interpolation).
+  YIN is the signal-processing gold standard for monophonic pitch (≈91% raw
+  pitch accuracy, on par with the CREPE neural model) and is pure stdlib, so
+  it fits the deterministic, dependency-free core rather than pulling in ML.
+  A regression test asserts it locks onto the fundamental even when a harmonic
+  is louder (the classic octave-error case).
+- **Denoise noise-window frame count was ~2× too long** (`main.py:remove_noise`
+  used `int(0.5*sr/512)` while `stft(nperseg=2048)`'s default hop is 1024).
+  Derived the count from the actual hop.
+- **Honesty: the loudness meter claimed "ITU-R BS.1770 / K-weighting"** but is
+  a 200–2000 Hz band-pass (BS.1770-5 K-weighting is a high-pass stage plus a
+  +4 dB high-shelf at 2 kHz). Relabelled `LoudnessMeter` and its methods as an
+  *approximate* meter (not certified LUFS, sample-peak not true-peak, LRA is a
+  placeholder), and softened the CLI's `--master` output to `~X LUFS (approx)`.
+  This is §8.2 (honesty) applied to a numeric claim.
+- **Honesty: `linear_resample` has no anti-aliasing filter** — documented that
+  downsampling will alias, and pointed at the `[audio]` extra for band-limited
+  conversion.
+
+Two items were deliberately *not* changed. (a) The lookahead **limiter**
+(`mastering_chain._process_mono`) was re-inspected and found correct: it
+emits the delayed sample `extended[i]` while its peak window `extended[i:i+lookahead]`
+covers that sample through its lookahead-ahead neighbours, so gain reduction
+lands before a transient — no change made. (b) A **pure-Python BS.1770
+integrated-loudness meter** (K-weighting is just two biquad stages, so it is
+implementable with zero dependencies and would be deterministic + auditable —
+a genuine differentiator per §1, and it could replace the approximate meter
+above with the real thing) is the highest-value follow-up but a sizeable new
+feature; deferred to keep this change corrective rather than additive. Listed
+as the top open question below.
+
 ### Open questions (next contributor: decide before building)
+
+- **Pure-Python ITU-R BS.1770 integrated loudness (`analyze --loudness`)**:
+  K-weighting is two biquad IIR stages (a high-pass + a +4 dB 2 kHz
+  high-shelf), so a standard-conformant, dependency-free, deterministic LUFS
+  meter (with gating and, ideally, 4× oversampled true-peak) is achievable in
+  the stdlib core and would upgrade the honest-but-approximate `LoudnessMeter`
+  to the real standard. High value, non-trivial effort — decide scope first.
+
 
 - **Plugin sandbox is AST-only, not a runtime boundary**: `exec_module()`
   gives plugin code full, unrestricted Python builtins once it passes the
