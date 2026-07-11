@@ -183,29 +183,84 @@ class MIDIAnalyzer:
             return []
 
     def _estimate_pitch(self, frame: List[float], sample_rate: int) -> Optional[float]:
-        """Estimate fundamental frequency using autocorrelation"""
+        """Estimate fundamental frequency using the YIN algorithm.
+
+        YIN (de Cheveigné & Kawahara, 2002) is the signal-processing gold
+        standard for monophonic pitch: a difference function plus cumulative
+        mean normalisation and an absolute threshold avoid the octave errors
+        that a plain global-maximum autocorrelation suffers from, and a final
+        parabolic interpolation recovers sub-sample period resolution. Pure
+        standard library — no NumPy required.
+        """
         try:
-            # Autocorrelation-based pitch detection
-            autocorr = []
-            for lag in range(1, len(frame) // 2):
-                correlation = sum(frame[i] * frame[i + lag] for i in range(len(frame) - lag))
-                autocorr.append(correlation)
-
-            if not autocorr:
+            n = len(frame)
+            if n < 8:
                 return None
 
-            # Find peak in autocorrelation
-            max_corr = max(autocorr)
-            if max_corr <= 0:
+            f_min, f_max = 80.0, 2000.0
+            window = n // 2  # integration window
+            tau_min = max(1, int(sample_rate / f_max))
+            tau_max = min(window, int(sample_rate / f_min))
+            if tau_max <= tau_min or window < 2:
                 return None
 
-            peak_lag = autocorr.index(max_corr) + 1
-            frequency = sample_rate / peak_lag
+            # Step 1: difference function d(tau) over a fixed integration window.
+            diff = [0.0] * (tau_max + 1)
+            for tau in range(1, tau_max + 1):
+                total = 0.0
+                for i in range(window):
+                    delta = frame[i] - frame[i + tau]
+                    total += delta * delta
+                diff[tau] = total
 
-            # Filter out unrealistic frequencies
-            if 80 <= frequency <= 2000:
+            # Step 2: cumulative mean normalised difference (CMND).
+            cmnd = [1.0] * (tau_max + 1)
+            running = 0.0
+            for tau in range(1, tau_max + 1):
+                running += diff[tau]
+                cmnd[tau] = diff[tau] * tau / running if running > 0 else 1.0
+
+            # Step 3: absolute threshold — first dip below threshold, descended
+            # to its local minimum (this is what defeats octave errors).
+            threshold = 0.1
+            tau_est: Optional[int] = None
+            tau = tau_min
+            while tau <= tau_max:
+                if cmnd[tau] < threshold:
+                    while tau + 1 <= tau_max and cmnd[tau + 1] < cmnd[tau]:
+                        tau += 1
+                    tau_est = tau
+                    break
+                tau += 1
+
+            # Fallback: global minimum in range, rejected if not periodic enough.
+            if tau_est is None:
+                best = tau_min
+                for tau in range(tau_min, tau_max + 1):
+                    if cmnd[tau] < cmnd[best]:
+                        best = tau
+                if cmnd[best] >= 0.5:
+                    return None
+                tau_est = best
+
+            # Step 4: parabolic interpolation around the chosen period.
+            if tau_min < tau_est < tau_max:
+                x0, x1, x2 = cmnd[tau_est - 1], cmnd[tau_est], cmnd[tau_est + 1]
+                denominator = x0 - 2.0 * x1 + x2
+                if denominator != 0:
+                    shift = 0.5 * (x0 - x2) / denominator
+                    tau_refined = tau_est + shift if -1.0 < shift < 1.0 else float(tau_est)
+                else:
+                    tau_refined = float(tau_est)
+            else:
+                tau_refined = float(tau_est)
+
+            if tau_refined <= 0:
+                return None
+            frequency = sample_rate / tau_refined
+
+            if f_min <= frequency <= f_max:
                 return frequency
-
             return None
 
         except Exception:
