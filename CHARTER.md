@@ -608,8 +608,55 @@ recorded honestly rather than silently gapped:
   small, ~0.04 LU, but conformance to the published values is the point of a
   "standard-conformant" claim).
 
+**Fantasy-code removal (2026-07, user-confirmed).** A fresh audit found three
+orphaned pieces in `core.py` that repeat the "quantum"/neural-module pattern
+this charter exists to stop — a claimed capability with no real
+implementation behind it, never imported by any other file:
+
+- `AIMusicAnalyzer` (`analyze_music_style`/`suggest_music_generation`,
+  called "AI-powered music analysis" / "AI music generation") — every
+  feature extractor returned hardcoded literals (`# Placeholder`) and never
+  read the audio file; style classification was a fixed score table.
+- Six `*FeatureExtractor` classes (`SpectralFeatureExtractor`,
+  `TemporalFeatureExtractor`, `HarmonicFeatureExtractor`,
+  `RhythmicFeatureExtractor`, `EmotionalFeatureExtractor`,
+  `StylisticFeatureExtractor`) — zero callers, librosa-gated, ~150 lines.
+- `AudioFormatSupport` — zero callers, depended on `pydub` which was never a
+  declared dependency (contradicting the stdlib-only-core story), ~245 lines.
+
+Deleted, along with the module-level `_ai_analyzer` singleton and its two
+public wrapper functions. `core.py`'s dead `RealtimeAudioProcessor` (itself
+already unreachable — needs an undeclared `websockets` dependency, zero
+callers) referenced the deleted `_ai_analyzer`; its `self.ai_analyzer`
+assignment was set to `None` (matching the existing `self.ai_generator =
+None  # removed in cleanup` line right next to it) rather than left dangling
+— a necessary consequence of the deletion, not a decision to keep or remove
+`RealtimeAudioProcessor` itself, which remains a separate, still-open
+question below. Net: `core.py` 3,266 → 2,738 lines (528 removed). No test
+changes needed — zero tests referenced any of the removed symbols.
+
+**`personal_config.py` — considered for deletion, kept.** Initially assumed
+dead (no other `.py` file imports it), but a closer check found it isn't:
+`quick_install.sh`/`quick_install.ps1` document `python personal_config.py
+setup` as the personal-use onboarding flow, and it's the one deliberately
+documented entry point for `advanced_validation.py`'s
+`IntegrityVerifier`/`SanitizationEngine` (see the entry above this in this
+file, and `PROJECT_STATUS.md`'s "left alone deliberately" note) — a real,
+working backup/library-scan tool, not a placeholder. It is missing from
+`pyproject.toml`/`setup.py`/`Dockerfile`'s module lists, which is a genuine
+packaging gap (a non-editable install loses this documented feature
+silently) but is a reason to *fix packaging*, not delete the file. Left
+alone; the packaging gap is listed as an open question below.
+
 ### Open questions (next contributor: decide before building)
 
+- **`personal_config.py` is missing from packaging** (`pyproject.toml`
+  py-modules, `setup.py` py_modules, `Dockerfile` COPY): a non-editable
+  `pip install`/built wheel/container image silently loses the documented
+  `python personal_config.py setup` onboarding flow and the only wired path
+  to `IntegrityVerifier`/`SanitizationEngine`. Same class of gap as the
+  `bs1770_loudness.py` packaging miss fixed earlier in this file — just
+  add it to the three lists.
 - **True-peak (4× oversampled) metering per BS.1770-4 Annex 2**: still not
   implemented anywhere in the codebase (`mastering_chain.measure_peak` is
   honest sample-peak; `bs1770_loudness.py` reports integrated loudness only).

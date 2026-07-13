@@ -64,8 +64,12 @@ action.
 | Deficiency | `DeepFileInspector` ran in `main.py`'s batch filter but not in `core.py`'s `BatchProcessor` | Wired into both sync and async paths |
 | CLI quality | Exit codes were 0/1 only; no `--version`; diagnostics printed to stdout (broke piping); import-time warning spam on the default install; Python 3.12+ deprecation warnings | `ExitCode` enum, `--version`, stderr routing, debug-level logging for missing optional deps, `datetime.now(timezone.utc)`/`asyncio.get_running_loop()` throughout |
 | Docs | README/QUICKSTART hadn't caught up to `--spectrum`/`--master`/`--target-peak`/`batch effects`/exit codes; QUICKSTART still told users to run deleted `audio_utils.py` | Synced |
+| Accuracy | Spectral analysis had no window function (rectangular = leakage); pitch detection was global-max autocorrelation (octave errors); denoise noise-window frame count off by ~2x | Hann window + parabolic peak interpolation; replaced with YIN pitch detection; fixed frame count |
+| Honesty | `mastering_chain.LoudnessMeter` claimed "ITU-R BS.1770 / K-weighting" but is a 200-2000Hz bandpass | Relabelled "approximate"; new `bs1770_loudness.py` is the real, standard-conformant meter |
+| Feature | No standard-conformant loudness meter existed anywhere in the codebase | Added `bs1770_loudness.py` (pure-stdlib BS.1770-4 K-weighting + gated integrated loudness, coefficients verified against the published reference table) and `analyze --loudness`; also fixed a mono-downmix bug that under-read real stereo content by 3-6 LU |
+| Scope discipline | `core.py`'s `AIMusicAnalyzer` claimed "AI-powered music analysis" / "AI music generation" but every feature extractor returned hardcoded placeholder literals and never read the audio file; 6 `*FeatureExtractor` classes and `AudioFormatSupport` were zero-caller orphans (the latter depending on an undeclared `pydub`) | Deleted (user-confirmed); `core.py` 3,266 → 2,738 lines |
 
-**Test count**: 22 → 154 passed. `python -m compileall -q .`, `python validation_test.py`,
+**Test count**: 22 → 188 passed. `python -m compileall -q .`, `python validation_test.py`,
 and `python -m pytest -q` are the standing verification gate — all green as of
 this snapshot. Container build verified via extracted-script syntax checks
 and a real `import main, core` (no Docker daemon available in this session
@@ -97,18 +101,22 @@ end-to-end — recommend a maintainer run `docker build .` once to confirm).
 
 ## 4. Pending explicit user confirmation (deletion candidates, not yet actioned)
 
-These three are orphaned/broken artifacts recommended for deletion, matching
-the exact pattern already applied to `codec_support.py` and 6 other removed
-modules — but destructive deletions in this project require explicit,
-per-item user confirmation before acting (a standing safety practice, not a
-technical limitation of any one file). As of this snapshot, confirmation has
-been requested but not yet obtained.
+These are orphaned/broken artifacts recommended for deletion, matching
+the exact pattern already applied to `codec_support.py`, `AIMusicAnalyzer`,
+and other removed modules (see §2a below for the most recent round) — but
+destructive deletions in this project require explicit, per-item user
+confirmation before acting (a standing safety practice, not a technical
+limitation of any one file). As of this snapshot, confirmation has been
+requested but not yet obtained for these.
 
 1. **`gui/`** — experimental React/TypeScript/Electron scaffold, self-labeled
    "not yet wired up" in its own README, not built by the Dockerfile.
-2. **`core.py`'s `RealtimeAudioProcessor`** (core.py:2809-3195) — a standalone
-   `websockets`-based server with zero callers from `main.py` or
-   `api_server.py`.
+2. **`core.py`'s `RealtimeAudioProcessor`** (core.py:2342-2738, i.e. the rest
+   of the file — it's the last class) — a standalone `websockets`-based
+   server with zero callers from `main.py` or `api_server.py`. Calls a
+   nonexistent `self.ai_analyzer.analyze_audio_features(...)` method (dead
+   code calling a dead method — inert only because the class itself is
+   unreachable without the undeclared `websockets` dependency).
 3. **`openapi_spec.yaml`** — referenced by no Python code (`api_server.py`
    generates its own OpenAPI schema live via FastAPI), fails to parse as
    valid YAML past line 28 (a second top-level document with no `---`
@@ -118,6 +126,19 @@ been requested but not yet obtained.
 If you are a future session picking this up: re-ask the user about these
 three before deleting anything. Do not delete on the strength of this
 document's "recommended" framing alone.
+
+### 4a. NOT a deletion candidate: `personal_config.py`
+
+A fresh audit initially flagged this as a fourth candidate (no other `.py`
+file imports it), but that was wrong: `quick_install.sh`/`quick_install.ps1`
+document `python personal_config.py setup` as the personal-use onboarding
+flow, and it's the deliberately-kept entry point for
+`advanced_validation.py`'s `IntegrityVerifier`/`SanitizationEngine` (see §5
+below — real backup/library-scan code, not a placeholder). It's missing from
+`pyproject.toml`/`setup.py`/`Dockerfile`'s module lists (a packaging gap: a
+built wheel/container silently loses this feature), which is a reason to fix
+packaging, not delete the file. See CHARTER.md §9 for the full note and the
+open question tracking the packaging fix.
 
 ---
 
