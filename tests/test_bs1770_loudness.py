@@ -141,3 +141,49 @@ def test_apply_k_weighting_accepts_the_stability_floor():
     samples = _sine(1000.0, sample_rate, sample_rate * 2)
     weighted = bs1770.apply_k_weighting(samples, sample_rate)
     assert all(math.isfinite(v) for v in weighted)
+
+
+# --- Multichannel: BS.1770-correct energy summing vs. mono-downmix ---------
+
+def test_multichannel_matches_mono_for_a_single_channel():
+    # A single-channel list must reduce to exactly the mono function's result
+    # (same K-weighting, same gating), since summing one channel's energy is
+    # the same as not summing at all.
+    sample_rate = 48000
+    tone = _sine(1000.0, sample_rate, int(sample_rate * 3.0))
+
+    mono = bs1770.measure_integrated_loudness(tone, sample_rate)
+    multi = bs1770.measure_integrated_loudness_multichannel([tone], sample_rate)
+
+    assert multi == pytest.approx(mono, abs=1e-9)
+
+
+def test_multichannel_identical_stereo_reads_3_01_lu_louder_than_mono_downmix():
+    # This is the headline fix: averaging L/R to mono *before* filtering
+    # under-reads identical-content stereo by exactly 10*log10(2) =~ 3.01 dB
+    # (mean-square of the average of two identical signals is 1/2 the sum of
+    # their individual mean-squares), since BS.1770 requires *summing*
+    # per-channel energy, not averaging samples.
+    sample_rate = 48000
+    tone = _sine(1000.0, sample_rate, int(sample_rate * 3.0))
+    downmixed = tone  # averaging two identical channels reproduces the same signal
+
+    loud_downmix = bs1770.measure_integrated_loudness(downmixed, sample_rate)
+    loud_multichannel = bs1770.measure_integrated_loudness_multichannel([tone, tone], sample_rate)
+
+    assert loud_multichannel - loud_downmix == pytest.approx(10 * math.log10(2), abs=0.05)
+
+
+def test_multichannel_empty_channel_list_returns_negative_infinity():
+    assert bs1770.measure_integrated_loudness_multichannel([], 48000) == float('-inf')
+
+
+def test_multichannel_uses_the_shorter_channel_length():
+    # Channels of mismatched length (shouldn't normally happen, but guard it)
+    # must not crash -- use the shorter one rather than index out of range.
+    sample_rate = 48000
+    long_tone = _sine(1000.0, sample_rate, int(sample_rate * 3.0))
+    short_tone = long_tone[: int(sample_rate * 2.0)]
+
+    result = bs1770.measure_integrated_loudness_multichannel([long_tone, short_tone], sample_rate)
+    assert math.isfinite(result)

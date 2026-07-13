@@ -100,7 +100,8 @@ chameleon analyze audio.wav --detailed
 chameleon analyze audio.wav --spectrum
 
 # Integrated loudness (LUFS) via a pure-Python ITU-R BS.1770 K-weighted
-# meter (stdlib-only; mono-downmixed, bounded prefix — not a certified
+# meter (stdlib-only; sums per-channel energy correctly for mono/stereo but
+# has no surround weighting or true-peak, bounded prefix — not a certified
 # full-track measurement)
 chameleon analyze audio.wav --loudness
 

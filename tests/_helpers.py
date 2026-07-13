@@ -21,6 +21,25 @@ def write_sine_wave(path, duration: float = 0.3, frequency: float = 440.0,
     return path
 
 
+def write_stereo_sine_wave(path, duration: float = 0.3, frequency: float = 440.0,
+                           sample_rate: int = 44100, amplitude: int = 12000,
+                           left_gain: float = 1.0, right_gain: float = 1.0) -> Path:
+    """Write a stereo 16-bit PCM sine-wave WAV file, with independent L/R gain."""
+    path = Path(path)
+    count = int(sample_rate * duration)
+    interleaved = []
+    for i in range(count):
+        base = amplitude * math.sin(2 * math.pi * frequency * i / sample_rate)
+        interleaved.append(int(base * left_gain))
+        interleaved.append(int(base * right_gain))
+    with wave.open(str(path), "wb") as handle:
+        handle.setnchannels(2)
+        handle.setsampwidth(2)
+        handle.setframerate(sample_rate)
+        handle.writeframes(struct.pack("<" + "h" * len(interleaved), *interleaved))
+    return path
+
+
 # GUIDs used by WAVE_FORMAT_EXTENSIBLE to identify the actual sample format.
 PCM_SUBFORMAT_GUID = (b'\x01\x00\x00\x00\x00\x00\x10\x00'
                       b'\x80\x00\x00\xaa\x00\x38\x9b\x71')

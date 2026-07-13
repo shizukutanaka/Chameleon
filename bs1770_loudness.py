@@ -7,15 +7,14 @@ programme loudness and true-peak audio level", most recently revised
 this project's differentiator (see CHARTER.md §1).
 
 Scope, stated honestly (this is not a certified loudness meter):
-- Mono signals only. The standard's multi-channel weighting (e.g. a +1.5 dB
-  boost for surround channels) is not implemented; a stereo/mono-downmixed
-  signal is treated as a single equally-weighted channel. Note this is
-  stricter than "just no surround weighting": BS.1770 sums each channel's
-  post-filter mean-square energy, while averaging samples to mono *before*
-  filtering (as main.py's caller does) under-reads a real stereo signal by
-  roughly 3 LU (identical L/R) up to 6 LU (uncorrelated, equal-power L/R),
-  and can read far too quiet for anti-phase content. Per-channel measurement
-  is a tracked follow-up (see CHARTER.md §9).
+- `measure_integrated_loudness` is mono-only; `measure_integrated_loudness_multichannel`
+  sums per-channel energy (correct for mono/stereo). Neither implements the
+  standard's surround-channel weighting (e.g. a +1.5 dB boost for Ls/Rs) --
+  every channel is weighted equally. A caller that averages samples to mono
+  *before* filtering (rather than using the multichannel entry point)
+  under-reads a real stereo signal by roughly 3 LU (identical L/R) up to
+  6 LU (uncorrelated, equal-power L/R), and can read far too quiet for
+  anti-phase content -- see each function's docstring.
 - No true-peak oversampling. This module reports integrated (gated) loudness
   only; sample-peak reporting is left to existing callers.
 - Callers are responsible for bounding how many samples are passed in, for
@@ -151,18 +150,37 @@ def _block_mean_squares(weighted: Sequence[float], sample_rate: int) -> List[flo
     return blocks
 
 
-def measure_integrated_loudness(samples: Sequence[float], sample_rate: int) -> float:
-    """Gated integrated loudness (LUFS) per ITU-R BS.1770-4, mono only.
+def _block_summed_mean_squares(weighted_channels: Sequence[Sequence[float]], sample_rate: int) -> List[float]:
+    """Per-block energy summed across channels (equal weight 1.0 each).
 
-    Returns float('-inf') if the signal is silent, all-gated, or too short
-    to form a single 400ms measurement block.
+    This is what BS.1770 actually requires for multi-channel content: sum
+    each channel's mean-square energy per block, not average the channels'
+    *samples* together before filtering (which is what a mono downmix does,
+    and which under-reads real stereo content -- see module docstring).
     """
 
-    if not samples:
-        return float('-inf')
+    if not weighted_channels:
+        return []
 
-    weighted = apply_k_weighting(samples, sample_rate)
-    blocks = _block_mean_squares(weighted, sample_rate)
+    block_size = max(1, int(round(_BLOCK_SECONDS * sample_rate)))
+    hop = max(1, int(round(_HOP_SECONDS * sample_rate)))
+    length = min(len(channel) for channel in weighted_channels)
+    if length < block_size:
+        return []
+
+    blocks: List[float] = []
+    for start in range(0, length - block_size + 1, hop):
+        total = 0.0
+        for channel in weighted_channels:
+            block = channel[start:start + block_size]
+            total += sum(s * s for s in block) / block_size
+        blocks.append(total)
+    return blocks
+
+
+def _gate_and_convert_to_lufs(blocks: Sequence[float]) -> float:
+    """Apply BS.1770's two-stage gating to per-block energies and convert to LUFS."""
+
     if not blocks:
         return float('-inf')
 
@@ -184,8 +202,46 @@ def measure_integrated_loudness(samples: Sequence[float], sample_rate: int) -> f
     return _LUFS_CALIBRATION_OFFSET + 10.0 * math.log10(final_mean)
 
 
+def measure_integrated_loudness(samples: Sequence[float], sample_rate: int) -> float:
+    """Gated integrated loudness (LUFS) per ITU-R BS.1770-4, mono only.
+
+    Returns float('-inf') if the signal is silent, all-gated, or too short
+    to form a single 400ms measurement block.
+    """
+
+    if not samples:
+        return float('-inf')
+
+    weighted = apply_k_weighting(samples, sample_rate)
+    blocks = _block_mean_squares(weighted, sample_rate)
+    return _gate_and_convert_to_lufs(blocks)
+
+
+def measure_integrated_loudness_multichannel(channels: Sequence[Sequence[float]], sample_rate: int) -> float:
+    """Gated integrated loudness (LUFS) per ITU-R BS.1770-4, summing energy
+    across channels with equal weight 1.0 each -- correct for mono/stereo.
+
+    Unlike `measure_integrated_loudness` fed a mono downmix, this does not
+    under-read stereo content (see the module docstring for the magnitude of
+    that error). Standard multi-channel weighting for layouts beyond L/R
+    (e.g. a +1.5 dB boost for surround channels) is not implemented; every
+    channel here is weighted equally.
+
+    Returns float('-inf') if there are no channels, the signal is silent,
+    all-gated, or too short to form a single 400ms measurement block.
+    """
+
+    if not channels:
+        return float('-inf')
+
+    weighted_channels = [apply_k_weighting(channel, sample_rate) for channel in channels]
+    blocks = _block_summed_mean_squares(weighted_channels, sample_rate)
+    return _gate_and_convert_to_lufs(blocks)
+
+
 __all__ = [
     "BiquadCoefficients",
     "apply_k_weighting",
     "measure_integrated_loudness",
+    "measure_integrated_loudness_multichannel",
 ]

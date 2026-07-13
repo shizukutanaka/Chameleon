@@ -1456,8 +1456,9 @@ def create_cli():
     analyze.add_argument("--loudness", action="store_true",
                          help="Also report integrated loudness (LUFS) via a pure "
                               "Python ITU-R BS.1770 K-weighted gated meter (stdlib-only). "
-                              "Mono-downmixed and bounded to a prefix of the file, not a "
-                              "certified full-track measurement.")
+                              "Sums per-channel energy correctly (mono/stereo), but omits "
+                              "surround-channel weighting and true-peak, and is bounded to "
+                              "a prefix of the file -- not a certified full-track measurement.")
 
     # Process command
     process = subparsers.add_parser("process", help="Process audio files")
@@ -1617,15 +1618,22 @@ async def main():
                     if not HAS_BS1770_LOUDNESS:
                         print("  Loudness: unavailable (bs1770_loudness not importable)")
                     else:
+                        # separate_channels=True + measure_integrated_loudness_multichannel
+                        # sums per-channel energy per BS.1770 instead of averaging
+                        # samples to mono before filtering, which under-reads real
+                        # stereo content by 3-6 LU (see bs1770_loudness.py). This is
+                        # exact for mono too (a single-channel list), so it's used
+                        # unconditionally rather than branching on channel count.
                         samples_result = core.get_samples_for_analysis(
-                            result['file'], max_samples=LOUDNESS_MAX_SAMPLES
+                            result['file'], max_samples=LOUDNESS_MAX_SAMPLES,
+                            separate_channels=True,
                         )
                         if not samples_result.success:
                             print(f"  Loudness: {samples_result.message}")
                         else:
                             try:
-                                lufs = bs1770_loudness.measure_integrated_loudness(
-                                    samples_result.data["samples"],
+                                lufs = bs1770_loudness.measure_integrated_loudness_multichannel(
+                                    samples_result.data["channels"],
                                     samples_result.data["sample_rate"],
                                 )
                             except ValueError as exc:
@@ -1635,8 +1643,8 @@ async def main():
                                     print("  Loudness: below measurement gate (silent or too short)")
                                 else:
                                     metadata.loudness_lufs = lufs
-                                    print(f"  Loudness: {lufs:.1f} LUFS (integrated, mono, "
-                                          f"ITU-R BS.1770 K-weighting, first "
+                                    print(f"  Loudness: {lufs:.1f} LUFS (integrated, "
+                                          f"ITU-R BS.1770 K-weighting, no surround weighting, first "
                                           f"{LOUDNESS_MAX_SAMPLES / samples_result.data['sample_rate']:.0f}s max)")
 
         if args.export:

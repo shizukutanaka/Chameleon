@@ -874,14 +874,23 @@ class WAVProcessor:
         except Exception:
             return 0.0, 0.0
 
-    def get_samples_for_analysis(self, file_path: str, max_samples: int = 65536) -> "ProcessingResult":
-        """Extract a bounded, mono-mixed, signed waveform for analysis tooling
-        (e.g. spectral_utils.analyze_spectrum). Mirrors _calculate_levels_safe's
-        chunked read but keeps the samples instead of only their peak/RMS, and
-        preserves sign (spectral analysis needs a real waveform, not magnitude).
+    def get_samples_for_analysis(self, file_path: str, max_samples: int = 65536,
+                                 separate_channels: bool = False) -> "ProcessingResult":
+        """Extract a bounded, signed waveform for analysis tooling (e.g.
+        spectral_utils.analyze_spectrum, bs1770_loudness). Mirrors
+        _calculate_levels_safe's chunked read but keeps the samples instead of
+        only their peak/RMS, and preserves sign (spectral/loudness analysis
+        needs a real waveform, not magnitude).
 
-        Bounded by max_samples (per-frame, not per-channel) to keep memory and
-        analysis time predictable regardless of file size.
+        By default returns "samples": a single mono-mixed (per-frame
+        averaged) waveform. When separate_channels=True, returns "channels":
+        a list of one waveform per channel instead — no downmixing, so
+        callers that sum per-channel energy (e.g. BS.1770 loudness, which
+        under-reads by 3-6 LU on an averaged-to-mono signal) get accurate
+        input.
+
+        Bounded by max_samples (per-frame, not per-channel, in both modes) to
+        keep memory and analysis time predictable regardless of file size.
         """
         try:
             if not security_validator.validate_path(file_path):
@@ -899,6 +908,53 @@ class WAVProcessor:
             frame_size = bytes_per_sample * max(1, info.channels)
             if frame_size == 0:
                 return ProcessingResult(False, "Invalid audio format")
+
+            if separate_channels:
+                channels_out: List[List[float]] = [[] for _ in range(info.channels)]
+                frame_count = 0
+                with open(file_path, 'rb') as f:
+                    f.seek(info.data_offset)
+                    remaining = info.data_size
+
+                    carry = b''
+                    while frame_count < max_samples and remaining > 0:
+                        data = f.read(min(CHUNK_SIZE, remaining))
+                        if not data:
+                            break
+                        remaining -= len(data)
+                        chunk = carry + data
+
+                        available = (len(chunk) // frame_size) * frame_size
+                        carry = chunk[available:]
+                        if available == 0:
+                            continue
+
+                        mv = memoryview(chunk[:available])
+                        for frame_offset in range(0, available, frame_size):
+                            if frame_count >= max_samples:
+                                break
+                            decoded_this_frame = 0
+                            for channel in range(info.channels):
+                                sample_offset = frame_offset + channel * bytes_per_sample
+                                sample_bytes = mv[sample_offset:sample_offset + bytes_per_sample].tobytes()
+                                sample_value = self._decode_sample_bytes(sample_bytes, info.bit_depth)
+                                if sample_value is None:
+                                    continue
+                                channels_out[channel].append(
+                                    self._normalize_amplitude_signed(sample_value, info.bit_depth)
+                                )
+                                decoded_this_frame += 1
+                            if decoded_this_frame:
+                                frame_count += 1
+                        del mv
+
+                if not any(channels_out):
+                    return ProcessingResult(False, "No decodable audio samples found")
+
+                return ProcessingResult(
+                    True, "Samples extracted",
+                    {"channels": channels_out, "sample_rate": info.sample_rate}
+                )
 
             samples: List[float] = []
             with open(file_path, 'rb') as f:
@@ -2139,9 +2195,14 @@ def analyze(input_path: str) -> ProcessingResult:
     return _processor.analyze(input_path)
 
 
-def get_samples_for_analysis(input_path: str, max_samples: int = 65536) -> ProcessingResult:
-    """Extract a bounded, mono, signed waveform for spectral/analysis tooling - main API."""
-    return _processor.get_samples_for_analysis(input_path, max_samples)
+def get_samples_for_analysis(input_path: str, max_samples: int = 65536,
+                              separate_channels: bool = False) -> ProcessingResult:
+    """Extract a bounded, signed waveform for spectral/analysis tooling - main API.
+
+    separate_channels=True returns per-channel waveforms (no mono downmix) --
+    see AudioProcessor.get_samples_for_analysis for details.
+    """
+    return _processor.get_samples_for_analysis(input_path, max_samples, separate_channels)
 
 
 def normalize(input_path: str, output_path: str, target_peak: float = 0.95) -> ProcessingResult:
