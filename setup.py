@@ -79,6 +79,7 @@ setup(
         "mastering_chain",
         "performance_optimizer",
         "ux_improvements",
+        "bs1770_loudness",
     ],
     python_requires=">=3.8",
     install_requires=[

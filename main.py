@@ -256,11 +256,27 @@ try:
 except ImportError:
     HAS_MASTERING_CHAIN = False
 
+# Pure-Python, standard-library-only ITU-R BS.1770 K-weighting + gated
+# integrated loudness. Unlike mastering_chain.LoudnessMeter (an approximate,
+# numpy/scipy-dependent band-pass meter), this is standard-conformant and has
+# no third-party dependency. Guarded like the other optional imports so a
+# trimmed checkout still runs the CLI without --loudness.
+try:
+    import bs1770_loudness
+    HAS_BS1770_LOUDNESS = True
+except ImportError:
+    HAS_BS1770_LOUDNESS = False
+
 # Core constants
 VERSION = "1.0.0"
 MAX_FILE_SIZE = 500 * 1024 * 1024  # Align with core constraints (500MB)
 CHUNK_SIZE = 8192
 DEFAULT_SAMPLE_RATE = 44100
+# Sample bound for `analyze --loudness`: large enough to be a meaningful
+# integrated-loudness window, small enough to keep memory/time predictable
+# for a pure-Python filter + block loop regardless of file length (same
+# bounded-analysis principle as core.get_samples_for_analysis's own default).
+LOUDNESS_MAX_SAMPLES = 15 * 48000
 # WAV is always supported through the standard-library loader. Extra formats are
 # advertised only when a backend that can actually decode them is installed, so the
 # default dependency-free install stays honestly WAV-only (see CHARTER.md §3) while the
@@ -1437,6 +1453,11 @@ def create_cli():
     analyze.add_argument("--spectrum", action="store_true",
                          help="Also report dominant frequencies, bandwidth, and RMS "
                               "via deterministic spectral analysis (stdlib-only)")
+    analyze.add_argument("--loudness", action="store_true",
+                         help="Also report integrated loudness (LUFS) via a pure "
+                              "Python ITU-R BS.1770 K-weighted gated meter (stdlib-only). "
+                              "Mono-downmixed and bounded to a prefix of the file, not a "
+                              "certified full-track measurement.")
 
     # Process command
     process = subparsers.add_parser("process", help="Process audio files")
@@ -1591,6 +1612,32 @@ async def main():
                                 f"{peak.frequency_hz:.1f}Hz" for peak in report.dominant_peaks
                             )
                             print(f"  Dominant Frequencies: {peaks or 'none detected'}")
+
+                if args.loudness:
+                    if not HAS_BS1770_LOUDNESS:
+                        print("  Loudness: unavailable (bs1770_loudness not importable)")
+                    else:
+                        samples_result = core.get_samples_for_analysis(
+                            result['file'], max_samples=LOUDNESS_MAX_SAMPLES
+                        )
+                        if not samples_result.success:
+                            print(f"  Loudness: {samples_result.message}")
+                        else:
+                            try:
+                                lufs = bs1770_loudness.measure_integrated_loudness(
+                                    samples_result.data["samples"],
+                                    samples_result.data["sample_rate"],
+                                )
+                            except ValueError as exc:
+                                print(f"  Loudness: unsupported ({exc})")
+                            else:
+                                if not math.isfinite(lufs):
+                                    print("  Loudness: below measurement gate (silent or too short)")
+                                else:
+                                    metadata.loudness_lufs = lufs
+                                    print(f"  Loudness: {lufs:.1f} LUFS (integrated, mono, "
+                                          f"ITU-R BS.1770 K-weighting, first "
+                                          f"{LOUDNESS_MAX_SAMPLES / samples_result.data['sample_rate']:.0f}s max)")
 
         if args.export:
             with open(args.export, 'w') as f:
