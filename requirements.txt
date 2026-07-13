@@ -1,4 +1,4 @@
-# Chameleon Audio System v3.0 - Minimal Dependencies
+# Chameleon Audio System - Minimal Dependencies
 # Lightweight WAV-focused audio processing
 
 # Basic dependencies (optional - system works without them)
@@ -6,5 +6,5 @@
 # PyYAML>=6.0           # For configuration files
 
 # Note: Core system uses only Python standard library
-# For extended format support, install: ffmpeg
-# For professional audio features, consult the documentation before adding third-party packages
+# For extended format support, install: pip install -e .[audio]
+# See pyproject.toml's [project.optional-dependencies] for the full extras list

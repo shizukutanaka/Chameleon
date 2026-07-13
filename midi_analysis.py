@@ -1,9 +1,8 @@
 """
-🎼 Chameleon Audio Processing System v3.0
-MIDI Analysis and Musical Intelligence Module
-
-Advanced MIDI processing, music theory analysis, and musical feature extraction.
-Professional-grade musical analysis with composition assistance.
+Chameleon Audio Processing System
+MIDI extraction and music-theory analysis: pitch detection (YIN), key/chord
+detection, and rule-based chord-progression suggestions (a fixed Markov
+table, not AI/ML -- see CHARTER.md §4).
 """
 
 import math
@@ -106,7 +105,8 @@ class MusicalKey:
         self.scale_notes = [(self.tonic + interval) % 12 for interval in intervals]
 
 class MIDIAnalyzer:
-    """Advanced MIDI analysis and musical intelligence"""
+    """MIDI analysis: onset/pitch detection (YIN), chord and key detection,
+    and rhythm/tempo estimation."""
 
     def __init__(self, config: Optional[MIDIConfig] = None):
         self.config = config or MIDIConfig()
@@ -620,7 +620,8 @@ class MIDIAnalyzer:
         }
 
 class MIDIComposer:
-    """AI-assisted music composition"""
+    """Rule-based chord-progression suggestions (a fixed Markov transition
+    table over scale degrees) -- not AI/ML (see CHARTER.md §4)."""
 
     def __init__(self, config: Optional[MIDIConfig] = None):
         self.config = config or MIDIConfig()
@@ -767,8 +768,8 @@ def demo_midi_analysis():
     print(f"  Time Signature: {rhythm['time_signature'][0]}/{rhythm['time_signature'][1]}")
     print(f"  Rhythmic Complexity: {rhythm['rhythmic_complexity']:.3f}")
 
-    # Composition suggestions
-    print("\n🤖 AI Composition Suggestions:")
+    # Composition suggestions (rule-based Markov table, not AI/ML)
+    print("\nChord Suggestions:")
     composer = MIDIComposer(config)
     suggestions = composer.suggest_next_chord(chords, detected_key)
     print("  Next chord suggestions:")

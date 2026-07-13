@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
-Professional Audio Mastering Chain for Chameleon
-Complete mastering pipeline with industry-standard processing
+Audio Mastering Chain for Chameleon
+EQ, compressor, lookahead limiter, and an approximate loudness meter (see
+LoudnessMeter's docstring for how it differs from certified ITU-R BS.1770
+LUFS -- bs1770_loudness.py has the standard-conformant meter). Requires
+NumPy; scipy is optional within individual stages.
 """
 
 import os

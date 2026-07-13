@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Performance Optimization Module for Chameleon Audio System
-Provides parallel processing, SIMD operations, and memory efficiency
+Provides parallel processing, SIMD-like operations (via the array module,
+not real vector instructions -- see SIMDOperations), and memory efficiency
 """
 
 import os

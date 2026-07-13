@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
 Chameleon Audio Processing System - Main Entry Point
-Advanced audio processing with real-time capabilities and ML features
+CLI for WAV analysis, normalization, batch processing, MIDI extraction, and
+loudness metering, with optional real-time streaming and a mastering chain
+when the [audio] extra is installed. No ML/AI features (see CHARTER.md §4).
 """
 
 from __future__ import annotations
@@ -349,7 +351,9 @@ class ProcessingConfig:
         return config
 
 class AudioProcessor:
-    """Advanced audio processor with ML and real-time capabilities"""
+    """Audio processor: analysis, normalization, batch processing, and
+    (optionally, via the [audio] extra) real-time streaming and a mastering
+    chain. No ML/AI features (see CHARTER.md §4)."""
 
     def __init__(self, config: Optional[ProcessingConfig] = None):
         self.config = config or ProcessingConfig()

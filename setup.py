@@ -31,7 +31,7 @@ def read_version() -> str:
 setup(
     name="chameleon-audio",
     version=read_version(),
-    description="Professional audio processing toolkit for WAV files with security and auditability",
+    description="WAV audio processing CLI with path-validation security, batch processing and MIDI analysis",
     long_description=read_long_description(),
     long_description_content_type="text/markdown",
     author="Chameleon Development Team",
