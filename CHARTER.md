@@ -365,10 +365,10 @@ A (2026-07): CLI + a pure-JSON FastAPI REST server. No web UI ships: `gui/`
 is a self-labeled experimental React/TypeScript/Electron scaffold ("the
 Electron backend integration with the Python CLI is not yet wired up" — its
 own README), not built by the Dockerfile, not referenced by `api_server.py`
-(no `StaticFiles`/`Jinja2`/`HTMLResponse`). `core.py`'s `RealtimeMusicProcessor`
-(~L2769, a standalone `websockets`-based server) has zero callers from
+(no `StaticFiles`/`Jinja2`/`HTMLResponse`). `core.py`'s `RealtimeAudioProcessor`
+(~L2809-3195, a standalone `websockets`-based server) has zero callers from
 `main.py` or `api_server.py` — dead code. Decisions on removing `gui/` and
-`RealtimeMusicProcessor` are pending direct user confirmation (tooling
+`RealtimeAudioProcessor` are pending direct user confirmation (tooling
 prevented getting an answer in this pass); until then both are left as-is and
 `gui/README.md`'s own "experimental, unwired" disclosure stands as the
 honest label.
@@ -568,27 +568,67 @@ adding any new capability:
   downsampling will alias, and pointed at the `[audio]` extra for band-limited
   conversion.
 
-Two items were deliberately *not* changed. (a) The lookahead **limiter**
+One item was deliberately *not* changed: the lookahead **limiter**
 (`mastering_chain._process_mono`) was re-inspected and found correct: it
 emits the delayed sample `extended[i]` while its peak window `extended[i:i+lookahead]`
 covers that sample through its lookahead-ahead neighbours, so gain reduction
-lands before a transient — no change made. (b) A **pure-Python BS.1770
-integrated-loudness meter** (K-weighting is just two biquad stages, so it is
-implementable with zero dependencies and would be deterministic + auditable —
-a genuine differentiator per §1, and it could replace the approximate meter
-above with the real thing) is the highest-value follow-up but a sizeable new
-feature; deferred to keep this change corrective rather than additive. Listed
-as the top open question below.
+lands before a transient — no change made.
+
+**Pure-Python ITU-R BS.1770 integrated loudness — implemented (2026-07,
+"C1").** The item above deferred this as the top follow-up; it has since
+been built as `bs1770_loudness.py` and wired in via `analyze --loudness`.
+K-weighting is two biquad IIR stages, implemented from the BS.1770-4 Annex 1
+formulas and verified against the standard's published reference
+coefficients at 48 kHz (locked in by `tests/test_bs1770_loudness.py`). The
+gated-loudness algorithm (400 ms blocks, 75% overlap, −70 LUFS absolute gate,
+−10 dB relative gate) matches the standard's structure. Two scope decisions,
+recorded honestly rather than silently gapped:
+- **True-peak oversampling was explicitly descoped.** The open question below
+  asked for it "ideally"; only integrated (gated) loudness was built.
+  `measure_peak`-style true-peak metering remains a future addition.
+- **Mono-downmix under-reads real stereo content.** `core.get_samples_for_analysis`
+  averages channels to mono *before* the caller applies K-weighting, whereas
+  BS.1770 sums each channel's post-filter energy — this reads roughly 3 LU
+  quiet for identical L/R, up to 6 LU for uncorrelated equal-power L/R, and
+  can read `-inf` for anti-phase content that a real meter would measure as
+  full loudness. Documented in `bs1770_loudness.py`'s module docstring and
+  the CLI's `--loudness` help text (labelled "mono"). Per-channel measurement
+  (the frame-decode loop already has per-channel data before it mixes down)
+  is a tracked follow-up, listed below.
+- A first version of the stage-2 (RLB high-pass) coefficients normalized the
+  numerator by `a0`, which is a mathematically valid alternate normalization
+  but does not reproduce the standard's published table (which — matching
+  the widely-used libebur128 reference implementation — leaves the numerator
+  unnormalized at `[1.0, -2.0, 1.0]`). Caught by a fresh audit before this
+  landed on `main`; fixed to match the reference exactly (measured effect was
+  small, ~0.04 LU, but conformance to the published values is the point of a
+  "standard-conformant" claim).
 
 ### Open questions (next contributor: decide before building)
 
-- **Pure-Python ITU-R BS.1770 integrated loudness (`analyze --loudness`)**:
-  K-weighting is two biquad IIR stages (a high-pass + a +4 dB 2 kHz
-  high-shelf), so a standard-conformant, dependency-free, deterministic LUFS
-  meter (with gating and, ideally, 4× oversampled true-peak) is achievable in
-  the stdlib core and would upgrade the honest-but-approximate `LoudnessMeter`
-  to the real standard. High value, non-trivial effort — decide scope first.
-
+- **Per-channel BS.1770 loudness (remove the mono-downmix under-read)**:
+  `core.get_samples_for_analysis`'s frame loop (core.py, `get_samples_for_analysis`)
+  already decodes each channel individually before averaging to mono; an
+  opt-in per-channel return path plus a `measure_integrated_loudness` variant
+  that sums (not averages) per-channel K-weighted energy would remove the
+  3–6 LU stereo under-read documented above. Effort: moderate (an API and
+  memory-bound decision, not new DSP). Standard multi-channel weighting for
+  surround layouts beyond L/R is out of scope regardless.
+- **True-peak (4× oversampled) metering per BS.1770-4 Annex 2**: still not
+  implemented anywhere in the codebase (`mastering_chain.measure_peak` is
+  honest sample-peak; `bs1770_loudness.py` reports integrated loudness only).
+  A polyphase FIR interpolation using the standard's example taps is
+  straightforward where NumPy is already a hard dependency
+  (`mastering_chain.py`); a pure-Python version for `bs1770_loudness.py`
+  would need to stay bounded to the same sample cap `analyze --loudness`
+  already uses, since the filter cost scales with input length.
+- **`mastering_chain.LoudnessMeter` still isn't standard-conformant**: it is
+  now honestly labelled "approximate" (see the 2026-07 honesty pass above),
+  but it could be replaced with `bs1770_loudness`'s exact coefficients (via
+  `scipy.signal.lfilter`, single-pass — not the `filtfilt` it currently uses
+  for its bandpass approximation, since zero-phase filtering would double the
+  K-weighting shelf's gain) to make the `process --master` LUFS figures real
+  rather than approximate. Not done here to keep this change corrective.
 
 - **Plugin sandbox is AST-only, not a runtime boundary**: `exec_module()`
   gives plugin code full, unrestricted Python builtins once it passes the
@@ -614,11 +654,11 @@ as the top open question below.
   answered): label honestly and leave as-is, delete like other orphaned
   surfaces, or invest in actually wiring the Electron shell to the CLI/API.
 
-- **core.py's RealtimeMusicProcessor — dead code, delete?** A standalone
-  `websockets`-based server (~L2769) with zero callers from `main.py` or
-  `api_server.py`. Matches the exact orphaned-module pattern already resolved
-  for 9 other modules this charter tracked; needs the same explicit
-  confirmation before deletion.
+- **core.py's RealtimeAudioProcessor — dead code, delete?** A standalone
+  `websockets`-based server (core.py:2809-3195) with zero callers from
+  `main.py` or `api_server.py`. Matches the exact orphaned-module pattern
+  already resolved for 9 other modules this charter tracked; needs the same
+  explicit confirmation before deletion.
 
 - **BatchProcessor.process_directory (sync) is unusable**: calls
   `self._execute_operation(...)`, a method that doesn't exist on the class

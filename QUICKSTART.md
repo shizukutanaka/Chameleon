@@ -100,6 +100,11 @@ python main.py analyze test.wav --detailed --export results.json
 # Spectral report: dominant frequencies, bandwidth, RMS (works on the
 # default stdlib-only install)
 python main.py analyze test.wav --spectrum
+
+# Integrated loudness (LUFS): pure-Python ITU-R BS.1770 K-weighted meter,
+# also stdlib-only. Mono-downmixed and bounded to a prefix of the file --
+# not a certified full-track measurement.
+python main.py analyze test.wav --loudness
 ```
 
 ### Audio Processing
@@ -320,7 +325,7 @@ python main.py batch --help
 python main.py analyze input.wav
 
 # 2. Analyze content in depth
-python main.py analyze input.wav --detailed --spectrum
+python main.py analyze input.wav --detailed --spectrum --loudness
 
 # 3. Process with multiple operations
 python main.py process --normalize --denoise input.wav --output-dir processed/

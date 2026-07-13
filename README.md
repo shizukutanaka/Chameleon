@@ -99,6 +99,11 @@ chameleon analyze audio.wav --detailed
 # Spectral report: dominant frequencies, bandwidth, RMS (stdlib-only)
 chameleon analyze audio.wav --spectrum
 
+# Integrated loudness (LUFS) via a pure-Python ITU-R BS.1770 K-weighted
+# meter (stdlib-only; mono-downmixed, bounded prefix — not a certified
+# full-track measurement)
+chameleon analyze audio.wav --loudness
+
 # Normalize volume (optionally to a specific peak)
 chameleon process --normalize audio.wav
 chameleon process --normalize --target-peak 0.8 audio.wav

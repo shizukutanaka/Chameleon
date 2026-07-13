@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added
+
+- `analyze --loudness`: integrated loudness (LUFS) via a new pure-Python,
+  stdlib-only ITU-R BS.1770-4 K-weighting filter and gated-loudness meter
+  (`bs1770_loudness.py`). Coefficients verified against the standard's
+  published reference values. Mono-downmixed and bounded to a prefix of the
+  file — not a certified full-track measurement. See CHARTER.md §9.
+
 ### Fixed (2026-07 quality pass — see CHARTER.md §9 for full rationale)
 
 - WAV read/write assumed audio data starts at a fixed byte-44 offset; files

@@ -106,7 +106,7 @@ been requested but not yet obtained.
 
 1. **`gui/`** — experimental React/TypeScript/Electron scaffold, self-labeled
    "not yet wired up" in its own README, not built by the Dockerfile.
-2. **`core.py`'s `RealtimeMusicProcessor`** (~L2769–3112) — a standalone
+2. **`core.py`'s `RealtimeAudioProcessor`** (core.py:2809-3195) — a standalone
    `websockets`-based server with zero callers from `main.py` or
    `api_server.py`.
 3. **`openapi_spec.yaml`** — referenced by no Python code (`api_server.py`
@@ -151,7 +151,7 @@ python main.py --version           # single source of truth: VERSION in main.py
 ## 7. Basic usage (current CLI surface)
 
 ```bash
-chameleon analyze audio.wav --detailed --spectrum
+chameleon analyze audio.wav --detailed --spectrum --loudness
 chameleon process --normalize --target-peak 0.8 audio.wav
 chameleon process --master streaming audio.wav      # requires [audio] extra
 chameleon batch /dir/ normalize --target-peak 0.9 --output-dir /out/
@@ -166,7 +166,10 @@ Exit codes: 0 success, 1 processing error, 2 usage error, 3 input validation,
 
 ## 8. Dependencies
 
-**Core** (`pip install -e .`): Python 3.8+ standard library only.
+**Core** (`pip install -e .`): Python 3.8+ standard library only — this now
+includes `analyze --loudness` (pure-Python ITU-R BS.1770 loudness meter),
+not just `analyze`/`process`/`batch`/MIDI.
 **Optional extras**: `[audio]` (numpy/scipy/librosa/soundfile/pyaudio),
-`[api]` (fastapi/uvicorn/pydantic<2), `[ml]` (torch), `[dev]` (test/lint
-tooling, including `httpx<0.24` for API route tests).
+`[api]` (fastapi/uvicorn/pydantic<2), `[dev]` (test/lint tooling, including
+`httpx<0.24` for API route tests). There is no `[ml]` extra — the neural
+modules it would have served were removed (§4 non-goals).
