@@ -586,15 +586,19 @@ recorded honestly rather than silently gapped:
 - **True-peak oversampling was explicitly descoped.** The open question below
   asked for it "ideally"; only integrated (gated) loudness was built.
   `measure_peak`-style true-peak metering remains a future addition.
-- **Mono-downmix under-reads real stereo content.** `core.get_samples_for_analysis`
-  averages channels to mono *before* the caller applies K-weighting, whereas
-  BS.1770 sums each channel's post-filter energy — this reads roughly 3 LU
-  quiet for identical L/R, up to 6 LU for uncorrelated equal-power L/R, and
-  can read `-inf` for anti-phase content that a real meter would measure as
-  full loudness. Documented in `bs1770_loudness.py`'s module docstring and
-  the CLI's `--loudness` help text (labelled "mono"). Per-channel measurement
-  (the frame-decode loop already has per-channel data before it mixes down)
-  is a tracked follow-up, listed below.
+- **Mono-downmix under-read — fixed (2026-07, same pass).** `core.get_samples_for_analysis`
+  gained an opt-in `separate_channels=True` mode (the frame-decode loop
+  already reads channels individually before it averages them to mono — this
+  just skips that step) and `bs1770_loudness` gained
+  `measure_integrated_loudness_multichannel`, which sums each channel's
+  post-filter energy per block instead of averaging raw samples to mono
+  before filtering. `analyze --loudness` now uses this path unconditionally
+  (it's mathematically identical to the mono path for real mono files, so no
+  branching needed). A regression test verifies the fix against the exact
+  theoretical prediction: identical-content stereo now reads `10*log10(2)`
+  ≈ 3.01 dB louder than the old mono-downmix figure. Standard multi-channel
+  weighting for surround layouts beyond L/R (e.g. a +1.5 dB Ls/Rs boost)
+  remains out of scope — every channel is weighted equally.
 - A first version of the stage-2 (RLB high-pass) coefficients normalized the
   numerator by `a0`, which is a mathematically valid alternate normalization
   but does not reproduce the standard's published table (which — matching
@@ -606,14 +610,6 @@ recorded honestly rather than silently gapped:
 
 ### Open questions (next contributor: decide before building)
 
-- **Per-channel BS.1770 loudness (remove the mono-downmix under-read)**:
-  `core.get_samples_for_analysis`'s frame loop (core.py, `get_samples_for_analysis`)
-  already decodes each channel individually before averaging to mono; an
-  opt-in per-channel return path plus a `measure_integrated_loudness` variant
-  that sums (not averages) per-channel K-weighted energy would remove the
-  3–6 LU stereo under-read documented above. Effort: moderate (an API and
-  memory-bound decision, not new DSP). Standard multi-channel weighting for
-  surround layouts beyond L/R is out of scope regardless.
 - **True-peak (4× oversampled) metering per BS.1770-4 Annex 2**: still not
   implemented anywhere in the codebase (`mastering_chain.measure_peak` is
   honest sample-peak; `bs1770_loudness.py` reports integrated loudness only).
