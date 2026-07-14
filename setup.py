@@ -80,6 +80,7 @@ setup(
         "performance_optimizer",
         "ux_improvements",
         "bs1770_loudness",
+        "personal_config",
     ],
     python_requires=">=3.8",
     install_requires=[

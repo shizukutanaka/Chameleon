@@ -645,18 +645,10 @@ file, and `PROJECT_STATUS.md`'s "left alone deliberately" note) — a real,
 working backup/library-scan tool, not a placeholder. It is missing from
 `pyproject.toml`/`setup.py`/`Dockerfile`'s module lists, which is a genuine
 packaging gap (a non-editable install loses this documented feature
-silently) but is a reason to *fix packaging*, not delete the file. Left
-alone; the packaging gap is listed as an open question below.
+silently) but is a reason to *fix packaging*, not delete the file. **Fixed
+in the same pass this was found** — added to all three lists.
 
 ### Open questions (next contributor: decide before building)
-
-- **`personal_config.py` is missing from packaging** (`pyproject.toml`
-  py-modules, `setup.py` py_modules, `Dockerfile` COPY): a non-editable
-  `pip install`/built wheel/container image silently loses the documented
-  `python personal_config.py setup` onboarding flow and the only wired path
-  to `IntegrityVerifier`/`SanitizationEngine`. Same class of gap as the
-  `bs1770_loudness.py` packaging miss fixed earlier in this file — just
-  add it to the three lists.
 - **True-peak (4× oversampled) metering per BS.1770-4 Annex 2**: still not
   implemented anywhere in the codebase (`mastering_chain.measure_peak` is
   honest sample-peak; `bs1770_loudness.py` reports integrated loudness only).
