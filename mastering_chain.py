@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
 Audio Mastering Chain for Chameleon
-EQ, compressor, lookahead limiter, and an approximate loudness meter (see
-LoudnessMeter's docstring for how it differs from certified ITU-R BS.1770
-LUFS -- bs1770_loudness.py has the standard-conformant meter). Requires
-NumPy; scipy is optional within individual stages.
+EQ, compressor, lookahead limiter, and a loudness meter that is real
+ITU-R BS.1770-4 (reusing bs1770_loudness.py's coefficients) when SciPy is
+available, falling back to a rough RMS-based approximation otherwise -- see
+LoudnessMeter's docstring for the exact conditions and remaining honest
+limitations (no true-peak, no surround-channel weighting). Requires NumPy;
+scipy is optional within individual stages.
 """
 
 import os
@@ -120,8 +122,8 @@ class LoudnessMeter:
     BS.1770 filtering is causal; an earlier version of this meter used
     filtfilt, whose zero-phase double pass roughly doubles the K-weighting
     shelf's gain. It follows the standard's block/gating structure: 400ms
-    blocks with 75% overlap for integrated loudness (3s/1s for loudness
-    range), the absolute -70 LUFS gate applied *before* the relative gate
+    blocks with 75% overlap for integrated loudness (3s window / 100ms hop
+    for loudness range), the absolute -70 LUFS gate applied *before* the relative gate
     (an earlier version had this order backwards), and per-channel energy
     *summed* rather than averaged (averaging under-reads real stereo content
     by ~3 dB for identical L/R, more for uncorrelated content -- see
@@ -149,14 +151,17 @@ class LoudnessMeter:
         self._bs1770_ready = False
         if not (HAS_SCIPY and HAS_BS1770):
             return
-        try:
-            stage1 = bs1770_loudness._stage1_head_effects(self.sample_rate)
-            stage2 = bs1770_loudness._stage2_high_pass(self.sample_rate)
-        except ValueError:
-            # Sample rate below bs1770_loudness's stability floor (~8kHz) --
-            # fall back to the RMS approximation rather than filter with
-            # coefficients whose poles have left the unit circle.
+        # Validate explicitly rather than relying on an exception: the
+        # coefficient functions below (bs1770_loudness's private stage
+        # helpers) do NOT themselves check the sample rate -- only the
+        # public apply_k_weighting() wrapper does. Below this floor the
+        # stage-1 shelving filter's pole leaves the unit circle and
+        # scipy.signal.lfilter diverges to inf/NaN rather than merely being
+        # inaccurate, so this must be caught before filtering, not after.
+        if self.sample_rate < bs1770_loudness._MIN_SAMPLE_RATE_HZ:
             return
+        stage1 = bs1770_loudness._stage1_head_effects(self.sample_rate)
+        stage2 = bs1770_loudness._stage2_high_pass(self.sample_rate)
         self._stage1_ba = (np.array([stage1.b0, stage1.b1, stage1.b2]),
                             np.array([1.0, stage1.a1, stage1.a2]))
         self._stage2_ba = (np.array([stage2.b0, stage2.b1, stage2.b2]),
@@ -205,9 +210,21 @@ class LoudnessMeter:
     def measure_lufs(self, audio: np.ndarray) -> float:
         """Integrated (gated) loudness in LUFS -- real ITU-R BS.1770-4 when
         SciPy + bs1770_loudness are available; otherwise a rough, explicitly
-        non-standard RMS-based approximation (see class docstring)."""
+        non-standard RMS-based approximation (see class docstring).
+
+        Returns NaN if the input contains any NaN sample: the gate-and-average
+        algorithm would otherwise silently drop whichever 400ms blocks the
+        NaN(s) contaminate (a block failing the ">=" absolute-gate comparison
+        looks identical to a block that's genuinely too quiet), which can
+        produce a plausible-looking but badly wrong LUFS figure from only the
+        uncorrupted remainder of the signal, with no other indication
+        anything was wrong.
+        """
         if audio.ndim == 1:
             audio = audio.reshape(1, -1)
+
+        if np.isnan(audio).any():
+            return float('nan')
 
         if not self._bs1770_ready:
             rms = np.sqrt(np.mean(audio ** 2))
@@ -232,20 +249,27 @@ class LoudnessMeter:
     def measure_range(self, audio: np.ndarray) -> float:
         """Loudness range (LRA) in LU, approximating EBU Tech 3342: the
         spread (95th minus 10th percentile) of gated short-term (3s window,
-        1s hop) loudness values. Real BS.1770 K-weighting when available;
-        0.0 (no principled range estimate) if not -- an earlier version
-        returned the integrated LUFS figure here, which is not a range at
-        all and was corrected as part of the same accuracy pass that fixed
-        measure_lufs.
+        100ms hop, matching the standard's short-term-loudness update rate)
+        loudness values. Real BS.1770 K-weighting when available; 0.0 (no
+        principled range estimate) if not -- an earlier version returned the
+        integrated LUFS figure here, which is not a range at all and was
+        corrected as part of the same accuracy pass that fixed measure_lufs.
+
+        Returns NaN if the input contains any NaN sample (see measure_lufs's
+        docstring for why this needs an explicit check rather than trusting
+        the gate to surface it).
         """
         if audio.ndim == 1:
             audio = audio.reshape(1, -1)
+
+        if np.isnan(audio).any():
+            return float('nan')
 
         if not self._bs1770_ready:
             return 0.0
 
         weighted = self._apply_k_weighting(audio)
-        energies = self._block_summed_energies(weighted, block_seconds=3.0, hop_seconds=1.0)
+        energies = self._block_summed_energies(weighted, block_seconds=3.0, hop_seconds=0.1)
         gated = self._gate_absolute_then_relative(energies, relative_gate_db=20.0)
         if gated.size == 0:
             return 0.0
@@ -723,7 +747,10 @@ class MasteringChain:
         output_analysis = self.analyze(processed)
         processing_info['output_analysis'] = output_analysis
 
-        # Calculate processing metrics
+        # Calculate processing metrics. lufs_change is NaN (not a bug -- the
+        # mathematically honest result) whenever either side is -inf, i.e.
+        # either the input or output audio was too short/quiet to form a
+        # single gated 400ms loudness block; -inf - -inf is undefined.
         processing_info['lufs_change'] = output_analysis['lufs'] - input_analysis['lufs']
         processing_info['peak_change'] = output_analysis['peak_db'] - input_analysis['peak_db']
 

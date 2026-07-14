@@ -70,6 +70,65 @@ def test_measure_lufs_gates_out_short_clips():
     assert meter.measure_lufs(short) == float('-inf')
 
 
+# --- setup_filters: low/zero sample-rate handling (found by adversarial review) ---
+
+def test_zero_sample_rate_does_not_crash():
+    # bs1770_loudness's private coefficient functions divide by sample_rate
+    # with no validation (only the public apply_k_weighting wrapper checks);
+    # setup_filters must validate explicitly rather than rely on an
+    # exception those functions never raise.
+    meter = mastering_chain.LoudnessMeter(0)
+    assert meter._bs1770_ready is False
+
+
+@requires_scipy_bs1770
+def test_unstable_low_sample_rate_falls_back_instead_of_diverging():
+    # Below ~3.36kHz the stage-1 shelving filter's pole leaves the unit
+    # circle and lfilter diverges to inf/NaN. 3000 Hz is comfortably inside
+    # the unstable region; the meter must fall back to the RMS
+    # approximation (a finite number) rather than measure inf/NaN.
+    sample_rate = 3000
+    meter = mastering_chain.LoudnessMeter(sample_rate)
+    assert meter._bs1770_ready is False
+
+    tone = _sine(440.0, sample_rate, sample_rate * 2, amplitude=0.5)
+    lufs = meter.measure_lufs(tone)
+    assert math.isfinite(lufs)
+
+
+@requires_scipy_bs1770
+def test_stability_floor_itself_still_uses_exact_k_weighting():
+    sample_rate = 8000  # the documented floor
+    meter = mastering_chain.LoudnessMeter(sample_rate)
+    assert meter._bs1770_ready is True
+
+
+# --- NaN-in-input safety net (found by adversarial review) ----------------
+
+@requires_scipy_bs1770
+def test_measure_lufs_returns_nan_for_nan_input_instead_of_silently_dropping_it():
+    # A single NaN sample contaminates the causal IIR filter's state for
+    # every later sample, and the contaminated blocks simply fail the
+    # gate's ">=" comparison -- silently discarding data rather than
+    # surfacing an error. Must return NaN explicitly instead.
+    sample_rate = 48000
+    tone = _sine(1000.0, sample_rate, int(sample_rate * 3.0), amplitude=0.5)
+    tone[100] = float('nan')
+
+    meter = mastering_chain.LoudnessMeter(sample_rate)
+    assert math.isnan(meter.measure_lufs(tone))
+
+
+@requires_scipy_bs1770
+def test_measure_range_returns_nan_for_nan_input():
+    sample_rate = 48000
+    tone = _sine(1000.0, sample_rate, int(sample_rate * 10.0), amplitude=0.5)
+    tone[100] = float('nan')
+
+    meter = mastering_chain.LoudnessMeter(sample_rate)
+    assert math.isnan(meter.measure_range(tone))
+
+
 # --- measure_range (LRA) ----------------------------------------------------
 
 @requires_scipy_bs1770
