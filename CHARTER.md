@@ -608,6 +608,43 @@ recorded honestly rather than silently gapped:
   small, ~0.04 LU, but conformance to the published values is the point of a
   "standard-conformant" claim).
 
+**`mastering_chain.LoudnessMeter` is now standard-conformant — resolved
+(2026-07, same pass).** The open question directly below this used to read
+"not done here to keep this change corrective"; it has since been done.
+`measure_lufs` reuses `bs1770_loudness`'s exact BS.1770-4 coefficients via a
+single-pass `scipy.signal.lfilter` (verified to match the pure-Python
+reference to 1e-6 LUFS on identical input) when SciPy + `bs1770_loudness`
+are both available, replacing the `filtfilt`-based approximate band-pass;
+falls back to the RMS approximation otherwise. Three more bugs surfaced and
+were fixed by a dedicated adversarial-review pass on this change before it
+landed:
+- `setup_filters` expected a `ValueError` from `bs1770_loudness`'s *private*
+  coefficient functions to catch sample rates below the ~8kHz stability
+  floor, but those functions don't validate (only the public
+  `apply_k_weighting` wrapper does) — so the guard was dead code, and a
+  sub-8kHz `MasteringChain` would silently measure `inf`/garbage LUFS (or,
+  for `sample_rate=0`, crash with an uncaught `ZeroDivisionError`). Fixed
+  with an explicit rate check before calling the coefficient functions.
+- A single NaN sample anywhere in the input would silently corrupt
+  `measure_lufs`/`measure_range` to a plausible-but-wrong result (the causal
+  IIR filter's NaN state contaminates every later sample, and NaN blocks
+  simply fail the gate's `>=` comparison and get silently dropped) rather
+  than surfacing as an error — demonstrated to shift a reading by 25 dB with
+  zero indication anything was wrong. Both methods now check for NaN input
+  explicitly and return NaN rather than a corrupted number.
+- `auto_adjust` computes `target_lufs - current_lufs`; for a clip too
+  short/quiet to form one gated block (`current_lufs == -inf`), that's
+  `+inf`, which was added straight into `compressor.makeup_gain` and then
+  propagated NaN through the compressor/limiter into the mastered audio.
+  This was invisible in this session's own prior test runs because SciPy
+  wasn't installed, so `measure_lufs` was always using the RMS fallback
+  (which never returns `-inf`) — installing SciPy specifically to verify
+  this fix is what surfaced it. Fixed by skipping the gain adjustment when
+  `current_lufs` isn't finite.
+`measure_range` (LRA) was also corrected to use a 100ms hop (matching the
+standard's short-term-loudness update rate) rather than an initial 1s hop
+that would have under-sampled the short-term loudness distribution.
+
 **Fantasy-code removal (2026-07, user-confirmed).** A fresh audit found three
 orphaned pieces in `core.py` that repeat the "quantum"/neural-module pattern
 this charter exists to stop — a claimed capability with no real
@@ -657,13 +694,6 @@ in the same pass this was found** — added to all three lists.
   (`mastering_chain.py`); a pure-Python version for `bs1770_loudness.py`
   would need to stay bounded to the same sample cap `analyze --loudness`
   already uses, since the filter cost scales with input length.
-- **`mastering_chain.LoudnessMeter` still isn't standard-conformant**: it is
-  now honestly labelled "approximate" (see the 2026-07 honesty pass above),
-  but it could be replaced with `bs1770_loudness`'s exact coefficients (via
-  `scipy.signal.lfilter`, single-pass — not the `filtfilt` it currently uses
-  for its bandpass approximation, since zero-phase filtering would double the
-  K-weighting shelf's gain) to make the `process --master` LUFS figures real
-  rather than approximate. Not done here to keep this change corrective.
 
 - **Plugin sandbox is AST-only, not a runtime boundary**: `exec_module()`
   gives plugin code full, unrestricted Python builtins once it passes the

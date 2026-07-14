@@ -253,16 +253,18 @@ except ImportError:
 # above; scipy is optional *within* mastering_chain.py itself (it degrades
 # each processor individually when scipy is absent).
 try:
+    import mastering_chain
     from mastering_chain import MasteringChain, create_mastering_preset
     HAS_MASTERING_CHAIN = True
 except ImportError:
     HAS_MASTERING_CHAIN = False
 
 # Pure-Python, standard-library-only ITU-R BS.1770 K-weighting + gated
-# integrated loudness. Unlike mastering_chain.LoudnessMeter (an approximate,
-# numpy/scipy-dependent band-pass meter), this is standard-conformant and has
-# no third-party dependency. Guarded like the other optional imports so a
-# trimmed checkout still runs the CLI without --loudness.
+# integrated loudness. mastering_chain.LoudnessMeter now reuses the same
+# coefficients (via scipy.signal.lfilter) when scipy is available, falling
+# back to a rough RMS approximation otherwise; this module has no
+# third-party dependency at all. Guarded like the other optional imports so
+# a trimmed checkout still runs the CLI without --loudness.
 try:
     import bs1770_loudness
     HAS_BS1770_LOUDNESS = True
@@ -1721,8 +1723,13 @@ async def main():
                     if "bit_depth" in result:
                         converted_details.append(f"{result['bit_depth']}bit")
                 if operation == "master" and "lufs_after" in result:
-                    # Approximate loudness, not BS.1770-certified LUFS (see LoudnessMeter).
-                    converted_details.append(f"~{result['lufs_after']:.1f} LUFS (approx)")
+                    # LoudnessMeter is real ITU-R BS.1770-4 when scipy + bs1770_loudness
+                    # are both available (the common case); otherwise it falls back to a
+                    # rough RMS-based approximation. Label honestly either way, rather
+                    # than a blanket "(approx)" that understates the common case.
+                    is_bs1770 = HAS_MASTERING_CHAIN and mastering_chain.HAS_SCIPY and mastering_chain.HAS_BS1770
+                    label = "LUFS" if is_bs1770 else "LUFS (approx)"
+                    converted_details.append(f"{result['lufs_after']:.1f} {label}")
                     converted_details.append(f"{result['peak_change_db']:+.1f}dB peak")
                 if result.get("dry_run"):
                     converted_details.append("dry-run")
