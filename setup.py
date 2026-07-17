@@ -31,7 +31,7 @@ def read_version() -> str:
 setup(
     name="chameleon-audio",
     version=read_version(),
-    description="Professional audio processing toolkit for WAV files with security and auditability",
+    description="WAV audio processing CLI with path-validation security, batch processing and MIDI analysis",
     long_description=read_long_description(),
     long_description_content_type="text/markdown",
     author="Chameleon Development Team",
@@ -68,24 +68,19 @@ setup(
         "main",
         "core",
         "security_validator",
+        "advanced_validation",
         "plugin_system",
         "midi_analysis",
-        "music_generator",
-        "config_manager",
         "api_server",
         "batch_automation",
-        "codec_support",
         "spectral_editor",
         "spectral_utils",
-        "audio_enhancer",
         "audio_restoration",
-        "realtime_effects",
         "mastering_chain",
-        "advanced_audio_features",
         "performance_optimizer",
-        "stability_enhancer",
         "ux_improvements",
-        "audio_utils",
+        "bs1770_loudness",
+        "personal_config",
     ],
     python_requires=">=3.8",
     install_requires=[
@@ -108,6 +103,9 @@ setup(
         "api": [
             "fastapi>=0.70.0",
             "uvicorn>=0.15.0",
+            # api_server.py's request models use pydantic v1 syntax
+            # (Field(regex=...)), which raises at import under pydantic 2.
+            "pydantic>=1.9,<2",
         ],
     },
     entry_points={

@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 """
-Professional Audio Mastering Chain for Chameleon
-Complete mastering pipeline with industry-standard processing
+Audio Mastering Chain for Chameleon
+EQ, compressor, lookahead limiter, and a loudness meter that is real
+ITU-R BS.1770-4 (reusing bs1770_loudness.py's coefficients) when SciPy is
+available, falling back to a rough RMS-based approximation otherwise -- see
+LoudnessMeter's docstring for the exact conditions and remaining honest
+limitations (no true-peak, no surround-channel weighting). Requires NumPy;
+scipy is optional within individual stages.
 """
 
 import os
 import sys
+import copy
+import math
 import numpy as np
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
@@ -19,13 +26,28 @@ try:
     HAS_SCIPY = True
 except ImportError:
     HAS_SCIPY = False
-    warnings.warn("SciPy not available. Advanced mastering features disabled.")
+    # Normal state under a minimal install — log at debug, don't warn on
+    # import. Each processor degrades individually when scipy is absent.
+    logging.getLogger("chameleon.optional_deps").debug(
+        "SciPy not available. Advanced mastering features disabled.")
 
 try:
     import librosa
     HAS_LIBROSA = True
 except ImportError:
     HAS_LIBROSA = False
+
+# bs1770_loudness.py is pure standard library (no third-party deps) and
+# provides the exact ITU-R BS.1770-4 K-weighting coefficients, verified
+# against the standard's published reference table. LoudnessMeter reuses
+# them (via scipy.signal.lfilter, since that's already available whenever
+# HAS_SCIPY is True) instead of its own approximate band-pass, so it can be
+# a real, standard-conformant meter rather than a labelled-approximate one.
+try:
+    import bs1770_loudness
+    HAS_BS1770 = True
+except ImportError:
+    HAS_BS1770 = False
 
 @dataclass
 class EQBand:
@@ -87,99 +109,175 @@ class MasteringConfig:
 
     # Dithering
     dither_enabled: bool = True
-    dither_type: str = "tpdf"  # tpdf, rpdf, shaped
+    dither_type: str = "tpdf"  # tpdf, rpdf ("shaped" is not implemented; falls back to tpdf)
 
 class LoudnessMeter:
-    """Professional loudness measurement (ITU-R BS.1770)"""
+    """Integrated loudness (LUFS) and loudness range (LRA) measurement.
+
+    When SciPy and bs1770_loudness are both available (the common case --
+    SciPy is required for the rest of the mastering chain; bs1770_loudness
+    is pure standard library), this reuses bs1770_loudness's exact ITU-R
+    BS.1770-4 K-weighting coefficients -- verified against the standard's
+    published reference table -- via a single-pass scipy.signal.lfilter.
+    BS.1770 filtering is causal; an earlier version of this meter used
+    filtfilt, whose zero-phase double pass roughly doubles the K-weighting
+    shelf's gain. It follows the standard's block/gating structure: 400ms
+    blocks with 75% overlap for integrated loudness (3s window / 100ms hop
+    for loudness range), the absolute -70 LUFS gate applied *before* the relative gate
+    (an earlier version had this order backwards), and per-channel energy
+    *summed* rather than averaged (averaging under-reads real stereo content
+    by ~3 dB for identical L/R, more for uncorrelated content -- see
+    bs1770_loudness.py's module docstring for the general form of this
+    error). Values are then real LUFS/LU, not an approximation.
+
+    Falls back to a simple RMS-based estimate (clearly not LUFS, and with no
+    principled loudness-range figure) if SciPy is unavailable, if
+    bs1770_loudness somehow isn't importable, or if the sample rate is below
+    bs1770_loudness's ~8kHz K-weighting stability floor.
+
+    Remaining honest limitations: no true-peak oversampling (see
+    measure_peak) and no surround-channel weighting (every channel is
+    weighted equally, which is correct for mono/stereo but not layouts with
+    rear/side channels).
+    """
 
     def __init__(self, sample_rate: int = 44100):
         self.sample_rate = sample_rate
-        self.block_size = int(0.4 * sample_rate)  # 400ms blocks
+        self.block_size = int(0.4 * sample_rate)  # 400ms blocks (integrated loudness)
         self.setup_filters()
 
     def setup_filters(self):
-        """Setup K-weighting filters for loudness measurement"""
-        if not HAS_SCIPY:
+        """Prepare the exact BS.1770 K-weighting coefficients, if available."""
+        self._bs1770_ready = False
+        if not (HAS_SCIPY and HAS_BS1770):
             return
+        # Validate explicitly rather than relying on an exception: the
+        # coefficient functions below (bs1770_loudness's private stage
+        # helpers) do NOT themselves check the sample rate -- only the
+        # public apply_k_weighting() wrapper does. Below this floor the
+        # stage-1 shelving filter's pole leaves the unit circle and
+        # scipy.signal.lfilter diverges to inf/NaN rather than merely being
+        # inaccurate, so this must be caught before filtering, not after.
+        if self.sample_rate < bs1770_loudness._MIN_SAMPLE_RATE_HZ:
+            return
+        stage1 = bs1770_loudness._stage1_head_effects(self.sample_rate)
+        stage2 = bs1770_loudness._stage2_high_pass(self.sample_rate)
+        self._stage1_ba = (np.array([stage1.b0, stage1.b1, stage1.b2]),
+                            np.array([1.0, stage1.a1, stage1.a2]))
+        self._stage2_ba = (np.array([stage2.b0, stage2.b1, stage2.b2]),
+                            np.array([1.0, stage2.a1, stage2.a2]))
+        self._bs1770_ready = True
 
-        # Pre-filter (high-pass at 20Hz)
-        self.pre_b, self.pre_a = signal.butter(2, 20 / (self.sample_rate / 2), 'high')
+    def _apply_k_weighting(self, audio: np.ndarray) -> np.ndarray:
+        """Single-pass (causal) K-weighting on a (channels, samples) array."""
+        filtered = np.zeros_like(audio, dtype=float)
+        for ch in range(audio.shape[0]):
+            stage1_out = signal.lfilter(self._stage1_ba[0], self._stage1_ba[1], audio[ch])
+            filtered[ch] = signal.lfilter(self._stage2_ba[0], self._stage2_ba[1], stage1_out)
+        return filtered
 
-        # K-weighting filter
-        # Simplified K-weighting (in practice would need exact ITU coefficients)
-        self.k_b, self.k_a = signal.butter(2, [200, 2000], 'band', fs=self.sample_rate)
+    def _block_summed_energies(self, weighted: np.ndarray, block_seconds: float,
+                               hop_seconds: float) -> np.ndarray:
+        """Per-block energy summed across channels (BS.1770 channel weighting)."""
+        block_size = max(1, int(round(block_seconds * self.sample_rate)))
+        hop = max(1, int(round(hop_seconds * self.sample_rate)))
+        n = weighted.shape[1]
+        if n < block_size:
+            return np.array([])
+
+        energies = []
+        for start in range(0, n - block_size + 1, hop):
+            block = weighted[:, start:start + block_size]
+            channel_energy = np.mean(block ** 2, axis=1)  # mean-square per channel
+            energies.append(float(np.sum(channel_energy)))  # summed across channels
+        return np.array(energies)
+
+    @staticmethod
+    def _gate_absolute_then_relative(energies: np.ndarray, relative_gate_db: float) -> np.ndarray:
+        """BS.1770 two-stage gating: the absolute -70 LUFS gate first, then a
+        relative gate `relative_gate_db` below the mean of the
+        absolute-gated set. Returns the doubly-gated energies (possibly
+        empty)."""
+        if energies.size == 0:
+            return energies
+        absolute_threshold = 10.0 ** ((-70.0 + 0.691) / 10.0)
+        passed_absolute = energies[energies >= absolute_threshold]
+        if passed_absolute.size == 0:
+            return passed_absolute
+        relative_threshold = np.mean(passed_absolute) * 10.0 ** (-relative_gate_db / 10.0)
+        return passed_absolute[passed_absolute >= relative_threshold]
 
     def measure_lufs(self, audio: np.ndarray) -> float:
-        """Measure integrated loudness in LUFS"""
-        if not HAS_SCIPY:
-            # Fallback to simple RMS measurement
-            rms = np.sqrt(np.mean(audio**2))
-            return 20 * np.log10(rms + 1e-10) + 3.0  # Rough conversion
+        """Integrated (gated) loudness in LUFS -- real ITU-R BS.1770-4 when
+        SciPy + bs1770_loudness are available; otherwise a rough, explicitly
+        non-standard RMS-based approximation (see class docstring).
 
-        # Apply K-weighting
+        Returns NaN if the input contains any NaN sample: the gate-and-average
+        algorithm would otherwise silently drop whichever 400ms blocks the
+        NaN(s) contaminate (a block failing the ">=" absolute-gate comparison
+        looks identical to a block that's genuinely too quiet), which can
+        produce a plausible-looking but badly wrong LUFS figure from only the
+        uncorrupted remainder of the signal, with no other indication
+        anything was wrong.
+        """
         if audio.ndim == 1:
             audio = audio.reshape(1, -1)
 
-        # Pre-filter
-        filtered = np.zeros_like(audio)
-        for ch in range(audio.shape[0]):
-            filtered[ch] = signal.filtfilt(self.pre_b, self.pre_a, audio[ch])
-            filtered[ch] = signal.filtfilt(self.k_b, self.k_a, filtered[ch])
+        if np.isnan(audio).any():
+            return float('nan')
 
-        # Calculate mean square for each block
-        blocks = []
-        for i in range(0, audio.shape[1] - self.block_size, self.block_size):
-            block = filtered[:, i:i + self.block_size]
+        if not self._bs1770_ready:
+            rms = np.sqrt(np.mean(audio ** 2))
+            return 20 * np.log10(rms + 1e-10) + 3.0  # Rough, non-standard approximation
 
-            # Channel weighting (L and R channels get weight 1.0)
-            if audio.shape[0] == 1:
-                mean_square = np.mean(block**2)
-            elif audio.shape[0] == 2:
-                mean_square = np.mean(block**2)
-            else:
-                # More complex channel weighting for surround
-                mean_square = np.mean(block**2)
-
-            if mean_square > 0:
-                blocks.append(mean_square)
-
-        if not blocks:
+        weighted = self._apply_k_weighting(audio)
+        energies = self._block_summed_energies(weighted, block_seconds=0.4, hop_seconds=0.1)
+        gated = self._gate_absolute_then_relative(energies, relative_gate_db=10.0)
+        if gated.size == 0:
             return -float('inf')
-
-        # Gating
-        relative_threshold = 0.1 * np.mean(blocks)  # -10dB relative gate
-        gated_blocks = [b for b in blocks if b >= relative_threshold]
-
-        if not gated_blocks:
-            return -float('inf')
-
-        absolute_threshold = 10**(-70/10)  # -70 LUFS absolute gate
-        final_blocks = [b for b in gated_blocks if b >= absolute_threshold]
-
-        if not final_blocks:
-            return -float('inf')
-
-        # Calculate final loudness
-        mean_square = np.mean(final_blocks)
-        lufs = -0.691 + 10 * np.log10(mean_square)
-
-        return lufs
+        return -0.691 + 10.0 * np.log10(np.mean(gated))
 
     def measure_peak(self, audio: np.ndarray) -> float:
-        """Measure true peak level"""
-        # For true peak, should oversample first
-        # Simplified version using sample peak
+        """Return the sample-peak level in dBFS (NOT true peak).
+
+        True-peak measurement requires >=4x oversampling to catch inter-sample
+        peaks; this returns the raw sample peak, which can under-read by up to
+        ~3 dB on heavily limited material.
+        """
         return 20 * np.log10(np.abs(audio).max() + 1e-10)
 
     def measure_range(self, audio: np.ndarray) -> float:
-        """Measure loudness range (LRA)"""
-        if not HAS_SCIPY:
+        """Loudness range (LRA) in LU, approximating EBU Tech 3342: the
+        spread (95th minus 10th percentile) of gated short-term (3s window,
+        100ms hop, matching the standard's short-term-loudness update rate)
+        loudness values. Real BS.1770 K-weighting when available; 0.0 (no
+        principled range estimate) if not -- an earlier version returned the
+        integrated LUFS figure here, which is not a range at all and was
+        corrected as part of the same accuracy pass that fixed measure_lufs.
+
+        Returns NaN if the input contains any NaN sample (see measure_lufs's
+        docstring for why this needs an explicit check rather than trusting
+        the gate to surface it).
+        """
+        if audio.ndim == 1:
+            audio = audio.reshape(1, -1)
+
+        if np.isnan(audio).any():
+            return float('nan')
+
+        if not self._bs1770_ready:
             return 0.0
 
-        # This is a simplified version
-        # Real LRA requires short-term loudness measurement
-        lufs = self.measure_lufs(audio)
-        return lufs  # Placeholder
+        weighted = self._apply_k_weighting(audio)
+        energies = self._block_summed_energies(weighted, block_seconds=3.0, hop_seconds=0.1)
+        gated = self._gate_absolute_then_relative(energies, relative_gate_db=20.0)
+        if gated.size == 0:
+            return 0.0
+
+        loudness_values = -0.691 + 10.0 * np.log10(gated)
+        p10 = np.percentile(loudness_values, 10)
+        p95 = np.percentile(loudness_values, 95)
+        return float(p95 - p10)
 
 class ParametricEQ:
     """Professional parametric equalizer"""
@@ -559,26 +657,34 @@ class MasteringChain:
         analysis['rms_db'] = 20 * np.log10(np.sqrt(np.mean(audio**2)) + 1e-10)
         analysis['crest_factor'] = analysis['peak_db'] - analysis['rms_db']
 
-        # Dynamic range estimate
-        sorted_samples = np.sort(np.abs(audio.flatten()))
-        percentile_95 = sorted_samples[int(0.95 * len(sorted_samples))]
-        percentile_10 = sorted_samples[int(0.10 * len(sorted_samples))]
-        analysis['dynamic_range'] = 20 * np.log10(percentile_95 / (percentile_10 + 1e-10))
+        # 'dynamic_range' previously used a P95/P10-of-|samples| ratio, which
+        # reads as ~180dB nonsense whenever the signal has near-silent
+        # stretches (P10 -> ~0, blowing up the ratio). crest_factor (peak
+        # minus RMS, both already numerically stable dB figures) is a more
+        # honest, standard dynamics estimate.
+        analysis['dynamic_range'] = analysis['crest_factor']
 
         return analysis
 
     def auto_adjust(self, audio: np.ndarray) -> MasteringConfig:
         """Automatically adjust mastering settings based on audio analysis"""
         analysis = self.analyze(audio)
-        adjusted_config = self.config
+        # Deep copy, not a bare reference: self.config's nested dataclasses
+        # (e.g. compressor) would otherwise be mutated in place below,
+        # silently accumulating makeup gain across repeated process() calls
+        # on the same MasteringChain instance.
+        adjusted_config = copy.deepcopy(self.config)
 
         if self.config.auto_gain:
-            # Adjust for target LUFS
+            # Adjust for target LUFS. current_lufs is -inf whenever the clip
+            # is too short/quiet to form a single gated measurement block
+            # (e.g. under 400ms) -- target_lufs - (-inf) is +inf, which would
+            # otherwise propagate into an infinite makeup_gain and then NaN
+            # audio through the compressor/limiter. Skip the adjustment
+            # rather than adjust by an undefined amount.
             current_lufs = analysis['lufs']
-            lufs_difference = self.config.target_lufs - current_lufs
-
-            # Adjust compressor makeup gain
-            if adjusted_config.compressor_enabled:
+            if math.isfinite(current_lufs) and adjusted_config.compressor_enabled:
+                lufs_difference = self.config.target_lufs - current_lufs
                 adjusted_config.compressor.makeup_gain += lufs_difference * 0.7
 
             # Suggest EQ adjustments based on content
@@ -641,7 +747,10 @@ class MasteringChain:
         output_analysis = self.analyze(processed)
         processing_info['output_analysis'] = output_analysis
 
-        # Calculate processing metrics
+        # Calculate processing metrics. lufs_change is NaN (not a bug -- the
+        # mathematically honest result) whenever either side is -inf, i.e.
+        # either the input or output audio was too short/quiet to form a
+        # single gated 400ms loudness block; -inf - -inf is undefined.
         processing_info['lufs_change'] = output_analysis['lufs'] - input_analysis['lufs']
         processing_info['peak_change'] = output_analysis['peak_db'] - input_analysis['peak_db']
 
@@ -659,17 +768,31 @@ class MasteringChain:
         return audio * (1 - amount) + enhanced * amount
 
     def _apply_dither(self, audio: np.ndarray, dither_type: str) -> np.ndarray:
-        """Apply dithering for bit depth reduction"""
+        """Apply dithering for bit depth reduction.
+
+        dither_type accepts "tpdf" or "rpdf". "shaped" (noise-shaped dither)
+        is documented on MasteringConfig.dither_type but not implemented; an
+        earlier version of this method silently applied no dither at all for
+        "shaped" or any other unrecognized value, which is a worse-than-tpdf
+        outcome (undithered truncation) delivered without any indication.
+        Any unrecognized value now falls back to tpdf with a logged warning
+        instead of silently skipping dither.
+        """
+        if dither_type not in ("tpdf", "rpdf"):
+            self.logger.warning(
+                f"Unknown or unimplemented dither_type {dither_type!r} "
+                f"(supported: 'tpdf', 'rpdf'); falling back to 'tpdf' rather "
+                f"than silently applying no dither."
+            )
+            dither_type = "tpdf"
+
         if dither_type == "tpdf":
             # Triangular PDF dither
             dither = np.random.uniform(-1, 1, audio.shape) + np.random.uniform(-1, 1, audio.shape)
             dither = dither / 65536  # For 16-bit
-        elif dither_type == "rpdf":
+        else:
             # Rectangular PDF dither
             dither = np.random.uniform(-1, 1, audio.shape) / 65536
-        else:
-            # No dither
-            dither = 0
 
         return audio + dither
 

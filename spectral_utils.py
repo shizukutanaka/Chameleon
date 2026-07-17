@@ -133,8 +133,26 @@ def _compute_bandwidth(magnitudes: Sequence[float], sample_rate: int) -> Tuple[f
     return lower_index * bin_width, upper_index * bin_width
 
 
+def _hann_window(length: int) -> List[float]:
+    """Return a Hann window of the requested length.
+
+    A rectangular (no) window leaks energy from a tone across many bins;
+    the Hann window is the de-facto default for general spectral analysis
+    because it trades a little main-lobe width for far lower side-lobes.
+    """
+
+    if length <= 1:
+        return [1.0] * max(length, 0)
+    return [0.5 - 0.5 * math.cos(2.0 * math.pi * n / (length - 1)) for n in range(length)]
+
+
 def _detect_peaks(magnitudes: Sequence[float], sample_rate: int, max_peaks: int) -> List[SpectrumPeak]:
-    """Select dominant peaks by simple neighbourhood comparison."""
+    """Select dominant peaks by neighbourhood comparison with sub-bin refinement.
+
+    Each local maximum is refined with parabolic (quadratic) interpolation over
+    the three points around the peak, which recovers the true frequency to a
+    fraction of a bin instead of snapping it to the nearest bin centre.
+    """
 
     peaks: List[SpectrumPeak] = []
     bin_width = sample_rate / (2 * max(len(magnitudes) - 1, 1))
@@ -145,7 +163,17 @@ def _detect_peaks(magnitudes: Sequence[float], sample_rate: int, max_peaks: int)
         right = magnitudes[index + 1]
 
         if centre >= left and centre >= right and centre > 0:
-            peaks.append(SpectrumPeak(frequency_hz=index * bin_width, magnitude=centre))
+            # Parabolic interpolation: delta in (-0.5, 0.5) bins.
+            denominator = left - 2.0 * centre + right
+            if denominator != 0:
+                delta = 0.5 * (left - right) / denominator
+            else:
+                delta = 0.0
+            # Guard against numerical excursions from near-flat peaks.
+            if delta < -0.5 or delta > 0.5:
+                delta = 0.0
+            frequency = (index + delta) * bin_width
+            peaks.append(SpectrumPeak(frequency_hz=frequency, magnitude=centre))
 
     peaks.sort(key=lambda peak: peak.magnitude, reverse=True)
     return peaks[:max_peaks]
@@ -166,7 +194,19 @@ def analyze_spectrum(
     if not buffer:
         raise ValueError("samples cannot be empty")
 
-    spectrum = _discrete_fourier_transform(buffer)
+    # Window the signal before the transform to suppress spectral leakage.
+    # The pure-Python DFT fallback only transforms the first 4096 samples, so
+    # window exactly that segment to keep the taper aligned with the transform.
+    # RMS and DC are measured on the raw (unwindowed) buffer so those
+    # time-domain statistics are unaffected by the window taper.
+    if not HAS_NUMPY and len(buffer) > 4096:
+        analysis_buffer = buffer[:4096]
+    else:
+        analysis_buffer = buffer
+    window = _hann_window(len(analysis_buffer))
+    windowed = [sample * weight for sample, weight in zip(analysis_buffer, window)]
+
+    spectrum = _discrete_fourier_transform(windowed)
     magnitudes = [abs(value) for value in spectrum]
 
     rms = math.sqrt(sum(sample ** 2 for sample in buffer) / len(buffer))
@@ -202,7 +242,14 @@ def normalize_peak(samples: Sequence[float], target_peak: float = 0.95) -> List[
 
 
 def linear_resample(samples: Sequence[float], source_rate: int, target_rate: int) -> List[float]:
-    """Resample using linear interpolation."""
+    """Resample using linear interpolation.
+
+    Note: this applies no anti-aliasing filter. When downsampling
+    (target_rate < source_rate), content above the new Nyquist frequency is
+    not removed first and will alias back into the audible band. It is
+    intended for light rate changes / previews, not high-fidelity conversion;
+    use scipy/librosa (the ``[audio]`` extra) for band-limited resampling.
+    """
 
     if source_rate <= 0 or target_rate <= 0:
         raise ValueError("sample rates must be positive integers")

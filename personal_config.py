@@ -164,9 +164,6 @@ alias audio-batch='python {Path.cwd()}/main.py batch {config.audio_library}'
 alias audio-lib='cd {config.audio_library}'
 alias audio-processed='cd {config.output_directory}'
 
-# Quick analysis
-alias audio-info='python {Path.cwd()}/audio_utils.py'
-
 # Server
 alias audio-server='python {Path.cwd()}/main.py server --host 127.0.0.1 --port 8080'
 """

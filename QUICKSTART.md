@@ -16,10 +16,27 @@ python3 -m venv .venv
 source .venv/bin/activate
 # Windows:
 .venv\Scripts\activate
+```
 
-# Install dependencies (optional - core works without)
+Chameleon ships in two honest tiers — pick one:
+
+**1. Default — WAV only, zero third-party dependencies.** The core analyze/normalize/
+batch/MIDI CLI runs on the Python standard library alone. Nothing to install.
+
+```bash
+# Optional: install the recommended (still small) runtime deps
 pip install -r requirements.txt
 ```
+
+**2. `[audio]` extra — adds MP3 / FLAC / OGG input.** Installs numpy/scipy/librosa/
+soundfile so the loader can decode compressed formats:
+
+```bash
+pip install -e .[audio]
+```
+
+> Without the `[audio]` extra, Chameleon is genuinely WAV-only and will report
+> `Unsupported file type` for an `.mp3` — it does not pretend otherwise.
 
 ## First Steps
 
@@ -34,10 +51,10 @@ python validation_test.py
 
 ```bash
 # Quick file info
-python audio_utils.py /path/to/file.wav
+python main.py analyze /path/to/file.wav
 
 # Detailed analysis
-python main.py analyze /path/to/file.wav
+python main.py analyze /path/to/file.wav --detailed
 ```
 
 ### 3. Basic Processing
@@ -50,26 +67,60 @@ python main.py process --normalize /path/to/input.wav
 python main.py batch /path/to/directory/ normalize --output-dir /path/to/output/
 ```
 
+### 4. Working with MP3 / FLAC (optional)
+
+Requires the `[audio]` extra (`pip install -e .[audio]`). Once installed, the same
+commands accept compressed input:
+
+```bash
+# Analyze an MP3 or FLAC directly
+python main.py analyze /path/to/song.mp3
+python main.py analyze /path/to/track.flac
+```
+
+**Input vs. output — what is guaranteed:**
+
+| Direction | Default install | With `[audio]` |
+|-----------|-----------------|----------------|
+| Read / `analyze` | WAV | WAV, MP3, FLAC, OGG, AIFF, M4A |
+| Write / `process` output | WAV | WAV, FLAC |
+
+Processing (`--normalize`, etc.) writes **WAV by default and FLAC when `[audio]` is
+installed**. MP3 *output* is intentionally not promised — it depends on your local
+libsndfile version, so the tool falls back to WAV rather than failing silently.
+
 ## Common Tasks
 
 ### File Analysis
 
 ```bash
-# Basic info
-python audio_utils.py test.wav
-
 # Detailed analysis with export
 python main.py analyze test.wav --detailed --export results.json
+
+# Spectral report: dominant frequencies, bandwidth, RMS (works on the
+# default stdlib-only install)
+python main.py analyze test.wav --spectrum
+
+# Integrated loudness (LUFS): pure-Python ITU-R BS.1770 K-weighted meter,
+# also stdlib-only. Sums per-channel energy correctly for mono/stereo (no
+# surround weighting or true-peak), bounded to a prefix of the file --
+# not a certified full-track measurement.
+python main.py analyze test.wav --loudness
 ```
 
 ### Audio Processing
 
 ```bash
-# Normalize
+# Normalize (default peak 0.95, or choose your own)
 python main.py process --normalize input.wav
+python main.py process --normalize --target-peak 0.8 input.wav
 
 # Remove noise
 python main.py process --denoise input.wav
+
+# Full mastering chain — requires the [audio] extra
+# (presets: default, streaming, cd, vinyl)
+python main.py process --master streaming input.wav
 
 # Convert format/sample rate
 python main.py process --convert --convert-sample-rate 48000 input.wav
@@ -82,7 +133,14 @@ python main.py process --normalize --denoise input.wav --output-dir processed/
 
 ```bash
 # Process all WAV files in directory
+# (operations: analyze, normalize, denoise, convert, effects)
 python main.py batch /audio/directory/ normalize
+
+# Normalize a whole directory to a specific peak
+python main.py batch /audio/directory/ normalize --target-peak 0.9
+
+# Apply a JSON effects chain to every file
+python main.py batch /audio/directory/ effects --effects chain.json
 
 # Recursive processing
 python main.py batch /audio/directory/ normalize --recursive
@@ -90,6 +148,13 @@ python main.py batch /audio/directory/ normalize --recursive
 # Preview changes (dry run)
 python main.py batch /audio/directory/ normalize --dry-run
 ```
+
+### Scripting notes
+
+- `python main.py --version` prints the version.
+- Errors and warnings go to **stderr**; results stay on **stdout**.
+- Exit codes: 0 success, 1 processing error, 2 usage error, 3 input
+  validation, 4 security rejection, 130 interrupted (see README).
 
 ### MIDI Features
 
@@ -257,11 +322,11 @@ python main.py batch --help
 ### Complete Workflow
 
 ```bash
-# 1. Validate file
-python audio_utils.py input.wav
+# 1. Validate and inspect the file
+python main.py analyze input.wav
 
-# 2. Analyze content
-python main.py analyze input.wav --detailed
+# 2. Analyze content in depth
+python main.py analyze input.wav --detailed --spectrum --loudness
 
 # 3. Process with multiple operations
 python main.py process --normalize --denoise input.wav --output-dir processed/

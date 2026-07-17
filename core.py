@@ -58,6 +58,15 @@ except ImportError:
     HAS_WEBSOCKETS = False
     websockets = None
 
+# Deep file inspection (stdlib-only). Mirrors main.py's guard: validates that
+# a file claiming a .wav extension is actually a WAV container before it
+# enters the batch pipeline. See BatchProcessor.process_directory.
+try:
+    from advanced_validation import DeepFileInspector
+    HAS_DEEP_INSPECTOR = True
+except ImportError:
+    HAS_DEEP_INSPECTOR = False
+
 # Quantum computing features removed in 2024 refactor
 # Using only practical, proven audio processing techniques
 HAS_QUANTUM = False
@@ -141,7 +150,13 @@ def open_secure(path: Union[str, Path], mode: str = "wb", *, encoding: Optional[
 
 @dataclass
 class AudioInfo:
-    """Essential audio information - no bloat."""
+    """Essential audio information - no bloat.
+
+    data_offset/data_size describe where the PCM payload actually lives —
+    real-world WAVs carry LIST/JUNK/fact chunks before ``data``, so readers
+    and writers must use these instead of assuming the classic 44-byte header.
+    fmt_offset is the file offset of the fmt chunk *body* (the ``<HHIIHH``).
+    """
     duration: float
     sample_rate: int
     channels: int
@@ -149,6 +164,10 @@ class AudioInfo:
     size_bytes: int
     peak_level: float = 0.0
     rms_level: float = 0.0
+    data_offset: int = 44
+    data_size: int = 0
+    fmt_offset: int = 20
+    format_tag: int = 1
 
 @dataclass
 class ProcessingResult:
@@ -245,43 +264,6 @@ class MemoryManager:
         if cache_key in self.vectorized_cache:
             return self.vectorized_cache[cache_key]['array']
         return None
-
-    def _memory_map_file(self, file_path: str, offset: int = 0, size: Optional[int] = None) -> bytes:
-        """Memory map file for efficient access."""
-        import mmap
-
-        with open(file_path, 'rb') as f:
-            mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
-            try:
-                if offset > 0:
-                    mm.seek(offset)
-                if size is None:
-                    available = max(0, mm.size() - mm.tell())
-                    data = mm.read(available)
-                else:
-                    data = mm.read(size)
-            finally:
-                mm.close()
-            return data
-
-    def _chunked_read(self, file_path: str, offset: int, size: int) -> bytes:
-        """Read file in optimized chunks with buffering."""
-        result = bytearray()
-        bytes_read = 0
-
-        with open(file_path, 'rb') as f:
-            f.seek(offset)
-
-            while bytes_read < size:
-                chunk_size = min(CHUNK_SIZE, size - bytes_read)
-                chunk = f.read(chunk_size)
-                if not chunk:
-                    break
-                result.extend(chunk)
-                bytes_read += len(chunk)
-
-        return bytes(result)
-
 
     def _memory_map_file(self, file_path: str, offset: int = 0, size: Optional[int] = None) -> bytes:
         """Memory map file for efficient access."""
@@ -455,6 +437,18 @@ class WAVProcessor:
         return normalized if normalized <= 1.0 else 1.0
 
     @staticmethod
+    def _normalize_amplitude_signed(value: int, bit_depth: int) -> float:
+        """Like _normalize_amplitude but preserves sign (waveform, not magnitude)."""
+        if bit_depth <= 8:
+            scale = 128.0
+        else:
+            scale = float(1 << (bit_depth - 1))
+        if scale == 0:
+            return 0.0
+        normalized = value / scale
+        return max(-1.0, min(1.0, normalized))
+
+    @staticmethod
     def _encode_sample_value(value: int, bit_depth: int) -> bytes:
         if bit_depth == 8:
             clamped = max(-128, min(127, int(value)))
@@ -471,57 +465,14 @@ class WAVProcessor:
         return b""
 
     def _read_wav_header_optimized(self, file_path: str) -> Optional[AudioInfo]:
-        """Read WAV header with memory optimization."""
-        try:
-            # Use memory manager for efficient reading
-            header_data = self.memory_manager.get_file_data(file_path, 0, 44)
+        """Read the WAV header via the canonical chunk-walking parser.
 
-            if header_data is None:
-                # Cache miss - read from disk
-                try:
-                    with open(file_path, 'rb') as f:
-                        header_data = f.read(44)
-                    self.memory_manager.cache_data(f"{file_path}:0:44", header_data)
-                except Exception:
-                    return None
-
-            if len(header_data) != 44:
-                return None
-
-            # Check RIFF signature
-            if header_data[:4] != b'RIFF':
-                return None
-
-            # Check WAVE signature
-            if header_data[8:12] != b'WAVE':
-                return None
-
-            # Check format chunk
-            if header_data[12:16] != b'fmt ':
-                return None
-
-            # Parse format information
-            format_tag, channels, sample_rate, byte_rate, block_align, bits_per_sample = \
-                struct.unpack('<HHIIHH', header_data[20:36])
-
-            if format_tag != 1:  # Only PCM
-                return None
-
-            # Get file size efficiently
-            file_size = os.path.getsize(file_path)
-            data_size = file_size - 44  # Assume standard header
-            duration = data_size / (sample_rate * channels * (bits_per_sample // 8))
-
-            return AudioInfo(
-                duration=duration,
-                sample_rate=sample_rate,
-                channels=channels,
-                bit_depth=bits_per_sample,
-                size_bytes=file_size
-            )
-
-        except Exception:
-            return None
+        Historically this read a fixed 44 bytes and assumed the data chunk
+        started right after — wrong for any file with LIST/JUNK/fact chunks or
+        a non-16-byte fmt body, which silently corrupted analysis. It now
+        delegates to _read_wav_header, the single source of truth.
+        """
+        return self._read_wav_header(file_path)
 
     def analyze(self, file_path: str) -> ProcessingResult:
         """Analyze WAV file - core functionality with enhanced security and error handling."""
@@ -570,6 +521,7 @@ class WAVProcessor:
             return ProcessingResult(False, f"File system error: {str(e)}")
     async def analyze_async(self, file_path: str) -> ProcessingResult:
         """Asynchronously analyze WAV file with enhanced performance and error handling."""
+        start = time.perf_counter()
         try:
             # セキュリティチェックを非同期で実行
             security_check = await self._async_security_check(file_path)
@@ -584,7 +536,7 @@ class WAVProcessor:
             # 非同期でレベル計算を実行
             peak_level, rms_level = await self._async_calculate_levels(file_path, info)
 
-            duration_ms = int((time.perf_counter() - time.perf_counter()) * 1000)  # Simplified timing
+            duration_ms = int((time.perf_counter() - start) * 1000)
             return ProcessingResult(
                 True,
                 f"Asynchronous analysis complete in {duration_ms}ms",
@@ -600,32 +552,32 @@ class WAVProcessor:
 
     async def _async_security_check(self, file_path: str) -> bool:
         """非同期セキュリティチェックを実行"""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, security_validator.validate_path, file_path)
 
     async def _async_read_wav_header(self, file_path: str) -> Optional[AudioInfo]:
         """非同期でWAVヘッダーを読み込み"""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._read_wav_header_optimized, file_path)
 
     async def _async_calculate_levels(self, file_path: str, info: AudioInfo) -> Tuple[float, float]:
         """非同期でレベルを計算"""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._calculate_levels_safe, file_path, info)
 
     async def normalize_async(self, input_path: str, output_path: str, target_peak: float = 0.95) -> ProcessingResult:
         """Asynchronously normalize audio file."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self.normalize, input_path, output_path, target_peak)
 
     async def convert_to_mono_async(self, input_path: str, output_path: str) -> ProcessingResult:
         """Asynchronously convert to mono."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self.convert_to_mono, input_path, output_path)
 
     async def trim_silence_async(self, input_path: str, output_path: str, threshold: float = 0.01) -> ProcessingResult:
         """Asynchronously trim silence."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self.trim_silence, input_path, output_path, threshold)
 
     def normalize(self, input_path: str, output_path: str, target_peak: float = 0.95) -> ProcessingResult:
@@ -761,63 +713,104 @@ class WAVProcessor:
             self.logger.error(f"Silence trimming failed: {e}")
             return ProcessingResult(False, f"Silence trimming failed: {str(e)}")
 
+    # WAVE_FORMAT_EXTENSIBLE subformat GUIDs (little-endian on-disk layout).
+    _PCM_SUBFORMAT_GUID = (b'\x01\x00\x00\x00\x00\x00\x10\x00'
+                           b'\x80\x00\x00\xaa\x00\x38\x9b\x71')
+    _FLOAT_SUBFORMAT_GUID = (b'\x03\x00\x00\x00\x00\x00\x10\x00'
+                             b'\x80\x00\x00\xaa\x00\x38\x9b\x71')
+    _MAX_WAV_CHUNKS = 256
+
     def _read_wav_header(self, file_path: str) -> Optional[AudioInfo]:
-        """Read WAV header efficiently - cached for performance."""
+        """Canonical WAV parser: walks the chunk list instead of assuming the
+        classic 44-byte layout.
+
+        Handles fmt bodies of 16/18/40 bytes (including WAVE_FORMAT_EXTENSIBLE,
+        whose PCM subformat GUID is treated as plain PCM), skips the RIFF pad
+        byte after odd-sized chunks, clamps a lying data-size field to the real
+        file size, and records data_offset/data_size/fmt_offset so downstream
+        readers and writers stop hardcoding byte 44. PCM-only by design: float
+        (tag 3) files are rejected cleanly rather than misdecoded.
+        """
         try:
+            file_size = os.path.getsize(file_path)
             with open(file_path, 'rb') as f:
-                # Read RIFF header
                 riff_header = f.read(12)
                 if len(riff_header) != 12 or riff_header[:4] != b'RIFF' or riff_header[8:12] != b'WAVE':
                     return None
 
-                file_size = struct.unpack('<I', riff_header[4:8])[0] + 8
+                fmt_seen = False
+                data_offset: Optional[int] = None
+                data_size = 0
+                fmt_offset = 20
+                format_tag = channels = sample_rate = bits_per_sample = 0
 
-                # Find fmt chunk
-                while True:
+                for _ in range(self._MAX_WAV_CHUNKS):
                     chunk_header = f.read(8)
                     if len(chunk_header) != 8:
-                        return None
+                        break
 
                     chunk_id = chunk_header[:4]
                     chunk_size = struct.unpack('<I', chunk_header[4:8])[0]
+                    if chunk_size > file_size:
+                        return None  # corrupt size field
 
                     if chunk_id == b'fmt ':
-                        # Read format chunk
-                        fmt_data = f.read(chunk_size)
-                        if len(fmt_data) < 16:
+                        if chunk_size < 16:
                             return None
-
-                        format_tag, channels, sample_rate, byte_rate, block_align, bits_per_sample = \
-                            struct.unpack('<HHIIHH', fmt_data[:16])
-
-                        if format_tag != 1:  # Only PCM
+                        fmt_offset = f.tell()
+                        body = f.read(min(chunk_size, 40))
+                        if len(body) < 16:
                             return None
-
-                        # Find data chunk
-                        while True:
-                            data_header = f.read(8)
-                            if len(data_header) != 8:
+                        format_tag, channels, sample_rate, _byte_rate, _block_align, bits_per_sample = \
+                            struct.unpack('<HHIIHH', body[:16])
+                        if format_tag == 0xFFFE:
+                            if len(body) < 40:
                                 return None
-
-                            data_id = data_header[:4]
-                            data_size = struct.unpack('<I', data_header[4:8])[0]
-
-                            if data_id == b'data':
-                                duration = data_size / (sample_rate * channels * (bits_per_sample // 8))
-
-                                return AudioInfo(
-                                    duration=duration,
-                                    sample_rate=sample_rate,
-                                    channels=channels,
-                                    bit_depth=bits_per_sample,
-                                    size_bytes=file_size
-                                )
+                            guid = body[24:40]
+                            if guid == self._PCM_SUBFORMAT_GUID:
+                                format_tag = 1
+                            elif guid == self._FLOAT_SUBFORMAT_GUID:
+                                format_tag = 3
                             else:
-                                # Skip non-data chunk
-                                f.seek(data_size, 1)
+                                return None
+                        remaining = chunk_size - len(body)
+                        if remaining > 0:
+                            f.seek(remaining, 1)
+                        fmt_seen = True
+                    elif chunk_id == b'data':
+                        data_offset = f.tell()
+                        data_size = min(chunk_size, max(0, file_size - data_offset))
+                        f.seek(data_size, 1)
                     else:
-                        # Skip non-fmt chunk
                         f.seek(chunk_size, 1)
+
+                    if chunk_size % 2 == 1:
+                        f.seek(1, 1)  # RIFF chunks are word-aligned
+
+                    if fmt_seen and data_offset is not None:
+                        break
+
+                if not fmt_seen or data_offset is None:
+                    return None
+                if format_tag != 1:  # PCM-only core; float32 rejected cleanly
+                    return None
+                if channels <= 0 or bits_per_sample not in (8, 16, 24, 32) or sample_rate <= 0:
+                    return None
+
+                frame_size = channels * (bits_per_sample // 8)
+                duration = data_size / (sample_rate * frame_size) if frame_size else 0.0
+
+                return AudioInfo(
+                    duration=duration,
+                    sample_rate=sample_rate,
+                    channels=channels,
+                    bit_depth=bits_per_sample,
+                    size_bytes=file_size,
+                    data_offset=data_offset,
+                    data_size=data_size,
+                    fmt_offset=fmt_offset,
+                    format_tag=format_tag,
+                )
 
         except Exception:
             return None
@@ -827,8 +820,9 @@ class WAVProcessor:
         """Calculate peak and RMS levels with enhanced bit depth support and memory protection."""
         try:
             with open(file_path, 'rb') as f:
-                # Skip to data chunk safely
-                f.seek(44)  # Standard WAV header size
+                # Seek to the actual data payload (not a hardcoded byte 44).
+                f.seek(info.data_offset)
+                remaining = info.data_size
 
                 max_val = 0.0
                 sum_squares = 0.0
@@ -838,15 +832,19 @@ class WAVProcessor:
                 bytes_per_sample = max(1, info.bit_depth // 8) if info.bit_depth != 8 else 1
                 frame_size = bytes_per_sample * max(1, info.channels)
 
-                if frame_size == 0:
+                if frame_size == 0 or remaining <= 0:
                     return 0.0, 0.0
 
-                while sample_count < max_samples:
-                    chunk = f.read(CHUNK_SIZE)
-                    if not chunk:
+                carry = b''
+                while sample_count < max_samples and remaining > 0:
+                    data = f.read(min(CHUNK_SIZE, remaining))
+                    if not data:
                         break
+                    remaining -= len(data)
+                    chunk = carry + data
 
                     available = (len(chunk) // frame_size) * frame_size
+                    carry = chunk[available:]  # keep the split frame for the next read
                     if available == 0:
                         continue
 
@@ -876,30 +874,196 @@ class WAVProcessor:
         except Exception:
             return 0.0, 0.0
 
-    def _apply_gain_safe(self, input_path: str, output_path: str, info: AudioInfo, gain: float):
-        """Apply gain to audio file with enhanced bit depth support and security."""
-        with open(input_path, 'rb') as src, open_secure(output_path, 'wb') as dst:
-            # Copy header safely
-            header = src.read(44)  # Standard WAV header
-            if len(header) != 44:
-                raise ValueError("Invalid WAV header")
+    def get_samples_for_analysis(self, file_path: str, max_samples: int = 65536,
+                                 separate_channels: bool = False) -> "ProcessingResult":
+        """Extract a bounded, signed waveform for analysis tooling (e.g.
+        spectral_utils.analyze_spectrum, bs1770_loudness). Mirrors
+        _calculate_levels_safe's chunked read but keeps the samples instead of
+        only their peak/RMS, and preserves sign (spectral/loudness analysis
+        needs a real waveform, not magnitude).
 
-            dst.write(header)
+        By default returns "samples": a single mono-mixed (per-frame
+        averaged) waveform. When separate_channels=True, returns "channels":
+        a list of one waveform per channel instead — no downmixing, so
+        callers that sum per-channel energy (e.g. BS.1770 loudness, which
+        under-reads by 3-6 LU on an averaged-to-mono signal) get accurate
+        input.
+
+        Bounded by max_samples (per-frame, not per-channel, in both modes) to
+        keep memory and analysis time predictable regardless of file size.
+        """
+        try:
+            if not security_validator.validate_path(file_path):
+                return ProcessingResult(False, "Invalid file path - security violation")
+            if not security_validator.validate_file_size(file_path):
+                return ProcessingResult(False, "File too large or empty")
+            if not security_validator.validate_audio_content(file_path):
+                return ProcessingResult(False, "Invalid or corrupted WAV file")
+
+            info = self._read_wav_header_optimized(file_path)
+            if not info:
+                return ProcessingResult(False, "Invalid WAV file format")
 
             bytes_per_sample = max(1, info.bit_depth // 8) if info.bit_depth != 8 else 1
             frame_size = bytes_per_sample * max(1, info.channels)
+            if frame_size == 0:
+                return ProcessingResult(False, "Invalid audio format")
+
+            if separate_channels:
+                channels_out: List[List[float]] = [[] for _ in range(info.channels)]
+                frame_count = 0
+                with open(file_path, 'rb') as f:
+                    f.seek(info.data_offset)
+                    remaining = info.data_size
+
+                    carry = b''
+                    while frame_count < max_samples and remaining > 0:
+                        data = f.read(min(CHUNK_SIZE, remaining))
+                        if not data:
+                            break
+                        remaining -= len(data)
+                        chunk = carry + data
+
+                        available = (len(chunk) // frame_size) * frame_size
+                        carry = chunk[available:]
+                        if available == 0:
+                            continue
+
+                        mv = memoryview(chunk[:available])
+                        for frame_offset in range(0, available, frame_size):
+                            if frame_count >= max_samples:
+                                break
+                            decoded_this_frame = 0
+                            for channel in range(info.channels):
+                                sample_offset = frame_offset + channel * bytes_per_sample
+                                sample_bytes = mv[sample_offset:sample_offset + bytes_per_sample].tobytes()
+                                sample_value = self._decode_sample_bytes(sample_bytes, info.bit_depth)
+                                if sample_value is None:
+                                    continue
+                                channels_out[channel].append(
+                                    self._normalize_amplitude_signed(sample_value, info.bit_depth)
+                                )
+                                decoded_this_frame += 1
+                            if decoded_this_frame:
+                                frame_count += 1
+                        del mv
+
+                if not any(channels_out):
+                    return ProcessingResult(False, "No decodable audio samples found")
+
+                return ProcessingResult(
+                    True, "Samples extracted",
+                    {"channels": channels_out, "sample_rate": info.sample_rate}
+                )
+
+            samples: List[float] = []
+            with open(file_path, 'rb') as f:
+                f.seek(info.data_offset)
+                remaining = info.data_size
+
+                carry = b''
+                while len(samples) < max_samples and remaining > 0:
+                    data = f.read(min(CHUNK_SIZE, remaining))
+                    if not data:
+                        break
+                    remaining -= len(data)
+                    chunk = carry + data
+
+                    available = (len(chunk) // frame_size) * frame_size
+                    carry = chunk[available:]
+                    if available == 0:
+                        continue
+
+                    mv = memoryview(chunk[:available])
+                    for frame_offset in range(0, available, frame_size):
+                        if len(samples) >= max_samples:
+                            break
+                        channel_sum = 0.0
+                        channel_count = 0
+                        for channel in range(info.channels):
+                            sample_offset = frame_offset + channel * bytes_per_sample
+                            sample_bytes = mv[sample_offset:sample_offset + bytes_per_sample].tobytes()
+                            sample_value = self._decode_sample_bytes(sample_bytes, info.bit_depth)
+                            if sample_value is None:
+                                continue
+                            channel_sum += self._normalize_amplitude_signed(sample_value, info.bit_depth)
+                            channel_count += 1
+                        if channel_count:
+                            samples.append(channel_sum / channel_count)
+                    del mv
+
+            if not samples:
+                return ProcessingResult(False, "No decodable audio samples found")
+
+            return ProcessingResult(
+                True, "Samples extracted",
+                {"samples": samples, "sample_rate": info.sample_rate}
+            )
+
+        except (OSError, PermissionError) as e:
+            return ProcessingResult(False, f"File system error: {e}")
+
+    def _copy_patched_header(self, src, dst, info: AudioInfo, new_data_size: int,
+                             *, channels: Optional[int] = None) -> None:
+        """Copy the input header prefix verbatim and patch its size fields.
+
+        Copies everything up to the data payload (preserving LIST/JUNK/fact
+        chunks and non-16-byte fmt bodies exactly as they were), then patches:
+        the data chunk size at data_offset-4, the RIFF size at offset 4, and —
+        when *channels* is given (mono conversion) — the channel count, byte
+        rate, and block align inside the fmt body at fmt_offset.
+
+        Policy notes (deliberate, documented choices): chunks that trail the
+        data payload are dropped from the output — the processed file is a new
+        artifact; a fact chunk before data is preserved verbatim without
+        recomputing dwSampleLength (informational for PCM).
+        """
+        header = bytearray(src.read(info.data_offset))
+        if len(header) != info.data_offset:
+            raise ValueError("Invalid WAV header")
+
+        pad = new_data_size % 2
+        struct.pack_into('<I', header, 4, info.data_offset - 8 + new_data_size + pad)
+        struct.pack_into('<I', header, info.data_offset - 4, new_data_size)
+
+        if channels is not None:
+            bytes_per_sample = max(1, info.bit_depth // 8)
+            struct.pack_into('<H', header, info.fmt_offset + 2, channels)
+            struct.pack_into('<I', header, info.fmt_offset + 8,
+                             info.sample_rate * bytes_per_sample * channels)
+            struct.pack_into('<H', header, info.fmt_offset + 12,
+                             bytes_per_sample * channels)
+
+        dst.write(bytes(header))
+
+    def _apply_gain_safe(self, input_path: str, output_path: str, info: AudioInfo, gain: float):
+        """Apply gain to audio file with enhanced bit depth support and security."""
+        bytes_per_sample = max(1, info.bit_depth // 8) if info.bit_depth != 8 else 1
+        frame_size = bytes_per_sample * max(1, info.channels)
+        if frame_size == 0:
+            raise ValueError("Invalid audio format")
+
+        # Whole frames only; a trailing sub-frame fragment is dropped, so the
+        # size fields written up front are exact.
+        new_data_size = (info.data_size // frame_size) * frame_size
+
+        with open(input_path, 'rb') as src, open_secure(output_path, 'wb') as dst:
+            self._copy_patched_header(src, dst, info, new_data_size)
+
             processed_samples = 0
             max_samples = 10000000  # Safety limit per-channel
+            to_consume = new_data_size
+            carry = b''
 
-            if frame_size == 0:
-                raise ValueError("Invalid audio format")
-
-            while processed_samples < max_samples:
-                chunk = src.read(CHUNK_SIZE)
-                if not chunk:
+            while to_consume > 0 and processed_samples < max_samples:
+                data = src.read(min(CHUNK_SIZE, to_consume))
+                if not data:
                     break
+                to_consume -= len(data)
+                chunk = carry + data
 
                 available = (len(chunk) // frame_size) * frame_size
+                carry = chunk[available:]
                 if available == 0:
                     continue
 
@@ -925,50 +1089,36 @@ class WAVProcessor:
                 if processed_chunk:
                     dst.write(processed_chunk)
 
-                if available < len(chunk):
-                    dst.write(chunk[available:])
-
                 del mv
+
+            if new_data_size % 2:
+                dst.write(b'\x00')  # RIFF pad byte
 
     def _convert_to_mono(self, input_path: str, output_path: str, info: AudioInfo):
         """Convert stereo/multi-channel to mono."""
+        bytes_per_sample = max(1, info.bit_depth // 8) if info.bit_depth != 8 else 1
+        frame_size = bytes_per_sample * max(1, info.channels)
+        if frame_size == 0:
+            raise ValueError("Invalid audio format")
+
+        frames = info.data_size // frame_size
+        new_data_size = frames * bytes_per_sample
+
         with open(input_path, 'rb') as src, open_secure(output_path, 'wb') as dst:
-            # Read and modify header
-            header = bytearray(src.read(44))
+            self._copy_patched_header(src, dst, info, new_data_size, channels=1)
 
-            # Update channels to 1
-            struct.pack_into('<H', header, 22, 1)
+            to_consume = frames * frame_size
+            carry = b''
 
-            # Update byte rate and block align
-            byte_rate = info.sample_rate * (info.bit_depth // 8)
-            block_align = info.bit_depth // 8
-            struct.pack_into('<I', header, 28, byte_rate)
-            struct.pack_into('<H', header, 32, block_align)
-
-            # Update data chunk size
-            original_data_size = struct.unpack('<I', header[40:44])[0]
-            new_data_size = original_data_size // info.channels
-            struct.pack_into('<I', header, 40, new_data_size)
-
-            # Update file size
-            file_size = struct.unpack('<I', header[4:8])[0]
-            new_file_size = file_size - original_data_size + new_data_size
-            struct.pack_into('<I', header, 4, new_file_size)
-
-            dst.write(header)
-
-            bytes_per_sample = max(1, info.bit_depth // 8) if info.bit_depth != 8 else 1
-            frame_size = bytes_per_sample * max(1, info.channels)
-
-            if frame_size == 0:
-                raise ValueError("Invalid audio format")
-
-            while True:
-                chunk = src.read(CHUNK_SIZE)
-                if not chunk:
+            while to_consume > 0:
+                data = src.read(min(CHUNK_SIZE, to_consume))
+                if not data:
                     break
+                to_consume -= len(data)
+                chunk = carry + data
 
                 available = (len(chunk) // frame_size) * frame_size
+                carry = chunk[available:]
                 if available == 0:
                     continue
 
@@ -996,10 +1146,10 @@ class WAVProcessor:
                 if mono_chunk:
                     dst.write(mono_chunk)
 
-                if available < len(chunk):
-                    dst.write(chunk[available:])
-
                 del mv
+
+            if new_data_size % 2:
+                dst.write(b'\x00')  # RIFF pad byte
 
     def _find_audio_boundaries(self, file_path: str, info: AudioInfo, threshold: float) -> Tuple[int, int]:
         """Find start and end of audio content above threshold."""
@@ -1008,7 +1158,8 @@ class WAVProcessor:
 
         try:
             with open(file_path, 'rb') as f:
-                f.seek(44)  # Skip header
+                f.seek(info.data_offset)
+                remaining = info.data_size
 
                 bytes_per_sample = max(1, info.bit_depth // 8) if info.bit_depth != 8 else 1
                 frame_size = bytes_per_sample * max(1, info.channels)
@@ -1016,15 +1167,19 @@ class WAVProcessor:
                 found_start = False
                 last_audio_sample = 0
 
-                if frame_size == 0:
+                if frame_size == 0 or remaining <= 0:
                     return 0, 0
 
-                while True:
-                    chunk = f.read(CHUNK_SIZE)
-                    if not chunk:
+                carry = b''
+                while remaining > 0:
+                    data = f.read(min(CHUNK_SIZE, remaining))
+                    if not data:
                         break
+                    remaining -= len(data)
+                    chunk = carry + data
 
                     available = (len(chunk) // frame_size) * frame_size
+                    carry = chunk[available:]
                     if available == 0:
                         continue
 
@@ -1061,40 +1216,30 @@ class WAVProcessor:
 
     def _extract_audio_range(self, input_path: str, output_path: str, info: AudioInfo, start_sample: int, end_sample: int):
         """Extract specific sample range from audio file."""
+        bytes_per_sample = max(1, info.bit_depth // 8)
+        frame_size = bytes_per_sample * max(1, info.channels)
+        sample_count = end_sample - start_sample
+
+        start_byte = start_sample * frame_size
+        # Never read past the actual data payload, whatever the caller asked.
+        new_data_size = min(sample_count * frame_size,
+                            max(0, info.data_size - start_byte))
+
         with open(input_path, 'rb') as src, open_secure(output_path, 'wb') as dst:
-            # Read and modify header
-            header = bytearray(src.read(44))
+            self._copy_patched_header(src, dst, info, new_data_size)
 
-            bytes_per_sample = info.bit_depth // 8
-            sample_count = end_sample - start_sample
-            new_data_size = sample_count * info.channels * bytes_per_sample
-            new_duration = sample_count / info.sample_rate
+            src.seek(info.data_offset + start_byte)
 
-            original_data_size = struct.unpack('<I', header[40:44])[0]
-
-            # Update data chunk size
-            struct.pack_into('<I', header, 40, new_data_size)
-
-            # Update file size
-            file_size = struct.unpack('<I', header[4:8])[0]
-            new_file_size = file_size - original_data_size + new_data_size
-            struct.pack_into('<I', header, 4, new_file_size)
-
-            dst.write(header)
-
-            # Seek to start position
-            start_byte = start_sample * info.channels * bytes_per_sample
-            src.seek(44 + start_byte)
-
-            # Copy audio data
             bytes_to_copy = new_data_size
             while bytes_to_copy > 0:
-                chunk_size = min(CHUNK_SIZE, bytes_to_copy)
-                chunk = src.read(chunk_size)
+                chunk = src.read(min(CHUNK_SIZE, bytes_to_copy))
                 if not chunk:
                     break
                 dst.write(chunk)
                 bytes_to_copy -= len(chunk)
+
+            if new_data_size % 2:
+                dst.write(b'\x00')  # RIFF pad byte
 
 class RecoveryManager:
     """Automatic recovery handler for essential operations."""
@@ -1349,7 +1494,7 @@ class StateRecoveryManager:
         return None
 
     def record_state(self, summary: Dict[str, Any]) -> Optional[Path]:
-        timestamp = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%S%fZ")
+        timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
         target_path = self.state_dir / f"batch_state_{timestamp}.json"
         payload = {
             "timestamp": timestamp,
@@ -1439,6 +1584,7 @@ class BatchProcessor:
 
         self.recovery.reset_metrics()
         wav_files: List[Path] = []
+        inspector = DeepFileInspector() if HAS_DEEP_INSPECTOR else None
 
         pattern = "**/*.wav" if recursive else "*.wav"
         for candidate in path.glob(pattern):
@@ -1448,6 +1594,23 @@ class BatchProcessor:
                         continue
                 except OSError:
                     continue
+
+                # Deep format inspection, mirroring main.py's _filter_safe_files:
+                # reject a .wav-named file whose bytes are not actually a WAV
+                # container. Gate only on is_valid (the magic number);
+                # suspicious byte patterns are logged, not rejected, since a
+                # WAV's PCM payload can legitimately contain them.
+                if inspector is not None:
+                    inspection = inspector.validate_for_processing(candidate)
+                    if not inspection.is_valid:
+                        logger.warning(
+                            "Skipping file failing format inspection: %s (%s)",
+                            candidate, "; ".join(inspection.errors),
+                        )
+                        continue
+                    for note in inspection.warnings:
+                        logger.info("Inspection note for %s: %s", candidate, note)
+
                 wav_files.append(candidate)
                 if isinstance(max_files, int) and max_files > 0 and len(wav_files) >= max_files:
                     break
@@ -1621,6 +1784,8 @@ class BatchProcessor:
 
         self.processor.perf.record_operation("batch_process", duration_ms)
 
+        return results
+
     async def process_directory_async(self, directory: str, operation: str, **kwargs) -> List[ProcessingResult]:
         """Asynchronously process all WAV files in directory with concurrency control."""
         # Use asyncio.gather for concurrent processing with semaphore for resource control
@@ -1643,9 +1808,21 @@ class BatchProcessor:
             return [ProcessingResult(False, f"Unsupported operation: {operation}")]
 
         wav_files: List[Path] = []
+        inspector = DeepFileInspector() if HAS_DEEP_INSPECTOR else None
         pattern = "**/*.wav" if kwargs.get("recursive", True) else "*.wav"
         for candidate in path.glob(pattern):
             if candidate.is_file() and candidate.suffix.lower() in SUPPORTED_FORMATS:
+                if inspector is not None:
+                    inspection = inspector.validate_for_processing(candidate)
+                    if not inspection.is_valid:
+                        logger.warning(
+                            "Skipping file failing format inspection: %s (%s)",
+                            candidate, "; ".join(inspection.errors),
+                        )
+                        continue
+                    for note in inspection.warnings:
+                        logger.info("Inspection note for %s: %s", candidate, note)
+
                 wav_files.append(candidate)
                 if isinstance(kwargs.get("max_files"), int) and kwargs.get("max_files") > 0 and len(wav_files) >= kwargs["max_files"]:
                     break
@@ -1731,127 +1908,6 @@ class BatchProcessor:
         else:
             error_detail = error_type
         return f"Error processing {file_path.name}: {error_detail}"
-
-class AIMusicAnalyzer:
-    """AI-powered music analysis using modern machine learning techniques."""
-
-    def __init__(self):
-        self.model_cache = {}
-        self.feature_extractors = {
-            'spectral': self._extract_spectral_features,
-            'temporal': self._extract_temporal_features,
-            'harmonic': self._extract_harmonic_features
-        }
-
-    def analyze_music_style(self, file_path: str) -> Dict[str, Any]:
-        """Analyze music style using AI techniques."""
-        try:
-            # Extract features
-            features = self._extract_comprehensive_features(file_path)
-
-            # Simple rule-based style classification (in production, use ML models)
-            style_scores = self._classify_style(features)
-
-            return {
-                'predicted_style': max(style_scores, key=style_scores.get),
-                'confidence_scores': style_scores,
-                'features': features,
-                'analysis_method': 'rule_based_ml'
-            }
-        except Exception as e:
-            return {'error': str(e), 'analysis_method': 'failed'}
-
-    def _extract_comprehensive_features(self, file_path: str) -> Dict[str, Any]:
-        """Extract comprehensive audio features for AI analysis."""
-        features = {}
-
-        # Spectral features
-        features.update(self._extract_spectral_features(file_path))
-
-        # Temporal features
-        features.update(self._extract_temporal_features(file_path))
-
-        # Harmonic features
-        features.update(self._extract_harmonic_features(file_path))
-
-        return features
-
-    def _extract_spectral_features(self, file_path: str) -> Dict[str, float]:
-        """Extract spectral features using FFT and spectral analysis."""
-        # Simplified implementation - in production use libraries like librosa
-        return {
-            'spectral_centroid_mean': 1000.0,  # Placeholder
-            'spectral_rolloff_mean': 2000.0,   # Placeholder
-            'spectral_bandwidth_mean': 1500.0, # Placeholder
-            'zero_crossing_rate_mean': 0.1    # Placeholder
-        }
-
-    def _extract_temporal_features(self, file_path: str) -> Dict[str, float]:
-        """Extract temporal features like rhythm and tempo."""
-        return {
-            'tempo_bpm': 120.0,  # Placeholder - use beat detection algorithms
-            'rhythm_complexity': 0.5,  # Placeholder
-            'attack_time_mean': 0.01   # Placeholder
-        }
-
-    def _extract_harmonic_features(self, file_path: str) -> Dict[str, float]:
-        """Extract harmonic features like key and chord progressions."""
-        return {
-            'key_confidence': 0.8,  # Placeholder
-            'chord_progression_complexity': 0.6,  # Placeholder
-            'harmonic_richness': 0.7   # Placeholder
-        }
-
-    def _classify_style(self, features: Dict[str, Any]) -> Dict[str, float]:
-        """Classify music style based on extracted features."""
-        # Simplified rule-based classification - in production use trained ML models
-        styles = {
-            'classical': 0.1,
-            'jazz': 0.2,
-            'rock': 0.3,
-            'electronic': 0.4,
-            'pop': 0.5
-        }
-
-        # Adjust scores based on features (simplified logic)
-        if features.get('spectral_centroid_mean', 0) > 1500:
-            styles['electronic'] += 0.2
-        if features.get('tempo_bpm', 0) > 140:
-            styles['rock'] += 0.2
-
-        # Normalize scores
-        total = sum(styles.values())
-        if total > 0:
-            styles = {k: v/total for k, v in styles.items()}
-
-        return styles
-
-    def suggest_music_generation(self, style: str, mood: str = "neutral") -> Dict[str, Any]:
-        """Suggest parameters for AI music generation based on analysis."""
-        generation_params = {
-            'style': style,
-            'mood': mood,
-            'tempo_range': (100, 140),
-            'key_signature': 'C_major',
-            'instruments': ['piano', 'strings'],
-            'structure': 'verse_chorus_verse'
-        }
-
-        # Adjust based on style
-        if style == 'electronic':
-            generation_params.update({
-                'tempo_range': (120, 150),
-                'instruments': ['synth', 'drums', 'bass'],
-                'effects': ['reverb', 'delay']
-            })
-        elif style == 'classical':
-            generation_params.update({
-                'tempo_range': (60, 120),
-                'instruments': ['piano', 'violin', 'cello'],
-                'structure': 'sonata_form'
-            })
-
-        return generation_params
 
 class EnhancedSecurityValidator:
     """Enhanced security validation with modern best practices."""
@@ -2010,12 +2066,21 @@ class EnhancedSecurityValidator:
 # ---------------------------------------------------------------------------
 _processor = WAVProcessor()
 _batch_processor = BatchProcessor()
-_ai_analyzer = AIMusicAnalyzer()
 
 
 def analyze(input_path: str) -> ProcessingResult:
     """Analyze a WAV file - main API."""
     return _processor.analyze(input_path)
+
+
+def get_samples_for_analysis(input_path: str, max_samples: int = 65536,
+                              separate_channels: bool = False) -> ProcessingResult:
+    """Extract a bounded, signed waveform for spectral/analysis tooling - main API.
+
+    separate_channels=True returns per-channel waveforms (no mono downmix) --
+    see AudioProcessor.get_samples_for_analysis for details.
+    """
+    return _processor.get_samples_for_analysis(input_path, max_samples, separate_channels)
 
 
 def normalize(input_path: str, output_path: str, target_peak: float = 0.95) -> ProcessingResult:
@@ -2051,14 +2116,6 @@ async def trim_silence_async(input_path: str, output_path: str, threshold: float
 async def batch_process_async(directory: str, operation: str, **kwargs) -> List[ProcessingResult]:
     """Asynchronously process directory - main API."""
     return await _batch_processor.process_directory_async(directory, operation, **kwargs)
-
-def analyze_music_style(file_path: str) -> Dict[str, Any]:
-    """Analyze music style using AI - main API."""
-    return _ai_analyzer.analyze_music_style(file_path)
-
-def suggest_music_generation(style: str, mood: str = "neutral") -> Dict[str, Any]:
-    """Suggest AI music generation parameters - main API."""
-    return _ai_analyzer.suggest_music_generation(style, mood)
 
 
 def record_operation(operation: str, duration_ms: int) -> None:
@@ -2155,8 +2212,6 @@ class ParallelBatchProcessor:
 
         async def process_single_file(file_path: Path) -> ProcessingResult:
             async with semaphore:
-                loop = asyncio.get_event_loop()
-
                 # 処理タイプに基づいて適切な関数を選択
                 if operation == "analyze":
                     return await self.processor.analyze_async(str(file_path))
@@ -2195,17 +2250,17 @@ class ParallelBatchProcessor:
             return await self.process_directory_async(directory, operation, **kwargs)
 
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # 既にループが実行中の場合、新しいループを作成
-                new_loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(new_loop)
-                try:
-                    return new_loop.run_until_complete(run_async())
-                finally:
-                    new_loop.close()
-            else:
-                return loop.run_until_complete(run_async())
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                # 通常経路: 実行中のループが無い同期呼び出し
+                return asyncio.run(run_async())
+            # 既にループが実行中の場合、新しいループを作成
+            new_loop = asyncio.new_event_loop()
+            try:
+                return new_loop.run_until_complete(run_async())
+            finally:
+                new_loop.close()
         except Exception as e:
             logger.error(f"ディレクトリ並列処理エラー: {e}")
             return []
@@ -2224,7 +2279,7 @@ class StructuredLogger:
         class StructuredFormatter(logging.Formatter):
             def format(self, record):
                 log_entry = {
-                    "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                    "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
                     "level": record.levelname,
                     "logger": record.name,
                     "message": record.getMessage(),
@@ -2269,7 +2324,7 @@ class StructuredLogger:
         """セキュリティイベントをログ記録"""
         log_entry = {
             "event_type": event_type,
-            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
             "details": details
         }
         self.logger.warning(f"Security event: {event_type}", extra=log_entry)
@@ -2284,404 +2339,6 @@ class StructuredLogger:
 
 
 
-class SpectralFeatureExtractor:
-    """スペクトル特徴抽出器"""
-
-    def extract_features(self, audio_path: str) -> Dict[str, Any]:
-        """スペクトル特徴を抽出"""
-        try:
-            if HAS_LIBROSA:
-                y, sr = librosa.load(audio_path, sr=22050, duration=30)
-
-                features = {
-                    "spectral_centroid": float(np.mean(librosa.feature.spectral_centroid(y=y, sr=sr))),
-                    "spectral_rolloff": float(np.mean(librosa.feature.spectral_rolloff(y=y, sr=sr))),
-                    "spectral_bandwidth": float(np.mean(librosa.feature.spectral_bandwidth(y=y, sr=sr))),
-                    "spectral_contrast": librosa.feature.spectral_contrast(y=y, sr=sr).mean(axis=1).tolist(),
-                    "spectral_flatness": float(np.mean(librosa.feature.spectral_flatness(y=y))),
-                    "chroma_features": librosa.feature.chroma_stft(y=y, sr=sr).mean(axis=1).tolist()
-                }
-
-                return features
-            else:
-                return {}
-
-        except Exception as e:
-            logging.error(f"スペクトル特徴抽出エラー: {e}")
-            return {}
-
-class TemporalFeatureExtractor:
-    """時間的特徴抽出器"""
-
-    def extract_features(self, audio_path: str) -> Dict[str, Any]:
-        """時間的特徴を抽出"""
-        try:
-            if HAS_LIBROSA:
-                y, sr = librosa.load(audio_path, sr=22050, duration=30)
-
-                features = {
-                    "tempo": float(librosa.beat.tempo(y=y, sr=sr)[0]),
-                    "beat_strength": float(np.mean(librosa.beat.beat_track(y=y, sr=sr)[1])),
-                    "zero_crossing_rate": float(np.mean(librosa.feature.zero_crossing_rate(y))),
-                    "rms_energy": float(np.mean(librosa.feature.rms(y=y))),
-                    "temporal_centroid": float(np.mean(librosa.feature.tempogram(y=y, sr=sr)))
-                }
-
-                return features
-            else:
-                return {}
-
-        except Exception as e:
-            logging.error(f"時間的特徴抽出エラー: {e}")
-            return {}
-
-class HarmonicFeatureExtractor:
-    """調和的特徴抽出器"""
-
-    def extract_features(self, audio_path: str) -> Dict[str, Any]:
-        """調和的特徴を抽出"""
-        try:
-            if HAS_LIBROSA:
-                y, sr = librosa.load(audio_path, sr=22050, duration=30)
-
-                features = {
-                    "chroma_cens": librosa.feature.chroma_cens(y=y, sr=sr).mean(axis=1).tolist(),
-                    "tonnetz": librosa.feature.tonnetz(y=y, sr=sr).mean(axis=1).tolist(),
-                    "key_detection": librosa.feature.chroma_cqt(y=y, sr=sr).mean(axis=1).tolist()
-                }
-
-                return features
-            else:
-                return {}
-
-        except Exception as e:
-            logging.error(f"調和的特徴抽出エラー: {e}")
-            return {}
-
-class RhythmicFeatureExtractor:
-    """リズム特徴抽出器"""
-
-    def extract_features(self, audio_path: str) -> Dict[str, Any]:
-        """リズム特徴を抽出"""
-        try:
-            if HAS_LIBROSA:
-                y, sr = librosa.load(audio_path, sr=22050, duration=30)
-
-                # オンビート検出
-                onset_env = librosa.onset.onset_strength(y=y, sr=sr)
-                onset_frames = librosa.onset.onset_detect(onset_envelope=onset_env, sr=sr)
-
-                features = {
-                    "onset_strength": float(np.mean(onset_env)),
-                    "onset_rate": len(onset_frames) / (len(y) / sr),
-                    "tempogram": librosa.feature.tempogram(y=y, sr=sr).mean(axis=1).tolist()
-                }
-
-                return features
-            else:
-                return {}
-
-        except Exception as e:
-            logging.error(f"リズム特徴抽出エラー: {e}")
-            return {}
-
-class EmotionalFeatureExtractor:
-    """感情特徴抽出器"""
-
-    def extract_features(self, audio_path: str) -> Dict[str, Any]:
-        """感情特徴を抽出"""
-        try:
-            if HAS_LIBROSA:
-                y, sr = librosa.load(audio_path, sr=22050, duration=30)
-
-                features = {
-                    "valence": float(np.random.uniform(0, 1)),  # 簡易版
-                    "arousal": float(np.random.uniform(0, 1)),  # 簡易版
-                    "energy": float(np.mean(librosa.feature.rms(y=y))),
-                    "mood_vector": [0.5, 0.5, 0.5, 0.5]  # 簡易版
-                }
-
-                return features
-            else:
-                return {}
-
-        except Exception as e:
-            logging.error(f"感情特徴抽出エラー: {e}")
-            return {}
-
-class StylisticFeatureExtractor:
-    """スタイル特徴抽出器"""
-
-    def extract_features(self, audio_path: str) -> Dict[str, Any]:
-        """スタイル特徴を抽出"""
-        try:
-            if HAS_LIBROSA:
-                y, sr = librosa.load(audio_path, sr=22050, duration=30)
-
-                features = {
-                    "brightness": float(np.mean(librosa.feature.spectral_centroid(y=y, sr=sr))),
-                    "roughness": float(np.std(librosa.feature.spectral_rolloff(y=y, sr=sr))),
-                    "warmth": float(np.mean(librosa.feature.chroma_stft(y=y, sr=sr))),
-                    "depth": float(np.mean(librosa.feature.spectral_flatness(y=y)))
-                }
-
-                return features
-            else:
-                return {}
-
-        except Exception as e:
-            logging.error(f"スタイル特徴抽出エラー: {e}")
-            return {}
-
-# グローバル高度な機械学習アナライザーインスタンス
-
-
-class AudioFormatSupport:
-    """拡張オーディオフォーマットサポート - MP3, FLAC, OGGなどのフォーマット対応"""
-
-    def __init__(self):
-        self.supported_formats = {
-            '.wav': self._process_wav,
-            '.wave': self._process_wav,
-            '.mp3': self._process_mp3,
-            '.flac': self._process_flac,
-            '.ogg': self._process_ogg,
-            '.m4a': self._process_m4a,
-            '.aac': self._process_aac,
-            '.wma': self._process_wma
-        }
-        self._check_dependencies()
-
-    def _check_dependencies(self):
-        """必要なライブラリがインストールされているかチェック"""
-        try:
-            import pydub
-            self.pydub_available = True
-        except ImportError:
-            self.pydub_available = False
-            logger.warning("pydubがインストールされていません。一部のフォーマットが制限されます")
-
-        try:
-            import librosa
-            self.librosa_available = True
-        except ImportError:
-            self.librosa_available = False
-            logger.warning("librosaがインストールされていません。高度な分析機能が制限されます")
-
-    def detect_format(self, file_path: str) -> Optional[str]:
-        """ファイル形式を検出"""
-        try:
-            path = Path(file_path)
-            extension = path.suffix.lower()
-
-            if extension in self.supported_formats:
-                return extension
-            else:
-                # ファイルヘッダーから形式を検出
-                with open(file_path, 'rb') as f:
-                    header = f.read(12)
-
-                if header.startswith(b'RIFF') and b'WAVE' in header:
-                    return '.wav'
-                elif header.startswith(b'ID3') or header[0:3] == b'\xFF\xFB' or header[0:3] == b'\xFF\xF3':
-                    return '.mp3'
-                elif header.startswith(b'fLaC'):
-                    return '.flac'
-                elif header.startswith(b'OggS'):
-                    return '.ogg'
-                else:
-                    return None
-
-        except Exception:
-            return None
-
-    def convert_to_wav(self, input_path: str, output_path: str = None) -> Optional[str]:
-        """任意の形式をWAVに変換"""
-        if not self.pydub_available:
-            logger.error("pydubが利用できません。フォーマット変換ができません")
-            return None
-
-        try:
-            import pydub
-
-            input_format = self.detect_format(input_path)
-            if not input_format:
-                logger.error(f"サポートされていない形式: {input_path}")
-                return None
-
-            # pydubでオーディオをロード
-            audio = pydub.AudioSegment.from_file(input_path, format=input_format[1:])  # 拡張子から.を除去
-
-            if output_path is None:
-                output_path = str(Path(input_path).with_suffix('.wav'))
-
-            # WAVとしてエクスポート
-            audio.export(output_path, format='wav')
-
-            logger.info(f"フォーマット変換完了: {input_path} -> {output_path}")
-            return output_path
-
-        except Exception as e:
-            logger.error(f"フォーマット変換エラー: {e}")
-            return None
-
-    def get_audio_info(self, file_path: str) -> Optional[AudioInfo]:
-        """拡張形式のオーディオ情報を取得"""
-        try:
-            format_detected = self.detect_format(file_path)
-
-            if format_detected in ['.wav', '.wave']:
-                # WAV形式は既存の処理で対応
-                processor = WAVProcessor()
-                return processor._read_wav_header_optimized(file_path)
-            elif self.librosa_available:
-                # librosaで他の形式を処理
-                return self._get_audio_info_librosa(file_path)
-            else:
-                # pydubで基本情報を取得
-                return self._get_audio_info_pydub(file_path)
-
-        except Exception as e:
-            logger.error(f"オーディオ情報取得エラー: {e}")
-            return None
-
-    def _get_audio_info_librosa(self, file_path: str) -> Optional[AudioInfo]:
-        """librosaでオーディオ情報を取得"""
-        try:
-            import librosa
-
-            # オーディオをロード（最初の30秒のみ）
-            y, sr = librosa.load(file_path, sr=None, duration=30)
-
-            if len(y) == 0:
-                return None
-
-            duration = len(y) / sr
-            channels = 1 if y.ndim == 1 else y.shape[0]
-            bit_depth = 16  # librosaは通常16ビットで読み込む
-
-            return AudioInfo(
-                duration=duration,
-                sample_rate=sr,
-                channels=channels,
-                bit_depth=bit_depth,
-                size_bytes=os.path.getsize(file_path)
-            )
-
-        except Exception:
-            return None
-
-    def _get_audio_info_pydub(self, file_path: str) -> Optional[AudioInfo]:
-        """pydubでオーディオ情報を取得"""
-        try:
-            import pydub
-
-            audio = pydub.AudioSegment.from_file(file_path)
-
-            return AudioInfo(
-                duration=len(audio) / 1000.0,  # pydubはミリ秒
-                sample_rate=audio.frame_rate,
-                channels=audio.channels,
-                bit_depth=16,  # デフォルト
-                size_bytes=os.path.getsize(file_path)
-            )
-
-        except Exception:
-            return None
-
-    def process_audio_file(self, input_path: str, operation: str, **kwargs) -> ProcessingResult:
-        """拡張形式のオーディオファイルを処理"""
-        try:
-            # 形式を検出
-            format_detected = self.detect_format(input_path)
-
-            if not format_detected:
-                return ProcessingResult(False, f"サポートされていない形式: {input_path}")
-
-            # サポートされている形式かチェック
-            if format_detected not in self.supported_formats:
-                return ProcessingResult(False, f"未対応の形式: {format_detected}")
-
-            # WAV形式の場合、既存の処理を使用
-            if format_detected in ['.wav', '.wave']:
-                processor = WAVProcessor()
-                if operation == "analyze":
-                    return processor.analyze(input_path)
-                elif operation == "normalize":
-                    output_path = kwargs.get('output_path', str(Path(input_path).with_suffix('.normalized.wav')))
-                    return processor.normalize(input_path, output_path, kwargs.get('target_peak', 0.95))
-                elif operation == "mono":
-                    output_path = kwargs.get('output_path', str(Path(input_path).with_suffix('.mono.wav')))
-                    return processor.convert_to_mono(input_path, output_path)
-                elif operation == "trim":
-                    output_path = kwargs.get('output_path', str(Path(input_path).with_suffix('.trimmed.wav')))
-                    return processor.trim_silence(input_path, output_path, kwargs.get('threshold', 0.01))
-
-            # 他の形式の場合、WAVに変換してから処理
-            temp_wav_path = self.convert_to_wav(input_path)
-            if not temp_wav_path:
-                return ProcessingResult(False, "フォーマット変換に失敗しました")
-
-            # 変換されたWAVファイルを処理
-            processor = WAVProcessor()
-            result = processor.analyze(temp_wav_path)
-
-            # 一時ファイルを削除
-            os.remove(temp_wav_path)
-
-            return result
-
-        except Exception as e:
-            return ProcessingResult(False, f"処理エラー: {str(e)}")
-
-    def batch_process_directory(self, directory: str, operation: str, output_format: str = "wav", **kwargs) -> List[ProcessingResult]:
-        """ディレクトリ内の拡張形式ファイルをバッチ処理"""
-        try:
-            directory_path = Path(directory)
-            if not directory_path.exists() or not directory_path.is_dir():
-                return [ProcessingResult(False, "無効なディレクトリ")]
-
-            results = []
-
-            # サポートされている形式のファイルを検索
-            supported_extensions = list(self.supported_formats.keys())
-
-            for ext in supported_extensions:
-                for audio_file in directory_path.rglob(f"*{ext}"):
-                    if audio_file.is_file():
-                        result = self.process_audio_file(str(audio_file), operation, **kwargs)
-                        results.append(result)
-
-            return results
-
-        except Exception as e:
-            return [ProcessingResult(False, f"バッチ処理エラー: {str(e)}")]
-
-    def _process_mp3(self, file_path: str) -> Optional[AudioInfo]:
-        """MP3ファイルの処理"""
-        return self._get_audio_info_librosa(file_path) if self.librosa_available else self._get_audio_info_pydub(file_path)
-
-    def _process_flac(self, file_path: str) -> Optional[AudioInfo]:
-        """FLACファイルの処理"""
-        return self._get_audio_info_librosa(file_path) if self.librosa_available else self._get_audio_info_pydub(file_path)
-
-    def _process_ogg(self, file_path: str) -> Optional[AudioInfo]:
-        """OGGファイルの処理"""
-        return self._get_audio_info_librosa(file_path) if self.librosa_available else self._get_audio_info_pydub(file_path)
-
-    def _process_m4a(self, file_path: str) -> Optional[AudioInfo]:
-        """M4Aファイルの処理"""
-        return self._get_audio_info_librosa(file_path) if self.librosa_available else self._get_audio_info_pydub(file_path)
-
-    def _process_aac(self, file_path: str) -> Optional[AudioInfo]:
-        """AACファイルの処理"""
-        return self._get_audio_info_librosa(file_path) if self.librosa_available else self._get_audio_info_pydub(file_path)
-
-    def _process_wma(self, file_path: str) -> Optional[AudioInfo]:
-        """WMAファイルの処理"""
-        return self._get_audio_info_pydub(file_path)  # WMAはpydubでのみ対応
-
-
 class RealtimeAudioProcessor:
     """リアルタイム音楽処理システム - WebSocketベースのストリーミング処理"""
 
@@ -2693,7 +2350,7 @@ class RealtimeAudioProcessor:
         self.port = port
         self.logger = logging.getLogger(__name__)
         self.processor = WAVProcessor()
-        self.ai_analyzer = _ai_analyzer
+        self.ai_analyzer = None  # AI music analysis (fake placeholder-value analyzer) was removed in cleanup
         self.ai_generator = None  # AI music generation was removed in cleanup
 
         # 接続管理

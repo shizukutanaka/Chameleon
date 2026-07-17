@@ -1,120 +1,93 @@
-# Chameleon Audio Tool - Enterprise Production Docker Image
-# Multi-stage build for optimal security and performance
+# Chameleon Audio Tool — container image
+# Multi-stage build. Ships the CLI (main.py) and, when the [api] extra is
+# installed, the REST API server (api_server.py, via `main.py server`).
 
 # Build stage
 FROM python:3.11-slim AS builder
 
-# Set build metadata
 ARG BUILD_DATE
-ARG VERSION=2.0.0
+ARG VERSION=1.0.0
 ARG GIT_COMMIT
 
-LABEL org.opencontainers.image.title="Chameleon Audio Tool - Enterprise Edition"
-LABEL org.opencontainers.image.description="National-level audio processing with military-grade security"
+LABEL org.opencontainers.image.title="Chameleon Audio Tool"
+LABEL org.opencontainers.image.description="Stdlib-only WAV processing CLI with an optional REST API"
 LABEL org.opencontainers.image.version="${VERSION}"
 LABEL org.opencontainers.image.created="${BUILD_DATE}"
+LABEL org.opencontainers.image.revision="${GIT_COMMIT}"
 LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.source="https://github.com/shizukutanaka/Chameleon"
 
-# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc g++ libc6-dev make pkg-config git curl \
+    gcc g++ libc6-dev make pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+COPY pyproject.toml setup.py ./
+COPY main.py core.py security_validator.py advanced_validation.py \
+     plugin_system.py midi_analysis.py api_server.py batch_automation.py \
+     spectral_editor.py spectral_utils.py audio_restoration.py \
+     mastering_chain.py performance_optimizer.py ux_improvements.py \
+     bs1770_loudness.py personal_config.py ./
+COPY README.md ./
 
-# Copy and install application
-COPY . .
-RUN pip install --no-cache-dir -e .
+# [audio] unlocks noise reduction/format conversion/--master/streaming;
+# [api] unlocks `main.py server`. Both are optional at the pip level (the
+# default `pip install -e .` stays stdlib-only per CHARTER §3) but bundled
+# here since a container image is meant to be self-contained.
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -e ".[audio,api]"
 
 # Production stage
 FROM python:3.11-slim AS production
 
-# Install runtime dependencies
 RUN apt-get update && apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
     ca-certificates curl tini gosu tzdata && \
     rm -rf /var/lib/apt/lists/* && apt-get clean
 
-# Create application user
 RUN groupadd -r -g 1000 chameleon && \
     useradd -r -u 1000 -g chameleon -d /app -s /bin/bash chameleon
 
-# Copy Python environment and application
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder --chown=chameleon:chameleon /app /app
 
 WORKDIR /app
 
-# Create directories and set permissions
-RUN mkdir -p /app/{data,logs,config,backups,temp} && \
+RUN mkdir -p /app/data /app/logs && \
     chown -R chameleon:chameleon /app
 
-# Environment configuration
 ENV PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    CHAMELEON_ENV=production \
-    CHAMELEON_SECURITY_ENABLED=true \
-    CHAMELEON_PARALLEL_PROCESSING=true
+    CHAMELEON_PORT=8000
 
-# Create production configuration
-RUN cat > /app/config/production.yaml << 'EOF'
-version: "2.0.0"
-environment: "production"
-security:
-  enable_authentication: true
-  enable_encryption: true
-  enable_audit_logging: true
-performance:
-  enable_parallel_processing: true
-  enable_simd: true
-  max_concurrent_operations: 50
-network:
-  bind_address: "0.0.0.0"
-  port: 8080
-EOF
+# Real, code-read configuration only (see README.md's "Environment Variables"
+# section) — no fictional config file baked in here. Set at `docker run` time:
+#   CHAMELEON_TRUSTED_ROOTS, CHAMELEON_MAX_FILE_SIZE, CHAMELEON_MAX_WORKERS,
+#   CHAMELEON_API_KEY, CHAMELEON_ALLOWED_ORIGINS, CHAMELEON_ALLOWED_HOSTS
 
-# Create entrypoint script
 RUN cat > /app/docker-entrypoint.sh << 'EOF'
 #!/bin/bash
 set -e
 
-echo "🎵 Chameleon Audio Tool - Enterprise Edition v2.0.0"
-echo "🔒 National-level deployment ready"
-
-# Switch to chameleon user if running as root
+# Switch to the unprivileged user if started as root.
 if [ "$(id -u)" = "0" ]; then
     exec gosu chameleon "$0" "$@"
 fi
 
-# Health checks
-python3 -c "
-import sys
-sys.path.insert(0, '/app')
-try:
-    from chameleon_enhanced import EnhancedChameleon
-    from enterprise_config import EnterpriseConfiguration
-    config = EnterpriseConfiguration()
-    app = EnhancedChameleon(config)
-    print('✅ System initialization: OK')
-except Exception as e:
-    print(f'❌ Initialization failed: {e}')
-    sys.exit(1)
-"
+python3 -c "import main, core" || {
+    echo "Startup check failed: main.py/core.py did not import cleanly" >&2
+    exit 1
+}
 
-# Start application
 case "$1" in
     "server"|"")
-        echo "🚀 Starting server mode on port ${CHAMELEON_PORT:-8080}"
-        exec python3 chameleon_enhanced.py server --host 0.0.0.0 --port ${CHAMELEON_PORT:-8080}
+        exec python3 main.py server --host 0.0.0.0 --port "${CHAMELEON_PORT:-8000}"
         ;;
     "cli")
         shift
-        exec python3 chameleon_enhanced.py "$@"
+        exec python3 main.py "$@"
         ;;
     "shell")
         exec /bin/bash
@@ -127,23 +100,23 @@ EOF
 
 RUN chmod +x /app/docker-entrypoint.sh
 
-# Health check script
 RUN cat > /app/health-check.sh << 'EOF'
 #!/bin/bash
-curl -f -s "http://localhost:${CHAMELEON_PORT:-8080}/health" > /dev/null || exit 1
-echo "Health check passed"
+curl -f -s "http://localhost:${CHAMELEON_PORT:-8000}/health" > /dev/null || exit 1
 EOF
 
 RUN chmod +x /app/health-check.sh
 
-# Expose ports
-EXPOSE 8080 9090
+# Real port only — 9090 (a "metrics" port) had no corresponding endpoint
+# anywhere in api_server.py.
+EXPOSE 8000
 
-# Set volumes for persistent data
-VOLUME ["/app/data", "/app/logs", "/app/config", "/app/backups"]
+VOLUME ["/app/data", "/app/logs"]
 
-# Health check configuration
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+# Only meaningful for the default "server" CMD; a container run with `cli`
+# or `shell` will report unhealthy since nothing serves /health — that's
+# expected, not a bug, for those modes.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD /app/health-check.sh
 
 USER chameleon

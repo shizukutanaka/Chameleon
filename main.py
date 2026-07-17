@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
 Chameleon Audio Processing System - Main Entry Point
-Advanced audio processing with real-time capabilities and ML features
+CLI for WAV analysis, normalization, batch processing, MIDI extraction, and
+loudness metering, with optional real-time streaming and a mastering chain
+when the [audio] extra is installed. No ML/AI features (see CHARTER.md §4).
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ import asyncio
 import math
 import re
 import multiprocessing as mp
+from enum import IntEnum
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple, Union, TYPE_CHECKING
 from dataclasses import dataclass, asdict
@@ -25,6 +28,7 @@ import logging
 import warnings
 from logging.handlers import RotatingFileHandler
 
+import core
 from core import open_secure, SecurityValidator
 from plugin_system import PluginManager, PluginConfig, PluginLoader, SecurityError
 
@@ -32,6 +36,32 @@ if TYPE_CHECKING:
     import numpy as np
 else:
     np = None
+
+
+class ExitCode(IntEnum):
+    """Process exit codes for the CLI.
+
+    A small, conventional table (not the full BSD ``sysexits.h``) so that
+    scripts wrapping this tool can distinguish *why* a run failed without us
+    taking on a large contract. ``IntEnum`` members are plain ints, so they can
+    be returned or passed to ``sys.exit`` directly.
+
+      0  OK           success
+      1  ERROR        a processing step failed, or an unexpected error
+      2  USAGE        the command line was wrong / incomplete (argparse also
+                      uses 2 for its own parse errors)
+      3  INPUT        a supplied path failed pre-flight input validation
+      4  SECURITY     a path or file was rejected by the security policy
+      130 INTERRUPTED interrupted by the user (Ctrl-C); 128 + SIGINT, per the
+                      shell convention
+    """
+
+    OK = 0
+    ERROR = 1
+    USAGE = 2
+    INPUT = 3
+    SECURITY = 4
+    INTERRUPTED = 130
 
 
 _CONTROL_CHAR_PATTERN = re.compile(r"[\x00-\x1f\x7f]")
@@ -141,7 +171,15 @@ except ImportError:
     HAS_NUMPY = False
     if not TYPE_CHECKING:
         np = None
-    warnings.warn("NumPy not installed. Some features will be limited.")
+
+# Missing optional dependencies are the NORMAL state of the honest,
+# stdlib-only default install (CHARTER §3) — so record them at debug level
+# instead of spamming UserWarnings on every invocation. Features that
+# actually need a backend raise a clear, actionable error at the point of
+# use (e.g. "requires numpy. Install it with: pip install -e .[audio]").
+_optional_dep_logger = logging.getLogger("chameleon.optional_deps")
+if not HAS_NUMPY:
+    _optional_dep_logger.debug("NumPy not installed. Some features will be limited.")
 
 try:
     import scipy.signal as signal
@@ -149,21 +187,21 @@ try:
     HAS_SCIPY = True
 except ImportError:
     HAS_SCIPY = False
-    warnings.warn("SciPy not installed. Advanced processing features disabled.")
+    _optional_dep_logger.debug("SciPy not installed. Advanced processing features disabled.")
 
 try:
     import librosa
     HAS_LIBROSA = True
 except ImportError:
     HAS_LIBROSA = False
-    warnings.warn("Librosa not installed. ML features will be limited.")
+    _optional_dep_logger.debug("Librosa not installed. ML features will be limited.")
 
 try:
     import soundfile as sf
     HAS_SOUNDFILE = True
 except ImportError:
     HAS_SOUNDFILE = False
-    warnings.warn("SoundFile not installed. Audio I/O features limited.")
+    _optional_dep_logger.debug("SoundFile not installed. Audio I/O features limited.")
 
 # Import MIDI analysis module
 try:
@@ -171,21 +209,90 @@ try:
     HAS_MIDI = True
 except ImportError:
     HAS_MIDI = False
-    warnings.warn("MIDI analysis module not available.")
+    _optional_dep_logger.debug("MIDI analysis module not available.")
 
 try:
     import pyaudio
     HAS_PYAUDIO = True
 except ImportError:
     HAS_PYAUDIO = False
-    warnings.warn("PyAudio not installed. Real-time audio disabled.")
+    _optional_dep_logger.debug("PyAudio not installed. Real-time audio disabled.")
+
+# Deep file inspection (stdlib-only). Used to validate that a file claiming a
+# .wav extension is actually a WAV container before it enters the batch
+# pipeline. Guarded like the other optional imports so a trimmed checkout still
+# degrades gracefully (CHARTER.md §6.2) — the batch filter simply skips the
+# extra format check when it is unavailable.
+try:
+    from advanced_validation import DeepFileInspector
+    HAS_DEEP_INSPECTOR = True
+except ImportError:
+    HAS_DEEP_INSPECTOR = False
+
+# Terminal UX helpers (stdlib-only). Guarded for the same reason as the other
+# optional imports even though this one has no non-stdlib dependency — a
+# trimmed checkout should still run the CLI without progress bars/colour.
+try:
+    from ux_improvements import ProgressBar, ErrorFormatter, ColorText
+    HAS_UX_IMPROVEMENTS = True
+except ImportError:
+    HAS_UX_IMPROVEMENTS = False
+
+# Deterministic spectral analysis (stdlib-only; uses numpy.fft when available,
+# a pure-Python DFT fallback otherwise). Guarded like the other optional
+# imports so a trimmed checkout still runs the CLI without --spectrum.
+try:
+    import spectral_utils
+    HAS_SPECTRAL_UTILS = True
+except ImportError:
+    HAS_SPECTRAL_UTILS = False
+
+# Full mastering chain (EQ/compressor/limiter/loudness). Requires numpy —
+# mastering_chain.py imports it unconditionally, so this import simply fails
+# under the stdlib-only default install, same as HAS_LIBROSA/HAS_SOUNDFILE
+# above; scipy is optional *within* mastering_chain.py itself (it degrades
+# each processor individually when scipy is absent).
+try:
+    import mastering_chain
+    from mastering_chain import MasteringChain, create_mastering_preset
+    HAS_MASTERING_CHAIN = True
+except ImportError:
+    HAS_MASTERING_CHAIN = False
+
+# Pure-Python, standard-library-only ITU-R BS.1770 K-weighting + gated
+# integrated loudness. mastering_chain.LoudnessMeter now reuses the same
+# coefficients (via scipy.signal.lfilter) when scipy is available, falling
+# back to a rough RMS approximation otherwise; this module has no
+# third-party dependency at all. Guarded like the other optional imports so
+# a trimmed checkout still runs the CLI without --loudness.
+try:
+    import bs1770_loudness
+    HAS_BS1770_LOUDNESS = True
+except ImportError:
+    HAS_BS1770_LOUDNESS = False
 
 # Core constants
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 MAX_FILE_SIZE = 500 * 1024 * 1024  # Align with core constraints (500MB)
 CHUNK_SIZE = 8192
 DEFAULT_SAMPLE_RATE = 44100
+# Sample bound for `analyze --loudness`: large enough to be a meaningful
+# integrated-loudness window, small enough to keep memory/time predictable
+# for a pure-Python filter + block loop regardless of file length (same
+# bounded-analysis principle as core.get_samples_for_analysis's own default).
+LOUDNESS_MAX_SAMPLES = 15 * 48000
+# WAV is always supported through the standard-library loader. Extra formats are
+# advertised only when a backend that can actually decode them is installed, so the
+# default dependency-free install stays honestly WAV-only (see CHARTER.md §3) while the
+# `[audio]` extra turns mp3/flac/ogg into a real, working input path instead of a gate
+# that rejects them at load time even though load_audio (below) is wired for them.
 SUPPORTED_FORMATS = {'.wav', '.wave'}
+if HAS_LIBROSA or HAS_SOUNDFILE:
+    # soundfile/libsndfile and librosa both decode these natively.
+    SUPPORTED_FORMATS |= {'.flac', '.ogg', '.oga', '.aiff', '.aif'}
+if HAS_LIBROSA:
+    # librosa reaches mp3/m4a via audioread/ffmpeg; soundfile alone may not.
+    SUPPORTED_FORMATS |= {'.mp3', '.m4a'}
 
 @dataclass
 class AudioMetadata:
@@ -246,7 +353,9 @@ class ProcessingConfig:
         return config
 
 class AudioProcessor:
-    """Advanced audio processor with ML and real-time capabilities"""
+    """Audio processor: analysis, normalization, batch processing, and
+    (optionally, via the [audio] extra) real-time streaming and a mastering
+    chain. No ML/AI features (see CHARTER.md §4)."""
 
     def __init__(self, config: Optional[ProcessingConfig] = None):
         self.config = config or ProcessingConfig()
@@ -338,7 +447,16 @@ class AudioProcessor:
             if riff[:4] != b'RIFF' or riff[8:12] != b'WAVE':
                 raise ValueError("Not a valid WAV file")
 
-            # Find fmt chunk
+            # PCM subformat GUIDs for WAVE_FORMAT_EXTENSIBLE.
+            pcm_guid = (b'\x01\x00\x00\x00\x00\x00\x10\x00'
+                        b'\x80\x00\x00\xaa\x00\x38\x9b\x71')
+            float_guid = (b'\x03\x00\x00\x00\x00\x00\x10\x00'
+                          b'\x80\x00\x00\xaa\x00\x38\x9b\x71')
+
+            audio_format = None
+
+            # Walk the chunk list (fmt may be 16/18/40 bytes; LIST/JUNK/fact
+            # chunks may precede data; odd-sized chunks carry a pad byte).
             while True:
                 chunk_header = f.read(8)
                 if len(chunk_header) != 8:
@@ -351,29 +469,57 @@ class AudioProcessor:
                     fmt_data = f.read(chunk_size)
                     audio_format, channels, sample_rate, byte_rate, block_align, bits_per_sample = \
                         struct.unpack('<HHIIHH', fmt_data[:16])
+                    if audio_format == 0xFFFE:
+                        if len(fmt_data) < 40:
+                            raise ValueError("Truncated WAVE_FORMAT_EXTENSIBLE fmt chunk")
+                        guid = fmt_data[24:40]
+                        if guid == pcm_guid:
+                            audio_format = 1
+                        elif guid == float_guid:
+                            audio_format = 3
+                        else:
+                            raise ValueError("Unsupported WAV subformat")
 
                 elif chunk_id == b'data':
-                    # Read audio data
+                    if audio_format is None:
+                        raise ValueError("WAV data chunk before fmt chunk")
                     audio_bytes = f.read(chunk_size)
 
-                    # Convert to numpy array
-                    if bits_per_sample == 16:
-                        audio = np.frombuffer(audio_bytes, dtype=np.int16)
-                    elif bits_per_sample == 32:
-                        audio = np.frombuffer(audio_bytes, dtype=np.int32)
-                    else:
+                    # Decode by (format tag, bit depth) — anything else is an
+                    # explicit error rather than silent misdecoding.
+                    if audio_format == 1 and bits_per_sample == 8:
                         audio = np.frombuffer(audio_bytes, dtype=np.uint8)
+                        audio = (audio.astype(np.float32) - 128.0) / 128.0
+                    elif audio_format == 1 and bits_per_sample == 16:
+                        audio = np.frombuffer(audio_bytes, dtype=np.int16)
+                        audio = audio.astype(np.float32) / 32768.0
+                    elif audio_format == 1 and bits_per_sample == 24:
+                        raw = np.frombuffer(audio_bytes[:len(audio_bytes) // 3 * 3],
+                                            dtype=np.uint8).reshape(-1, 3).astype(np.int32)
+                        values = raw[:, 0] | (raw[:, 1] << 8) | (raw[:, 2] << 16)
+                        values = np.where(values >= 1 << 23, values - (1 << 24), values)
+                        audio = values.astype(np.float32) / float(1 << 23)
+                    elif audio_format == 1 and bits_per_sample == 32:
+                        audio = np.frombuffer(audio_bytes, dtype=np.int32)
+                        audio = audio.astype(np.float32) / 2147483648.0
+                    elif audio_format == 3 and bits_per_sample == 32:
+                        audio = np.frombuffer(audio_bytes, dtype=np.float32).copy()
+                    else:
+                        raise ValueError(
+                            f"Unsupported WAV format: tag={audio_format}, "
+                            f"bits={bits_per_sample}")
 
-                    # Normalize to float32
-                    audio = audio.astype(np.float32) / (2**(bits_per_sample-1))
-
-                    # Reshape for channels
+                    # Reshape for channels (drop a trailing partial frame).
                     if channels > 1:
-                        audio = audio.reshape(-1, channels).T
+                        usable = (len(audio) // channels) * channels
+                        audio = audio[:usable].reshape(-1, channels).T
 
                     return audio, sample_rate
                 else:
                     f.seek(chunk_size, 1)
+
+                if chunk_size % 2 == 1:
+                    f.seek(1, 1)  # RIFF pad byte after odd-sized chunks
 
         raise ValueError("Could not parse WAV file")
 
@@ -515,15 +661,20 @@ class AudioProcessor:
         if not HAS_SCIPY:
             return audio
 
-        # Convert to frequency domain
-        stft = signal.stft(audio, fs=sr, nperseg=2048)[2]
+        # Convert to frequency domain. scipy's default hop is nperseg // 2,
+        # so with nperseg=2048 each STFT column advances by 1024 samples.
+        nperseg = 2048
+        hop = nperseg // 2  # scipy default noverlap = nperseg // 2
+        stft = signal.stft(audio, fs=sr, nperseg=nperseg)[2]
         magnitude = np.abs(stft)
         phase = np.angle(stft)
 
         # Estimate noise profile if not provided
         if noise_profile is None:
-            # Use first 0.5 seconds as noise profile
-            noise_frames = int(0.5 * sr / 512)
+            # Use the first ~0.5 seconds as the noise profile. Frame count must
+            # be derived from the actual hop (1024), not 512, or the window is
+            # ~2x too long.
+            noise_frames = max(1, int(0.5 * sr / hop))
             noise_profile = np.median(magnitude[:, :noise_frames], axis=1, keepdims=True)
 
         # Spectral subtraction
@@ -627,8 +778,14 @@ class AudioProcessor:
 
         return converted, new_sr, bit_depth
 
-    async def process_stream(self, input_callback, output_callback, effects: Optional[Dict] = None):
-        """Process audio stream in real-time"""
+    async def process_stream(self, input_device: Optional[int] = None,
+                             output_device: Optional[int] = None,
+                             effects: Optional[Dict] = None):
+        """Process audio stream in real-time.
+
+        *input_device*/*output_device* are PyAudio device indices; ``None``
+        uses PyAudio's default device for that direction.
+        """
         if not HAS_PYAUDIO:
             raise RuntimeError("PyAudio not installed. Cannot process streams.")
 
@@ -658,6 +815,8 @@ class AudioProcessor:
             rate=self.config.sample_rate,
             input=True,
             output=True,
+            input_device_index=input_device,
+            output_device_index=output_device,
             stream_callback=stream_callback
         )
 
@@ -807,8 +966,14 @@ class AudioProcessor:
             self.logger.error(f"Melody composition failed: {e}")
             return []
 
-    def batch_process(self, files: List[str], operation: str, **kwargs) -> List[Dict]:
-        """Process multiple files with secure validation and optional threading."""
+    def batch_process(self, files: List[str], operation: str, *,
+                      show_progress: bool = False, **kwargs) -> List[Dict]:
+        """Process multiple files with secure validation and optional threading.
+
+        *show_progress* renders a live terminal progress bar (opt-in; the CLI
+        enables it only when stdout is a real terminal, so captured/piped
+        output and tests stay unaffected).
+        """
 
         results: List[Dict] = []
         safe_files = self._filter_safe_files(files)
@@ -818,6 +983,10 @@ class AudioProcessor:
 
         if not safe_files:
             return [{"error": "No valid audio files to process."}]
+
+        progress = None
+        if show_progress and HAS_UX_IMPROVEMENTS:
+            progress = ProgressBar(total=len(safe_files), description=operation)
 
         use_parallel = self.config.parallel and len(safe_files) > 1
 
@@ -841,6 +1010,8 @@ class AudioProcessor:
                     except Exception as exc:
                         self.logger.error(f"Failed to process {file_path}: {exc}")
                         results.append({"error": str(exc), "file": file_path})
+                    if progress is not None:
+                        progress.update()
         else:
             for file_path in safe_files:
                 try:
@@ -855,15 +1026,22 @@ class AudioProcessor:
                 except Exception as exc:
                     self.logger.error(f"Failed to process {file_path}: {exc}")
                     results.append({"error": str(exc), "file": file_path})
+                if progress is not None:
+                    progress.update()
+
+        if progress is not None:
+            progress.finish()
 
         return results
 
     def _filter_safe_files(self, files: List[str]) -> List[str]:
         safe: List[str] = []
+        inspector = DeepFileInspector() if HAS_DEEP_INSPECTOR else None
         for original in files:
             file_path = os.fspath(original)
+            suffix = Path(file_path).suffix.lower()
 
-            if Path(file_path).suffix.lower() not in SUPPORTED_FORMATS:
+            if suffix not in SUPPORTED_FORMATS:
                 self.logger.warning(f"Skipping unsupported file type: {file_path}")
                 continue
 
@@ -879,6 +1057,24 @@ class AudioProcessor:
                 self.logger.warning(f"Skipping file outside size limits: {file_path}")
                 continue
 
+            # Deep format inspection for native WAV files: reject anything whose
+            # bytes are not actually a WAV container (e.g. an executable renamed
+            # to .wav). Only gate on is_valid (the magic number); suspicious
+            # byte patterns are logged but never rejected, because a WAV's PCM
+            # payload can legitimately contain them. Skipped for mp3/flac/etc.,
+            # which the inspector does not understand (those rely on the
+            # `[audio]` backend instead).
+            if inspector is not None and suffix in {'.wav', '.wave'}:
+                result = inspector.validate_for_processing(Path(file_path))
+                if not result.is_valid:
+                    self.logger.warning(
+                        f"Skipping file failing format inspection: {file_path} "
+                        f"({'; '.join(result.errors)})"
+                    )
+                    continue
+                for note in result.warnings:
+                    self.logger.info(f"Inspection note for {file_path}: {note}")
+
             safe.append(file_path)
 
         return safe
@@ -886,6 +1082,19 @@ class AudioProcessor:
     def _process_single_file(self, file_path: str, operation: str, *, dry_run: bool = False, **kwargs) -> Dict:
         """Process a single file"""
         start_time = time.time()
+
+        # Standard-library fallback: the numpy-based pipeline below cannot run
+        # without numpy. analyze/normalize are delegated to the dependency-free
+        # core so the CLI works out of the box; other operations need numpy.
+        if not HAS_NUMPY:
+            if operation in ("analyze", "normalize"):
+                return self._process_single_file_stdlib(
+                    file_path, operation, start_time, dry_run=dry_run, **kwargs
+                )
+            raise ValueError(
+                f"Operation '{operation}' requires numpy. Install it with: "
+                "pip install -e .[audio]"
+            )
 
         # Load audio
         audio, sr = self.load_audio(file_path)
@@ -973,6 +1182,41 @@ class AudioProcessor:
                 "dry_run": False
             }
 
+        elif operation == "master":
+            if not HAS_MASTERING_CHAIN:
+                raise ValueError(
+                    "The --master operation requires mastering_chain.py to be importable "
+                    "(needs numpy)."
+                )
+            output_path = self._resolve_output_path(
+                file_path,
+                suffix="_mastered.wav",
+                explicit_path=kwargs.get("output_path"),
+                output_dir=kwargs.get("output_dir")
+            )
+            if dry_run:
+                return {
+                    "file": file_path,
+                    "planned_output": str(output_path),
+                    "time": time.time() - start_time,
+                    "dry_run": True
+                }
+
+            preset = kwargs.get("master_preset", "default")
+            config = create_mastering_preset(preset)
+            chain = MasteringChain(config, sr)
+            processed, info = chain.process(audio)
+            self.save_audio(processed, str(output_path), sr)
+            return {
+                "file": file_path,
+                "output": str(output_path),
+                "time": time.time() - start_time,
+                "dry_run": False,
+                "lufs_before": info["input_analysis"]["lufs"],
+                "lufs_after": info["output_analysis"]["lufs"],
+                "peak_change_db": info["peak_change"],
+            }
+
         elif operation == "convert":
             target_format = kwargs.get("format", "wav") or "wav"
             target_sample_rate = kwargs.get("sample_rate")
@@ -1037,6 +1281,45 @@ class AudioProcessor:
 
         else:
             raise ValueError(f"Unknown operation: {operation}")
+
+    def _process_single_file_stdlib(self, file_path: str, operation: str, start_time: float,
+                                    *, dry_run: bool = False, **kwargs) -> Dict:
+        """analyze/normalize via the dependency-free core (numpy unavailable)."""
+        if operation == "analyze":
+            result = core.analyze(file_path)
+            if not result.success:
+                return {"file": file_path, "error": result.message,
+                        "time": time.time() - start_time, "dry_run": dry_run}
+            info = result.data
+            metadata = AudioMetadata(
+                duration=info.duration,
+                sample_rate=info.sample_rate,
+                channels=info.channels,
+                bit_depth=info.bit_depth,
+                size_bytes=info.size_bytes,
+                format="wav",
+                peak_level=info.peak_level,
+                rms_level=info.rms_level,
+            )
+            return {"file": file_path, "metadata": metadata,
+                    "time": time.time() - start_time, "dry_run": dry_run}
+
+        # operation == "normalize"
+        output_path = self._resolve_output_path(
+            file_path,
+            suffix="_normalized.wav",
+            explicit_path=kwargs.get("output_path"),
+            output_dir=kwargs.get("output_dir"),
+        )
+        if dry_run:
+            return {"file": file_path, "planned_output": str(output_path),
+                    "time": time.time() - start_time, "dry_run": True}
+        result = core.normalize(file_path, str(output_path), kwargs.get("target_peak", 0.95))
+        if not result.success:
+            return {"file": file_path, "error": result.message,
+                    "time": time.time() - start_time, "dry_run": False}
+        return {"file": file_path, "output": str(output_path),
+                "time": time.time() - start_time, "dry_run": False}
 
     def save_audio(self, audio: np.ndarray, file_path: str, sr: int, *, bit_depth: int = 16) -> int:
         """Save audio to file with multiple backend support.
@@ -1158,10 +1441,11 @@ class AudioProcessor:
 def create_cli():
     """Create comprehensive CLI interface"""
     parser = argparse.ArgumentParser(
-        description="Chameleon Audio Processing System v3.0",
+        description=f"Chameleon Audio Processing System v{VERSION}",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
+    parser.add_argument("--version", action="version", version=f"chameleon {VERSION}")
     parser.add_argument("--max-workers", type=int, help="Limit worker threads for batch operations")
     parser.add_argument("--no-parallel", action="store_true", help="Disable parallel execution even when available")
 
@@ -1172,15 +1456,28 @@ def create_cli():
     analyze.add_argument("files", nargs="+", help="Audio files to analyze")
     analyze.add_argument("--detailed", action="store_true", help="Show detailed analysis")
     analyze.add_argument("--export", help="Export analysis to JSON file")
+    analyze.add_argument("--spectrum", action="store_true",
+                         help="Also report dominant frequencies, bandwidth, and RMS "
+                              "via deterministic spectral analysis (stdlib-only)")
+    analyze.add_argument("--loudness", action="store_true",
+                         help="Also report integrated loudness (LUFS) via a pure "
+                              "Python ITU-R BS.1770 K-weighted gated meter (stdlib-only). "
+                              "Sums per-channel energy correctly (mono/stereo), but omits "
+                              "surround-channel weighting and true-peak, and is bounded to "
+                              "a prefix of the file -- not a certified full-track measurement.")
 
     # Process command
     process = subparsers.add_parser("process", help="Process audio files")
     process.add_argument("files", nargs="+", help="Audio files to process")
     process.add_argument("--normalize", action="store_true", help="Normalize audio")
+    process.add_argument("--target-peak", type=float,
+                         help="Target peak level for --normalize, 0.0-1.0 (default 0.95)")
     process.add_argument("--denoise", action="store_true", help="Remove noise")
+    process.add_argument("--master", choices=["default", "streaming", "cd", "vinyl"],
+                         help="Apply a full mastering chain (EQ/compressor/limiter/loudness); "
+                              "requires numpy, scipy recommended for the full chain")
     process.add_argument("--effects", help="Apply effects (JSON file)")
     process.add_argument("--output-dir", help="Output directory")
-    process.add_argument("--parallel", action="store_true", help="Process in parallel")
     process.add_argument("--convert", action="store_true", help="Convert audio format or resolution")
     process.add_argument("--convert-format", help="Target format (currently only wav supported)")
     process.add_argument("--convert-sample-rate", type=int, help="Target sample rate for conversion")
@@ -1190,27 +1487,31 @@ def create_cli():
 
     # Stream command
     stream = subparsers.add_parser("stream", help="Real-time audio processing")
-    stream.add_argument("--input-device", help="Input device index")
-    stream.add_argument("--output-device", help="Output device index")
+    stream.add_argument("--input-device", type=int, help="Input device index")
+    stream.add_argument("--output-device", type=int, help="Output device index")
     stream.add_argument("--effects", help="Effects configuration (JSON)")
-    stream.add_argument("--monitor", action="store_true", help="Show real-time meters")
 
     # Batch command
     batch = subparsers.add_parser("batch", help="Batch processing")
     batch.add_argument("directory", help="Directory to process")
-    batch.add_argument("operation", choices=["analyze", "normalize", "denoise", "convert"])
+    batch.add_argument("operation", choices=["analyze", "normalize", "denoise", "convert", "effects"])
     batch.add_argument("--recursive", action="store_true", help="Process recursively")
     batch.add_argument("--output-dir", help="Output directory")
     batch.add_argument("--format", help="Output format")
     batch.add_argument("--quality", choices=["low", "medium", "high", "lossless"], default="high")
+    batch.add_argument("--target-peak", type=float,
+                       help="Target peak level for the normalize operation, 0.0-1.0 (default 0.95)")
     batch.add_argument("--sample-rate", type=int, help="Target sample rate for conversion")
     batch.add_argument("--bit-depth", type=int, choices=[16, 24, 32], help="Target bit depth for conversion")
+    batch.add_argument("--effects", help="Effects configuration for the effects operation (JSON file)")
 
-    # ML command
-    ml = subparsers.add_parser("ml", help="Machine learning features")
-    ml.add_argument("operation", choices=["classify", "separate", "transcribe", "enhance"])
+    # ML command — only 'enhance' is implemented; classify/separate/transcribe
+    # require trained models or external tools that are explicitly out of scope
+    # per CHARTER §4 (non-goals: AI transcription, source separation, ML features).
+    ml = subparsers.add_parser("ml", help="Audio enhancement (numpy/scipy required)")
+    ml.add_argument("operation", choices=["enhance"],
+                    help="enhance: apply noise reduction + normalization")
     ml.add_argument("--input", required=True, help="Input audio file")
-    ml.add_argument("--model", help="Model to use")
     ml.add_argument("--output", help="Output file/directory")
 
     # MIDI command
@@ -1254,9 +1555,9 @@ async def main():
 
     if not args.command:
         parser.print_help()
-        return 1
+        return ExitCode.USAGE
 
-    exit_code = 0
+    exit_code = ExitCode.OK
 
     # Create processor
     config = ProcessingConfig.from_environment()
@@ -1273,8 +1574,8 @@ async def main():
             files = [_sanitize_cli_input(path, "files") for path in args.files]
             _assert_unique_paths(files, "file input")
         except ValueError as exc:
-            print(f"Input validation error: {exc}")
-            return 1
+            print(f"Input validation error: {exc}", file=sys.stderr)
+            return ExitCode.INPUT
 
         results = processor.batch_process(files, "analyze")
 
@@ -1282,7 +1583,7 @@ async def main():
         for result in results:
             if "error" in result:
                 had_error = True
-                print(f"Error processing {result['file']}: {result['error']}")
+                print(f"Error processing {result['file']}: {result['error']}", file=sys.stderr)
             else:
                 metadata = result["metadata"]
                 print(f"\n{result['file']}:")
@@ -1300,13 +1601,65 @@ async def main():
                     if metadata.spectral_centroid:
                         print(f"  Spectral Centroid: {metadata.spectral_centroid:.1f}Hz")
 
+                if args.spectrum:
+                    if not HAS_SPECTRAL_UTILS:
+                        print("  Spectrum: unavailable (spectral_utils not importable)")
+                    else:
+                        samples_result = core.get_samples_for_analysis(result['file'])
+                        if not samples_result.success:
+                            print(f"  Spectrum: {samples_result.message}")
+                        else:
+                            report = spectral_utils.analyze_spectrum(
+                                samples_result.data["samples"],
+                                samples_result.data["sample_rate"],
+                            )
+                            print(f"  Spectrum RMS: {report.rms_level:.3f}")
+                            print(f"  Spectrum Bandwidth: {report.bandwidth[0]:.1f}-{report.bandwidth[1]:.1f}Hz")
+                            peaks = ", ".join(
+                                f"{peak.frequency_hz:.1f}Hz" for peak in report.dominant_peaks
+                            )
+                            print(f"  Dominant Frequencies: {peaks or 'none detected'}")
+
+                if args.loudness:
+                    if not HAS_BS1770_LOUDNESS:
+                        print("  Loudness: unavailable (bs1770_loudness not importable)")
+                    else:
+                        # separate_channels=True + measure_integrated_loudness_multichannel
+                        # sums per-channel energy per BS.1770 instead of averaging
+                        # samples to mono before filtering, which under-reads real
+                        # stereo content by 3-6 LU (see bs1770_loudness.py). This is
+                        # exact for mono too (a single-channel list), so it's used
+                        # unconditionally rather than branching on channel count.
+                        samples_result = core.get_samples_for_analysis(
+                            result['file'], max_samples=LOUDNESS_MAX_SAMPLES,
+                            separate_channels=True,
+                        )
+                        if not samples_result.success:
+                            print(f"  Loudness: {samples_result.message}")
+                        else:
+                            try:
+                                lufs = bs1770_loudness.measure_integrated_loudness_multichannel(
+                                    samples_result.data["channels"],
+                                    samples_result.data["sample_rate"],
+                                )
+                            except ValueError as exc:
+                                print(f"  Loudness: unsupported ({exc})")
+                            else:
+                                if not math.isfinite(lufs):
+                                    print("  Loudness: below measurement gate (silent or too short)")
+                                else:
+                                    metadata.loudness_lufs = lufs
+                                    print(f"  Loudness: {lufs:.1f} LUFS (integrated, "
+                                          f"ITU-R BS.1770 K-weighting, no surround weighting, first "
+                                          f"{LOUDNESS_MAX_SAMPLES / samples_result.data['sample_rate']:.0f}s max)")
+
         if args.export:
             with open(args.export, 'w') as f:
                 json.dump(results, f, indent=2, default=str)
             print(f"\nAnalysis exported to {args.export}")
 
         if had_error:
-            exit_code = 1
+            exit_code = ExitCode.ERROR
 
     elif args.command == "process":
         operations: List[str] = []
@@ -1316,8 +1669,8 @@ async def main():
             effects_path = _sanitize_optional_input(args.effects, "effects")
             _assert_unique_paths(files, "file input")
         except ValueError as exc:
-            print(f"Input validation error: {exc}")
-            return 1
+            print(f"Input validation error: {exc}", file=sys.stderr)
+            return ExitCode.INPUT
 
         kwargs: Dict[str, Any] = {
             "output_dir": output_dir,
@@ -1326,8 +1679,13 @@ async def main():
 
         if args.normalize:
             operations.append("normalize")
+            if args.target_peak is not None:
+                kwargs["target_peak"] = args.target_peak
         if args.denoise:
             operations.append("denoise")
+        if args.master:
+            operations.append("master")
+            kwargs["master_preset"] = args.master
         if effects_path:
             with open(effects_path) as f:
                 effects = json.load(f)
@@ -1341,8 +1699,8 @@ async def main():
             kwargs["bit_depth"] = args.convert_bit_depth or 16
 
         if not operations:
-            print("Error: specify at least one processing option (e.g., --normalize, --denoise, --effects, or --convert).")
-            return 1
+            print("Error: specify at least one processing option (e.g., --normalize, --denoise, --effects, or --convert).", file=sys.stderr)
+            return ExitCode.USAGE
 
         if args.no_parallel:
             processor.config.parallel = False
@@ -1355,7 +1713,7 @@ async def main():
             for result in results:
                 if "error" in result:
                     had_error = True
-                    print(f"Error: {result['error']}")
+                    print(f"Error: {result['error']}", file=sys.stderr)
                     continue
 
                 converted_details = []
@@ -1364,6 +1722,15 @@ async def main():
                         converted_details.append(f"{result['sample_rate']}Hz")
                     if "bit_depth" in result:
                         converted_details.append(f"{result['bit_depth']}bit")
+                if operation == "master" and "lufs_after" in result:
+                    # LoudnessMeter is real ITU-R BS.1770-4 when scipy + bs1770_loudness
+                    # are both available (the common case); otherwise it falls back to a
+                    # rough RMS-based approximation. Label honestly either way, rather
+                    # than a blanket "(approx)" that understates the common case.
+                    is_bs1770 = HAS_MASTERING_CHAIN and mastering_chain.HAS_SCIPY and mastering_chain.HAS_BS1770
+                    label = "LUFS" if is_bs1770 else "LUFS (approx)"
+                    converted_details.append(f"{result['lufs_after']:.1f} {label}")
+                    converted_details.append(f"{result['peak_change_db']:+.1f}dB peak")
                 if result.get("dry_run"):
                     converted_details.append("dry-run")
                 detail_suffix = f" [{', '.join(converted_details)}]" if converted_details else ""
@@ -1378,16 +1745,16 @@ async def main():
                     print(f"Processed {result['file']} -> {output_path} ({result['time']:.2f}s){detail_suffix}")
 
             if had_error:
-                exit_code = 1
+                exit_code = ExitCode.ERROR
 
     elif args.command == "stream":
+        input_device = args.input_device
+        output_device = args.output_device
         try:
-            input_device = _sanitize_optional_input(args.input_device, "input_device")
-            output_device = _sanitize_optional_input(args.output_device, "output_device")
             effects_path = _sanitize_optional_input(args.effects, "effects")
         except ValueError as exc:
-            print(f"Input validation error: {exc}")
-            return 1
+            print(f"Input validation error: {exc}", file=sys.stderr)
+            return ExitCode.INPUT
 
         if effects_path:
             with open(effects_path) as f:
@@ -1401,9 +1768,10 @@ async def main():
             await processor.process_stream(input_device, output_device, effects)
         except KeyboardInterrupt:
             print("\nStream stopped")
+            exit_code = ExitCode.INTERRUPTED
         except Exception as exc:
-            print(f"Stream failed: {exc}")
-            exit_code = 1
+            print(f"Stream failed: {exc}", file=sys.stderr)
+            exit_code = ExitCode.ERROR
 
     elif args.command == "plugins":
         try:
@@ -1414,8 +1782,8 @@ async def main():
 
             manager, sanitized_dirs = _initialize_plugin_manager(directories)
         except ValueError as exc:
-            print(f"Plugin directory error: {exc}")
-            return 1
+            print(f"Plugin directory error: {exc}", file=sys.stderr)
+            return ExitCode.INPUT
 
         if args.plugins_command == "list":
             plugins = manager.list_plugins()
@@ -1493,7 +1861,7 @@ async def main():
                         print(f"      Error: {error}")
 
             if any(not record["passed"] for record in audit_results) or had_failure:
-                exit_code = 1
+                exit_code = ExitCode.SECURITY
 
     elif args.command == "batch":
         try:
@@ -1501,17 +1869,18 @@ async def main():
             directory = Path(directory_arg)
             output_dir = _sanitize_optional_input(args.output_dir, "output_dir")
             format_arg = _sanitize_optional_input(args.format, "format")
+            effects_path = _sanitize_optional_input(args.effects, "effects")
         except ValueError as exc:
-            print(f"Input validation error: {exc}")
-            return 1
+            print(f"Input validation error: {exc}", file=sys.stderr)
+            return ExitCode.INPUT
 
         if not directory.exists():
-            print(f"Error: directory not found: {directory}")
-            return 1
+            print(f"Error: directory not found: {directory}", file=sys.stderr)
+            return ExitCode.INPUT
 
         if not directory.is_dir():
-            print(f"Error: specified path is not a directory: {directory}")
-            return 1
+            print(f"Error: specified path is not a directory: {directory}", file=sys.stderr)
+            return ExitCode.INPUT
 
         pattern = "**/*" if args.recursive else "*"
 
@@ -1520,14 +1889,14 @@ async def main():
             gathered_files.extend(directory.glob(f"{pattern}{ext}"))
 
         if not gathered_files:
-            print("Warning: no supported audio files found.")
-            return 1
+            print("Warning: no supported audio files found.", file=sys.stderr)
+            return ExitCode.INPUT
 
         try:
             resolved_files = SecurityValidator.resolve_unique_paths([str(f) for f in gathered_files])
         except ValueError as exc:
-            print(f"Input validation error: {exc}")
-            return 1
+            print(f"Input validation error: {exc}", file=sys.stderr)
+            return ExitCode.INPUT
 
         file_list = [str(path) for path in resolved_files]
         print(f"Found {len(file_list)} audio files")
@@ -1535,7 +1904,6 @@ async def main():
         kwargs: Dict[str, Any] = {
             "output_dir": output_dir,
             "format": format_arg,
-            "quality": args.quality
         }
 
         if args.operation == "convert":
@@ -1543,45 +1911,43 @@ async def main():
             kwargs["sample_rate"] = args.sample_rate
             kwargs["bit_depth"] = args.bit_depth or 16
 
+        if args.operation == "normalize" and args.target_peak is not None:
+            kwargs["target_peak"] = args.target_peak
+
+        if args.operation == "effects":
+            if not effects_path:
+                print("Error: --effects <file> is required for the effects operation", file=sys.stderr)
+                return ExitCode.USAGE
+            with open(effects_path) as f:
+                kwargs["effects"] = json.load(f)
+
         if args.no_parallel:
             processor.config.parallel = False
+        if args.quality:
+            processor.config.quality = args.quality
         processor.update_worker_limits()
 
-        results = processor.batch_process(file_list, args.operation, **kwargs)
+        results = processor.batch_process(
+            file_list, args.operation, show_progress=sys.stdout.isatty(), **kwargs
+        )
 
         successful = sum(1 for r in results if "error" not in r)
-        print(f"\nProcessed {successful}/{len(results)} files successfully")
+        summary = f"Processed {successful}/{len(results)} files successfully"
+        if HAS_UX_IMPROVEMENTS:
+            summary = ColorText.success(summary) if successful == len(results) else ColorText.error(summary)
+        print(f"\n{summary}")
 
         if successful != len(results):
-            exit_code = 1
+            exit_code = ExitCode.ERROR
 
     elif args.command == "ml":
-        print(f"ML operation '{args.operation}' on {args.input}")
-
-        # Load audio
+        # Only 'enhance' is a real operation; classify/separate/transcribe were removed
+        # because they require trained models or external services — CHARTER §4 non-goals.
         audio, sr = processor.load_audio(args.input)
 
-        if args.operation == "classify":
-            # Genre/instrument classification
-            if HAS_LIBROSA:
-                # Extract features
-                mfcc = librosa.feature.mfcc(y=librosa.to_mono(audio), sr=sr, n_mfcc=13)
-                print(f"MFCC shape: {mfcc.shape}")
-                print("Classification would require a trained model")
-            else:
-                print("Librosa required for classification")
-
-        elif args.operation == "separate":
-            print("Source separation would require specialized models (e.g., Spleeter)")
-
-        elif args.operation == "transcribe":
-            print("Transcription would require speech recognition models")
-
-        elif args.operation == "enhance":
-            # Simple enhancement
+        if args.operation == "enhance":
             enhanced = processor.remove_noise(audio, sr)
             enhanced = processor.normalize_audio(enhanced)
-
             output = args.output or args.input.replace(".wav", "_enhanced.wav")
             processor.save_audio(enhanced, output, sr)
             print(f"Enhanced audio saved to {output}")
@@ -1590,8 +1956,8 @@ async def main():
         print(f"MIDI operation '{args.operation}'")
 
         if args.operation in ["extract", "analyze"] and not args.input:
-            print("Error: --input required for extract/analyze operations")
-            return 1
+            print("Error: --input required for extract/analyze operations", file=sys.stderr)
+            return ExitCode.USAGE
 
         if args.operation == "extract":
             # Extract MIDI from audio
@@ -1673,8 +2039,8 @@ async def main():
         elif args.operation == "generate":
             # Generate MIDI file from scratch
             if not args.output:
-                print("Error: --output required for generate operation")
-                return
+                print("Error: --output required for generate operation", file=sys.stderr)
+                return ExitCode.USAGE
 
             print("🎼 Generating MIDI demo...")
 
@@ -1706,8 +2072,9 @@ async def main():
             import uvicorn  # type: ignore
         except ImportError:
             print("The API server requires fastapi and uvicorn. "
-                  "Install them with: pip install -r api_requirements.txt")
-            exit_code = 1
+                  "Install them with: pip install -e .[api]",
+                  file=sys.stderr)
+            exit_code = ExitCode.ERROR
         else:
             uvicorn.run(
                 "api_server:app",
@@ -1721,7 +2088,11 @@ async def main():
 
 def cli() -> int:
     """Synchronous console-script entry point (wraps the async ``main``)."""
-    return asyncio.run(main())
+    try:
+        return asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nInterrupted", file=sys.stderr)
+        return ExitCode.INTERRUPTED
 
 
 if __name__ == "__main__":

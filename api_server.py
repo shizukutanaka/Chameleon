@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Chameleon Audio API Server
-Government-grade REST API with comprehensive security and documentation
+A thin, authenticated REST adapter over the stdlib WAV-processing core.
+See CHARTER.md §5 for the threat model this defends against.
 """
 
 import os
@@ -45,15 +46,65 @@ from security_validator import (
     SecureFileOperations,
 )
 
-# Import our secure modules
+# Import our secure modules (optional). When they are unavailable the API runs
+# in fallback mode, wired to the standard-library audio core below.
 try:
     from government_auth import AuthenticationService, AuthorizationService
     from secure_core import SecureAudioProcessor, SecureValidator
     from high_performance_core import get_high_performance_processor, analyze_audio_fast, normalize_audio_fast
     HAS_SECURE_MODULES = True
 except ImportError:
-    print("WARNING: Secure modules not available. API will run in fallback mode.")
+    logging.getLogger(__name__).warning(
+        "Secure modules not available. API running in fallback mode (standard-library core)."
+    )
     HAS_SECURE_MODULES = False
+
+if not HAS_SECURE_MODULES:
+    # Wire the audio endpoints to the real standard-library core so they work
+    # without the optional high-performance modules. These adapters convert the
+    # core's ProcessingResult into the dict shape the endpoints expect.
+    import core as _core
+
+    async def analyze_audio_fast(file_path) -> Dict[str, Any]:
+        """Analyze an audio file using the standard-library core."""
+        result = await _core.analyze_async(str(file_path))
+        data = result.data or {}
+        response: Dict[str, Any] = {
+            'success': result.success,
+            'processing_time': result.duration_ms / 1000.0,
+            'processing_method': 'stdlib-core',
+        }
+        if result.success:
+            response.update({
+                'duration': data.get('duration'),
+                'sample_rate': data.get('sample_rate'),
+                'channels': data.get('channels'),
+                'bit_depth': data.get('bit_depth'),
+                'peak_level': data.get('peak_level'),
+                'rms_level': data.get('rms_level'),
+                'file_size': data.get('size_bytes'),
+            })
+        else:
+            response['error'] = result.message
+        return response
+
+    async def normalize_audio_fast(input_path, output_path, target_peak: float = 0.95) -> Dict[str, Any]:
+        """Normalize an audio file using the standard-library core."""
+        result = await _core.normalize_async(str(input_path), str(output_path), target_peak)
+        data = result.data or {}
+        response: Dict[str, Any] = {
+            'success': result.success,
+            'processing_time': result.duration_ms / 1000.0,
+        }
+        if result.success:
+            response.update({
+                'scale_factor': data.get('gain_applied'),
+                'original_peak': data.get('original_peak'),
+                'target_peak': data.get('target_peak', target_peak),
+            })
+        else:
+            response['error'] = result.message
+        return response
 
 # API metadata
 API_VERSION = "1.0.0"
@@ -65,7 +116,11 @@ SECURITY_CONFIG = {
     'rate_limit_window_seconds': 60,
     'rate_limit_max_requests': 120,
     'max_file_size': 100 * 1024 * 1024,  # 100MB
-    'allowed_file_types': ['.wav', '.wave', '.flac'],
+    # WAV only: analyze_audio_fast/normalize_audio_fast go through the stdlib
+    # core, which cannot parse FLAC. Accepting .flac uploads here meant every
+    # such upload would predictably fail at analyze/normalize with "Invalid
+    # WAV file format" — reject it at the upload boundary instead.
+    'allowed_file_types': ['.wav', '.wave'],
     'session_timeout': 3600,  # 1 hour
     'max_session_idle_seconds': 900,
     'max_concurrent_jobs': 10,
@@ -105,7 +160,8 @@ def _enforce_rate_limit(identifier: str) -> None:
     max_requests = SECURITY_CONFIG.get('rate_limit_max_requests', 120)
     now = time.time()
 
-    window = api_state._rate_limit_windows.setdefault(identifier, deque())
+    windows = api_state._rate_limit_windows
+    window = windows.setdefault(identifier, deque())
 
     while window and now - window[0] > window_seconds:
         window.popleft()
@@ -118,6 +174,14 @@ def _enforce_rate_limit(identifier: str) -> None:
         )
 
     window.append(now)
+
+    # Opportunistic cleanup: every identifier gets its own deque, and a
+    # one-shot caller (e.g. a scanner hitting many usernames) would otherwise
+    # leave an empty entry behind forever. Drop stale, now-empty windows for
+    # other identifiers so this dict doesn't grow unboundedly.
+    if len(windows) > max(200, max_requests):
+        for stale_id in [k for k, w in windows.items() if not w]:
+            del windows[stale_id]
 
 # API Models
 class AuthenticationRequest(BaseModel):
@@ -134,8 +198,6 @@ class AuthenticationResponse(BaseModel):
 
 class AudioAnalysisRequest(BaseModel):
     file_name: str
-    enable_simd: bool = True
-    parallel_processing: bool = True
 
 class AudioAnalysisResponse(BaseModel):
     success: bool
@@ -153,9 +215,10 @@ class AudioAnalysisResponse(BaseModel):
 class AudioNormalizationRequest(BaseModel):
     file_name: str
     target_peak: float = Field(0.95, ge=0.1, le=1.0)
-    output_format: str = Field('wav', regex=r'^(wav|flac)$')
-    enable_simd: bool = True
-    parallel_processing: bool = True
+    # WAV only: normalize_audio_fast writes through the stdlib core, which has
+    # no FLAC encoder. Previously accepted "flac" here produced a file with a
+    # .flac extension containing raw WAV bytes — an unbacked capability claim.
+    output_format: str = Field('wav', regex=r'^(wav)$')
 
 class AudioNormalizationResponse(BaseModel):
     success: bool
@@ -330,7 +393,9 @@ _AUDIT_FILES = SecureFileOperations(_AUDIT_VALIDATOR)
 
 _REQUEST_VALIDATOR = ChameleonSecurityValidator(
     ChameleonSecurityConfig(
-        allowed_extensions={'.wav', '.wave', '.flac', '.json', '.zip'},
+        # .flac dropped: the stdlib core this API adapts to cannot read or
+        # write FLAC (see SECURITY_CONFIG['allowed_file_types'] above).
+        allowed_extensions={'.wav', '.wave', '.json', '.zip'},
         log_security_events=False,
     )
 )
@@ -340,7 +405,7 @@ _UPLOAD_FILES = SecureFileOperations(_REQUEST_VALIDATOR)
 
 def _cleanup_expired_sessions() -> None:
     """Remove expired sessions from active registry."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     idle_timeout = SECURITY_CONFIG.get('max_session_idle_seconds')
     expired_ids: List[str] = []
 
@@ -539,6 +604,26 @@ def _get_authorized_file_path(file_name: str, user: dict, allow_privileged: bool
     return path
 
 
+def _validate_cors_origin(origin: str) -> str:
+    """Validate a CORS origin (scheme://host[:port]) and return it normalized.
+
+    Only http/https origins with a host and no path/query/fragment are allowed.
+    Raises ChameleonSecurityError for anything else.
+    """
+    from urllib.parse import urlparse
+
+    parsed = urlparse(origin)
+    if parsed.scheme not in ('http', 'https') or not parsed.hostname:
+        raise ChameleonSecurityError(f"Invalid origin scheme or host: {origin}")
+    if parsed.path not in ('', '/') or parsed.query or parsed.fragment:
+        raise ChameleonSecurityError(f"Origin must not contain a path or query: {origin}")
+    # Reconstruct from validated components to drop any trailing slash/credentials.
+    netloc = parsed.hostname
+    if parsed.port:
+        netloc = f"{netloc}:{parsed.port}"
+    return f"{parsed.scheme}://{netloc}"
+
+
 def _get_allowed_origins() -> list[str]:
     raw_origins = os.environ.get('CHAMELEON_ALLOWED_ORIGINS', 'https://localhost:3000').split(',')
     sanitized: List[str] = []
@@ -547,7 +632,7 @@ def _get_allowed_origins() -> list[str]:
         if not origin:
             continue
         try:
-            sanitized.append(_REQUEST_VALIDATOR.validate_url(origin, allow_localhost=True))
+            sanitized.append(_validate_cors_origin(origin))
         except ChameleonSecurityError:
             logging.warning("Invalid origin supplied: %s", origin)
             continue
@@ -587,7 +672,7 @@ else:
 # FastAPI app initialization
 app = FastAPI(
     title="Chameleon Audio API",
-    description="Government-Focused Audio Processing REST API",
+    description="Authenticated REST API over the Chameleon stdlib WAV-processing core.",
     version=API_VERSION,
     docs_url="/docs" if not SECURITY_CONFIG['require_authentication'] else None,
     redoc_url="/redoc" if not SECURITY_CONFIG['require_authentication'] else None,
@@ -710,7 +795,7 @@ def log_audit_event(user: str, operation: str, resource: str, result: str,
     """Log security audit event"""
     request_id = REQUEST_ID_CTX.get()
     entry = AuditLogEntry(
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         user=user,
         operation=operation,
         resource=resource,
@@ -836,7 +921,7 @@ async def get_current_user(request: Request, credentials: HTTPAuthorizationCrede
             detail="Invalid authentication token"
         )
 
-    if datetime.utcnow() > session_data.get('expires_at', datetime.min):
+    if datetime.now(timezone.utc) > session_data.get('expires_at', datetime.min):
         api_state.remove_session(session_id)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -853,7 +938,7 @@ async def get_current_user(request: Request, credentials: HTTPAuthorizationCrede
         )
 
     session_data['secret'] = session_secret
-    session_data['last_seen_at'] = datetime.utcnow()
+    session_data['last_seen_at'] = datetime.now(timezone.utc)
 
     return {
         'username': session_data['username'],
@@ -885,9 +970,8 @@ async def root():
         "service": "Chameleon Audio API",
         "version": API_VERSION,
         "status": "operational",
-        "classification": "RESTRICTED",
         "documentation": DOCUMENTATION_REFERENCE,
-        "security": "government_grade"
+        "authentication_required": SECURITY_CONFIG['require_authentication'],
     }
 
 
@@ -961,17 +1045,17 @@ async def login(request: AuthenticationRequest, http_request: Request):
         token = generate_secure_token()
         secret = _derive_session_secret(request.username, session_id)
         token_signature = _compute_token_signature(token, secret)
-        expires_at = datetime.utcnow() + timedelta(seconds=SECURITY_CONFIG['session_timeout'])
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=SECURITY_CONFIG['session_timeout'])
 
         session_data = {
             'username': request.username,
             'clearance_level': request.clearance_level,
             'token': token,
             'expires_at': expires_at,
-            'created_at': datetime.utcnow(),
+            'created_at': datetime.now(timezone.utc),
             'secret': secret,
             'token_signature': token_signature,
-            'last_seen_at': datetime.utcnow(),
+            'last_seen_at': datetime.now(timezone.utc),
             'client_ip': client_ip,
         }
 
@@ -994,6 +1078,8 @@ async def login(request: AuthenticationRequest, http_request: Request):
             expires_at=expires_at
         )
 
+    except HTTPException:
+        raise  # preserve 429 (rate limit) / 503 (capacity) status codes
     except Exception as e:
         logging.error(f"Login error: {e}")
         return AuthenticationResponse(
@@ -1083,9 +1169,8 @@ async def process_audio(
 ):
     """Process audio analysis"""
     try:
-        # Validate filename/URL
+        # Reject remote URLs; only previously uploaded files are processable.
         if payload.file_name.lower().startswith(('http://', 'https://')):
-            payload.file_name = _REQUEST_VALIDATOR.validate_url(payload.file_name)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Remote URLs are not supported; upload the file first."
@@ -1187,11 +1272,13 @@ async def normalize_audio(
                 error=result.get('error', 'Normalization failed')
             )
 
+    except HTTPException:
+        raise  # preserve 400 (invalid destination) / 404 / 403 status codes
     except Exception as e:
         logging.error(f"Normalization error: {e}")
         return AudioNormalizationResponse(
             success=False,
-            error=str(e)
+            error="Normalization failed"
         )
 
 @app.get("/audio/download/{file_name}")
@@ -1217,11 +1304,13 @@ async def download_file(
             media_type='application/octet-stream'
         )
 
+    except HTTPException:
+        raise  # preserve 404 (not found) / 403 (unauthorized path) status codes
     except Exception as e:
         logging.error(f"Download error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
+            detail="Download failed"
         )
 
 @app.post("/batch/submit", response_model=BatchJobResponse)
@@ -1256,7 +1345,7 @@ async def submit_batch_job(
             'progress': 0.0,
             'completed_files': 0,
             'total_files': len(payload.files),
-            'created_at': datetime.utcnow(),
+            'created_at': datetime.now(timezone.utc),
             'results': [],
             'started_at': None,
             'updated_at': None,
@@ -1286,11 +1375,13 @@ async def submit_batch_job(
             estimated_duration=len(payload.files) * 5.0  # Estimate 5 seconds per file
         )
 
+    except HTTPException:
+        raise  # preserve 404 (missing file) / 403 (unauthorized) / 503 (queue full)
     except Exception as e:
         logging.error(f"Batch job submission error: {e}")
         return BatchJobResponse(
             success=False,
-            error=str(e)
+            error="Batch job submission failed"
         )
 
 @app.get("/batch/status/{job_id}", response_model=BatchJobStatus)
@@ -1403,19 +1494,21 @@ async def process_batch_job(job_id: str):
         if api_state.circuit_breaker_open:
             job_data['status'] = 'failed'
             job_data['error'] = 'Circuit breaker open due to recent failures'
-            job_data['completed_at'] = datetime.utcnow()
+            job_data['completed_at'] = datetime.now(timezone.utc)
             api_state.stats['failed_jobs'] += 1
+            if job_id in api_state.job_queue:
+                api_state.job_queue.remove(job_id)
             _record_job_completion(job_id)
             return
 
         async with JOB_WORKER_SEMAPHORE:
             job_data['status'] = 'processing'
-            job_data['started_at'] = datetime.utcnow()
+            job_data['started_at'] = datetime.now(timezone.utc)
 
             for i, file_name in enumerate(job_data['files']):
                 file_path = _resolve_uploaded_path(file_name)
                 job_data['current_file'] = file_name
-                job_data['updated_at'] = datetime.utcnow()
+                job_data['updated_at'] = datetime.now(timezone.utc)
 
                 # Process file based on operation
                 if job_data['operation'] == 'analyze':
@@ -1458,7 +1551,7 @@ async def process_batch_job(job_id: str):
                 await asyncio.sleep(0.1)
 
             job_data['status'] = 'completed'
-            job_data['completed_at'] = datetime.utcnow()
+            job_data['completed_at'] = datetime.now(timezone.utc)
             api_state.stats['completed_jobs'] += 1
 
             # Remove from queue
@@ -1472,6 +1565,8 @@ async def process_batch_job(job_id: str):
         job_data['status'] = 'failed'
         job_data['error'] = str(e)
         api_state.stats['failed_jobs'] += 1
+        if job_id in api_state.job_queue:
+            api_state.job_queue.remove(job_id)
         _record_job_completion(job_id)
 
 # Startup event

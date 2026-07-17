@@ -1,45 +1,56 @@
 # Chameleon Audio Processing System
 
-Production-grade audio processing system for professional and enterprise use.
+A WAV-focused audio processing CLI with a path-validation security layer.
 
 ## Overview
 
-Chameleon is a secure, high-performance audio processing system designed for professional audio workflows. Built with security, reliability, and performance as core principles.
+Chameleon is a WAV audio processing toolkit. Its core (analysis, normalization,
+batch processing, MIDI analysis) runs on the Python standard library alone, with
+a consistent path-validation security layer. Heavier capabilities (advanced
+spectral/ML processing, real-time streaming, the REST API) are opt-in and depend
+on optional packages — see [Configuration](#configuration).
 
-**Status:** Production Ready
+For the project's intended scope, explicit non-goals, threat model and the bar any
+new feature must clear, see [CHARTER.md](CHARTER.md). It exists to stop the recurring
+add-then-remove cycle of unimplementable "enterprise/quantum/ML" features.
+
+**Status:** Beta — the standard-library CLI is stable; the REST API and
+real-time streaming require optional dependencies.
 **License:** MIT
 **Platform Support:** Linux, macOS, Windows
 
 ## Features
 
-### Core Capabilities
+### Core (standard library, no third-party packages)
 - Audio analysis (duration, sample rate, bit depth, peak/RMS levels)
-- Audio processing (normalization, noise reduction, format conversion)
+- Audio normalization
 - Batch operations with parallel processing
 - MIDI extraction and analysis
-- Real-time audio streaming
 - Plugin system for extensibility
 
+### Optional (requires extras — see [Configuration](#configuration))
+- Noise reduction and resampling — requires `[audio]` (numpy/scipy)
+- MP3/FLAC/OGG input and format conversion — requires `[audio]`
+- Real-time audio streaming — requires `[audio]` (PyAudio)
+- REST API (health check, rate limiting, RBAC) — requires `[api]`
+
 ### Security
-- Path validation and sanitization
+- Path validation and sanitization (trusted-root enforcement)
 - File size limits (500MB default)
-- Audit logging with rotation
-- Encryption at rest (optional)
+- Audit logging for API operations
 - Rate limiting for API endpoints
-- RBAC for enterprise deployment
+- Sandboxed plugin execution with AST import whitelisting
 
 ### Performance
 - Parallel batch processing across multiple worker threads
-- Memory-efficient streaming for large files
-- SIMD-optimized operations
-- Intelligent caching
+- Memory-efficient chunked/streaming processing for large files
+- In-memory caching with LRU eviction
 - Configurable worker threads
 
 ### Reliability
-- Graceful degradation when dependencies unavailable
-- Circuit breakers for fault tolerance
-- Automatic retry with exponential backoff
+- Graceful degradation when optional dependencies are unavailable
 - Comprehensive error handling
+- Health-check endpoint for orchestration
 - Health checks and metrics
 
 ## Quick Start
@@ -55,28 +66,77 @@ cd Chameleon
 python3 -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 
-# Install dependencies
-pip install -r requirements.txt
-
-# Verify installation
+# Core CLI needs no third-party packages (standard library only)
 python validation_test.py
 ```
 
+### Dependency tiers
+
+The core CLI runs on the standard library alone. Optional capabilities are
+grouped as installable extras (single source of truth in `pyproject.toml`):
+
+```bash
+pip install -e .          # core CLI only
+pip install -e .[audio]   # numpy/scipy/librosa/soundfile/pyaudio — full pipeline
+pip install -e .[api]     # fastapi/uvicorn/pydantic — REST API server
+pip install -e .[dev]     # test/lint/build tooling
+```
+
+`enhanced_requirements.txt`/`api_requirements.txt` were removed — they had
+drifted from `pyproject.toml` (a stale `pydantic==2.5.0` pin that breaks
+`api_server.py`'s v1-only syntax, unused GPU/ML packages left over from
+already-deleted modules). The extras above are the only supported path.
+
 ### Basic Usage
+
+After `pip install -e .` the `chameleon` console command is available
+(equivalent to `python main.py`):
 
 ```bash
 # Analyze audio file
-python main.py analyze audio.wav --detailed
+chameleon analyze audio.wav --detailed
 
-# Normalize volume
-python main.py process --normalize audio.wav
+# Spectral report: dominant frequencies, bandwidth, RMS (stdlib-only)
+chameleon analyze audio.wav --spectrum
 
-# Batch process directory
-python main.py batch /path/to/audio/ normalize --output-dir /output/
+# Integrated loudness (LUFS) via a pure-Python ITU-R BS.1770 K-weighted
+# meter (stdlib-only; sums per-channel energy correctly for mono/stereo but
+# has no surround weighting or true-peak, bounded prefix — not a certified
+# full-track measurement)
+chameleon analyze audio.wav --loudness
+
+# Normalize volume (optionally to a specific peak)
+chameleon process --normalize audio.wav
+chameleon process --normalize --target-peak 0.8 audio.wav
+
+# Full mastering chain (requires [audio] extra; presets: default/streaming/cd/vinyl)
+chameleon process --master streaming audio.wav
+
+# Batch process directory (operations: analyze/normalize/denoise/convert/effects)
+chameleon batch /path/to/audio/ normalize --target-peak 0.9 --output-dir /output/
+chameleon batch /path/to/audio/ effects --effects chain.json --output-dir /output/
 
 # Preview changes (dry-run)
-python main.py batch /path/to/audio/ normalize --dry-run
+chameleon batch /path/to/audio/ normalize --dry-run
+
+# Version
+chameleon --version
 ```
+
+### Exit codes
+
+The CLI reports *why* it failed, for scripting (`main.ExitCode`):
+
+| Code | Meaning |
+|------|---------|
+| 0    | success |
+| 1    | a processing step failed / unexpected error |
+| 2    | usage error (bad or incomplete command line) |
+| 3    | input validation rejected a supplied path |
+| 4    | security policy rejected a path or plugin |
+| 130  | interrupted (Ctrl-C) |
+
+Diagnostics go to **stderr**; results and `--json` output go to **stdout**.
 
 ### Docker Deployment
 
@@ -93,17 +153,19 @@ docker run -v /audio:/data chameleon:latest analyze /data/file.wav
 ### Environment Variables
 
 ```bash
-# Security
+# Security (CLI/core — security_validator.SecurityConfig.from_environment)
 export CHAMELEON_TRUSTED_ROOTS="/trusted/audio:/workspace"
 export CHAMELEON_MAX_FILE_SIZE=524288000  # 500MB
 
-# Performance
+# Performance (CLI/core)
 export CHAMELEON_MAX_WORKERS=8
 export CHAMELEON_CHUNK_SIZE=131072  # 128KB
 export CHAMELEON_PERFORMANCE_MODE=fast  # fast, balanced, safe
 
-# API Server
-export CHAMELEON_API_KEY_FILE=/etc/chameleon/api_keys.json
+# API Server (api_server.py) — a separate process with its own settings.
+# CHAMELEON_MAX_FILE_SIZE above does NOT apply to it; its upload limit is
+# fixed in SECURITY_CONFIG['max_file_size'] (100MB).
+export CHAMELEON_API_KEY=your-generated-api-key   # the key value itself, not a file path
 export CHAMELEON_ALLOWED_ORIGINS=https://your-domain.example.com
 ```
 
@@ -234,16 +296,20 @@ pytest
 ### Health Checks
 
 ```bash
-# Check system health
-curl http://localhost:8080/health
-# {"status": "healthy", "version": "1.0.0", "uptime": 3600}
+# Default API server port is 8000 (override with `chameleon server --port`)
+curl http://localhost:8000/health
+# {"status": "ok", "uptime_seconds": 3600.1, "timestamp": "2026-07-08T12:00:00+00:00"}
 ```
 
 ### Audit Logs
 
-Located in `~/.chameleon/audit/`:
-- `security.log` - Security events
-- `compliance.jsonl` - Compliance audit trail
+The API server keeps an in-memory audit log (login, upload, analyze, normalize,
+download, batch-submit events) for the life of the process — it is not
+written to disk. Retrieve it while the server is running:
+
+```bash
+curl -H "X-API-Key: $CHAMELEON_API_KEY" http://localhost:8000/audit/log
+```
 
 ## Contributing
 
