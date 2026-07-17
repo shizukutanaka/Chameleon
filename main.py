@@ -272,7 +272,7 @@ except ImportError:
     HAS_BS1770_LOUDNESS = False
 
 # Core constants
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 MAX_FILE_SIZE = 500 * 1024 * 1024  # Align with core constraints (500MB)
 CHUNK_SIZE = 8192
 DEFAULT_SAMPLE_RATE = 44100

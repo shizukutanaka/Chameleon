@@ -1,11 +1,13 @@
 # Chameleon Audio Processing System — Project Status
 
-**Status**: Beta. Standard-library CLI core is stable and tested (154 automated
+**Status**: Beta. Standard-library CLI core is stable and tested (204 automated
 tests, all green). REST API server works end-to-end with `pip install -e .[api]`.
 Container image now actually builds and runs (previously completely broken —
 see §2). No web frontend ships (see §5).
-**Last updated**: 2026-07-08 (revised same-day: plugin sandbox security fix,
-container image repair, packaging cleanup)
+**Last updated**: 2026-07-17 (DSP accuracy pass: Hann-windowed spectral
+analysis, YIN pitch detection; new pure-stdlib ITU-R BS.1770-4 loudness meter
+wired into `analyze --loudness` and `mastering_chain`; AI/ML fantasy-code
+removal; v1.1.0)
 **Read first**: `CHARTER.md` — the project's scope charter and full decision
 history (Socratic record, §9). This file is a status *snapshot*; `CHARTER.md`
 is the source of truth for *why* each decision was made.
@@ -69,7 +71,7 @@ action.
 | Feature | No standard-conformant loudness meter existed anywhere in the codebase | Added `bs1770_loudness.py` (pure-stdlib BS.1770-4 K-weighting + gated integrated loudness, coefficients verified against the published reference table) and `analyze --loudness`; also fixed a mono-downmix bug that under-read real stereo content by 3-6 LU |
 | Scope discipline | `core.py`'s `AIMusicAnalyzer` claimed "AI-powered music analysis" / "AI music generation" but every feature extractor returned hardcoded placeholder literals and never read the audio file; 6 `*FeatureExtractor` classes and `AudioFormatSupport` were zero-caller orphans (the latter depending on an undeclared `pydub`) | Deleted (user-confirmed); `core.py` 3,266 → 2,738 lines |
 
-**Test count**: 22 → 188 passed. `python -m compileall -q .`, `python validation_test.py`,
+**Test count**: 22 → 204 passed. `python -m compileall -q .`, `python validation_test.py`,
 and `python -m pytest -q` are the standing verification gate — all green as of
 this snapshot. Container build verified via extracted-script syntax checks
 and a real `import main, core` (no Docker daemon available in this session
