@@ -4,14 +4,22 @@
 
 ### Added
 
-- True-peak (dBTP) metering: `mastering_chain.LoudnessMeter.measure_true_peak`
-  implements ITU-R BS.1770-4 Annex 2's oversample-then-peak method (4×
-  oversampling via scipy's polyphase resampler), catching inter-sample peaks
-  the raw sample peak misses (up to ~3 dB on limited material). Exposed as
-  `true_peak_db` in `MasteringChain.analyze()` and surfaced in `process
-  --master` output. Honestly scoped as an accurate estimate (uses scipy's
-  resampler, not the standard's example FIR coefficients); falls back to the
-  sample peak without scipy.
+- True-peak (dBTP) metering, ITU-R BS.1770-4 Annex 2 oversample-then-peak
+  method, in two places:
+  - `mastering_chain.LoudnessMeter.measure_true_peak` (4× via scipy's
+    polyphase resampler), exposed as `true_peak_db` in
+    `MasteringChain.analyze()` and surfaced in `process --master` output.
+  - `bs1770_loudness.measure_true_peak` /
+    `measure_true_peak_multichannel` (4× via a self-generated windowed-sinc
+    polyphase interpolation, pure standard library — no numpy), surfaced in
+    `analyze --loudness` output and the `--export` metadata as
+    `true_peak_dbtp`.
+  Catches inter-sample peaks the raw sample peak misses (up to ~3 dB on
+  limited material). Both are honestly scoped as accurate *estimates*: they
+  generate/borrow a windowed-sinc interpolation filter rather than
+  transcribing the standard's *example* FIR coefficients, and agree with
+  each other to <0.05 dB. The mastering-chain path falls back to the sample
+  peak without scipy.
 
 ### Fixed
 

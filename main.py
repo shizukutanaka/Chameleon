@@ -311,6 +311,7 @@ class AudioMetadata:
     tempo: Optional[float] = None
     key: Optional[str] = None
     loudness_lufs: Optional[float] = None
+    true_peak_dbtp: Optional[float] = None
     spectral_centroid: Optional[float] = None
     zero_crossing_rate: Optional[float] = None
 
@@ -1653,6 +1654,16 @@ async def main():
                                     print(f"  Loudness: {lufs:.1f} LUFS (integrated, "
                                           f"ITU-R BS.1770 K-weighting, no surround weighting, first "
                                           f"{LOUDNESS_MAX_SAMPLES / samples_result.data['sample_rate']:.0f}s max)")
+                                # True-peak (dBTP) over the same bounded prefix -- 4x
+                                # oversampled inter-sample peak per BS.1770-4 Annex 2,
+                                # pure stdlib (no numpy needed for --loudness).
+                                true_peak = bs1770_loudness.measure_true_peak_multichannel(
+                                    samples_result.data["channels"]
+                                )
+                                if math.isfinite(true_peak):
+                                    metadata.true_peak_dbtp = true_peak
+                                    print(f"  True Peak: {true_peak:+.1f} dBTP "
+                                          f"(4x-oversampled inter-sample peak estimate)")
 
         if args.export:
             with open(args.export, 'w') as f:

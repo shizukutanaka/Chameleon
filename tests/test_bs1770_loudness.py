@@ -187,3 +187,59 @@ def test_multichannel_uses_the_shorter_channel_length():
 
     result = bs1770.measure_integrated_loudness_multichannel([long_tone, short_tone], sample_rate)
     assert math.isfinite(result)
+
+
+# --- True-peak (dBTP), BS.1770-4 Annex 2 oversample-then-peak method -------
+
+def _phase_sine(freq, sample_rate, count, amplitude=1.0, phase=0.0):
+    return [amplitude * math.sin(2 * math.pi * freq * i / sample_rate + phase)
+            for i in range(count)]
+
+
+def test_true_peak_recovers_inter_sample_peak_above_sample_peak():
+    # Full-scale sine at fs/4 shifted 45deg: samples land at +-0.707
+    # (sample peak ~ -3.01 dBFS) but the continuous waveform peaks at 1.0
+    # (~0 dBTP). The oversampled true peak must catch what the sample grid
+    # misses -- reading ~3 dB hotter.
+    sr = 48000
+    x = _phase_sine(sr / 4, sr, 4000, amplitude=1.0, phase=math.pi / 4)
+
+    sample_peak_db = 20 * math.log10(max(abs(s) for s in x))
+    true_peak_db = bs1770.measure_true_peak(x)
+
+    assert sample_peak_db == pytest.approx(-3.01, abs=0.1)
+    assert true_peak_db > sample_peak_db + 2.5
+    assert true_peak_db == pytest.approx(0.0, abs=0.5)
+
+
+def test_true_peak_never_below_sample_peak():
+    sr = 48000
+    for freq in (200, 1000, 5000, 15000):
+        x = _sine(freq, sr, 4000, amplitude=0.9)
+        sample_peak_db = 20 * math.log10(max(abs(s) for s in x))
+        assert bs1770.measure_true_peak(x) >= sample_peak_db - 1e-6
+
+
+def test_true_peak_empty_and_silent_return_negative_infinity():
+    assert bs1770.measure_true_peak([]) == float('-inf')
+    assert bs1770.measure_true_peak([0.0] * 500) == float('-inf')
+
+
+def test_true_peak_nan_input_returns_nan():
+    assert math.isnan(bs1770.measure_true_peak([0.1, float('nan'), 0.2, 0.3]))
+
+
+def test_true_peak_multichannel_takes_the_loudest_channel():
+    sr = 48000
+    quiet = _sine(1000.0, sr, 2000, amplitude=0.1)
+    loud = _phase_sine(sr / 4, sr, 2000, amplitude=0.8, phase=math.pi / 4)
+
+    combined = bs1770.measure_true_peak_multichannel([quiet, loud])
+    loud_only = bs1770.measure_true_peak(loud)
+
+    assert combined == pytest.approx(loud_only, abs=1e-9)
+
+
+def test_true_peak_multichannel_empty_and_nan():
+    assert bs1770.measure_true_peak_multichannel([]) == float('-inf')
+    assert math.isnan(bs1770.measure_true_peak_multichannel([[0.1, 0.2], [float('nan'), 0.1]]))
