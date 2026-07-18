@@ -22,8 +22,9 @@ def test_batch_normalize_processes_all_files(tmp_path):
     results = _run_batch(src, "normalize", output_dir=str(out))
 
     assert len(results) == 3
-    # Each entry is a (ProcessingResult, index) tuple.
-    assert all(item[0].success for item in results), results
+    # Each entry is a ProcessingResult (batch_process_async no longer leaks
+    # the internal (result, attempts) tuple -- see core.BatchProcessor).
+    assert all(item.success for item in results), results
     assert len(list(out.glob("*.wav"))) == 3
 
 
@@ -36,7 +37,7 @@ def test_batch_analyze_reports_each_file(tmp_path):
     results = _run_batch(src, "analyze")
 
     assert len(results) == 2
-    assert all(item[0].success for item in results), results
+    assert all(item.success for item in results), results
 
 
 def test_batch_rejects_unknown_operation(tmp_path):
@@ -76,4 +77,4 @@ def test_batch_skips_unsupported_file_types(tmp_path):
 
     # Only the WAV should be processed; non-audio files are silently skipped.
     assert len(results) == 1
-    assert results[0][0].success is True
+    assert results[0].success is True

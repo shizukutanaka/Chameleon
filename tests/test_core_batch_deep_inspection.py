@@ -34,14 +34,11 @@ def test_deep_inspector_is_wired_into_core():
 
 # --------------------------------------------------- sync process_directory --
 #
-# NOTE: process_directory's per-file execution path independently calls
-# self._execute_operation(...), a method that does not exist on BatchProcessor
-# (only the async _execute_operation_async exists) — a pre-existing bug
-# unrelated to the DeepFileInspector wiring, found while writing these tests.
-# It has zero callers anywhere in the codebase (confirmed via grep), so these
-# tests check counts only — proving the *gathering/filtering* stage works —
-# rather than per-file success, which the unrelated bug always breaks.
-# Recorded in CHARTER §9; not fixed here (out of scope for this parity pass).
+# process_directory's per-file execution path previously called a
+# nonexistent self._execute_operation(...), so every file was silently
+# reported as failed (the AttributeError was swallowed by the per-file
+# except). The sync _execute_operation now exists (mirrors the async twin),
+# so these tests assert per-file *success*, not just gathering counts.
 
 def test_real_wav_survives_process_directory_gathering(tmp_path):
     write_sine_wave(tmp_path / "tone.wav")
@@ -51,6 +48,9 @@ def test_real_wav_survives_process_directory_gathering(tmp_path):
     results = processor.process_directory(str(tmp_path), "analyze")
 
     assert len(results) == 2
+    per_file = [r for r in results if isinstance(r.data, dict)
+                and r.data.get("operation") == "analyze"]
+    assert len(per_file) == 1 and per_file[0].success
 
 
 def test_disguised_executable_is_filtered_from_process_directory(tmp_path):
@@ -85,7 +85,7 @@ def test_disguised_executable_is_filtered_from_batch_process_async(tmp_path):
 
     results = asyncio.run(core.batch_process_async(str(tmp_path), "analyze"))
 
-    # Per tests/test_batch.py's established convention: each entry is a
-    # (ProcessingResult, attempt_count) tuple on the success path.
+    # Each entry is a ProcessingResult (the internal (result, attempts) tuple
+    # is no longer leaked -- see core.BatchProcessor._execute_operation_async).
     assert len(results) == 1
-    assert results[0][0].success
+    assert results[0].success

@@ -23,6 +23,17 @@
 
 ### Fixed
 
+- `core.BatchProcessor` synchronous batch path: `process_directory` called a
+  `_execute_operation` method that never existed (only the async twin did),
+  so the `AttributeError` was swallowed and *every* file in a synchronous
+  batch was silently reported as failed. Implemented the sync method (sharing
+  operation dispatch with the async path via a new `_build_operation_runner`).
+  This surfaced and fixed two latent crashes: the post-loop code assumed
+  `result.data` was always a dict (only true while every file failed), so a
+  successful `analyze` raised "argument of type 'AudioInfo' is not iterable";
+  and `_execute_operation_async` leaked `recovery.execute`'s
+  `(result, attempts)` tuple, so `batch_process_async` returned tuples
+  despite its `List[ProcessingResult]` annotation.
 - `ci/proposed-ci.yml`'s import smoke-check still referenced `audio_utils` and
   `config_manager` (deleted this cycle), which would have broken the workflow
   the moment a maintainer adopted it verbatim; corrected to the current
