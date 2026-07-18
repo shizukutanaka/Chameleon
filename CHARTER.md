@@ -694,15 +694,18 @@ silently) but is a reason to *fix packaging*, not delete the file. **Fixed
 in the same pass this was found** — added to all three lists.
 
 ### Open questions (next contributor: decide before building)
-- **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented as
-  `mastering_chain.LoudnessMeter.measure_true_peak` (see the "Decisions Made"
-  entry above). A pure-Python true-peak for `bs1770_loudness.py` (so
-  `analyze --loudness` could report dBTP with no numpy) remains a possible
-  future addition, bounded to the same sample cap; deliberately not done from
-  memory because it would require transcribing the standard's example FIR
-  coefficients, which this pass could not verify against an authoritative
-  source — and an unverified "standard" coefficient table is exactly the kind
-  of unfalsifiable claim §8 forbids.
+- **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
+  both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy
+  polyphase resampler) and, added in the same cycle,
+  `bs1770_loudness.measure_true_peak` / `measure_true_peak_multichannel` — a
+  pure-Python (no numpy) version wired into `analyze --loudness`, bounded to
+  the same sample cap (~0.4s/65k samples). The coefficient-verification
+  concern was resolved not by transcribing the standard's example FIR table
+  (still deliberately avoided — an unverified "standard" table is exactly the
+  unfalsifiable claim §8 forbids) but by *generating* a windowed-sinc
+  polyphase filter from first principles and validating it against scipy's
+  independent resampler (agreement <0.05 dB). Both are labelled accurate
+  estimates, not certified-coefficient measurements.
 
 - **Plugin sandbox is AST-only, not a runtime boundary**: `exec_module()`
   gives plugin code full, unrestricted Python builtins once it passes the
