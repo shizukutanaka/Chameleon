@@ -38,7 +38,7 @@ jobs:
 
       - name: Import smoke check (standard-library core)
         run: |
-          for m in security_validator audio_utils config_manager plugin_system core main batch_automation; do
+          for m in security_validator plugin_system core main batch_automation spectral_utils bs1770_loudness; do
             python -c "import $m" && echo "OK   $m"
           done
 

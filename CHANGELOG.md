@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- True-peak (dBTP) metering: `mastering_chain.LoudnessMeter.measure_true_peak`
+  implements ITU-R BS.1770-4 Annex 2's oversample-then-peak method (4×
+  oversampling via scipy's polyphase resampler), catching inter-sample peaks
+  the raw sample peak misses (up to ~3 dB on limited material). Exposed as
+  `true_peak_db` in `MasteringChain.analyze()` and surfaced in `process
+  --master` output. Honestly scoped as an accurate estimate (uses scipy's
+  resampler, not the standard's example FIR coefficients); falls back to the
+  sample peak without scipy.
+
+### Fixed
+
+- `ci/proposed-ci.yml`'s import smoke-check still referenced `audio_utils` and
+  `config_manager` (deleted this cycle), which would have broken the workflow
+  the moment a maintainer adopted it verbatim; corrected to the current
+  stdlib-core module list.
+
 ## 1.1.0 - 2026-07-17
 
 ### Added

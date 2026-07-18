@@ -583,9 +583,17 @@ coefficients at 48 kHz (locked in by `tests/test_bs1770_loudness.py`). The
 gated-loudness algorithm (400 ms blocks, 75% overlap, −70 LUFS absolute gate,
 −10 dB relative gate) matches the standard's structure. Two scope decisions,
 recorded honestly rather than silently gapped:
-- **True-peak oversampling was explicitly descoped.** The open question below
-  asked for it "ideally"; only integrated (gated) loudness was built.
-  `measure_peak`-style true-peak metering remains a future addition.
+- **True-peak oversampling — initially descoped, later added (2026-07).** The
+  BS.1770 module (`bs1770_loudness.py`) still reports integrated loudness only.
+  True-peak (dBTP) landed instead in `mastering_chain.LoudnessMeter.measure_true_peak`,
+  where numpy/scipy are already hard dependencies: it applies Annex 2's
+  oversample-then-peak method via scipy's 4× polyphase resampler and is
+  exposed as `true_peak_db` in `analyze()` and in `process --master` output.
+  Scoped honestly as an accurate *estimate* — it uses scipy's Kaiser-windowed
+  resampler rather than transcribing the standard's *example* FIR coefficients
+  (which the review pass could not verify against an authoritative source, and
+  which the standard itself treats as one conformant example, not the only
+  one). See the resolved entry replacing the old open question below.
 - **Mono-downmix under-read — fixed (2026-07, same pass).** `core.get_samples_for_analysis`
   gained an opt-in `separate_channels=True` mode (the frame-decode loop
   already reads channels individually before it averages them to mono — this
@@ -686,14 +694,15 @@ silently) but is a reason to *fix packaging*, not delete the file. **Fixed
 in the same pass this was found** — added to all three lists.
 
 ### Open questions (next contributor: decide before building)
-- **True-peak (4× oversampled) metering per BS.1770-4 Annex 2**: still not
-  implemented anywhere in the codebase (`mastering_chain.measure_peak` is
-  honest sample-peak; `bs1770_loudness.py` reports integrated loudness only).
-  A polyphase FIR interpolation using the standard's example taps is
-  straightforward where NumPy is already a hard dependency
-  (`mastering_chain.py`); a pure-Python version for `bs1770_loudness.py`
-  would need to stay bounded to the same sample cap `analyze --loudness`
-  already uses, since the filter cost scales with input length.
+- **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented as
+  `mastering_chain.LoudnessMeter.measure_true_peak` (see the "Decisions Made"
+  entry above). A pure-Python true-peak for `bs1770_loudness.py` (so
+  `analyze --loudness` could report dBTP with no numpy) remains a possible
+  future addition, bounded to the same sample cap; deliberately not done from
+  memory because it would require transcribing the standard's example FIR
+  coefficients, which this pass could not verify against an authoritative
+  source — and an unverified "standard" coefficient table is exactly the kind
+  of unfalsifiable claim §8 forbids.
 
 - **Plugin sandbox is AST-only, not a runtime boundary**: `exec_module()`
   gives plugin code full, unrestricted Python builtins once it passes the
