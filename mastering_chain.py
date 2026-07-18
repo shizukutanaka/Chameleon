@@ -242,9 +242,54 @@ class LoudnessMeter:
 
         True-peak measurement requires >=4x oversampling to catch inter-sample
         peaks; this returns the raw sample peak, which can under-read by up to
-        ~3 dB on heavily limited material.
+        ~3 dB on heavily limited material. See measure_true_peak.
         """
         return 20 * np.log10(np.abs(audio).max() + 1e-10)
+
+    def measure_true_peak(self, audio: np.ndarray) -> float:
+        """Return the true-peak level in dBTP, following ITU-R BS.1770-4
+        Annex 2's oversample-then-peak method: reconstruct the inter-sample
+        waveform at 4x the sample rate and take its maximum absolute value.
+
+        Inter-sample peaks (the continuous waveform between samples) can
+        exceed the highest actual sample by up to ~3 dB on heavily limited
+        material -- so a signal that reads -0.1 dBFS at the sample grid can
+        still clip a D/A converter or lossy encoder that reconstructs the
+        analog waveform. dBTP is what streaming loudness specs (e.g. -1 dBTP
+        ceilings) are actually written against.
+
+        The 4x oversampling uses scipy's polyphase resampler
+        (`resample_poly`, a Kaiser-windowed-sinc anti-imaging filter) rather
+        than transcribing BS.1770-4 Annex 2's specific *example* FIR
+        coefficients; the standard defines the method (>=4x oversample, then
+        peak) and treats those coefficients as one example that meets its
+        accuracy bound, not as the only conformant filter. This is therefore
+        an accurate true-peak *estimate*, not a certified-coefficient
+        measurement -- consistent with this module's other honestly-scoped
+        meters.
+
+        Returns NaN for NaN input. Falls back to the raw sample peak
+        (measure_peak) if SciPy is unavailable, which under-reads
+        inter-sample peaks -- documented here rather than silently wrong.
+        """
+        if audio.ndim == 1:
+            audio = audio.reshape(1, -1)
+        if np.isnan(audio).any():
+            return float('nan')
+        if not HAS_SCIPY:
+            return self.measure_peak(audio)
+
+        oversampled_peak = 0.0
+        for ch in range(audio.shape[0]):
+            upsampled = signal.resample_poly(audio[ch], up=4, down=1)
+            channel_peak = float(np.abs(upsampled).max())
+            if channel_peak > oversampled_peak:
+                oversampled_peak = channel_peak
+        # Guard against the resampler nudging a genuine full-scale peak a hair
+        # below the sample grid: true peak can never be *below* the sample
+        # peak, so report the larger of the two.
+        sample_peak = float(np.abs(audio).max())
+        return 20 * np.log10(max(oversampled_peak, sample_peak) + 1e-10)
 
     def measure_range(self, audio: np.ndarray) -> float:
         """Loudness range (LRA) in LU, approximating EBU Tech 3342: the
@@ -651,6 +696,7 @@ class MasteringChain:
         # Loudness analysis
         analysis['lufs'] = self.loudness_meter.measure_lufs(audio)
         analysis['peak_db'] = self.loudness_meter.measure_peak(audio)
+        analysis['true_peak_db'] = self.loudness_meter.measure_true_peak(audio)
         analysis['range'] = self.loudness_meter.measure_range(audio)
 
         # Basic stats

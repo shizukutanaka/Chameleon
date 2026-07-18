@@ -110,6 +110,7 @@ chameleon process --normalize audio.wav
 chameleon process --normalize --target-peak 0.8 audio.wav
 
 # Full mastering chain (requires [audio] extra; presets: default/streaming/cd/vinyl)
+# Reports integrated LUFS and 4x-oversampled true-peak (dBTP) for the result.
 chameleon process --master streaming audio.wav
 
 # Batch process directory (operations: analyze/normalize/denoise/convert/effects)

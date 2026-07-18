@@ -231,3 +231,72 @@ def test_dynamic_range_matches_crest_factor_not_a_percentile_ratio():
 
     assert analysis['dynamic_range'] == analysis['crest_factor']
     assert abs(analysis['dynamic_range']) < 100  # sane dB range, not ~180dB
+
+
+# --- true-peak (dBTP) metering, BS.1770-4 Annex 2 method ------------------
+
+requires_scipy = pytest.mark.skipif(
+    not mastering_chain.HAS_SCIPY,
+    reason="4x-oversampled true-peak needs scipy",
+)
+
+
+def _phase_shifted_sine(freq, sample_rate, count, amplitude=1.0, phase=0.0):
+    t = np.arange(count) / sample_rate
+    return amplitude * np.sin(2 * np.pi * freq * t + phase)
+
+
+@requires_scipy
+def test_true_peak_recovers_inter_sample_peak_above_sample_peak():
+    # Full-scale sine at fs/4 shifted 45deg: samples land at +-0.707
+    # (sample peak ~ -3.01 dBFS) but the continuous waveform peaks at 1.0
+    # (~0 dBTP). True-peak must catch the inter-sample peak the sample grid
+    # misses -- reading several dB hotter than measure_peak.
+    sr = 48000
+    x = _phase_shifted_sine(sr / 4, sr, sr, amplitude=1.0, phase=np.pi / 4)
+
+    meter = mastering_chain.LoudnessMeter(sr)
+    sample_peak = meter.measure_peak(x)
+    true_peak = meter.measure_true_peak(x)
+
+    assert sample_peak == pytest.approx(-3.01, abs=0.1)
+    assert true_peak > sample_peak + 2.5  # recovers ~3 dB of hidden peak
+    assert true_peak == pytest.approx(0.0, abs=0.5)  # near 0 dBTP (small oversampling overshoot ok)
+
+
+@requires_scipy
+def test_true_peak_never_below_sample_peak():
+    sr = 48000
+    meter = mastering_chain.LoudnessMeter(sr)
+    for freq in (200, 1000, 5000, 12000, 18000):
+        s = _sine(freq, sr, sr, amplitude=0.9)
+        assert meter.measure_true_peak(s) >= meter.measure_peak(s) - 1e-6
+
+
+@requires_scipy
+def test_true_peak_returns_nan_for_nan_input():
+    sr = 48000
+    x = _sine(1000.0, sr, sr, amplitude=0.5)
+    x[123] = float('nan')
+    meter = mastering_chain.LoudnessMeter(sr)
+    assert math.isnan(meter.measure_true_peak(x))
+
+
+def test_true_peak_falls_back_to_sample_peak_without_scipy(monkeypatch):
+    # With scipy forced off, measure_true_peak must return the raw sample
+    # peak (documented under-read) rather than crash.
+    sr = 48000
+    x = _sine(1000.0, sr, sr, amplitude=0.7)
+    meter = mastering_chain.LoudnessMeter(sr)
+    monkeypatch.setattr(mastering_chain, "HAS_SCIPY", False)
+    assert meter.measure_true_peak(x) == pytest.approx(meter.measure_peak(x))
+
+
+@requires_scipy
+def test_analyze_exposes_true_peak_db():
+    config = mastering_chain.MasteringConfig(auto_gain=False)
+    chain = mastering_chain.MasteringChain(config, sample_rate=48000)
+    audio = _sine(1000.0, 48000, 48000, amplitude=0.8)
+    analysis = chain.analyze(audio)
+    assert 'true_peak_db' in analysis
+    assert analysis['true_peak_db'] >= analysis['peak_db'] - 1e-6

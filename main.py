@@ -1215,6 +1215,7 @@ class AudioProcessor:
                 "lufs_before": info["input_analysis"]["lufs"],
                 "lufs_after": info["output_analysis"]["lufs"],
                 "peak_change_db": info["peak_change"],
+                "true_peak_after_db": info["output_analysis"]["true_peak_db"],
             }
 
         elif operation == "convert":
@@ -1731,6 +1732,13 @@ async def main():
                     label = "LUFS" if is_bs1770 else "LUFS (approx)"
                     converted_details.append(f"{result['lufs_after']:.1f} {label}")
                     converted_details.append(f"{result['peak_change_db']:+.1f}dB peak")
+                    tp = result.get("true_peak_after_db")
+                    # scipy powers the 4x-oversampled true-peak; without it the
+                    # value falls back to sample peak, so only advertise "dBTP"
+                    # when the real oversampled path ran.
+                    if tp is not None and math.isfinite(tp):
+                        tp_label = "dBTP" if (HAS_MASTERING_CHAIN and mastering_chain.HAS_SCIPY) else "dBTP (sample-peak fallback)"
+                        converted_details.append(f"{tp:+.1f} {tp_label}")
                 if result.get("dry_run"):
                     converted_details.append("dry-run")
                 detail_suffix = f" [{', '.join(converted_details)}]" if converted_details else ""
