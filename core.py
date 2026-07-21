@@ -1680,7 +1680,13 @@ class BatchProcessor:
             if result.message:
                 result.message = self._sanitize_message(result.message, Path(file_path))
 
-            if "analysis" not in result.data:
+            # result.data is only a dict on the error path (the except block
+            # above builds one); a successful operation returns its own data
+            # (e.g. analyze -> AudioInfo), which isn't a dict. Guard the
+            # membership test with isinstance so success no longer raises
+            # "argument of type 'AudioInfo' is not iterable" -- a crash that
+            # was masked while every file failed before the operation ran.
+            if not isinstance(result.data, dict) or "analysis" not in result.data:
                 result.data = {
                     "file": str(file_path),
                     "original_data": result.data,
@@ -1844,8 +1850,14 @@ class BatchProcessor:
 
         return processed_results
 
-    async def _execute_operation_async(self, operation: str, file_path: Path, options: Dict[str, Any]) -> ProcessingResult:
-        """Asynchronously execute a single operation."""
+    def _build_operation_runner(self, operation: str, file_path: Path,
+                                options: Dict[str, Any]) -> Callable[[], ProcessingResult]:
+        """Return a zero-arg callable that performs a single batch operation.
+
+        Shared by the sync (_execute_operation) and async
+        (_execute_operation_async) paths so their operation dispatch, output
+        naming, and output-dir handling can never drift apart.
+        """
         def run_operation() -> ProcessingResult:
             if operation == "analyze":
                 return self.processor.analyze(str(file_path))
@@ -1881,7 +1893,36 @@ class BatchProcessor:
 
             return ProcessingResult(False, f"Unknown operation: {operation}")
 
-        return self.recovery.execute(operation, run_operation)
+        return run_operation
+
+    def _execute_operation(self, operation: str, file_path: Path,
+                           options: Dict[str, Any]) -> Tuple[ProcessingResult, int]:
+        """Synchronously execute a single batch operation.
+
+        Returns ``(result, attempts)`` -- the shape the synchronous
+        ``process_directory`` loop unpacks. This method previously did not
+        exist at all: ``process_directory`` called ``self._execute_operation``,
+        which raised ``AttributeError`` that its per-file ``except Exception``
+        swallowed, so every file in a synchronous batch was silently reported
+        as failed. (Only the async twin existed.)
+        """
+        return self.recovery.execute(operation, self._build_operation_runner(operation, file_path, options))
+
+    async def _execute_operation_async(self, operation: str, file_path: Path, options: Dict[str, Any]) -> ProcessingResult:
+        """Asynchronously execute a single operation.
+
+        Returns the ``ProcessingResult`` only. ``recovery.execute`` returns a
+        ``(result, attempts)`` tuple; an earlier version returned that tuple
+        verbatim, so ``process_directory_async`` / ``batch_process_async``
+        leaked tuples to callers despite their ``List[ProcessingResult]``
+        annotation (the async tests had to index ``[0][0]`` to reach
+        ``.success``). The attempt count is not surfaced by the async path's
+        result list, so it is dropped here.
+        """
+        result, _attempts = self.recovery.execute(
+            operation, self._build_operation_runner(operation, file_path, options)
+        )
+        return result
 
     @staticmethod
     def _sanitize_message(message: str, file_path: Path) -> str:

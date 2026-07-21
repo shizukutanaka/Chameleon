@@ -449,14 +449,21 @@ callers anywhere in the codebase):
    `return results` restores the function's own declared
    `-> List[ProcessingResult]` contract).
 2. Its per-file path calls `self._execute_operation(...)`, a method that
-   does not exist on `BatchProcessor` (only the async
-   `_execute_operation_async` does) — every call raises `AttributeError`,
-   caught and reported as a per-file failure. **Not fixed** — implementing a
-   sync `_execute_operation` is real new work, out of scope for a
-   DeepFileInspector parity pass, and the method has no callers to justify
-   the risk right now. Left as an open item below; `test_core_batch_deep_inspection.py`
-   works around it by asserting result *counts* (proving the filtering
-   stage works) rather than per-file success.
+   did not exist on `BatchProcessor` (only the async
+   `_execute_operation_async` did) — every call raised `AttributeError`,
+   caught and reported as a per-file failure. **Fixed (2026-07).** A sync
+   `_execute_operation` now exists, returning the `(result, attempts)` tuple
+   the loop unpacks; it shares operation dispatch with the async twin via a
+   new `_build_operation_runner` helper so the two can't drift. Fixing it
+   surfaced a second, latent crash — the post-loop code assumed
+   `result.data` was always a dict (true only while every file *failed*),
+   so a *successful* `analyze` (whose data is an `AudioInfo`) raised
+   "argument of type 'AudioInfo' is not iterable"; guarded with `isinstance`.
+   And a third: `_execute_operation_async` returned `recovery.execute`'s
+   `(result, attempts)` tuple verbatim, so `batch_process_async` leaked
+   tuples despite its `List[ProcessingResult]` annotation (tests indexed
+   `[0][0]`); it now returns the `ProcessingResult` alone. Tests assert
+   per-file success and the un-tupled shape.
 
 **Q: Is the plugin sandbox (§5's threat model) actually a security boundary?**
 A (2026-07): It had a critical gap, now empirically verified and fixed.
@@ -737,12 +744,10 @@ in the same pass this was found** — added to all three lists.
   already resolved for 9 other modules this charter tracked; needs the same
   explicit confirmation before deletion.
 
-- **BatchProcessor.process_directory (sync) is unusable**: calls
-  `self._execute_operation(...)`, a method that doesn't exist on the class
-  (only `_execute_operation_async` does). Zero callers anywhere in the
-  codebase — only `process_directory_async` (via `core.batch_process_async`)
-  is reachable/used. Either implement a sync `_execute_operation` to match,
-  or delete the dead sync method entirely; needs a decision, not a silent fix.
+- **BatchProcessor.process_directory (sync) — RESOLVED (2026-07):** the sync
+  `_execute_operation` was implemented (rather than deleting the sync path),
+  along with two latent crashes it exposed (dict-only `result.data`
+  assumption; async tuple leak). See the "Decisions Made" entry above.
 
 - **Broken active CI workflow**: `.github/workflows/ci-cd.yml` is still the old 409-line
   fantasy pipeline (k8s/staging/prod deploys, a missing `deployment_manager.py`,
