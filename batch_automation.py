@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
 Batch Automation Framework
-Intelligent batch processing with workflow automation and scheduling
+Batch/workflow automation: a safe AST-based condition-expression evaluator
+(no eval/exec; whitelisted node types) and optional scheduling. Standalone —
+not currently wired into the CLI or REST API (main.py has its own batch
+path); see PRODUCT_ANALYSIS.md for its orphaned status.
 """
 
 import os

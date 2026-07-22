@@ -4,6 +4,12 @@
 
 ### Added
 
+- Agent-facing documentation: `CLAUDE.md` (the working agreement for AI
+  contributors — read order, absolute rules, verification gate, known traps),
+  `PRODUCT_ANALYSIS.md` (strengths / weaknesses / prioritized improvement
+  backlog with `file:line` citations), and `docs/agents/OPUS.md` +
+  `docs/agents/SONNET.md` (per-model guidance). No prior CLAUDE.md existed.
+
 - True-peak (dBTP) metering, ITU-R BS.1770-4 Annex 2 oversample-then-peak
   method, in two places:
   - `mastering_chain.LoudnessMeter.measure_true_peak` (4× via scipy's
@@ -38,6 +44,16 @@
   `config_manager` (deleted this cycle), which would have broken the workflow
   the moment a maintainer adopted it verbatim; corrected to the current
   stdlib-core module list.
+
+### Changed (honesty)
+
+- Removed three docstring/metadata overclaims surfaced by `PRODUCT_ANALYSIS.md`:
+  `advanced_validation.py` "malware detection" → structure/integrity/tamper
+  (states plainly it is not a malware scanner); `gui/package.json`
+  "Government-Grade"/"Chameleon Security Team"/`"RESTRICTED"` → honest
+  experimental description, "Chameleon contributors", `MIT` (matching the repo
+  license); `batch_automation.py` "Intelligent …" → plain description noting
+  its orphaned status.
 
 ## 1.1.0 - 2026-07-17
 
