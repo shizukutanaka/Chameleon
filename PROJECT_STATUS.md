@@ -1,16 +1,17 @@
 # Chameleon Audio Processing System — Project Status
 
-**Status**: Beta. Standard-library CLI core is stable and tested (204 automated
+**Status**: Beta. Standard-library CLI core is stable and tested (215 automated
 tests, all green). REST API server works end-to-end with `pip install -e .[api]`.
 Container image now actually builds and runs (previously completely broken —
 see §2). No web frontend ships (see §5).
-**Last updated**: 2026-07-17 (DSP accuracy pass: Hann-windowed spectral
-analysis, YIN pitch detection; new pure-stdlib ITU-R BS.1770-4 loudness meter
-wired into `analyze --loudness` and `mastering_chain`; AI/ML fantasy-code
-removal; v1.1.0)
+**Last updated**: 2026-07-18 (true-peak dBTP metering in both meters;
+BatchProcessor sync/async batch-path fixes; new agent-facing docs —
+`CLAUDE.md`, `PRODUCT_ANALYSIS.md`, `docs/agents/{OPUS,SONNET}.md`)
 **Read first**: `CHARTER.md` — the project's scope charter and full decision
 history (Socratic record, §9). This file is a status *snapshot*; `CHARTER.md`
-is the source of truth for *why* each decision was made.
+is the source of truth for *why* each decision was made. For AI agents,
+`CLAUDE.md` is the working agreement and `PRODUCT_ANALYSIS.md` is the
+strengths/weaknesses/backlog inventory.
 
 This file is written to be self-contained: a fresh Claude session (Opus or
 Sonnet) with no prior context on this project should be able to read this file

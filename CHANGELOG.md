@@ -4,6 +4,12 @@
 
 ### Added
 
+- Agent-facing documentation: `CLAUDE.md` (the working agreement for AI
+  contributors — read order, absolute rules, verification gate, known traps),
+  `PRODUCT_ANALYSIS.md` (strengths / weaknesses / prioritized improvement
+  backlog with `file:line` citations), and `docs/agents/OPUS.md` +
+  `docs/agents/SONNET.md` (per-model guidance). No prior CLAUDE.md existed.
+
 - True-peak (dBTP) metering, ITU-R BS.1770-4 Annex 2 oversample-then-peak
   method, in two places:
   - `mastering_chain.LoudnessMeter.measure_true_peak` (4× via scipy's
