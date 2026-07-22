@@ -660,6 +660,19 @@ landed:
 standard's short-term-loudness update rate) rather than an initial 1s hop
 that would have under-sampled the short-term loudness distribution.
 
+**Agent docs + honesty pass (2026-07-18).** Added the first agent-facing
+documentation set — `CLAUDE.md` (working agreement), `PRODUCT_ANALYSIS.md`
+(strengths/weaknesses/backlog, cited to `file:line`), and
+`docs/agents/{OPUS,SONNET}.md` — so future sessions inherit scope and
+conventions. The analysis surfaced three docstring/metadata overclaims,
+fixed in the same pass (text only): `advanced_validation.py` no longer claims
+"malware detection" (it does structure/integrity/tamper checks);
+`gui/package.json` dropped "Government-Grade"/"Chameleon Security
+Team"/`"RESTRICTED"` for an honest experimental description, "Chameleon
+contributors", and `MIT` (matching the repo license); `batch_automation.py`
+dropped "Intelligent …" for a plain description that also records its
+orphaned status. No behavior change.
+
 **Fantasy-code removal (2026-07, user-confirmed).** A fresh audit found three
 orphaned pieces in `core.py` that repeat the "quantum"/neural-module pattern
 this charter exists to stop — a claimed capability with no real

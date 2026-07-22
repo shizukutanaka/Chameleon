@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
-Advanced Validation Module for Production Systems
-Deep file inspection and malware detection capabilities
+Advanced Validation Module
+Deep WAV/file-structure inspection: magic-number validation, container
+integrity checks, and tamper detection (see DeepFileInspector). This is NOT
+a malware/signature scanner — it validates that a file really is the audio
+container it claims to be, it does not detect malicious payloads.
 """
 
 import os

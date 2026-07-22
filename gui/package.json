@@ -1,12 +1,12 @@
 {
   "name": "chameleon-audio-gui",
   "version": "1.0.0",
-  "description": "Government-Grade Audio Processing GUI",
+  "description": "Experimental desktop GUI for Chameleon (work in progress; not yet wired to the CLI — see gui/README.md)",
   "main": "electron/main.js",
   "homepage": "./",
   "private": true,
-  "author": "Chameleon Security Team",
-  "license": "RESTRICTED",
+  "author": "Chameleon contributors",
+  "license": "MIT",
   "scripts": {
     "dev": "react-scripts start",
     "build": "react-scripts build",

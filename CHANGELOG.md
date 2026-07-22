@@ -45,6 +45,16 @@
   the moment a maintainer adopted it verbatim; corrected to the current
   stdlib-core module list.
 
+### Changed (honesty)
+
+- Removed three docstring/metadata overclaims surfaced by `PRODUCT_ANALYSIS.md`:
+  `advanced_validation.py` "malware detection" → structure/integrity/tamper
+  (states plainly it is not a malware scanner); `gui/package.json`
+  "Government-Grade"/"Chameleon Security Team"/`"RESTRICTED"` → honest
+  experimental description, "Chameleon contributors", `MIT` (matching the repo
+  license); `batch_automation.py` "Intelligent …" → plain description noting
+  its orphaned status.
+
 ## 1.1.0 - 2026-07-17
 
 ### Added

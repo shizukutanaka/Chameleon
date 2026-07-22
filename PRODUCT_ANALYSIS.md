@@ -68,16 +68,19 @@ re-verified, not trusted.
   import — so it is a latent fragility, not a live bug. Covered by
   `tests/test_api_routes.py` / `tests/test_api_fallback.py`.
 
-### Honesty residue (docstring/metadata overclaims)
-- **`advanced_validation.py:4`** claims "malware detection capabilities"; the
-  code does file-structure integrity + tamper detection (its own line 309 says
-  so honestly). Overclaim — exactly what `CHARTER.md` §8 warns against.
-- **`gui/package.json`** still carries `"description": "Government-Grade Audio
-  Processing GUI"` (:4), `"author": "Chameleon Security Team"` (:8), and
-  `"license": "RESTRICTED"` (:9) — inconsistent with the repo's MIT license
-  and with `gui/README.md`'s own honest "experimental / not wired up" framing.
-- **`batch_automation.py:4`** "Intelligent batch processing with workflow
-  automation and scheduling" overclaims relative to its orphaned status.
+### Honesty residue (docstring/metadata overclaims) — RESOLVED 2026-07-18
+The three overclaims below were fixed in the same pass that produced this
+document (kept here as a record, per the honesty culture):
+- **`advanced_validation.py`** claimed "malware detection capabilities"; now
+  describes what it does (magic-number/structure/integrity/tamper checks) and
+  states plainly it is *not* a malware scanner.
+- **`gui/package.json`** carried `"Government-Grade Audio Processing GUI"`,
+  `"Chameleon Security Team"`, `"license": "RESTRICTED"`; now an honest
+  "experimental … not yet wired" description, `"Chameleon contributors"`, and
+  `"MIT"` (matching the repo license).
+- **`batch_automation.py`** "Intelligent batch processing …"; now describes
+  its safe-AST condition evaluator + optional scheduling and notes its
+  standalone/orphaned status.
 
 ### Coverage gaps
 - **Zero test coverage:** `audio_restoration.py`, `spectral_editor.py`,
@@ -116,7 +119,7 @@ here because they need a user decision first.
 
 | # | Improvement | Value | Effort | Risk | Notes |
 |---|-------------|-------|--------|------|-------|
-| P1 | Fix 3 docstring/metadata overclaims (`advanced_validation.py:4`, `gui/package.json`, `batch_automation.py:4`) | Med (honesty = the brand) | XS | Low | Same shape as prior approved honesty passes; text-only |
+| ~~P1~~ | ~~Fix 3 docstring/metadata overclaims~~ | Med | XS | Low | **DONE 2026-07-18** — see §2 "Honesty residue" |
 | P1 | Guard the unconditional numpy/scipy imports in `spectral_editor.py` / `audio_restoration.py` (or record why not) | Med | S | Low | Makes `import`-safety uniform with the rest of the tree |
 | P2 | Add minimal tests for the 4 zero-coverage modules | Med | M | Low | Even import + one-happy-path each raises the floor |
 | P2 | Adopt `ci/proposed-ci.yml` → `.github/workflows/ci-cd.yml` | High (green CI) | XS (one `cp`) | Low | **Human-only** — needs `workflows` permission |
