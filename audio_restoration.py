@@ -2,14 +2,33 @@
 """
 Audio Restoration and Repair Module
 Advanced algorithms for repairing damaged or degraded audio
+
+Standalone / not wired into the CLI (see PRODUCT_ANALYSIS.md). Requires the
+optional [audio] extra (numpy + scipy); imports are guarded so
+`import audio_restoration` never breaks the stdlib-only default install — the
+restoration classes raise a clear error only when used without those packages.
 """
+
+from __future__ import annotations
 
 import warnings
 from typing import Optional, Tuple, Dict, List, Any
 from dataclasses import dataclass
-import numpy as np
-from scipy import signal, interpolate
-from scipy.ndimage import median_filter
+
+try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:  # keep the module import-safe on the stdlib-only install
+    HAS_NUMPY = False
+    warnings.warn("NumPy not available. Audio restoration requires the optional [audio] extra.")
+
+try:
+    from scipy import signal, interpolate
+    from scipy.ndimage import median_filter
+    HAS_SCIPY = True
+except ImportError:
+    HAS_SCIPY = False
+    warnings.warn("SciPy not available. Audio restoration requires the optional [audio] extra.")
 
 try:
     import librosa
@@ -17,6 +36,16 @@ try:
 except ImportError:
     HAS_LIBROSA = False
     warnings.warn("Librosa not installed. Some features limited.")
+
+
+def _require_restoration_deps() -> None:
+    """Raise a clear error if a restoration entry point is used without numpy/scipy."""
+    missing = [name for name, present in (("NumPy", HAS_NUMPY), ("SciPy", HAS_SCIPY)) if not present]
+    if missing:
+        raise RuntimeError(
+            f"Audio restoration requires {' and '.join(missing)}. "
+            "Install the optional audio extra: pip install -e .[audio]"
+        )
 
 @dataclass
 class RestorationConfig:
@@ -385,6 +414,7 @@ class AudioRestorer:
     """Main audio restoration interface"""
 
     def __init__(self, config: Optional[RestorationConfig] = None):
+        _require_restoration_deps()
         self.config = config or RestorationConfig()
         self.click_remover = ClickRemover()
         self.crackle_remover = CrackleRemover()
