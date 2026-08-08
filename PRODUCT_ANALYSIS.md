@@ -100,7 +100,11 @@ All of these were fixed in this pass (see §2 "Resolved"), except where noted.
 - The bilingual command reference documented ~18 commands that do not exist,
   and a configuration file / `config` sub-command that do not exist.
 - `analyze --loudness` reported only Integrated loudness, so it was an
-  incomplete EBU-Mode reading. Momentary/Short-term now added.
+  incomplete EBU-Mode reading. Momentary/Short-term were added first, which
+  still left the set short of Tech 3341's definition (M + S + I + **LRA**);
+  the loudness range followed, so `analyze --loudness` now reports the full
+  set. (The earlier version of this line called the job done at M/S — an
+  overclaim, corrected here.)
 - Still open (needs a decision, not code): the disposition of the orphaned
   modules above, and the `api_server.py` phantom imports. Deleting any of them
   requires explicit user confirmation — see §3.
@@ -180,7 +184,7 @@ here because they need a user decision first.
 | ~~P1~~ | ~~Fix 3 docstring/metadata overclaims~~ | Med | XS | Low | **DONE 2026-07-18** — see §2 "Honesty residue" |
 | ~~P1~~ | ~~Guard the unconditional numpy/scipy imports~~ | Med | S | Low | **DONE 2026-08-08** — guarded + `tests/test_orphaned_import_safety.py` |
 | ~~P1~~ | ~~Rewrite the bilingual command/config references~~ | High | M | Low | **DONE 2026-08-08** — they documented ~18 nonexistent commands and a nonexistent config file; every replacement example was executed before being written |
-| ~~P2~~ | ~~EBU-Mode momentary/short-term loudness~~ | Med | M | Low | **DONE 2026-08-08** — `analyze --loudness` was integrated-only, an incomplete EBU-Mode reading |
+| ~~P2~~ | ~~EBU-Mode loudness (M, S **and LRA**)~~ | Med | M | Low | **DONE 2026-08-08** — `analyze --loudness` was integrated-only; M/S then LRA (Tech 3342) complete the set. LRA cross-checks to 0.000 LU against the independent numpy/scipy meter |
 | P2 | Add minimal tests for the remaining zero-coverage modules | Med | M | Low | `performance_optimizer`, `personal_config` still uncovered |
 | P2 | Give `audio_restoration`'s 7 unique repair classes a CLI surface, or record that they stay standalone | Med | M | Med | The only orphan that is capability rather than duplication |
 | P2 | Adopt `ci/proposed-ci.yml` → `.github/workflows/ci-cd.yml` | High (green CI) | XS (one `cp`) | Low | **Human-only** — needs `workflows` permission |

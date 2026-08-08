@@ -51,6 +51,10 @@ chameleon analyze input.wav --loudness
   (BS.1770-4 Annex 2 method).
 - **Max Momentary (LUFS)** — loudest 400 ms window, ungated (EBU Mode).
 - **Max Short-term (LUFS)** — loudest 3 s window, ungated (EBU Mode).
+- **Loudness Range (LU)** — EBU Tech 3342: the 95th minus 10th percentile of
+  the gated short-term loudness, i.e. how far the loud and quiet parts sit
+  apart. Because this command reads a bounded prefix, the output also says
+  when the value is below the 60 s Tech 3342 treats as settled.
 
 These are honest measurements, not a certified meter: see
 `bs1770_loudness.py`'s module docstring for the exact scope of each claim.
