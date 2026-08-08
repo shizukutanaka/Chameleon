@@ -314,6 +314,7 @@ class AudioMetadata:
     true_peak_dbtp: Optional[float] = None
     max_momentary_lufs: Optional[float] = None
     max_short_term_lufs: Optional[float] = None
+    loudness_range_lu: Optional[float] = None
     spectral_centroid: Optional[float] = None
     zero_crossing_rate: Optional[float] = None
 
@@ -1219,6 +1220,9 @@ class AudioProcessor:
                 "lufs_after": info["output_analysis"]["lufs"],
                 "peak_change_db": info["peak_change"],
                 "true_peak_after_db": info["output_analysis"]["true_peak_db"],
+                # MasteringChain.analyze() already computes an EBU-Tech-3342
+                # loudness range; it used to be discarded here and never shown.
+                "loudness_range_after_lu": info["output_analysis"].get("range"),
             }
 
         elif operation == "convert":
@@ -1683,6 +1687,28 @@ async def main():
                                 if math.isfinite(max_s):
                                     metadata.max_short_term_lufs = max_s
                                     print(f"  Max Short-term: {max_s:.1f} LUFS (3s window, ungated)")
+                                # Loudness range (EBU Tech 3342) completes EBU Mode.
+                                lra = bs1770_loudness.measure_loudness_range(
+                                    samples_result.data["channels"],
+                                    samples_result.data["sample_rate"],
+                                )
+                                if math.isfinite(lra):
+                                    metadata.loudness_range_lu = lra
+                                    analysed_seconds = (
+                                        len(samples_result.data["channels"][0])
+                                        / samples_result.data["sample_rate"]
+                                    )
+                                    # Tech 3342 asks meters to flag an LRA as not
+                                    # yet stable during the first 60s. This path
+                                    # reads a bounded prefix, so say so plainly
+                                    # rather than presenting a settled figure.
+                                    stability = (
+                                        "" if analysed_seconds >= 60
+                                        else f", not yet stable — only {analysed_seconds:.0f}s analysed, "
+                                             f"Tech 3342 considers LRA unsettled below 60s"
+                                    )
+                                    print(f"  Loudness Range: {lra:.1f} LU "
+                                          f"(EBU Tech 3342, P95-P10 of gated short-term{stability})")
 
         if args.export:
             with open(args.export, 'w') as f:
@@ -1769,6 +1795,12 @@ async def main():
                     if tp is not None and math.isfinite(tp):
                         tp_label = "dBTP" if (HAS_MASTERING_CHAIN and mastering_chain.HAS_SCIPY) else "dBTP (sample-peak fallback)"
                         converted_details.append(f"{tp:+.1f} {tp_label}")
+                    # Loudness range is only meaningful on the real BS.1770
+                    # path; without scipy the meter returns a placeholder 0.0,
+                    # so don't present that as a measurement.
+                    lra_after = result.get("loudness_range_after_lu")
+                    if is_bs1770 and lra_after is not None and math.isfinite(lra_after):
+                        converted_details.append(f"{lra_after:.1f} LU range")
                 if result.get("dry_run"):
                     converted_details.append("dry-run")
                 detail_suffix = f" [{', '.join(converted_details)}]" if converted_details else ""
