@@ -328,42 +328,33 @@ class PersonalLibraryManager:
 class PersonalWorkflow:
     """Common personal workflows"""
 
+    # NOTE: podcast_workflow and music_workflow were placeholders that printed
+    # step banners and a "ready!" success line while performing no processing
+    # at all -- the same claimed-capability-with-no-implementation pattern that
+    # got AIMusicAnalyzer removed (see CHARTER.md §9). They have no callers.
+    # Rather than keep code that reports success it did not earn, they now say
+    # plainly that they are unimplemented and point at the commands that do
+    # the work for real.
+
     @staticmethod
     def podcast_workflow(input_file: Path, output_dir: Path) -> None:
-        """Optimize audio for podcast"""
-        from performance_optimizer import SIMDOperations
-        import array
-
-        print("🎙️ Podcast Optimization Workflow")
-
-        # 1. Normalize
-        print("  [1/4] Normalizing...")
-        # (Implementation using main.py)
-
-        # 2. Denoise
-        print("  [2/4] Removing noise...")
-
-        # 3. Compress
-        print("  [3/4] Applying compression...")
-
-        # 4. Export
-        print("  [4/4] Exporting...")
-        print("  ✅ Podcast ready!")
+        """Not implemented. Use the CLI directly (see the message below)."""
+        raise NotImplementedError(
+            "PersonalWorkflow.podcast_workflow is not implemented. "
+            "Use the CLI, which does this for real:\n"
+            f"  chameleon process {input_file} --normalize --denoise "
+            f"--output-dir {output_dir}"
+        )
 
     @staticmethod
     def music_workflow(input_file: Path, output_dir: Path) -> None:
-        """Optimize for music listening"""
-        print("🎵 Music Optimization Workflow")
-
-        # 1. Analyze
-        print("  [1/3] Analyzing quality...")
-
-        # 2. Enhance
-        print("  [2/3] Enhancing audio...")
-
-        # 3. Export
-        print("  [3/3] Exporting...")
-        print("  ✅ Music optimized!")
+        """Not implemented. Use the CLI directly (see the message below)."""
+        raise NotImplementedError(
+            "PersonalWorkflow.music_workflow is not implemented. "
+            "Use the CLI, which does this for real:\n"
+            f"  chameleon analyze {input_file} --loudness\n"
+            f"  chameleon process {input_file} --normalize --output-dir {output_dir}"
+        )
 
     @staticmethod
     def backup_workflow(library_path: Path, backup_path: Path) -> None:

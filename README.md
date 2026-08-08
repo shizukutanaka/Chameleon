@@ -195,26 +195,36 @@ python main.py server --host 0.0.0.0 --port 8080
 
 ```python
 from main import AudioProcessor, ProcessingConfig
-from performance_optimizer import ParallelProcessor
 
 # Setup processor
 config = ProcessingConfig.from_environment()
 processor = AudioProcessor(config)
 
-# Process single file
+# Process a single file (load_audio/save_audio need the [audio] extra)
 audio, sr = processor.load_audio("/path/to/file.wav")
 metadata = processor.analyze_audio(audio, sr)
 normalized = processor.normalize_audio(audio, target_peak=0.95)
 processor.save_audio(normalized, "/output/normalized.wav", sr)
-
-# Parallel batch processing
-parallel = ParallelProcessor(max_workers=8)
-results = parallel.process_files_parallel(
-    files=file_list,
-    process_func=process_single_file,
-    use_processes=True
-)
 ```
+
+Batch processing over a directory uses `core.BatchProcessor`, which applies the
+same path validation and deep file inspection as the CLI (standard library
+only — no extras required):
+
+```python
+import core
+
+processor = core.BatchProcessor()
+results = processor.process_directory("/path/to/audio", "analyze")
+
+# One ProcessingResult per file, plus a trailing batch-summary result.
+for result in results:
+    if result.success:
+        print(result.message)
+```
+
+Supported operations are `analyze`, `normalize`, `mono` and `trim`. An
+`asyncio` variant is available as `core.batch_process_async(directory, op)`.
 
 ## Architecture
 
@@ -229,10 +239,18 @@ results = parallel.process_files_parallel(
 - **security_validator.py** - Path validation, trusted-root enforcement, size limits
 - **advanced_validation.py** - Deeper file inspection and integrity checks
 
-### Performance Modules
-- **performance_optimizer.py** - Parallel processing, SIMD, caching
-- **stability_enhancer.py** - Circuit breakers, retry, resources
+### Loudness / DSP Modules
+- **bs1770_loudness.py** - Pure-stdlib ITU-R BS.1770 K-weighted loudness,
+  true-peak (dBTP) and EBU-Mode momentary/short-term metering
+- **spectral_utils.py** - Deterministic stdlib DFT, windowing, peak interpolation
+- **mastering_chain.py** - Mastering chain (requires numpy; scipy recommended)
+- **midi_analysis.py** - YIN pitch detection and MIDI extraction (stdlib)
+
+### Support Modules
 - **ux_improvements.py** - Progress bars, colors, formatting
+- **performance_optimizer.py** - Parallel helpers and an `array`-module
+  "SIMD-like" path (not real vector instructions). Standalone: the CLI uses
+  `core.py`'s own chunking, caching and worker handling instead.
 
 ## System Requirements
 
