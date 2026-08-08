@@ -15,8 +15,8 @@ Chameleon Audio Tool is designed for lightweight, single-process workloads. The 
 Use the standard `time` utility (or PowerShell `Measure-Command`) to estimate elapsed time for your workload:
 
 ```bash
-time chameleon normalize input.wav output.wav --target 0.90
-time chameleon batch ./audio --skip-errors
+time chameleon process input.wav --normalize --target-peak 0.90 --output-dir out/
+time chameleon batch ./audio normalize --output-dir out/
 ```
 
 Record the wall-clock time and compare runs after adjusting environment variables or hardware. For consistent numbers, warm caches by running the command once before measuring.
