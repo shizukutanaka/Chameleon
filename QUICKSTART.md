@@ -111,19 +111,23 @@ python main.py analyze test.wav --loudness
 
 ### Audio Processing
 
+Only `--normalize` runs on the default, dependency-free install. Everything
+else below needs the `[audio]` extra (numpy).
+
 ```bash
-# Normalize (default peak 0.95, or choose your own)
+# Normalize (default peak 0.95, or choose your own) — standard library only
 python main.py process --normalize input.wav
 python main.py process --normalize --target-peak 0.8 input.wav
 
-# Remove noise
+# Remove noise — requires the [audio] extra
 python main.py process --denoise input.wav
 
 # Full mastering chain — requires the [audio] extra
 # (presets: default, streaming, cd, vinyl)
 python main.py process --master streaming input.wav
 
-# Convert format/sample rate
+# Convert format/sample rate — requires the [audio] extra.
+# Resampling is band-limited (anti-aliased) on every available backend.
 python main.py process --convert --convert-sample-rate 48000 input.wav
 
 # Multiple operations
