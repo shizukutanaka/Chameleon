@@ -99,10 +99,11 @@ chameleon analyze audio.wav --detailed
 # Spectral report: dominant frequencies, bandwidth, RMS (stdlib-only)
 chameleon analyze audio.wav --spectrum
 
-# Integrated loudness (LUFS) + true-peak (dBTP) via a pure-Python ITU-R
-# BS.1770 K-weighted meter (stdlib-only; sums per-channel energy correctly
+# Full EBU-Mode loudness via a pure-Python ITU-R BS.1770 K-weighted meter
+# (stdlib-only): integrated LUFS, true-peak (dBTP), Max Momentary/Short-term,
+# and loudness range (LU, EBU Tech 3342). Sums per-channel energy correctly
 # for mono/stereo, no surround weighting, bounded prefix — not a certified
-# full-track measurement)
+# full-track measurement.
 chameleon analyze audio.wav --loudness
 
 # Normalize volume (optionally to a specific peak)
@@ -110,7 +111,8 @@ chameleon process --normalize audio.wav
 chameleon process --normalize --target-peak 0.8 audio.wav
 
 # Full mastering chain (requires [audio] extra; presets: default/streaming/cd/vinyl)
-# Reports integrated LUFS and 4x-oversampled true-peak (dBTP) for the result.
+# Reports integrated LUFS, 4x-oversampled true-peak (dBTP) and the resulting
+# loudness range (LU), so you can see how much the chain narrowed the dynamics.
 chameleon process --master streaming audio.wav
 
 # Batch process directory (operations: analyze/normalize/denoise/convert/effects)
@@ -241,7 +243,8 @@ Supported operations are `analyze`, `normalize`, `mono` and `trim`. An
 
 ### Loudness / DSP Modules
 - **bs1770_loudness.py** - Pure-stdlib ITU-R BS.1770 K-weighted loudness,
-  true-peak (dBTP) and EBU-Mode momentary/short-term metering
+  true-peak (dBTP) and full EBU-Mode metering (momentary, short-term,
+  loudness range)
 - **spectral_utils.py** - Deterministic stdlib DFT, windowing, peak interpolation
 - **mastering_chain.py** - Mastering chain (requires numpy; scipy recommended)
 - **midi_analysis.py** - YIN pitch detection and MIDI extraction (stdlib)

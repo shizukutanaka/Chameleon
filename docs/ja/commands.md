@@ -52,6 +52,10 @@ chameleon analyze input.wav --loudness
   推定値（BS.1770-4 Annex 2 方式）。
 - **Max Momentary (LUFS)** — 400ms 窓の最大値、ゲートなし（EBU Mode）。
 - **Max Short-term (LUFS)** — 3秒 窓の最大値、ゲートなし（EBU Mode）。
+- **Loudness Range (LU)** — EBU Tech 3342。ゲート後の短期ラウドネスの
+  95パーセンタイル − 10パーセンタイル。大きい部分と小さい部分がどれだけ
+  離れているかを表します。本コマンドは先頭の一定長のみを解析するため、
+  Tech 3342 が「安定」とみなす 60 秒に満たない場合はその旨も表示します。
 
 いずれも正直に範囲を限定した測定値であり、認証されたラウドネスメーターでは
 ありません。各主張の正確な範囲は `bs1770_loudness.py` の docstring を参照。

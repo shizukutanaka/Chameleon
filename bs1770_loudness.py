@@ -339,6 +339,101 @@ def measure_max_short_term_loudness(channels: Sequence[Sequence[float]], sample_
     return max(series) if series else float('-inf')
 
 
+# --- Loudness Range (LRA), EBU Tech 3342 ------------------------------------
+#
+# LRA completes the "EBU Mode" set (M + S + I + LRA). It measures how far the
+# loud and quiet parts of a programme sit apart, over the *short-term* (3 s)
+# loudness distribution rather than the momentary one:
+#
+#   1. take the short-term loudness series (3 s window, 100 ms hop)
+#   2. drop windows below the -70 LUFS absolute gate
+#   3. drop windows more than 20 LU below the mean of what survived step 2
+#      (note: 20 LU, NOT the 10 LU the *integrated* meter uses)
+#   4. LRA = 95th percentile - 10th percentile of what remains, in LU
+#
+# Same scope caveat as the M/S meters above: the primary Tech 3342 PDF could
+# not be retrieved here (the egress proxy blocks tech.ebu.ch and the mirrors),
+# so the parameters come from agreeing secondary sources rather than the
+# standard's text, and this is not claimed as verified against it. Correctness
+# is pinned instead by first-principles invariants (a steady tone must give
+# LRA ~= 0; a signal alternating between two levels must give LRA > 0 that
+# grows with the level difference) and by cross-checking against the
+# independent numpy/scipy implementation in mastering_chain.LoudnessMeter --
+# see tests/test_ebu_mode_loudness.py.
+#
+# Tech 3342 also asks meters to flag an LRA as not yet stable during the first
+# 60 s of measurement. This module returns the number; callers that measure a
+# shorter excerpt are responsible for saying so (main.py's `analyze
+# --loudness` does, since it reads a bounded prefix).
+
+# Relative gate for LRA is 20 LU, unlike the integrated meter's 10 LU.
+_LRA_RELATIVE_GATE_OFFSET_DB = 20.0
+_LRA_LOWER_PERCENTILE = 10.0
+_LRA_UPPER_PERCENTILE = 95.0
+
+
+def _percentile(sorted_values: Sequence[float], percentile: float) -> float:
+    """Linear-interpolation percentile of an already-sorted sequence.
+
+    This is the same estimator numpy uses by default, chosen deliberately so
+    that this stdlib implementation and the numpy-based one in
+    mastering_chain can be compared directly.
+    """
+
+    if not sorted_values:
+        return float('nan')
+    if len(sorted_values) == 1:
+        return sorted_values[0]
+
+    rank = (percentile / 100.0) * (len(sorted_values) - 1)
+    lower_index = int(math.floor(rank))
+    upper_index = int(math.ceil(rank))
+    if lower_index == upper_index:
+        return sorted_values[lower_index]
+    weight = rank - lower_index
+    return sorted_values[lower_index] * (1.0 - weight) + sorted_values[upper_index] * weight
+
+
+def measure_loudness_range(channels: Sequence[Sequence[float]], sample_rate: int) -> float:
+    """Loudness range (LRA) in LU per EBU Tech 3342.
+
+    Returns float('nan') when a range cannot be measured -- no channels, a
+    signal shorter than one 3 s window, digital silence, or everything below
+    the gates. NaN (rather than 0.0) is used so callers can tell "no
+    measurement" apart from a genuine "no variation", which really is 0 LU.
+    Guard with math.isfinite().
+    """
+
+    series = [v for v in measure_short_term_loudness(channels, sample_rate)
+              if v != float('-inf') and v == v]  # drop silent windows and NaN
+    if not series:
+        return float('nan')
+
+    above_absolute = [v for v in series if v >= _ABSOLUTE_GATE_LUFS]
+    if not above_absolute:
+        return float('nan')
+
+    # The relative gate is computed from the mean *energy* of the
+    # absolute-gated windows, matching how the integrated meter gates, then
+    # expressed back in LUFS.
+    mean_energy = sum(
+        10.0 ** ((value - _LUFS_CALIBRATION_OFFSET) / 10.0) for value in above_absolute
+    ) / len(above_absolute)
+    if mean_energy <= 0:
+        return float('nan')
+    relative_threshold = (
+        _LUFS_CALIBRATION_OFFSET + 10.0 * math.log10(mean_energy)
+        - _LRA_RELATIVE_GATE_OFFSET_DB
+    )
+
+    gated = sorted(v for v in above_absolute if v >= relative_threshold)
+    if not gated:
+        return float('nan')
+
+    return (_percentile(gated, _LRA_UPPER_PERCENTILE)
+            - _percentile(gated, _LRA_LOWER_PERCENTILE))
+
+
 # --- True-peak (dBTP), BS.1770-4 Annex 2 oversample-then-peak method --------
 #
 # Annex 2 measures the true (inter-sample) peak by reconstructing the signal
@@ -467,6 +562,7 @@ __all__ = [
     "measure_short_term_loudness",
     "measure_max_momentary_loudness",
     "measure_max_short_term_loudness",
+    "measure_loudness_range",
     "measure_true_peak",
     "measure_true_peak_multichannel",
 ]

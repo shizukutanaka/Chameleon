@@ -660,6 +660,49 @@ landed:
 standard's short-term-loudness update rate) rather than an initial 1s hop
 that would have under-sampled the short-term loudness distribution.
 
+**Loudness range (LRA) completes EBU Mode (2026-08-08).** Tech 3341 defines
+EBU Mode as M + S + I + **LRA**, so the previous entry's M/S work still left
+the set incomplete — and `PRODUCT_ANALYSIS.md` had already called it done,
+which was an overclaim by this same automation and is corrected there.
+`bs1770_loudness.measure_loudness_range` now supplies the missing piece in
+pure stdlib, reusing the short-term series (3 s / 100 ms is exactly the
+geometry Tech 3342 wants) with a **-20 LU** relative gate — not the
+integrated meter's -10 LU, so `_gate_and_convert_to_lufs` could not be reused
+as-is — and returning P95 − P10. It returns NaN, not 0.0, when nothing can be
+measured, so "no measurement" stays distinguishable from a real 0 LU.
+
+Same verification stance as M/S: the primary Tech 3342 PDF was unreachable
+(egress proxy blocks tech.ebu.ch, its mirrors, and mathworks.com), so no
+claim of conformance to text we could not read. Two independent checks stand
+in. First, an invariant that follows from the definition rather than any
+table: a signal alternating between two amplitudes must have an LRA equal to
+their dB difference — measured 6.021 LU for 6.021 dB, 12.041 for 12.041,
+20.000 for 20.000, and 0.000 for a steady tone. Second, cross-implementation
+agreement: `mastering_chain.LoudnessMeter.measure_range` computes LRA
+independently via scipy filtering and `np.percentile`, and the two agree to
+**0.000 LU** on every test signal. The stdlib percentile deliberately uses
+linear interpolation (numpy's default estimator) to make that comparison
+meaningful.
+
+*Why two LRA implementations is layering, not the duplication this project
+treats as a defect.* The preceding audit flagged triplicated spectral
+subtraction as a defect, so the distinction matters. Duplication is when two
+copies serve the same caller on the same install and can silently diverge;
+layering is when the stdlib core must work with **zero** third-party packages
+(§1, the differentiator) and the numpy path exists for callers who already
+have numpy. `bs1770_loudness` cannot import scipy and `mastering_chain`
+cannot drop it, so neither can be expressed in terms of the other. This is
+the precedent already set for true-peak. The two are kept honest by a test
+that asserts they agree — which duplication-by-accident never has.
+
+*Honesty in the output.* Tech 3342 asks meters to flag an LRA as unstable
+during the first 60 s, and `analyze --loudness` reads a bounded prefix (15 s
+by default), so the CLI says so in the line itself rather than presenting a
+settled figure. Separately, `MasteringChain.analyze()` had been computing a
+loudness range that `main.py` never threaded out of the result and so could
+never display; `process --master` now shows it, which makes the chain's own
+effect visible (a 12.0 LU test file reads 3.0 LU after mastering).
+
 **First-principles audit (2026-08-08).** Instead of asking what an audio tool
 usually has, this pass derived the necessary feature set from §1 and measured
 the tree against it. Two conclusions.

@@ -4,6 +4,22 @@
 
 ### Added
 
+- **Loudness range (LRA)**: `bs1770_loudness.measure_loudness_range` adds the
+  last piece of EBU Mode (M + S + I + LRA) in pure standard library — EBU
+  Tech 3342's P95 − P10 of the gated short-term loudness, with the -20 LU
+  relative gate the range measurement uses (not the integrated meter's
+  -10 LU). Reported by `analyze --loudness` (exported as `loudness_range_lu`),
+  with an explicit note when the analysed excerpt is under the 60 s Tech 3342
+  treats as settled. Returns NaN rather than 0.0 when unmeasurable, so that
+  stays distinct from a genuine 0 LU. Validated by an invariant that follows
+  from the definition (a two-level signal's LRA equals the levels' dB
+  difference: 6.021 LU for 6.021 dB, 20.000 for 20.000) and by agreeing to
+  0.000 LU with the independent numpy/scipy meter in `mastering_chain`.
+- `process --master` now reports the loudness range of the mastered result.
+  `MasteringChain.analyze()` had always computed it, but `main.py` never
+  threaded it out of the operation result, so it could never be displayed —
+  it shows how much the chain narrowed the dynamics (12.0 LU → 3.0 LU on the
+  test file).
 - **EBU Mode loudness**: `bs1770_loudness.measure_momentary_loudness` /
   `measure_short_term_loudness` and their `measure_max_*` counterparts add the
   two ungated sliding-window meters (400 ms and 3 s) that EBU Tech 3341's

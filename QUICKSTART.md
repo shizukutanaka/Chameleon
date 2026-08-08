@@ -101,9 +101,10 @@ python main.py analyze test.wav --detailed --export results.json
 # default stdlib-only install)
 python main.py analyze test.wav --spectrum
 
-# Integrated loudness (LUFS) + true-peak (dBTP): pure-Python ITU-R BS.1770
-# K-weighted meter, also stdlib-only. Sums per-channel energy correctly for
-# mono/stereo (no surround weighting), 4x-oversampled true-peak estimate,
+# Full EBU-Mode loudness: pure-Python ITU-R BS.1770 K-weighted meter, also
+# stdlib-only. Reports integrated LUFS, 4x-oversampled true-peak (dBTP),
+# Max Momentary/Short-term, and loudness range (LU, EBU Tech 3342). Sums
+# per-channel energy correctly for mono/stereo (no surround weighting),
 # bounded to a prefix of the file -- not a certified full-track measurement.
 python main.py analyze test.wav --loudness
 ```
