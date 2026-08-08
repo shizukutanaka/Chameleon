@@ -132,21 +132,22 @@ class MemoryBenchmarks:
 
 ### ベンチマークの実行
 
+`benchmark` サブコマンドは存在しません。計測には標準の `time`（PowerShell では
+`Measure-Command`）を使い、実在するコマンドを対象にしてください。
+
 ```bash
-# すべてのベンチマークを実行
-chameleon benchmark --all
+# 単一ファイルの処理時間
+time chameleon process large_file.wav --normalize --output-dir out/
 
-# 特定のベンチマークカテゴリを実行
-chameleon benchmark --category processing
-chameleon benchmark --category memory
-chameleon benchmark --category cpu
+# ディレクトリ一括処理の時間
+time chameleon batch ./audio normalize --output-dir out/
 
-# カスタムパラメータで実行
-chameleon benchmark --input large_file.wav --iterations 10 --workers 4
-
-# ベンチマーク結果を比較
-chameleon benchmark --compare --baseline baseline.json --current current.json
+# ワーカー数を変えて比較（グローバルオプション）
+time chameleon --max-workers 4 batch ./audio normalize --output-dir out/
+time chameleon --no-parallel batch ./audio normalize --output-dir out/
 ```
+
+計測前に一度実行してキャッシュを温めると数値が安定します。
 
 ### ベンチマーク設定
 

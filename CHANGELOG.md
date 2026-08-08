@@ -4,6 +4,46 @@
 
 ### Added
 
+- **EBU Mode loudness**: `bs1770_loudness.measure_momentary_loudness` /
+  `measure_short_term_loudness` and their `measure_max_*` counterparts add the
+  two ungated sliding-window meters (400 ms and 3 s) that EBU Tech 3341's
+  "EBU Mode" requires alongside the existing gated Integrated measurement.
+  Surfaced in `analyze --loudness` as Max Momentary / Max Short-term and in
+  `--export` as `max_momentary_lufs` / `max_short_term_lufs`. Pure standard
+  library, no new coefficients — it reuses the validated K-weighting and a
+  generalized block-energy helper. Scope is stated honestly: the primary
+  Tech 3341 document could not be retrieved, so correctness is pinned by
+  first-principles invariants (stationary signal ⇒ M == S == I, etc.) rather
+  than claimed against the standard's text.
+
+### Changed (honesty / documentation)
+
+- Rewrote `docs/{en,ja}/commands.md`, `docs/{en,ja}/advanced_config.md` and the
+  benchmark docs, which described a product that does not exist: ~18 commands
+  with no `add_parser` anywhere (`normalize`, `convert`, `trim`, `menu`,
+  `benchmark`, `diagnostics`, `health-check`, `audit-log`, …), a JSON
+  configuration file, and a `config` sub-command. They now document only the 8
+  real subcommands and the 7 environment variables the code actually reads;
+  every example was executed before being written down.
+- `README.md`: the Python API example no longer builds on the orphaned
+  `performance_optimizer`; removed the listing for the deleted
+  `stability_enhancer.py`; retired the "SIMD" wording the module itself
+  retracts; added the loudness/DSP modules that were missing.
+- `setup.py`: extras now mirror `pyproject.toml` (`audio`/`api`/`dev`, with
+  `python-multipart`) instead of advertising undocumented `full`/`realtime`
+  extras and a `midi` extra requiring `mido`, which nothing imports.
+- `personal_config.py`: `podcast_workflow` / `music_workflow` printed step
+  banners and a success line while performing no processing; they now raise
+  `NotImplementedError` naming the CLI commands that do the work.
+
+### Fixed
+
+- `spectral_editor.py` and `audio_restoration.py` imported numpy/scipy
+  unconditionally, so importing either raised `ModuleNotFoundError` on a
+  stdlib-only interpreter (a real failure, not a theoretical one). Both now use
+  the guarded `HAS_*` pattern and raise a clear, actionable error naming
+  `pip install -e .[audio]` only when actually used.
+
 - Agent-facing documentation: `CLAUDE.md` (the working agreement for AI
   contributors — read order, absolute rules, verification gate, known traps),
   `PRODUCT_ANALYSIS.md` (strengths / weaknesses / prioritized improvement

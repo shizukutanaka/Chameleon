@@ -312,6 +312,8 @@ class AudioMetadata:
     key: Optional[str] = None
     loudness_lufs: Optional[float] = None
     true_peak_dbtp: Optional[float] = None
+    max_momentary_lufs: Optional[float] = None
+    max_short_term_lufs: Optional[float] = None
     spectral_centroid: Optional[float] = None
     zero_crossing_rate: Optional[float] = None
 
@@ -1664,6 +1666,23 @@ async def main():
                                     metadata.true_peak_dbtp = true_peak
                                     print(f"  True Peak: {true_peak:+.1f} dBTP "
                                           f"(4x-oversampled inter-sample peak estimate)")
+                                # EBU Mode (Tech 3341) completes the integrated
+                                # reading with the two ungated sliding-window
+                                # meters: Max-M (400ms) and Max-S (3s).
+                                max_m = bs1770_loudness.measure_max_momentary_loudness(
+                                    samples_result.data["channels"],
+                                    samples_result.data["sample_rate"],
+                                )
+                                max_s = bs1770_loudness.measure_max_short_term_loudness(
+                                    samples_result.data["channels"],
+                                    samples_result.data["sample_rate"],
+                                )
+                                if math.isfinite(max_m):
+                                    metadata.max_momentary_lufs = max_m
+                                    print(f"  Max Momentary: {max_m:.1f} LUFS (400ms window, ungated)")
+                                if math.isfinite(max_s):
+                                    metadata.max_short_term_lufs = max_s
+                                    print(f"  Max Short-term: {max_s:.1f} LUFS (3s window, ungated)")
 
         if args.export:
             with open(args.export, 'w') as f:

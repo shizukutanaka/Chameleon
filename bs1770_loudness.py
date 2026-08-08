@@ -156,20 +156,27 @@ def _block_mean_squares(weighted: Sequence[float], sample_rate: int) -> List[flo
     return blocks
 
 
-def _block_summed_mean_squares(weighted_channels: Sequence[Sequence[float]], sample_rate: int) -> List[float]:
+def _block_summed_mean_squares(weighted_channels: Sequence[Sequence[float]], sample_rate: int,
+                               block_seconds: float = _BLOCK_SECONDS,
+                               hop_seconds: float = _HOP_SECONDS) -> List[float]:
     """Per-block energy summed across channels (equal weight 1.0 each).
 
     This is what BS.1770 actually requires for multi-channel content: sum
     each channel's mean-square energy per block, not average the channels'
     *samples* together before filtering (which is what a mono downmix does,
     and which under-reads real stereo content -- see module docstring).
+
+    `block_seconds` / `hop_seconds` default to the BS.1770 integrated-loudness
+    geometry (400 ms / 100 ms). They are parameters so the EBU-Mode momentary
+    (400 ms) and short-term (3 s) meters below can reuse this exact code path
+    rather than duplicating the windowing logic.
     """
 
     if not weighted_channels:
         return []
 
-    block_size = max(1, int(round(_BLOCK_SECONDS * sample_rate)))
-    hop = max(1, int(round(_HOP_SECONDS * sample_rate)))
+    block_size = max(1, int(round(block_seconds * sample_rate)))
+    hop = max(1, int(round(hop_seconds * sample_rate)))
     length = min(len(channel) for channel in weighted_channels)
     if length < block_size:
         return []
@@ -243,6 +250,93 @@ def measure_integrated_loudness_multichannel(channels: Sequence[Sequence[float]]
     weighted_channels = [apply_k_weighting(channel, sample_rate) for channel in channels]
     blocks = _block_summed_mean_squares(weighted_channels, sample_rate)
     return _gate_and_convert_to_lufs(blocks)
+
+
+# --- EBU Mode: momentary (M) and short-term (S) loudness --------------------
+#
+# EBU Tech 3341 defines an "EBU Mode" meter as Momentary + Short-term +
+# Integrated (+ LRA). This module already provides the gated Integrated
+# measurement; M and S are the two ungated sliding-window meters:
+#
+#   Momentary  (M): 400 ms sliding rectangular window, NOT gated
+#   Short-term (S): 3 s   sliding rectangular window, NOT gated
+#
+# Both reuse the same K-weighting and the same per-block energy summation as
+# the integrated meter -- only the window length and the absence of gating
+# differ. The hop is 100 ms, giving a 10 Hz refresh (Tech 3341 requires live
+# meters to update at at least 10 Hz).
+#
+# Scope note, stated honestly: the window lengths and the "not gated" property
+# above are taken from secondary descriptions of Tech 3341 (EBU's own summary,
+# MATLAB's Audio Toolbox docs, Essentia, FLUX, RTW), which agree with each
+# other. The primary Tech 3341 PDF could NOT be retrieved in the environment
+# this was written in (the network egress proxy blocks tech.ebu.ch), so this
+# is not claimed to be verified against the standard's text. What *is* verified
+# is the arithmetic: these functions reuse the already-validated K-weighting
+# and block-energy code, introduce no new coefficients, and are checked
+# against the first-principles invariant that for a stationary signal
+# M == S == I (see tests/test_ebu_mode_loudness.py).
+
+_MOMENTARY_SECONDS = 0.4
+_SHORT_TERM_SECONDS = 3.0
+# 10 Hz refresh, the minimum Tech 3341 specifies for live meters.
+_EBU_MODE_HOP_SECONDS = 0.1
+
+
+def _ungated_window_lufs(channels: Sequence[Sequence[float]], sample_rate: int,
+                         window_seconds: float) -> List[float]:
+    """LUFS value for each sliding window, ungated (EBU Mode M/S helper).
+
+    Returns [] when there are no channels or the signal is shorter than one
+    window. Windows whose energy is zero (digital silence) are reported as
+    float('-inf') rather than dropped, so the series stays time-aligned.
+    """
+
+    if not channels:
+        return []
+
+    weighted = [apply_k_weighting(channel, sample_rate) for channel in channels]
+    energies = _block_summed_mean_squares(
+        weighted, sample_rate,
+        block_seconds=window_seconds,
+        hop_seconds=_EBU_MODE_HOP_SECONDS,
+    )
+    return [
+        (_LUFS_CALIBRATION_OFFSET + 10.0 * math.log10(energy)) if energy > 0 else float('-inf')
+        for energy in energies
+    ]
+
+
+def measure_momentary_loudness(channels: Sequence[Sequence[float]], sample_rate: int) -> List[float]:
+    """Momentary loudness series (LUFS): 400 ms sliding window, ungated.
+
+    One value per 100 ms hop. Empty list if the signal is shorter than 400 ms.
+    """
+
+    return _ungated_window_lufs(channels, sample_rate, _MOMENTARY_SECONDS)
+
+
+def measure_short_term_loudness(channels: Sequence[Sequence[float]], sample_rate: int) -> List[float]:
+    """Short-term loudness series (LUFS): 3 s sliding window, ungated.
+
+    One value per 100 ms hop. Empty list if the signal is shorter than 3 s.
+    """
+
+    return _ungated_window_lufs(channels, sample_rate, _SHORT_TERM_SECONDS)
+
+
+def measure_max_momentary_loudness(channels: Sequence[Sequence[float]], sample_rate: int) -> float:
+    """Max-M (LUFS): the loudest 400 ms window. -inf if unmeasurable/silent."""
+
+    series = [v for v in measure_momentary_loudness(channels, sample_rate) if v != float('-inf')]
+    return max(series) if series else float('-inf')
+
+
+def measure_max_short_term_loudness(channels: Sequence[Sequence[float]], sample_rate: int) -> float:
+    """Max-S (LUFS): the loudest 3 s window. -inf if unmeasurable/silent."""
+
+    series = [v for v in measure_short_term_loudness(channels, sample_rate) if v != float('-inf')]
+    return max(series) if series else float('-inf')
 
 
 # --- True-peak (dBTP), BS.1770-4 Annex 2 oversample-then-peak method --------
@@ -369,6 +463,10 @@ __all__ = [
     "apply_k_weighting",
     "measure_integrated_loudness",
     "measure_integrated_loudness_multichannel",
+    "measure_momentary_loudness",
+    "measure_short_term_loudness",
+    "measure_max_momentary_loudness",
+    "measure_max_short_term_loudness",
     "measure_true_peak",
     "measure_true_peak_multichannel",
 ]

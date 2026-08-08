@@ -1,6 +1,8 @@
 # Chameleon — Product Analysis (Strengths, Weaknesses, Improvement Backlog)
 
-**Snapshot date:** 2026-07-18 · **Version:** 1.1.0 · **Tests:** 215 passing, 1 skipped
+**Snapshot date:** 2026-08-08 (first-principles audit) · **Version:** 1.1.0 ·
+**Tests:** 211 passing, 3 skipped in a minimal env (skips are fastapi/numpy-gated,
+not failures; the count varies with which optional extras are installed)
 
 This is a *state snapshot* — an honest inventory of what is strong, what is
 weak, and what to do next, written for the next contributor (human or AI).
@@ -52,16 +54,70 @@ re-verified, not trusted.
 
 ---
 
+## 1b. First-principles audit (2026-08-08): what is excess, what is missing
+
+Rather than asking "what does an audio tool usually have", this pass derived
+the necessary-and-sufficient feature set from `CHARTER.md` §1 (*dependency-free,
+auditable, deterministic WAV CLI*) and measured the codebase against it.
+
+**Excess — roughly 1 line in 4 of shipped Python is unreachable from the CLI.**
+
+| Bucket | Lines | Share |
+|--------|------:|------:|
+| Reachable from the CLI (the stated product) | 9,367 | 66.5% |
+| Reachable only via `server` + `[api]` extra | 1,600 | 11.4% |
+| **Orphaned (no entry point reaches it)** | **3,121** | **22.2%** |
+
+Including `core.py`'s `RealtimeAudioProcessor` (needs an undeclared
+`websockets` dependency, zero callers) pushes dead weight to ~25%.
+
+Specific findings, each cited so it can be re-verified:
+
+- **`performance_optimizer.py` is ~100% redundant.** `get_optimal_worker_count`
+  duplicates `main.py`'s `ProcessingConfig.from_environment` (making it the
+  *third* place worker count is resolved); `CacheManager` is a weaker
+  `core.py` `MemoryManager` (which does byte-accounted LRU + mmap);
+  `SIMDOperations`' operations all exist in `core.py`. This is the same
+  argument that retired `config_manager.py`.
+- **Spectral subtraction is implemented three times**: `main.py`'s
+  `remove_noise`, `audio_restoration.py`'s `AdaptiveDenoiser`, and
+  `spectral_editor.py`'s `noise_reduce_selection`.
+- **`audio_restoration.py` is mostly genuine capability** — 7 of its 8 classes
+  (click/crackle/hum removal, declipping, gap repair, vinyl) have no wired
+  equivalent. It is blocked on a CLI surface, not redundant.
+- **`batch_automation.py` is genuine capability pointed the wrong way** — a
+  generic DAG/workflow engine, i.e. §4's "a second product". Its own demo
+  builds tasks for MP3/FLAC/OGG transcoding this product cannot do.
+- **`api_server.py:52-54` imports three modules that have never existed**
+  (`government_auth`, `secure_core`, `high_performance_core`). They sit in a
+  `try/except`, so `HAS_SECURE_MODULES` is permanently `False` and the
+  `skipif` guards in `tests/test_api_fallback.py` are permanently no-ops. The
+  "government" naming is also the kind of claim §4 forbids.
+
+**Missing — the gaps were in honesty and in standards coverage, not features.**
+All of these were fixed in this pass (see §2 "Resolved"), except where noted.
+
+- The bilingual command reference documented ~18 commands that do not exist,
+  and a configuration file / `config` sub-command that do not exist.
+- `analyze --loudness` reported only Integrated loudness, so it was an
+  incomplete EBU-Mode reading. Momentary/Short-term now added.
+- Still open (needs a decision, not code): the disposition of the orphaned
+  modules above, and the `api_server.py` phantom imports. Deleting any of them
+  requires explicit user confirmation — see §3.
+
 ## 2. Weaknesses (known — do not paper over)
 
 ### Correctness / install integrity
-- **Orphaned modules break the stdlib-only story on import.**
-  `spectral_editor.py:9` (`import numpy as np`) and `audio_restoration.py:10-12`
-  (`import numpy` + `from scipy import …`) import third-party packages
-  *unconditionally* at module top. They are not wired into `main.py`/`api_server.py`
-  (only referenced by `setup.py` packaging), so they don't break the default
-  install today — but `import spectral_editor` from anywhere would. Contrast
-  the correct pattern in `mastering_chain.py` / `spectral_utils.py` (guarded).
+- ~~**Orphaned modules break the stdlib-only story on import.**~~
+  **RESOLVED 2026-08-08.** `spectral_editor.py` and `audio_restoration.py`
+  imported numpy/scipy unconditionally, so `import spectral_editor` raised
+  `ModuleNotFoundError` on a stdlib-only interpreter (confirmed the hard way:
+  this session's container was reset to a bare interpreter and both modules
+  did fail to import). Both now use the guarded `HAS_*` pattern plus a
+  `_require_numpy()` / `_require_restoration_deps()` check that raises a clear
+  error naming `pip install -e .[audio]`. Proven by
+  `tests/test_orphaned_import_safety.py`, which blocks numpy/scipy in a
+  subprocess so the tests hold regardless of the test environment.
 - **`api_server.py:27-34`** imports `fastapi`/`pydantic`/`uvicorn`
   unconditionally. Mitigated because `main.py`'s `server` subcommand launches
   it by string (`uvicorn.run("api_server:app", …)`) and guards the uvicorn
@@ -83,8 +139,10 @@ document (kept here as a record, per the honesty culture):
   standalone/orphaned status.
 
 ### Coverage gaps
-- **Zero test coverage:** `audio_restoration.py`, `spectral_editor.py`,
-  `performance_optimizer.py`, `personal_config.py`.
+- **Zero test coverage:** `performance_optimizer.py`, `personal_config.py`.
+  (`audio_restoration.py` and `spectral_editor.py` now have import-safety
+  coverage via `tests/test_orphaned_import_safety.py`, but still no coverage
+  of their actual DSP.)
 
 ### Infrastructure / architecture (need a human or a big investment)
 - **The active CI workflow is broken and cannot be fixed by the automation
@@ -120,8 +178,11 @@ here because they need a user decision first.
 | # | Improvement | Value | Effort | Risk | Notes |
 |---|-------------|-------|--------|------|-------|
 | ~~P1~~ | ~~Fix 3 docstring/metadata overclaims~~ | Med | XS | Low | **DONE 2026-07-18** — see §2 "Honesty residue" |
-| P1 | Guard the unconditional numpy/scipy imports in `spectral_editor.py` / `audio_restoration.py` (or record why not) | Med | S | Low | Makes `import`-safety uniform with the rest of the tree |
-| P2 | Add minimal tests for the 4 zero-coverage modules | Med | M | Low | Even import + one-happy-path each raises the floor |
+| ~~P1~~ | ~~Guard the unconditional numpy/scipy imports~~ | Med | S | Low | **DONE 2026-08-08** — guarded + `tests/test_orphaned_import_safety.py` |
+| ~~P1~~ | ~~Rewrite the bilingual command/config references~~ | High | M | Low | **DONE 2026-08-08** — they documented ~18 nonexistent commands and a nonexistent config file; every replacement example was executed before being written |
+| ~~P2~~ | ~~EBU-Mode momentary/short-term loudness~~ | Med | M | Low | **DONE 2026-08-08** — `analyze --loudness` was integrated-only, an incomplete EBU-Mode reading |
+| P2 | Add minimal tests for the remaining zero-coverage modules | Med | M | Low | `performance_optimizer`, `personal_config` still uncovered |
+| P2 | Give `audio_restoration`'s 7 unique repair classes a CLI surface, or record that they stay standalone | Med | M | Med | The only orphan that is capability rather than duplication |
 | P2 | Adopt `ci/proposed-ci.yml` → `.github/workflows/ci-cd.yml` | High (green CI) | XS (one `cp`) | Low | **Human-only** — needs `workflows` permission |
 | P3 | Decide disposition of each orphaned asset (wire / keep-labeled / delete) | Med | Varies | Med | Deletion needs explicit user confirmation |
 | P3 | Pure-Python true-peak perf, or a documented cap note | Low | S | Low | Currently ~0.4 s/65k samples |

@@ -84,28 +84,41 @@ setup(
     ],
     python_requires=">=3.8",
     install_requires=[
-        # Core functionality works without dependencies
-        # Optional dependencies listed in requirements.txt
+        # Core functionality works without dependencies.
+        # Optional dependencies live in the extras below (and, canonically,
+        # in pyproject.toml). requirements.txt intentionally pins nothing.
     ],
+    # NOTE: pyproject.toml carries a PEP 621 [project] table, so THAT file is
+    # what pip actually reads -- these values are a mirror kept for anyone
+    # reading setup.py directly. Keep the two in sync; pyproject.toml wins.
+    #
+    # Previously this list diverged badly: it advertised `full`, `midi` and
+    # `realtime` extras documented nowhere (and `midi` pulled in mido, which
+    # no module imports), while omitting the `audio` and `dev` extras that
+    # README.md actually tells users to install.
     extras_require={
-        "full": [
-            "numpy>=1.20.0",
-            "scipy>=1.7.0",
-            "soundfile>=0.10.0",
-            "librosa>=0.9.0",
-        ],
-        "midi": [
-            "mido>=1.2.0",
-        ],
-        "realtime": [
+        "audio": [
+            "numpy>=1.21",
+            "scipy>=1.7",
+            "librosa>=0.9",
+            "soundfile>=0.10",
             "pyaudio>=0.2.11",
         ],
         "api": [
-            "fastapi>=0.70.0",
-            "uvicorn>=0.15.0",
+            "fastapi>=0.75,<0.100",
+            "uvicorn[standard]>=0.17",
             # api_server.py's request models use pydantic v1 syntax
             # (Field(regex=...)), which raises at import under pydantic 2.
             "pydantic>=1.9,<2",
+            # api_server.py's UploadFile/File routes need this at import time.
+            "python-multipart>=0.0.6",
+        ],
+        "dev": [
+            "pytest>=8.2",
+            "pytest-cov>=5.0",
+            # tests/test_api_routes.py's TestClient needs the app= shortcut
+            # that httpx dropped in 0.24.
+            "httpx<0.24",
         ],
     },
     entry_points={

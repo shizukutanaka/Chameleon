@@ -2,15 +2,37 @@
 """
 Spectral Editing Module for Chameleon
 Advanced frequency-domain audio editing and restoration
+
+Standalone / not wired into the CLI (see PRODUCT_ANALYSIS.md). Requires the
+optional [audio] extra (numpy, and scipy/librosa for the fast paths); imports
+are guarded so `import spectral_editor` never breaks the stdlib-only default
+install — the numpy-dependent classes raise a clear error only when used.
 """
+
+from __future__ import annotations
 
 import os
 import sys
-import numpy as np
 from typing import Dict, List, Optional, Any, Tuple, Callable
 from dataclasses import dataclass, field
 import logging
 import warnings
+
+try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:  # keep the module import-safe on the stdlib-only install
+    HAS_NUMPY = False
+    warnings.warn("NumPy not available. Spectral editing requires the optional [audio] extra.")
+
+
+def _require_numpy() -> None:
+    """Raise a clear error if a numpy-dependent entry point is used without numpy."""
+    if not HAS_NUMPY:
+        raise RuntimeError(
+            "Spectral editing requires NumPy. Install the optional audio extra: "
+            "pip install -e .[audio]"
+        )
 
 # Advanced processing libraries
 try:
@@ -67,6 +89,7 @@ class SpectrogramProcessor:
     """High-quality spectrogram computation and manipulation"""
 
     def __init__(self, config: SpectrogramConfig = None):
+        _require_numpy()
         self.config = config or SpectrogramConfig()
         self.logger = logging.getLogger(__name__)
 
@@ -214,6 +237,7 @@ class SpectralEditor:
     """Advanced spectral editing operations"""
 
     def __init__(self, config: SpectralEditConfig = None):
+        _require_numpy()
         self.config = config or SpectralEditConfig()
         self.spectrogram_processor = SpectrogramProcessor()
         self.logger = logging.getLogger(__name__)

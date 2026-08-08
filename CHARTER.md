@@ -660,6 +660,50 @@ landed:
 standard's short-term-loudness update rate) rather than an initial 1s hop
 that would have under-sampled the short-term loudness distribution.
 
+**First-principles audit (2026-08-08).** Instead of asking what an audio tool
+usually has, this pass derived the necessary feature set from §1 and measured
+the tree against it. Two conclusions.
+
+*Excess:* ~1 line in 4 of shipped Python is unreachable from the CLI (9,367
+reachable / 3,121 orphaned, plus `RealtimeAudioProcessor`). `performance_optimizer.py`
+is ~100% duplication of `core.py`/`main.py` facilities; spectral subtraction
+exists in three places; `api_server.py:52-54` imports three modules that have
+never existed, permanently pinning `HAS_SECURE_MODULES` to False and making
+the `skipif`s in `tests/test_api_fallback.py` no-ops. **Nothing was deleted** —
+the deletion rule requires explicit per-item confirmation, and asking produced
+no answer, so all of it is recorded in `PRODUCT_ANALYSIS.md` §1b for a later
+decision rather than acted on.
+
+*Missing:* the real gaps were honesty and standards coverage, not features.
+The bilingual command reference documented ~18 commands with no `add_parser`
+anywhere (plus a configuration file and `config` sub-command that do not
+exist) — fiction sitting at the first touchpoint a user has. Rewritten against
+the actual argparse, with every example executed before being written down.
+`analyze --loudness` reported only Integrated loudness, an incomplete
+EBU-Mode reading; Momentary/Short-term added (below). Also fixed: README's
+public-API example was built on an orphaned module, README listed the deleted
+`stability_enhancer.py`, `setup.py`'s extras diverged from pyproject
+(advertising a `mido` dependency nothing imports while omitting the `audio`
+and `dev` extras the README tells users to install), and
+`personal_config.py`'s podcast/music workflows printed "ready!" while doing no
+work at all — now raising `NotImplementedError` that names the real commands.
+
+**EBU Mode momentary/short-term loudness (2026-08-08).** `bs1770_loudness.py`
+gained M (400 ms) and S (3 s) ungated sliding-window meters plus Max-M/Max-S,
+wired into `analyze --loudness` and `--export`. Implemented by generalizing
+`_block_summed_mean_squares` with block/hop parameters rather than duplicating
+the windowing — deliberately, since the same pass flags triplicated DSP as a
+defect. No new coefficients.
+
+Honesty note worth preserving: the primary EBU Tech 3341 PDF **could not be
+retrieved** here (the egress proxy blocks `tech.ebu.ch` and the mirrors), so
+the window lengths and the ungated property come from agreeing secondary
+sources, not the standard's text, and the code says so. Following the
+true-peak precedent, correctness is instead pinned by first-principles
+invariants: a stationary signal must give M == S == I (measured Δ 0.0000 LU),
+M must react faster than S after a level step, quiet windows must survive
+(ungated), and two identical channels must sum to +3.01 LU.
+
 **Agent docs + honesty pass (2026-07-18).** Added the first agent-facing
 documentation set — `CLAUDE.md` (working agreement), `PRODUCT_ANALYSIS.md`
 (strengths/weaknesses/backlog, cited to `file:line`), and

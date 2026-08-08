@@ -1,12 +1,13 @@
 # Chameleon Audio Processing System — Project Status
 
-**Status**: Beta. Standard-library CLI core is stable and tested (215 automated
+**Status**: Beta. Standard-library CLI core is stable and tested (211 automated
 tests, all green). REST API server works end-to-end with `pip install -e .[api]`.
 Container image now actually builds and runs (previously completely broken —
 see §2). No web frontend ships (see §5).
-**Last updated**: 2026-07-18 (true-peak dBTP metering in both meters;
-BatchProcessor sync/async batch-path fixes; new agent-facing docs —
-`CLAUDE.md`, `PRODUCT_ANALYSIS.md`, `docs/agents/{OPUS,SONNET}.md`)
+**Last updated**: 2026-08-08 (first-principles audit: bilingual command/config
+references rewritten to match the real CLI; EBU-Mode momentary/short-term
+loudness; numpy/scipy import guards; README/setup.py/personal_config honesty
+fixes. See `CHARTER.md` §9 and `PRODUCT_ANALYSIS.md` §1b)
 **Read first**: `CHARTER.md` — the project's scope charter and full decision
 history (Socratic record, §9). This file is a status *snapshot*; `CHARTER.md`
 is the source of truth for *why* each decision was made. For AI agents,
@@ -49,7 +50,7 @@ action.
 |---|---|---|
 | Correctness (critical) | WAV read/write assumed data starts at byte 44; real-world WAVs with LIST/JUNK/fact chunks got silently wrong analysis and corrupted output | Canonical chunk-walking parser (`core.py:_read_wav_header`), `AudioInfo.data_offset`/`data_size` threaded through every reader/writer |
 | Correctness | `BatchProcessor.process_directory` (sync) never returned its result list (fell off the end, returned `None`) | Added `return results` |
-| Correctness | `BatchProcessor.process_directory` (sync) calls `self._execute_operation(...)`, a method that doesn't exist on the class | **NOT fixed** — zero callers found anywhere; recorded as an open question (§3 below), not silently patched |
+| Correctness | `BatchProcessor.process_directory` (sync) called `self._execute_operation(...)`, a method that didn't exist — the `AttributeError` was swallowed, so every file in a sync batch was silently reported as failed | Fixed: sync `_execute_operation` implemented, sharing dispatch with the async twin via `_build_operation_runner`. Exposed two more latent bugs, also fixed (dict-only `result.data` assumption; async `(result, attempts)` tuple leak) |
 | Security (critical) | Plugin sandbox: `__import__("os")` (no literal `import` statement) bypassed the entire AST-based import check, running unrestricted code at plugin load time. Verified empirically. Also bypassable via `importlib.import_module` | Extended the AST walk to reject `__import__`/`eval`/`exec`/`compile`, `importlib.import_module`, and `__globals__`/`__builtins__`/`__subclasses__`/`__mro__`/`__bases__` attribute access. **Still AST-only, not a runtime sandbox** — documented, not overclaimed |
 | Correctness | `plugin_system.py` called `importlib.util.*` without ever importing `importlib.util` — worked by accident, broke on a fresh process | Added explicit `import importlib.util` |
 | Honesty | 3 of 5 shipped `demo_plugins/` failed the product's own `plugins audit` command (legacy `sys.path.append` boilerplate importing blocklisted `os`/`sys`) | Removed the dead boilerplate; now 5/5 pass |
