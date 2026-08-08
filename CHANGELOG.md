@@ -54,6 +54,26 @@
 
 ### Fixed
 
+- **Sample-rate conversion aliased on the fallback path.** `_resample_audio`
+  uses librosa, then scipy, then a built-in fallback that was plain
+  `np.interp` — linear interpolation with no anti-aliasing, so downsampling
+  folded content above the new Nyquist back into the audible band. It is now a
+  windowed-sinc resampler with the cutoff at `min(1, target/source)`. On a
+  15 kHz tone at 48 kHz → 16 kHz the alias drops from −5.69 dBFS to
+  −62.70 dBFS (scipy's reference result: −62.63 dBFS). The librosa and scipy
+  branches were already correct and are unchanged.
+- **16-bit quantisation truncated instead of rounding.** `_save_wav_basic`
+  used `.astype(np.int16)`, biasing single-signed material by −0.4999 LSB and
+  allowing a full-LSB worst-case error. Rounding gives −0.0002 LSB mean error
+  and a 0.5 LSB worst case.
+- `ProcessingConfig.apply_dither` was a flag nothing read. It now applies
+  2 LSB peak-to-peak TPDF dither when set. It stays **off by default** so
+  output remains byte-for-byte reproducible (a documented differentiator);
+  enabling it trades that for a quantisation error independent of the signal.
+- Documentation: `--convert` and `--denoise` were listed as core commands
+  without noting that they require numpy (only `analyze` and `normalize` run
+  on the dependency-free install). Both command references now carry per-flag
+  dependency columns.
 - `spectral_editor.py` and `audio_restoration.py` imported numpy/scipy
   unconditionally, so importing either raised `ModuleNotFoundError` on a
   stdlib-only interpreter (a real failure, not a theoretical one). Both now use

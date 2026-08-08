@@ -604,8 +604,71 @@ class AudioProcessor:
 
         return normalized
 
+    @staticmethod
+    def _bandlimited_resample(channel: np.ndarray, source_sr: int, target_sr: int,
+                              half_taps: int = 16) -> np.ndarray:
+        """Band-limited resample via windowed-sinc interpolation (numpy only).
+
+        Used when neither librosa nor scipy is installed. The anti-aliasing is
+        the `cutoff` term: the reconstruction filter has to stop below the
+        LOWER of the two Nyquist frequencies, so when downsampling the sinc is
+        widened by the conversion ratio (its cutoff moves down to the new
+        Nyquist) and the kernel support is widened to match. Without that, a
+        plain interpolator -- which is what this branch used to do, via
+        np.interp -- folds everything above the new Nyquist back into the
+        audible band.
+
+        The taps are a Blackman-windowed sinc normalized to unit DC gain,
+        the same construction bs1770_loudness uses for true-peak
+        oversampling; only the cutoff scaling is new, since that path
+        interpolates but never decimates.
+        """
+
+        n_in = len(channel)
+        if n_in == 0:
+            return channel.astype(np.float32)
+
+        ratio = target_sr / source_sr
+        n_out = max(1, int(round(n_in * ratio)))
+        cutoff = min(1.0, ratio)
+        # Lowering the cutoff widens the impulse response, so keep the same
+        # number of zero crossings by widening the support to match.
+        taps_half = max(1, int(round(half_taps / cutoff)))
+
+        centers = np.arange(n_out) / ratio
+        base = np.floor(centers).astype(np.int64)
+
+        accumulated = np.zeros(n_out, dtype=np.float64)
+        tap_sum = np.zeros(n_out, dtype=np.float64)
+        for offset in range(-taps_half + 1, taps_half + 1):
+            indices = base + offset
+            scaled = (centers - indices) * cutoff
+            # np.sinc(x) is sin(pi*x)/(pi*x), i.e. already normalized.
+            window_position = (scaled / (2.0 * half_taps)) + 0.5
+            window = np.where(
+                (window_position >= 0.0) & (window_position <= 1.0),
+                0.42
+                - 0.5 * np.cos(2.0 * np.pi * window_position)
+                + 0.08 * np.cos(4.0 * np.pi * window_position),
+                0.0,
+            )
+            taps = np.sinc(scaled) * window
+            inside = (indices >= 0) & (indices < n_in)
+            values = np.where(inside, channel[np.clip(indices, 0, n_in - 1)], 0.0)
+            accumulated += taps * values
+            tap_sum += taps
+
+        # Unit DC gain: a constant signal must survive unchanged.
+        tap_sum = np.where(np.abs(tap_sum) < 1e-12, 1.0, tap_sum)
+        return (accumulated / tap_sum).astype(np.float32)
+
     def _resample_audio(self, audio: np.ndarray, source_sr: int, target_sr: int) -> np.ndarray:
-        """Resample audio data to a new sample rate with minimal dependencies."""
+        """Resample audio data to a new sample rate with minimal dependencies.
+
+        Picks the best resampler available: librosa, then scipy's
+        resample_poly, then a built-in windowed-sinc fallback. All three
+        band-limit the signal, so downsampling does not alias.
+        """
 
         if target_sr <= 0:
             raise ValueError("Target sample rate must be positive.")
@@ -628,10 +691,7 @@ class AudioProcessor:
                 down = source_sr // gcd
                 resampled = signal.resample_poly(channel, up, down)
             else:
-                num_samples = max(1, int(round(len(channel) * target_sr / source_sr)))
-                x_old = np.linspace(0.0, len(channel) - 1, num=len(channel), endpoint=True)
-                x_new = np.linspace(0.0, len(channel) - 1, num=num_samples, endpoint=True)
-                resampled = np.interp(x_new, x_old, channel)
+                resampled = self._bandlimited_resample(channel, source_sr, target_sr)
 
             resampled_channels.append(resampled.astype(np.float32))
 
@@ -1403,11 +1463,38 @@ class AudioProcessor:
         return destination
 
     def _save_wav_basic(self, audio: np.ndarray, file_path: str, sr: int, *, bit_depth: int = 16):
-        """Basic WAV file writer without external dependencies"""
+        """Basic WAV file writer without external dependencies.
+
+        Always writes 16-bit PCM regardless of `bit_depth` (callers that need
+        24/32-bit go through soundfile); the parameter is kept for signature
+        compatibility with that path.
+
+        Quantisation rounds to nearest. It previously used `.astype(np.int16)`,
+        which truncates toward zero -- a biased quantiser whose error is
+        correlated with the signal rather than centred on zero. Rounding
+        removes that bias and halves the worst-case error.
+
+        Dither is applied only when `ProcessingConfig.apply_dither` is set. It
+        is off by default on purpose: TPDF dither is the right choice for
+        audio quality when reducing bit depth, but it adds noise from a random
+        source, and CHARTER §1 sells this tool on being deterministic and
+        reproducible -- the same input must produce the same bytes. Opting in
+        trades that guarantee for the better-behaved noise floor.
+        """
         if audio.dtype != np.float32:
             audio = audio.astype(np.float32)
 
-        pcm_audio = (np.clip(audio, -1.0, 1.0) * 32767).astype(np.int16)
+        scaled = np.clip(audio, -1.0, 1.0) * 32767.0
+
+        if getattr(self.config, "apply_dither", False):
+            # TPDF (triangular) dither, 2 LSB peak-to-peak: the sum of two
+            # independent uniform variables. Triangular rather than
+            # rectangular because it makes the quantisation error independent
+            # of the signal, which is what removes noise modulation.
+            rng = np.random.default_rng()
+            scaled = scaled + (rng.random(scaled.shape) - rng.random(scaled.shape))
+
+        pcm_audio = np.clip(np.round(scaled), -32768, 32767).astype(np.int16)
 
         channels = 1 if pcm_audio.ndim == 1 else pcm_audio.shape[0]
 

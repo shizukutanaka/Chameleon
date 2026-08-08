@@ -64,14 +64,20 @@ These are honest measurements, not a certified meter: see
 Process one or more files. Operations combine; output goes to `--output-dir`
 (or alongside the input if omitted).
 
+> **Only `--normalize` runs on the default, dependency-free install.**
+> `--denoise`, `--convert`, `--master` and `--effects` all require numpy and
+> exit with an error without it (`pip install -e .[audio]`). The table below
+> marks each one.
+
 ```bash
-# Normalize to a target peak
+# Normalize to a target peak (stdlib-only)
 chameleon process input.wav --normalize --target-peak 0.90 --output-dir out/
 
-# Noise reduction
+# Noise reduction (needs numpy)
 chameleon process input.wav --denoise --output-dir out/
 
-# Convert sample rate / bit depth
+# Convert sample rate / bit depth (needs numpy; scipy strongly recommended —
+# see the resampling-quality note below)
 chameleon process input.wav --convert --convert-sample-rate 44100 \
     --convert-bit-depth 16 --output-dir out/
 
@@ -82,20 +88,35 @@ chameleon process input.wav --normalize --dry-run
 chameleon process input.wav --normalize --json
 ```
 
-| Flag | Meaning |
-|------|---------|
-| `--normalize` | Normalize audio |
-| `--target-peak F` | Target peak for `--normalize`, 0.0–1.0 (default 0.95) |
-| `--denoise` | Remove noise |
-| `--master {default,streaming,cd,vinyl}` | Apply a full mastering chain (EQ/compressor/limiter/loudness). Requires numpy; scipy recommended |
-| `--effects FILE` | Apply effects from a JSON file |
-| `--convert` | Convert format or resolution |
-| `--convert-format FMT` | Target format (currently only `wav`) |
-| `--convert-sample-rate N` | Target sample rate |
-| `--convert-bit-depth {16,24,32}` | Target bit depth |
-| `--output-dir DIR` | Output directory |
-| `--dry-run` | Preview planned operations without writing files |
-| `--json` | Emit a structured JSON summary |
+| Flag | Needs | Meaning |
+|------|-------|---------|
+| `--normalize` | stdlib | Normalize audio |
+| `--target-peak F` | stdlib | Target peak for `--normalize`, 0.0–1.0 (default 0.95) |
+| `--denoise` | **numpy** | Remove noise |
+| `--master {default,streaming,cd,vinyl}` | **numpy** (scipy recommended) | Apply a full mastering chain (EQ/compressor/limiter/loudness) |
+| `--effects FILE` | **numpy** | Apply effects from a JSON file |
+| `--convert` | **numpy** | Convert format or resolution |
+| `--convert-format FMT` | **numpy** | Target format (currently only `wav`) |
+| `--convert-sample-rate N` | **numpy** | Target sample rate |
+| `--convert-bit-depth {16,24,32}` | **numpy** | Target bit depth |
+| `--output-dir DIR` | — | Output directory |
+| `--dry-run` | — | Preview planned operations without writing files |
+| `--json` | — | Emit a structured JSON summary |
+
+#### Resampling quality
+
+`--convert-sample-rate` picks the best resampler available:
+
+| Installed | Resampler | Anti-aliased |
+|-----------|-----------|--------------|
+| librosa | `librosa.resample` | yes |
+| scipy | `scipy.signal.resample_poly` | yes |
+| numpy only | built-in windowed-sinc | yes |
+
+All three band-limit the signal before downsampling, so content above the new
+Nyquist frequency is filtered out rather than aliasing back into the audible
+band. scipy or librosa are still the faster and better-tested paths for bulk
+work.
 
 ### `batch`
 

@@ -65,14 +65,20 @@ chameleon analyze input.wav --loudness
 ファイルを処理します。複数の操作を組み合わせ可能で、出力は `--output-dir`
 （省略時は入力と同じ場所）に書き出されます。
 
+> **依存ゼロの既定インストールで動くのは `--normalize` だけです。**
+> `--denoise` / `--convert` / `--master` / `--effects` は numpy が必要で、
+> 無い場合はエラーで終了します（`pip install -e .[audio]`）。
+> 下表に各オプションの必要依存を明記しています。
+
 ```bash
-# 正規化
+# 正規化（標準ライブラリのみで動作）
 chameleon process input.wav --normalize --target-peak 0.90 --output-dir out/
 
-# ノイズ除去
+# ノイズ除去（numpy 必須）
 chameleon process input.wav --denoise --output-dir out/
 
-# サンプルレート・ビット深度の変換
+# サンプルレート・ビット深度の変換（numpy 必須。scipy 推奨 —
+# 下の「リサンプリング品質」を参照）
 chameleon process input.wav --convert --convert-sample-rate 44100 \
     --convert-bit-depth 16 --output-dir out/
 
@@ -83,20 +89,34 @@ chameleon process input.wav --normalize --dry-run
 chameleon process input.wav --normalize --json
 ```
 
-| オプション | 意味 |
-|-----------|------|
-| `--normalize` | 音量を正規化 |
-| `--target-peak F` | `--normalize` の目標ピーク値 0.0〜1.0（既定 0.95） |
-| `--denoise` | ノイズ除去 |
-| `--master {default,streaming,cd,vinyl}` | マスタリングチェーン（EQ/コンプ/リミッタ/ラウドネス）。numpy 必須、scipy 推奨 |
-| `--effects FILE` | JSON ファイルからエフェクトを適用 |
-| `--convert` | フォーマット・解像度を変換 |
-| `--convert-format FMT` | 変換先フォーマット（現在 `wav` のみ） |
-| `--convert-sample-rate N` | 変換先サンプルレート |
-| `--convert-bit-depth {16,24,32}` | 変換先ビット深度 |
-| `--output-dir DIR` | 出力ディレクトリ |
-| `--dry-run` | 書き込まずに予定操作を表示 |
-| `--json` | 構造化 JSON で結果を出力 |
+| オプション | 必要依存 | 意味 |
+|-----------|---------|------|
+| `--normalize` | 標準ライブラリ | 音量を正規化 |
+| `--target-peak F` | 標準ライブラリ | `--normalize` の目標ピーク値 0.0〜1.0（既定 0.95） |
+| `--denoise` | **numpy** | ノイズ除去 |
+| `--master {default,streaming,cd,vinyl}` | **numpy**（scipy 推奨） | マスタリングチェーン（EQ/コンプ/リミッタ/ラウドネス） |
+| `--effects FILE` | **numpy** | JSON ファイルからエフェクトを適用 |
+| `--convert` | **numpy** | フォーマット・解像度を変換 |
+| `--convert-format FMT` | **numpy** | 変換先フォーマット（現在 `wav` のみ） |
+| `--convert-sample-rate N` | **numpy** | 変換先サンプルレート |
+| `--convert-bit-depth {16,24,32}` | **numpy** | 変換先ビット深度 |
+| `--output-dir DIR` | — | 出力ディレクトリ |
+| `--dry-run` | — | 書き込まずに予定操作を表示 |
+| `--json` | — | 構造化 JSON で結果を出力 |
+
+#### リサンプリング品質
+
+`--convert-sample-rate` は利用可能な中で最良のリサンプラを選びます。
+
+| インストール済み | リサンプラ | アンチエイリアス |
+|---|---|---|
+| librosa | `librosa.resample` | あり |
+| scipy | `scipy.signal.resample_poly` | あり |
+| numpy のみ | 内蔵の窓関数付き sinc | あり |
+
+いずれもダウンサンプル前に帯域制限を行うため、新しいナイキスト周波数を超える
+成分は可聴帯域に折り返さず除去されます。大量処理では scipy / librosa の方が
+高速で実績もあるため推奨です。
 
 ### `batch`
 
