@@ -573,7 +573,10 @@ adding any new capability:
   This is §8.2 (honesty) applied to a numeric claim.
 - **Honesty: `linear_resample` has no anti-aliasing filter** — documented that
   downsampling will alias, and pointed at the `[audio]` extra for band-limited
-  conversion.
+  conversion. *(Follow-up 2026-08-08: this caveat turned out to be attached to
+  the wrong function — `spectral_utils.linear_resample` has no callers. The
+  resampler that actually shipped, `main._resample_audio`'s fallback, aliased
+  with no warning at all. Now fixed; see the conversion-quality entry below.)*
 
 One item was deliberately *not* changed: the lookahead **limiter**
 (`mastering_chain._process_mono`) was re-inspected and found correct: it
@@ -659,6 +662,50 @@ landed:
 `measure_range` (LRA) was also corrected to use a 100ms hop (matching the
 standard's short-term-loudness update rate) rather than an initial 1s hop
 that would have under-sampled the short-term loudness distribution.
+
+**Conversion quality: anti-aliasing, rounding, opt-in dither (2026-08-08).**
+With the measurement side settled, this pass audited §1's other half —
+transforming audio without damaging it — and found three defects on the
+`--convert` path.
+
+*Aliasing where the honesty note wasn't.* An earlier pass documented that
+`spectral_utils.linear_resample` aliases. That function has **no callers**.
+The resampler that actually ships is `main._resample_audio`, whose fallback
+branch was `np.interp` — linear interpolation, no anti-aliasing, no warning,
+no docstring caveat. Downsampling folded everything above the new Nyquist into
+the audible band. Replaced with a windowed-sinc resampler whose cutoff is
+`min(1, target/source)`: the sinc widens so its cutoff lands on the lower of
+the two Nyquist frequencies, with the support widened to match. Same Blackman
+/ unit-DC-gain construction as the true-peak oversampler in
+`bs1770_loudness`, which never needed the cutoff term because it interpolates
+without ever decimating. Measured on a 15 kHz tone at 48k→16k: −5.69 dBFS of
+alias before, −62.70 after, against scipy's −62.63 — a 57 dB improvement that
+lands 0.07 dB from the reference implementation. The librosa and scipy
+branches were already correct and were not touched.
+
+*Truncation instead of rounding.* `_save_wav_basic` quantised with
+`.astype(np.int16)`, which truncates toward zero — a −0.4999 LSB DC bias on
+single-signed material and a full-LSB worst case. Rounding takes the mean
+error to −0.0002 LSB and halves the worst case.
+
+*Dither, and why it is off by default.* Nothing on this path dithered, and
+`ProcessingConfig.apply_dither` was a flag no code read. It now applies 2 LSB
+peak-to-peak TPDF dither — triangular specifically so the quantisation error
+becomes independent of the signal. **Default off**, decided with the user:
+§1 sells this tool on deterministic, reproducible output, and dither is noise
+from a random source, so enabling it by default would break a documented
+differentiator and change every existing user's output bytes. Opting in is a
+deliberate trade, and the docstring states the trade rather than hiding it.
+The test for it doubles as the argument for dither: a constant that falls
+between two codes quantises to the same wrong code every time (mean error
+−0.4277 LSB), while dithered it averages onto the true value (+0.0002 LSB).
+
+*A documentation error of our own.* The previous pass's rewritten command
+references listed `--convert` and `--denoise` under "Core commands" with no
+dependency note, but only `analyze` and `normalize` run without numpy
+(`main.py:1093-1101`, verified by running each operation with numpy blocked).
+Corrected in both languages, with per-flag dependency columns and the
+resampler backends' anti-aliasing status documented.
 
 **Loudness range (LRA) completes EBU Mode (2026-08-08).** Tech 3341 defines
 EBU Mode as M + S + I + **LRA**, so the previous entry's M/S work still left
