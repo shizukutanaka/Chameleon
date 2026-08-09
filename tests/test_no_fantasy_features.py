@@ -38,11 +38,20 @@ REMOVAL_MARKERS = ("removed", "avoid", "no longer", "= false", "deprecated",
                    "do not reintroduce", "non-goal")
 
 
+# Build artifacts that must never be scanned as project sources.
+_EXCLUDE_DIRS = {"tests", "__pycache__", ".venv", "venv", ".git", ".tox", "build", "dist"}
+
+
 def _python_sources():
-    """Yield project .py files, excluding tests and caches."""
+    """Yield project .py files, excluding tests and caches.
+
+    Also skips interpreter / virtualenv / build artifacts (e.g. `.venv/lib/...`
+    from an installed test dependency) so a transient dependency string like
+    "NeuralNetwork" inside site-packages can never fail the scope guard.
+    """
     for path in PROJECT_ROOT.rglob("*.py"):
         parts = set(path.parts)
-        if "tests" in parts or "__pycache__" in parts:
+        if parts & _EXCLUDE_DIRS:
             continue
         if path.name == "setup.py":
             # setup.py is packaging metadata; module names live here, not code.
