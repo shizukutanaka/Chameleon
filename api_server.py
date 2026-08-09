@@ -33,6 +33,14 @@ from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, Field, validator
 import uvicorn
 
+# pydantic v1 ではパターン検証に `regex=` を、v2 では `pattern=` を使う。
+# プロジェクトは pydantic<2 に固定されているが、誤って pydantic 2 が入った
+# 環境（pydantic 2 で `regex=` は削除済み）でも import 時に即死しないよう、
+# バージョンに応じたキーワードを選ぶ。
+import pydantic as _pydantic
+
+_PATTERN_KW = "pattern" if _pydantic.VERSION.startswith("2") else "regex"
+
 try:
     import psutil  # type: ignore
     HAS_PSUTIL = True
@@ -187,7 +195,7 @@ def _enforce_rate_limit(identifier: str) -> None:
 class AuthenticationRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     password: str = Field(..., min_length=8)
-    clearance_level: str = Field(..., regex=r'^(UNCLASSIFIED|CONFIDENTIAL|SECRET|TOP_SECRET)$')
+    clearance_level: str = Field(..., **{_PATTERN_KW: r'^(UNCLASSIFIED|CONFIDENTIAL|SECRET|TOP_SECRET)$'})
 
 class AuthenticationResponse(BaseModel):
     success: bool
@@ -218,7 +226,7 @@ class AudioNormalizationRequest(BaseModel):
     # WAV only: normalize_audio_fast writes through the stdlib core, which has
     # no FLAC encoder. Previously accepted "flac" here produced a file with a
     # .flac extension containing raw WAV bytes — an unbacked capability claim.
-    output_format: str = Field('wav', regex=r'^(wav)$')
+    output_format: str = Field('wav', **{_PATTERN_KW: r'^(wav)$'})
 
 class AudioNormalizationResponse(BaseModel):
     success: bool
@@ -231,7 +239,7 @@ class AudioNormalizationResponse(BaseModel):
 
 class BatchJobRequest(BaseModel):
     files: List[str]
-    operation: str = Field(..., regex=r'^(analyze|normalize)$')
+    operation: str = Field(..., **{_PATTERN_KW: r'^(analyze|normalize)$'})
     options: Dict[str, Any] = Field(default_factory=dict)
 
 class BatchJobResponse(BaseModel):
