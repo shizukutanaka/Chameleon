@@ -40,6 +40,21 @@ import uvicorn
 import pydantic as _pydantic
 
 _PATTERN_KW = "pattern" if _pydantic.VERSION.startswith("2") else "regex"
+_PYDANTIC_V2 = _pydantic.VERSION.startswith("2")
+
+
+def _model_to_dict(model):
+    """pydantic v1/v2 両対応の dict 変換（v2 の非推奨 .dict() を避ける）。"""
+    if _PYDANTIC_V2 and hasattr(model, "model_dump"):
+        return model.model_dump()
+    return model.dict()
+
+
+def _model_to_json(model):
+    """pydantic v1/v2 両対応の JSON 変換（v2 の非推奨 .json() を避ける）。"""
+    if _PYDANTIC_V2 and hasattr(model, "model_dump_json"):
+        return model.model_dump_json()
+    return model.json()
 
 try:
     import psutil  # type: ignore
@@ -819,7 +834,7 @@ def log_audit_event(user: str, operation: str, resource: str, result: str,
     try:
         log_file = _resolve_audit_log_path()
         with _AUDIT_FILES.secure_open(log_file, 'a', encoding='utf-8') as f:
-            f.write(f"{entry.json()}\n")
+            f.write(f"{_model_to_json(entry)}\n")
     except Exception as e:
         logging.error(f"Failed to write audit log: {e}")
 
@@ -1489,7 +1504,7 @@ async def get_audit_log(
     )
 
     return {
-        "entries": [entry.dict() for entry in entries],
+        "entries": [_model_to_dict(entry) for entry in entries],
         "total": len(api_state.audit_log)
     }
 
