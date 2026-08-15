@@ -755,21 +755,24 @@ class AudioProcessor:
         """Apply various audio effects"""
         processed = audio.copy()
 
-        # EQ
-        if "eq" in effects and HAS_SCIPY:
+        # EQ -- RBJ peaking biquads (see mastering_chain.design_peaking_eq).
+        # This used to filter with scipy.iirpeak, a band-pass resonator, and
+        # then scale the result, which replaced the signal with its own narrow
+        # band: requesting +3 dB at 1 kHz measured -24.6 dB at 200 Hz and
+        # -15.3 dB at 3 kHz. A peaking biquad applied once leaves everything
+        # outside the band alone.
+        if "eq" in effects and HAS_SCIPY and HAS_MASTERING_CHAIN:
             eq_params = effects["eq"]
             for band in eq_params:
                 freq = band["frequency"]
                 gain = band["gain"]
                 q = band.get("q", 1.0)
 
-                # Design filter
-                nyquist = sr / 2
-                normalized_freq = freq / nyquist
-
-                if normalized_freq < 1:
-                    b, a = signal.iirpeak(normalized_freq, q)
-                    processed = signal.filtfilt(b, a, processed) * (10 ** (gain / 20))
+                if 0 < freq < sr / 2:
+                    b, a = mastering_chain.design_peaking_eq(freq, sr, gain, q)
+                    # Single forward pass: filtfilt would apply the response
+                    # twice and double the requested dB gain.
+                    processed = signal.lfilter(b, a, processed)
 
         # Reverb (simple convolution)
         if "reverb" in effects and HAS_SCIPY:
@@ -777,9 +780,13 @@ class AudioProcessor:
             room_size = reverb_params.get("room_size", 0.5)
             wet = reverb_params.get("wet", 0.3)
 
-            # Generate simple impulse response
-            ir_length = int(room_size * sr)
-            ir = np.random.randn(ir_length) * np.exp(-3 * np.linspace(0, 1, ir_length))
+            # Synthetic exponentially-decaying noise impulse response -- not a
+            # measured room. The generator is seeded so the same input yields
+            # the same output: CHARTER §1 sells this tool on reproducible
+            # results, and an unseeded np.random.randn made every run differ.
+            ir_length = max(1, int(room_size * sr))
+            rng = np.random.default_rng(0)
+            ir = rng.standard_normal(ir_length) * np.exp(-3 * np.linspace(0, 1, ir_length))
 
             # Convolve
             reverb_signal = signal.convolve(processed, ir, mode='same')

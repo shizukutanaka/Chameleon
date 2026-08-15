@@ -324,6 +324,76 @@ class LoudnessMeter:
         p95 = np.percentile(loudness_values, 95)
         return float(p95 - p10)
 
+# --- RBJ biquad designs ------------------------------------------------------
+#
+# Peaking and shelving EQ coefficients follow the standard "Audio EQ Cookbook"
+# (Robert Bristow-Johnson) bilinear-transform designs. They are written out
+# here rather than assembled from scipy primitives because scipy's iirpeak is a
+# *band-pass* resonator, not a peaking EQ: the earlier code filtered with it and
+# then scaled, which replaced the signal with its own narrow band and threw away
+# everything outside. Designing the biquad directly is both correct and keeps
+# the design step dependency-free (only the filtering needs scipy).
+#
+# These are verified numerically rather than taken on trust -- see
+# tests/test_eq_quality.py, which pins the three properties that define a
+# correct peaking EQ: the requested gain lands at the centre frequency, DC and
+# Nyquist stay at unity, and a +G boost followed by a -G cut restores the
+# original signal.
+
+
+def design_peaking_eq(frequency: float, sample_rate: int, gain_db: float,
+                      q_factor: float = 1.0):
+    """RBJ peaking (bell) EQ biquad. Returns (b, a) coefficient lists."""
+
+    amplitude = 10.0 ** (gain_db / 40.0)
+    omega = 2.0 * math.pi * frequency / sample_rate
+    alpha = math.sin(omega) / (2.0 * max(q_factor, 1e-6))
+    cos_omega = math.cos(omega)
+
+    b = [1.0 + alpha * amplitude, -2.0 * cos_omega, 1.0 - alpha * amplitude]
+    a = [1.0 + alpha / amplitude, -2.0 * cos_omega, 1.0 - alpha / amplitude]
+    return [coefficient / a[0] for coefficient in b], [coefficient / a[0] for coefficient in a]
+
+
+def design_shelf_eq(frequency: float, sample_rate: int, gain_db: float,
+                    high: bool, slope: float = 1.0):
+    """RBJ low/high shelving biquad. Returns (b, a) coefficient lists."""
+
+    amplitude = 10.0 ** (gain_db / 40.0)
+    omega = 2.0 * math.pi * frequency / sample_rate
+    cos_omega = math.cos(omega)
+    alpha = (math.sin(omega) / 2.0) * math.sqrt(
+        (amplitude + 1.0 / amplitude) * (1.0 / max(slope, 1e-6) - 1.0) + 2.0
+    )
+    sqrt_gain_alpha = 2.0 * math.sqrt(amplitude) * alpha
+    plus, minus = amplitude + 1.0, amplitude - 1.0
+
+    if high:
+        b = [
+            amplitude * (plus + minus * cos_omega + sqrt_gain_alpha),
+            -2.0 * amplitude * (minus + plus * cos_omega),
+            amplitude * (plus + minus * cos_omega - sqrt_gain_alpha),
+        ]
+        a = [
+            plus - minus * cos_omega + sqrt_gain_alpha,
+            2.0 * (minus - plus * cos_omega),
+            plus - minus * cos_omega - sqrt_gain_alpha,
+        ]
+    else:
+        b = [
+            amplitude * (plus - minus * cos_omega + sqrt_gain_alpha),
+            2.0 * amplitude * (minus - plus * cos_omega),
+            amplitude * (plus - minus * cos_omega - sqrt_gain_alpha),
+        ]
+        a = [
+            plus + minus * cos_omega + sqrt_gain_alpha,
+            -2.0 * (minus + plus * cos_omega),
+            plus + minus * cos_omega - sqrt_gain_alpha,
+        ]
+
+    return [coefficient / a[0] for coefficient in b], [coefficient / a[0] for coefficient in a]
+
+
 class ParametricEQ:
     """Professional parametric equalizer"""
 
@@ -342,32 +412,36 @@ class ParametricEQ:
         if freq_norm >= 1.0:
             return
 
+        # Bell and shelving bands use RBJ biquads, whose coefficients already
+        # encode the requested gain -- there is no separate scale factor. The
+        # previous design filtered with a band-pass (scipy.iirpeak) and then
+        # scaled, which discarded everything outside the band: asking for
+        # +6 dB at 1 kHz measured 0.00 dB at 1 kHz and -27 dB at 200 Hz.
         if band.filter_type == "bell":
-            # Peaking filter
             if abs(band.gain) > 0.1:  # Only add if significant gain
-                b, a = signal.iirpeak(freq_norm, band.q_factor)
-                gain_linear = 10**(band.gain / 20)
-                self.filters.append((b, a, gain_linear, band.filter_type))
+                b, a = design_peaking_eq(band.frequency, self.sample_rate,
+                                         band.gain, band.q_factor)
+                self.filters.append((b, a, band.filter_type))
 
         elif band.filter_type == "highpass":
             b, a = signal.butter(2, freq_norm, 'high')
-            self.filters.append((b, a, 1.0, band.filter_type))
+            self.filters.append((b, a, band.filter_type))
 
         elif band.filter_type == "lowpass":
             b, a = signal.butter(2, freq_norm, 'low')
-            self.filters.append((b, a, 1.0, band.filter_type))
+            self.filters.append((b, a, band.filter_type))
 
         elif band.filter_type == "highshelf":
-            # Simplified high shelf
-            b, a = signal.butter(1, freq_norm, 'high')
-            gain_linear = 10**(band.gain / 20)
-            self.filters.append((b, a, gain_linear, band.filter_type))
+            if abs(band.gain) > 0.1:
+                b, a = design_shelf_eq(band.frequency, self.sample_rate,
+                                       band.gain, high=True)
+                self.filters.append((b, a, band.filter_type))
 
         elif band.filter_type == "lowshelf":
-            # Simplified low shelf
-            b, a = signal.butter(1, freq_norm, 'low')
-            gain_linear = 10**(band.gain / 20)
-            self.filters.append((b, a, gain_linear, band.filter_type))
+            if abs(band.gain) > 0.1:
+                b, a = design_shelf_eq(band.frequency, self.sample_rate,
+                                       band.gain, high=False)
+                self.filters.append((b, a, band.filter_type))
 
     def process(self, audio: np.ndarray) -> np.ndarray:
         """Apply EQ to audio"""
@@ -376,21 +450,19 @@ class ParametricEQ:
 
         result = audio.copy()
 
-        for b, a, gain, filter_type in self.filters:
+        # RBJ bands are applied with a single forward pass. filtfilt runs the
+        # filter twice, which squares the magnitude response and would deliver
+        # double the requested dB gain; the high/low-pass bands keep filtfilt
+        # because they have unity passband gain, so zero-phase costs nothing.
+        for b, a, filter_type in self.filters:
+            single_pass = filter_type in ("bell", "highshelf", "lowshelf")
+            apply = signal.lfilter if single_pass else signal.filtfilt
+
             if audio.ndim == 1:
-                if filter_type == "bell":
-                    # Apply gain only to filtered signal
-                    filtered = signal.filtfilt(b, a, result)
-                    result = result + (filtered - result) * (gain - 1)
-                else:
-                    result = signal.filtfilt(b, a, result) * gain
+                result = apply(b, a, result)
             else:
                 for ch in range(audio.shape[0]):
-                    if filter_type == "bell":
-                        filtered = signal.filtfilt(b, a, result[ch])
-                        result[ch] = result[ch] + (filtered - result[ch]) * (gain - 1)
-                    else:
-                        result[ch] = signal.filtfilt(b, a, result[ch]) * gain
+                    result[ch] = apply(b, a, result[ch])
 
         return result
 
