@@ -186,7 +186,10 @@ here because they need a user decision first.
 | ~~P1~~ | ~~Rewrite the bilingual command/config references~~ | High | M | Low | **DONE 2026-08-08** — they documented ~18 nonexistent commands and a nonexistent config file; every replacement example was executed before being written |
 | ~~P2~~ | ~~EBU-Mode loudness (M, S **and LRA**)~~ | Med | M | Low | **DONE 2026-08-08** — `analyze --loudness` was integrated-only; M/S then LRA (Tech 3342) complete the set. LRA cross-checks to 0.000 LU against the independent numpy/scipy meter |
 | ~~P1~~ | ~~Anti-alias the fallback resampler; round instead of truncate~~ | High | M | Low | **DONE 2026-08-08** — alias −5.69 → −62.70 dBFS (scipy: −62.63); quantisation bias −0.4999 → −0.0002 LSB |
+| ~~P1~~ | ~~Fix both EQs (band-pass resonator used as a peaking EQ)~~ | High | M | Low | **DONE 2026-08-08** — RBJ biquads; "+6 dB @1 kHz" went from 0.00 dB boost / −26.7 dB at 200 Hz to +6.00 / +0.27 |
 | P2 | Add minimal tests for the remaining zero-coverage modules | Med | M | Low | `performance_optimizer`, `personal_config` still uncovered |
+| P3 | `apply_effects` compression is an instantaneous waveshaper | Low | S | Low | No attack/release; the real compressor is in `mastering_chain`. Label or point users at `--master` |
+| P4 | Noise-shaped ("shaped") dither in `mastering_chain` | Low | M | Low | Advertised in the config docstring, unimplemented; falls back to TPDF with a warning |
 | P3 | Consider TPDF dither by default, or a `--dither` CLI flag | Low | S | Med | Currently opt-in via `ProcessingConfig.apply_dither` only, to keep output deterministic (CHARTER §9). No CLI surface yet |
 | P2 | Give `audio_restoration`'s 7 unique repair classes a CLI surface, or record that they stay standalone | Med | M | Med | The only orphan that is capability rather than duplication |
 | P2 | Adopt `ci/proposed-ci.yml` → `.github/workflows/ci-cd.yml` | High (green CI) | XS (one `cp`) | Low | **Human-only** — needs `workflows` permission |

@@ -54,6 +54,19 @@
 
 ### Fixed
 
+- **Both equalizers destroyed out-of-band content.** `main.apply_effects` and
+  `mastering_chain.ParametricEQ` were built on `scipy.iirpeak`, a band-pass
+  resonator rather than a peaking EQ, so requesting a boost deleted everything
+  outside the band: "+3 dB at 1 kHz" measured −24.6 dB at 200 Hz, and the
+  mastering path delivered 0.00 dB of boost at the centre while attenuating
+  200 Hz by 26.7 dB. The streaming/cd/vinyl presets were affected — every
+  requested boost came out as attenuation. Both now use RBJ *Audio EQ
+  Cookbook* biquads (`design_peaking_eq` / `design_shelf_eq`), applied with a
+  single pass so the requested gain is exact. Verified against the properties
+  that define a peaking EQ (unity at DC/Nyquist, exact centre gain, boost and
+  equal cut cancelling) to within 0.01 dB.
+- The reverb effect's synthetic impulse response is now seeded, so the same
+  input produces the same output.
 - **Sample-rate conversion aliased on the fallback path.** `_resample_audio`
   uses librosa, then scipy, then a built-in fallback that was plain
   `np.interp` — linear interpolation with no anti-aliasing, so downsampling

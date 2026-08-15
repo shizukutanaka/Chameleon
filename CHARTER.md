@@ -663,6 +663,45 @@ landed:
 standard's short-term-loudness update rate) rather than an initial 1s hop
 that would have under-sampled the short-term loudness distribution.
 
+**Both equalizers were destructive; RBJ biquads (2026-08-08).** A literature
+sweep of the remaining DSP paths found that both EQ implementations were built
+on `scipy.iirpeak` — a **band-pass resonator**, not a peaking EQ. Filtering
+with it and scaling the result replaces the signal with its own narrow band,
+so asking for a boost deleted everything outside it. Measured:
+`main.apply_effects` with "+3 dB at 1 kHz" attenuated 200 Hz by 24.6 dB and
+3 kHz by 15.3 dB. `ParametricEQ` was worse — its combining step
+`result + (filtered − result)·(gain−1)` is unity at the centre and `2−g`
+outside, so a "+6 dB at 1 kHz" request produced **0.00 dB of boost** while
+annihilating the rest of the spectrum. This shipped in the
+streaming/cd/vinyl presets, where every requested boost came out as
+attenuation (streaming asks +0.5/+0.3/+0.8 dB, measured −1.26/−1.16/−0.83).
+
+Replaced with the standard RBJ *Audio EQ Cookbook* bilinear-transform designs,
+implemented once in `mastering_chain` and reused by `main.py`. Applied with a
+single `lfilter` pass, because `filtfilt` runs the filter twice and would
+double the requested dB gain; the high/low-pass bands keep `filtfilt` since
+unity passband gain makes zero-phase free there, and were left untouched.
+
+Verified by property rather than by transcription — the cookbook text was not
+retrievable here, and in any case the properties are stronger evidence: unity
+at DC and Nyquist, exactly the requested gain at the centre frequency, a shelf
+at half its gain on the corner, and a +G boost followed by a −G cut restoring
+the original to below −60 dB RMS error. Each holds to within 0.01 dB.
+
+Also seeded the reverb impulse response: it is synthetic decaying noise, and
+an unseeded generator made every run differ, contradicting the reproducibility
+§1 sells the tool on — the same reasoning that kept dither opt-in.
+
+*Two paths were audited and deliberately left alone,* which is worth recording
+so the next pass does not redo the work. **YIN** (`midi_analysis.py:185-267`)
+is faithful to de Cheveigné & Kawahara (2002): difference function, cumulative
+mean normalisation, absolute threshold at 0.1 taking the *first* dip and
+descending to its local minimum, parabolic interpolation, and a global-minimum
+fallback rejected above 0.5 for non-periodicity. **Mastering dither**
+(`mastering_chain.py`) hardcodes a 16-bit scale factor, which is correct for
+the 16-bit output this path actually writes; "shaped" is unimplemented but
+already falls back to TPDF with a warning rather than silently doing nothing.
+
 **Conversion quality: anti-aliasing, rounding, opt-in dither (2026-08-08).**
 With the measurement side settled, this pass audited §1's other half —
 transforming audio without damaging it — and found three defects on the
