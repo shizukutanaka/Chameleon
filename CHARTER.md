@@ -663,6 +663,29 @@ landed:
 standard's short-term-loudness update rate) rather than an initial 1s hop
 that would have under-sampled the short-term loudness distribution.
 
+**Denoise estimated its noise profile from the signal (2026-08-08).**
+`remove_noise` took the noise profile from the first half second of the file,
+which assumes every recording opens with silence. On material starting
+straight into music — the common case — the "noise" it measured *was* the
+music, and the subtraction attacked the signal: a tone beginning at t=0 came
+out 20.0 dB down, the whole file 19.4 dB quieter. The only thing preventing
+total erasure was the `0.1*magnitude` floor bounding per-bin attenuation at
+20 dB.
+
+Replaced with a per-**bin** 10th percentile over time. Real material leaves
+every bin quiet at some point, so the low quantile of a bin's history is its
+noise floor regardless of where the quiet moments fall. Per-bin is the part
+that matters: selecting whole quiet *frames* was tried first and still failed,
+because a steady level makes every frame equally loud.
+
+A low quantile under-reads, so it is scaled to a level estimate by a *derived*
+constant rather than a tuned one: a complex-Gaussian bin's magnitude is
+Rayleigh distributed with quantiles `σ·sqrt(−2·ln(1−p))`, so
+`median/p10 = sqrt(2 ln2)/sqrt(−2 ln0.9) ≈ 2.56`. A sweep confirmed higher
+percentiles (30, 50) restore reduction only by re-attacking the signal
+(−20.0 dB on the tone again). Net: the broken case goes −19.4 dB → −0.1 dB
+while the case that already worked keeps its reduction (8.7 → 8.3 dB).
+
 **Compressor soft knee was non-monotonic (2026-08-08).** Continuing the DSP
 audit, the compressor's static gain computer mixed two knee conventions — a
 quadratic knee over `[0, W]` above the threshold, plus the above-knee reduction

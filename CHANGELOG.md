@@ -54,6 +54,15 @@
 
 ### Fixed
 
+- **Noise reduction estimated its noise profile from the signal.**
+  `remove_noise` sampled the first half second of the file, assuming every
+  recording opens with silence. On material starting straight into music the
+  "noise" it measured was the music itself, gutting the audio by ~19 dB
+  (a tone beginning at t=0 came out 20.0 dB down). The profile is now the
+  10th percentile of each frequency bin over time, scaled to a level estimate
+  by the Rayleigh quantile-to-median ratio (~2.56, derived rather than tuned).
+  The broken case goes from -19.4 dB to -0.1 dB while the silent-lead-in case
+  keeps its noise reduction (8.7 -> 8.3 dB).
 - **Compressor soft-knee curve was non-monotonic.** The static gain computer
   combined a knee placed above the threshold with the above-knee formula for a
   knee centred on it, so the two pieces did not meet: a 1 dB rise in input
