@@ -54,6 +54,13 @@
 
 ### Fixed
 
+- **Compressor soft-knee curve was non-monotonic.** The static gain computer
+  combined a knee placed above the threshold with the above-knee formula for a
+  knee centred on it, so the two pieces did not meet: a 1 dB rise in input
+  could drop the output 2 dB at the knee boundary. Replaced with the standard
+  centred quadratic soft knee (Giannoulis, Massberg & Reiss, JAES 2012); the
+  curve is now monotonic with the above-knee slope equal to 1/ratio. The
+  mono and stereo paths now share one gain-computer helper.
 - **Both equalizers destroyed out-of-band content.** `main.apply_effects` and
   `mastering_chain.ParametricEQ` were built on `scipy.iirpeak`, a band-pass
   resonator rather than a peaking EQ, so requesting a boost deleted everything

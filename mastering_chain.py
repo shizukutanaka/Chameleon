@@ -489,12 +489,39 @@ class Compressor:
             # Stereo-linked compression
             return self._process_stereo(audio)
 
+    def _gain_reduction_db(self, envelope: float) -> float:
+        """Static soft-knee gain computer: gain reduction (<= 0 dB) for a level.
+
+        This is the standard quadratic soft knee (Giannoulis, Massberg & Reiss,
+        "Digital Dynamic Range Compressor Design", JAES 2012), with the knee
+        centred on the threshold: compression eases in starting knee/2 below the
+        threshold and reaches full ratio knee/2 above it.
+
+        The previous version placed the knee entirely above the threshold but
+        kept the above-knee formula for a centred knee, so the two pieces did
+        not meet -- the transfer curve jumped downward by (knee/2)(1 - 1/ratio)
+        dB at the knee boundary and was non-monotonic there (a 1 dB rise in
+        input could drop the output 2 dB). Centring the knee makes the quadratic
+        and linear pieces continuous, which is what removes that kink.
+        """
+        if envelope <= 1e-12:
+            return 0.0
+
+        overshoot_db = 20.0 * np.log10(envelope) - self.config.threshold
+        slope = (1.0 / self.config.ratio) - 1.0  # <= 0
+        knee = self.config.knee
+
+        if knee > 0 and -knee / 2.0 <= overshoot_db <= knee / 2.0:
+            return slope * (overshoot_db + knee / 2.0) ** 2 / (2.0 * knee)
+        if overshoot_db > knee / 2.0:
+            return slope * overshoot_db
+        return 0.0
+
     def _process_mono(self, audio: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Process mono audio"""
         output = np.zeros_like(audio)
         gain_reduction_curve = np.zeros_like(audio)
 
-        threshold_linear = 10**(self.config.threshold / 20)
         makeup_gain_linear = 10**(self.config.makeup_gain / 20)
 
         for i, sample in enumerate(audio):
@@ -509,23 +536,8 @@ class Compressor:
                 # Release
                 self.envelope += (level - self.envelope) / self.release_samples
 
-            # Calculate gain reduction
-            if self.envelope > threshold_linear:
-                # Above threshold - apply compression
-                overshoot = self.envelope / threshold_linear
-                overshoot_db = 20 * np.log10(overshoot)
-
-                # Soft knee
-                if overshoot_db < self.config.knee:
-                    # In knee region
-                    reduction_db = overshoot_db**2 / (2 * self.config.knee) * (1/self.config.ratio - 1)
-                else:
-                    # Above knee
-                    reduction_db = overshoot_db * (1/self.config.ratio - 1)
-
-                target_gain_reduction = -abs(reduction_db)
-            else:
-                target_gain_reduction = 0.0
+            # Calculate gain reduction from the static soft-knee curve.
+            target_gain_reduction = self._gain_reduction_db(self.envelope)
 
             # Smooth gain reduction changes
             if target_gain_reduction < self.gain_reduction:
@@ -547,7 +559,6 @@ class Compressor:
         output = np.zeros_like(audio)
         gain_reduction_curve = np.zeros(audio.shape[1])
 
-        threshold_linear = 10**(self.config.threshold / 20)
         makeup_gain_linear = 10**(self.config.makeup_gain / 20)
 
         for i in range(audio.shape[1]):
@@ -560,19 +571,8 @@ class Compressor:
             else:
                 self.envelope += (level - self.envelope) / self.release_samples
 
-            # Calculate gain reduction (same as mono)
-            if self.envelope > threshold_linear:
-                overshoot = self.envelope / threshold_linear
-                overshoot_db = 20 * np.log10(overshoot)
-
-                if overshoot_db < self.config.knee:
-                    reduction_db = overshoot_db**2 / (2 * self.config.knee) * (1/self.config.ratio - 1)
-                else:
-                    reduction_db = overshoot_db * (1/self.config.ratio - 1)
-
-                target_gain_reduction = -abs(reduction_db)
-            else:
-                target_gain_reduction = 0.0
+            # Calculate gain reduction from the static soft-knee curve.
+            target_gain_reduction = self._gain_reduction_db(self.envelope)
 
             # Smooth gain reduction
             if target_gain_reduction < self.gain_reduction:
