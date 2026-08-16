@@ -663,6 +663,20 @@ landed:
 standard's short-term-loudness update rate) rather than an initial 1s hop
 that would have under-sampled the short-term loudness distribution.
 
+**Compressor soft knee was non-monotonic (2026-08-08).** Continuing the DSP
+audit, the compressor's static gain computer mixed two knee conventions — a
+quadratic knee over `[0, W]` above the threshold, plus the above-knee reduction
+formula for a knee *centred* on the threshold. The pieces did not meet: on the
+transfer curve (threshold −20, ratio 4, knee 6) the output went −16.25 dB at
+in=−14 then −18.25 dB at in=−13, so a 1 dB rise in input dropped the output
+2 dB. A compression curve that is non-monotonic across its knee is simply
+wrong. Replaced with the standard centred quadratic soft knee (Giannoulis,
+Massberg & Reiss, JAES 2012), which is continuous by construction. Verified by
+property — monotonic, above-knee slope exactly 1/ratio, 0 dBFS asymptote on the
+ratio line at −15 dB. The gain computer was also duplicated verbatim in the
+mono and stereo paths; both now call one helper. The limiter was **not**
+touched — it was re-inspected earlier and found correct.
+
 **Both equalizers were destructive; RBJ biquads (2026-08-08).** A literature
 sweep of the remaining DSP paths found that both EQ implementations were built
 on `scipy.iirpeak` — a **band-pass resonator**, not a peaking EQ. Filtering

@@ -187,6 +187,7 @@ here because they need a user decision first.
 | ~~P2~~ | ~~EBU-Mode loudness (M, S **and LRA**)~~ | Med | M | Low | **DONE 2026-08-08** — `analyze --loudness` was integrated-only; M/S then LRA (Tech 3342) complete the set. LRA cross-checks to 0.000 LU against the independent numpy/scipy meter |
 | ~~P1~~ | ~~Anti-alias the fallback resampler; round instead of truncate~~ | High | M | Low | **DONE 2026-08-08** — alias −5.69 → −62.70 dBFS (scipy: −62.63); quantisation bias −0.4999 → −0.0002 LSB |
 | ~~P1~~ | ~~Fix both EQs (band-pass resonator used as a peaking EQ)~~ | High | M | Low | **DONE 2026-08-08** — RBJ biquads; "+6 dB @1 kHz" went from 0.00 dB boost / −26.7 dB at 200 Hz to +6.00 / +0.27 |
+| ~~P1~~ | ~~Fix compressor's non-monotonic soft knee~~ | High | S | Low | **DONE 2026-08-08** — centred quadratic knee (Giannoulis 2012); output no longer drops 2 dB at the knee |
 | P2 | Add minimal tests for the remaining zero-coverage modules | Med | M | Low | `performance_optimizer`, `personal_config` still uncovered |
 | P3 | `apply_effects` compression is an instantaneous waveshaper | Low | S | Low | No attack/release; the real compressor is in `mastering_chain`. Label or point users at `--master` |
 | P4 | Noise-shaped ("shaped") dither in `mastering_chain` | Low | M | Low | Advertised in the config docstring, unimplemented; falls back to TPDF with a warning |
