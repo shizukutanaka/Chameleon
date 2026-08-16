@@ -733,17 +733,48 @@ class AudioProcessor:
         magnitude = np.abs(stft)
         phase = np.angle(stft)
 
-        # Estimate noise profile if not provided
+        # Estimate the noise profile from the QUIETEST frames rather than the
+        # first half second. Taking the opening frames assumes every file
+        # begins with silence; when one starts straight into music the
+        # "noise" estimate is the music's own spectrum, and the subtraction
+        # guts the signal -- measured -20.0 dB on the fundamental of a tone
+        # that started at t=0, i.e. the floor below was the only thing
+        # stopping it from disappearing entirely.
+        #
+        # Using the low-energy tail of the frame distribution is the standard
+        # robust approach (the same idea as minimum-statistics noise
+        # estimation): it picks up the true noise floor whether it sits at the
+        # start, in a gap, or anywhere else, and degrades gracefully on
+        # material with no quiet passage at all.
+        # The estimate is taken PER FREQUENCY BIN, over time. Real programme
+        # material leaves every bin quiet at some point -- notes change,
+        # instruments drop out -- so the low quantile of a bin's history is
+        # its noise floor. Selecting whole quiet *frames* instead fails on
+        # anything with a steady level, and picking the opening frames fails
+        # whenever the file does not begin with silence.
+        # A low quantile is deliberately conservative: it will not be dragged
+        # up by steady content sitting in a bin. To turn it back into a level
+        # estimate, scale it by the ratio the quantile has to the median for
+        # noise. The magnitude of a complex-Gaussian bin is Rayleigh
+        # distributed, whose quantiles are sigma*sqrt(-2*ln(1-p)), so
+        #     median / p10 = sqrt(2*ln 2) / sqrt(-2*ln 0.9) ~= 2.56
+        # That constant is derived, not tuned: it recovers the median noise
+        # magnitude from the 10th percentile without ever measuring a frame
+        # that has to be assumed noise-only.
         if noise_profile is None:
-            # Use the first ~0.5 seconds as the noise profile. Frame count must
-            # be derived from the actual hop (1024), not 512, or the window is
-            # ~2x too long.
-            noise_frames = max(1, int(0.5 * sr / hop))
-            noise_profile = np.median(magnitude[:, :noise_frames], axis=1, keepdims=True)
+            if magnitude.shape[1] > 0:
+                percentile_to_median = math.sqrt(2.0 * math.log(2.0)) / math.sqrt(-2.0 * math.log(0.9))
+                noise_profile = (
+                    np.percentile(magnitude, 10, axis=1, keepdims=True) * percentile_to_median
+                )
+            else:
+                noise_profile = np.zeros((magnitude.shape[0], 1))
 
-        # Spectral subtraction
+        # Spectral subtraction with a floor proportional to the input
+        # magnitude, which bounds attenuation at ~20 dB per bin so a bad noise
+        # estimate cannot silence the signal outright.
         cleaned_magnitude = magnitude - noise_profile
-        cleaned_magnitude = np.maximum(cleaned_magnitude, 0.1 * magnitude)  # Avoid over-subtraction
+        cleaned_magnitude = np.maximum(cleaned_magnitude, 0.1 * magnitude)
 
         # Reconstruct signal
         cleaned_stft = cleaned_magnitude * np.exp(1j * phase)
