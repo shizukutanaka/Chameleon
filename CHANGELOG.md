@@ -4,6 +4,13 @@
 
 ### Added
 
+- Cross-validation of the loudness meter against `pyloudnorm`, an independent
+  BS.1770-4 implementation: integrated loudness agrees to 0.043 LU across
+  sines, noise and gated programme material (Tech 3341 allows ±0.1 LU). The
+  residual is a coefficient-precision difference in the stage-1 high shelf —
+  our error against the published table is ~1e-12, the reference's ~1e-4 — and
+  a test pins that so nobody "corrects" ours toward it later. `pyloudnorm` is
+  test-only and in no install extra; the tests skip when it is absent.
 - **Loudness range (LRA)**: `bs1770_loudness.measure_loudness_range` adds the
   last piece of EBU Mode (M + S + I + LRA) in pure standard library — EBU
   Tech 3342's P95 − P10 of the gated short-term loudness, with the -20 LU
@@ -51,16 +58,6 @@
 - `personal_config.py`: `podcast_workflow` / `music_workflow` printed step
   banners and a success line while performing no processing; they now raise
   `NotImplementedError` naming the CLI commands that do the work.
-
-### Added
-
-- Cross-validation of the loudness meter against `pyloudnorm`, an independent
-  BS.1770-4 implementation: integrated loudness agrees to 0.043 LU across
-  sines, noise and gated programme material (Tech 3341 allows ±0.1 LU). The
-  residual is a coefficient-precision difference in the stage-1 high shelf —
-  our error against the published table is ~1e-12, the reference's ~1e-4 — and
-  a test pins that so nobody "corrects" ours toward it later. `pyloudnorm` is
-  test-only and in no install extra; the tests skip when it is absent.
 
 ### Fixed
 
