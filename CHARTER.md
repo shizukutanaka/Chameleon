@@ -663,6 +663,31 @@ landed:
 standard's short-term-loudness update rate) rather than an initial 1s hop
 that would have under-sampled the short-term loudness distribution.
 
+**Cross-validated the loudness meter against pyloudnorm (2026-08-08).** Every
+check on `bs1770_loudness` up to now was either our own test or a
+first-principles invariant. Neither can catch a *shared* misreading of the
+standard, so this pass compared against an independent implementation —
+`pyloudnorm`, written by other people from the same document.
+
+Integrated loudness agrees to **0.043 LU** across sines (100 Hz / 1 kHz /
+5 kHz), noise, and programme material spanning the relative gate. Tech 3341
+allows ±0.1 LU, so both are conformant.
+
+The residual is worth recording because it is not scatter: a constant
++0.041 LU on every signal, flat across frequency (+0.043 dB above 500 Hz,
+tapering to 0 at 20 Hz). That rules out a filter-shape difference and points
+at passband gain, and tracing it confirmed our K-weighted RMS is exactly
+0.0414 dB hotter — same −0.691 constant, same gating, same channel weights.
+The cause is coefficient precision in the stage-1 high shelf: against the
+BS.1770-4 published table at 48 kHz our error is ~1e-12, pyloudnorm's ~1e-4,
+because they derive from the analog prototype where we use the printed table.
+
+So the gap is theirs, and a test now asserts our error is the smaller one —
+specifically so a future reader who spots the discrepancy does not "correct"
+ours toward the reference. `pyloudnorm` is test-only and deliberately in no
+install extra; the suite was run with it blocked to confirm it skips rather
+than fails.
+
 **Tempo was four times too slow (2026-08-08).** `analyze_rhythm` computed
 `60 / (interval * 4)` where the beat-per-minute definition gives `60 /
 interval`, so every tempo came out at exactly a quarter of its true value —
