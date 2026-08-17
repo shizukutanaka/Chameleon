@@ -121,3 +121,69 @@ def test_identical_pitch_class_sets_are_resolved_by_the_bass():
 
 def test_fewer_than_three_notes_is_not_a_chord():
     assert _chord([60, 64]) is None
+
+
+# --- tempo estimation -----------------------------------------------------
+#
+# `analyze_rhythm` reported every tempo four times too slow: notes half a
+# second apart, which is 120 BPM, came out as 30. It also bucketed intervals
+# with round(interval * 16) / 16 -- described as "quantize to 16th notes" but
+# actually 62.5 ms buckets, so resolution depended on the tempo and fast
+# material was badly quantised (100 ms onsets snapped to 125 ms).
+
+def _evenly_spaced(gap_seconds, count=16):
+    return [
+        midi_analysis.MIDINote(pitch=60, velocity=100,
+                               start_time=index * gap_seconds,
+                               duration=gap_seconds * 0.9)
+        for index in range(count)
+    ]
+
+
+def _is_octave_equivalent(reported, expected, tolerance=0.03):
+    """Beat trackers may land on a related metrical level (half/double)."""
+    return any(abs(reported / (expected * 2 ** k) - 1) < tolerance
+               for k in range(-5, 6))
+
+
+@pytest.mark.parametrize("gap,expected_bpm", [
+    (0.5, 120.0),
+    (0.25, 240.0),
+    (1.0, 60.0),
+    (0.6, 100.0),
+    (0.4, 150.0),
+    (0.35, 171.4),
+])
+def test_tempo_matches_the_note_spacing(gap, expected_bpm):
+    tempo = _analyzer().analyze_rhythm(_evenly_spaced(gap))["tempo"]
+    assert _is_octave_equivalent(tempo, expected_bpm), (
+        f"{gap}s spacing is {expected_bpm} BPM, reported {tempo:.1f}")
+
+
+def test_half_second_spacing_is_120_bpm_not_30():
+    # The exact symptom of the factor-of-four bug.
+    tempo = _analyzer().analyze_rhythm(_evenly_spaced(0.5))["tempo"]
+    assert tempo == pytest.approx(120.0, abs=1.0)
+
+
+@pytest.mark.parametrize("gap", [2.0, 0.1])
+def test_extreme_spacings_fold_into_a_plausible_range(gap):
+    tempo = _analyzer().analyze_rhythm(_evenly_spaced(gap))["tempo"]
+    assert 40.0 <= tempo <= 240.0
+
+
+def test_tempo_survives_small_timing_jitter():
+    import random
+    rng = random.Random(0)
+    notes = [
+        midi_analysis.MIDINote(pitch=60, velocity=100,
+                               start_time=i * 0.5 + rng.uniform(-0.01, 0.01),
+                               duration=0.4)
+        for i in range(32)
+    ]
+    tempo = _analyzer().analyze_rhythm(notes)["tempo"]
+    assert tempo == pytest.approx(120.0, abs=3.0)
+
+
+def test_no_notes_reports_zero_tempo():
+    assert _analyzer().analyze_rhythm([])["tempo"] == 0
