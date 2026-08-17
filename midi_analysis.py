@@ -328,6 +328,12 @@ class MIDIAnalyzer:
         pitch_classes = list(set(note.pitch % 12 for note in notes))
         pitch_classes.sort()
 
+        # Some chords are the same set of pitch classes and can only be told
+        # apart by which note is in the bass -- A-C-E-G is Am7 or C6 depending
+        # on whether A or C is underneath. Pitch-class content alone cannot
+        # decide, so ties are broken in favour of the lowest sounding note.
+        bass_pitch_class = min(note.pitch for note in notes) % 12
+
         best_match = None
         best_score = 0
 
@@ -335,13 +341,34 @@ class MIDIAnalyzer:
         for root in pitch_classes:
             for chord_type, template in self.chord_templates.items():
                 # Normalize template to root
-                normalized_template = [(root + interval) % 12 for interval in template]
+                normalized_template = {(root + interval) % 12 for interval in template}
 
-                # Calculate match score
-                matches = sum(1 for pc in pitch_classes if pc in normalized_template)
-                score = matches / len(normalized_template)
+                # Score by Jaccard overlap: how much of the template AND of
+                # the sounding notes the two share.
+                #
+                # This used to be matches / len(template), which only asked
+                # how much of the template was present and ignored notes the
+                # template failed to explain. A played C-E-G-B scored 1.0
+                # against the three-note "major" template as well as against
+                # "maj7", and the tie was broken by dictionary order -- so
+                # every seventh chord was reported as its bare triad (G7 came
+                # out "G major"). Dividing by the union penalises the
+                # unexplained note and lets the fuller template win.
+                played = set(pitch_classes)
+                union = played | normalized_template
+                score = len(played & normalized_template) / len(union) if union else 0.0
 
-                if score > best_score and score >= self.config.chord_detection_threshold:
+                if score < self.config.chord_detection_threshold:
+                    continue
+                # Strictly better wins; an equal score wins only if this root
+                # is the bass note and the incumbent's is not.
+                better = score > best_score or (
+                    score == best_score
+                    and best_match is not None
+                    and root == bass_pitch_class
+                    and best_match.root != bass_pitch_class
+                )
+                if better:
                     best_score = score
                     best_match = Chord(
                         root=root,
@@ -403,8 +430,17 @@ class MIDIAnalyzer:
         # Test each key
         for tonic in range(12):
             for mode, profile in self.key_profiles.items():
-                # Rotate profile to match tonic
-                rotated_profile = profile[tonic:] + profile[:tonic]
+                # Align the profile to absolute pitch classes. The profile is
+                # indexed relative to the tonic (index 0 is the tonic), and
+                # pitch_class_weights is indexed absolutely (0 = C), so the
+                # weight for pitch class pc must come from profile[pc - tonic].
+                #
+                # This used to be profile[tonic:] + profile[:tonic], which is
+                # profile[(pc + tonic) % 12] -- the rotation the other way. It
+                # matched only at tonic 0, so C major was reported correctly
+                # and every other key came out as its inverse: G major was
+                # detected as F, D as A#, A as D#. 11 of the 12 keys were wrong.
+                rotated_profile = [profile[(pc - tonic) % 12] for pc in range(12)]
 
                 # Calculate correlation
                 correlation = self._pearson_correlation(pitch_class_weights, rotated_profile)
