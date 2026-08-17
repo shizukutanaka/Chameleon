@@ -33,7 +33,12 @@ class MIDIConfig:
     velocity_threshold: int = 64
     chord_detection_threshold: float = 0.3
     harmony_analysis_depth: int = 4
-    enable_composition_ai: bool = True
+    # NOT IMPLEMENTED, and misnamed: nothing reads this field, and there is no
+    # AI anywhere in this module -- chord suggestions come from a fixed Markov
+    # table, as the module docstring says and CHARTER §4 requires. The name is
+    # a leftover claim. Kept inert rather than removed because dropping a
+    # public config field is a breaking change; see PRODUCT_ANALYSIS.md.
+    enable_composition_ai: bool = True  # (inert; no AI in this module)
 
 class NoteClass(Enum):
     """Musical note classes"""

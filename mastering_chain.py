@@ -105,7 +105,13 @@ class MasteringConfig:
 
     # Enhancement
     harmonic_enhancement: float = 0.0  # 0.0-1.0
-    stereo_enhancement: float = 0.0  # 0.0-1.0
+    # NOT IMPLEMENTED -- nothing reads this field. Stereo width is controlled
+    # by StereoConfig.width (0.0 mono, 1.0 normal, >1.0 wider), which
+    # StereoProcessor actually applies. Wiring this one up would give the
+    # chain two competing width knobs, so it is left inert and documented
+    # rather than implemented. Kept only because removing a public config
+    # field is a breaking change; see PRODUCT_ANALYSIS.md.
+    stereo_enhancement: float = 0.0  # 0.0-1.0 (inert)
 
     # Dithering
     dither_enabled: bool = True
@@ -719,16 +725,17 @@ class StereoProcessor:
         # Apply width adjustment
         side = side * self.config.width
 
-        # Bass mono processing
+        # Bass mono ("elliptical EQ"): strip the low end out of the side
+        # channel so bass plays from the centre. Out-of-phase bass is what
+        # cancels on mono playback, so removing it is the point; whatever bass
+        # is already centred stays untouched in mid.
         if self.config.bass_mono and HAS_SCIPY:
-            # Filter bass frequencies
-            mid_bass = signal.filtfilt(self.mono_b, self.mono_a, mid)
-            mid_high = mid - mid_bass
-            side_high = signal.filtfilt(self.mono_b, self.mono_a, side)
-            side = side - side_high  # Remove bass from side
-
-            # Reconstruct
-            mid = mid_bass + mid_high
+            side_bass = signal.filtfilt(self.mono_b, self.mono_a, side)
+            side = side - side_bass
+            # mid needs no work here. The previous version split it into
+            # mid_bass + mid_high and added them straight back, which
+            # reconstructs mid exactly -- a no-op, and the variable holding
+            # the side's low band was misleadingly named `side_high`.
 
         # Convert back to L/R
         left_out = mid + side
