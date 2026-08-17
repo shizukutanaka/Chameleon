@@ -54,6 +54,13 @@
 
 ### Fixed
 
+- **Tempo estimation was four times too slow.** `analyze_rhythm` divided by an
+  extra factor of four, so notes half a second apart (120 BPM) were reported
+  as 30 BPM. Its interval histogram also used 62.5 ms buckets described as
+  "16th notes", making resolution tempo-dependent; intervals are now grouped
+  on a log scale for equal precision at any tempo, and the result is folded
+  into the 40-240 BPM range since onset spacing determines the beat period
+  only up to a factor of two.
 - **Key detection reported the wrong key for 11 of 12 keys.** `detect_key`
   rotated the Krumhansl-Schmuckler profile in the wrong direction, so only
   C major resolved correctly and the rest came out as their inverse (G major

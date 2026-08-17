@@ -663,6 +663,30 @@ landed:
 standard's short-term-loudness update rate) rather than an initial 1s hop
 that would have under-sampled the short-term loudness distribution.
 
+**Tempo was four times too slow (2026-08-08).** `analyze_rhythm` computed
+`60 / (interval * 4)` where the beat-per-minute definition gives `60 /
+interval`, so every tempo came out at exactly a quarter of its true value —
+notes half a second apart, plainly 120 BPM, were reported as 30.
+
+Its interval histogram also bucketed with `round(interval * 16) / 16`. The
+comment called that "quantize to 16th notes", but it quantizes to sixteenths
+of a *second*. Note values cannot be recovered without the tempo, which is the
+quantity being estimated, so an absolute grid cannot express the stated
+intent; the practical effect was resolution that varied with tempo, snapping
+100 ms onsets to 125 ms and dragging the tempo 25% with them. Intervals are
+now grouped on a log scale (48 buckets per octave), giving equal precision at
+every tempo.
+
+Onset spacing fixes the beat period only up to a factor of two, so the result
+is folded into the 40–240 BPM range — the conventional way to settle a
+metrical level the data cannot determine. Same principle as the Am7/C6
+tie-break above: where the evidence genuinely underdetermines the answer, say
+so in the design rather than picking silently.
+
+Checked and left alone: the chord-progression suggester is a fixed Markov
+table and already declares itself one in both its docstring and the CLI
+output — honestly scoped, not a prediction claim.
+
 **Key detection was rotated backwards; sevenths collapsed to triads
 (2026-08-08).** The music-theory analysis had two bugs, both invisible from
 reading the code and obvious the moment known-answer musical input was fed in.
