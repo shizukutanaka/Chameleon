@@ -52,6 +52,16 @@
   banners and a success line while performing no processing; they now raise
   `NotImplementedError` naming the CLI commands that do the work.
 
+### Added
+
+- Cross-validation of the loudness meter against `pyloudnorm`, an independent
+  BS.1770-4 implementation: integrated loudness agrees to 0.043 LU across
+  sines, noise and gated programme material (Tech 3341 allows ±0.1 LU). The
+  residual is a coefficient-precision difference in the stage-1 high shelf —
+  our error against the published table is ~1e-12, the reference's ~1e-4 — and
+  a test pins that so nobody "corrects" ours toward it later. `pyloudnorm` is
+  test-only and in no install extra; the tests skip when it is absent.
+
 ### Fixed
 
 - **Tempo estimation was four times too slow.** `analyze_rhythm` divided by an
