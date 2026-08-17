@@ -14,6 +14,14 @@ from enum import Enum
 import json
 import time
 
+# Spacing between onsets fixes the beat period only up to a factor of two --
+# the same rhythm read as half-notes or eighth-notes is equally consistent
+# with the timings. Beat trackers conventionally resolve that by folding the
+# estimate into the range listeners actually perceive as a pulse.
+_MIN_PLAUSIBLE_TEMPO = 40.0
+_MAX_PLAUSIBLE_TEMPO = 240.0
+
+
 @dataclass
 class MIDIConfig:
     """Configuration for MIDI analysis and generation"""
@@ -636,15 +644,49 @@ class MIDIAnalyzer:
         if not intervals:
             return {"tempo": self.config.tempo, "time_signature": self.config.time_signature, "patterns": []}
 
-        # Estimate tempo from most common interval
-        interval_counts = {}
+        # Estimate the beat from the commonest inter-onset interval. Intervals
+        # are grouped on a LOG scale (48 buckets to the octave, ~1.4% apart)
+        # rather than snapped to a fixed grid.
+        #
+        # The previous version used round(interval * 16) / 16, whose comment
+        # said "quantize to 16th notes" but which actually quantizes to
+        # sixteenths of a *second* -- 62.5 ms buckets. Deciding musical note
+        # values needs the tempo, which is what is being estimated, so an
+        # absolute grid cannot express it. The practical effect was that the
+        # resolution was tempo-dependent: fine for slow music, badly coarse
+        # for fast (100 ms onsets snapped to 125 ms, a 25% tempo error).
+        # Relative bucketing gives the same precision at every tempo.
+        interval_buckets: Dict[int, List[float]] = {}
         for interval in intervals:
-            quantized = round(interval * 16) / 16  # Quantize to 16th notes
-            interval_counts[quantized] = interval_counts.get(quantized, 0) + 1
+            if interval <= 0:
+                continue
+            bucket = round(math.log2(interval) * 48)
+            interval_buckets.setdefault(bucket, []).append(interval)
 
-        most_common_interval = max(interval_counts.keys(), key=lambda k: interval_counts[k])
+        if not interval_buckets:
+            return {"tempo": self.config.tempo, "time_signature": self.config.time_signature, "patterns": []}
+
+        largest = max(interval_buckets.values(), key=len)
+        ordered = sorted(largest)
+        most_common_interval = ordered[len(ordered) // 2]  # median of the bucket
+
+        interval_counts = {
+            round(sum(members) / len(members), 4): len(members)
+            for members in interval_buckets.values()
+        }
         if most_common_interval > 0:
-            estimated_tempo = 60.0 / (most_common_interval * 4)  # Assume quarter note
+            # The commonest gap between onsets is taken to be one beat, so the
+            # tempo is simply beats per minute: 60 / interval. The extra factor
+            # of 4 that used to be here reported every tempo four times too
+            # slow -- notes half a second apart, which is 120 BPM, came out as
+            # 30 BPM. Folded into the musically plausible range by octave
+            # halving/doubling, the way beat trackers conventionally resolve
+            # the metrical level they cannot infer from spacing alone.
+            estimated_tempo = 60.0 / most_common_interval
+            while estimated_tempo < _MIN_PLAUSIBLE_TEMPO:
+                estimated_tempo *= 2.0
+            while estimated_tempo > _MAX_PLAUSIBLE_TEMPO:
+                estimated_tempo /= 2.0
         else:
             estimated_tempo = self.config.tempo  # Fallback to config tempo
 
