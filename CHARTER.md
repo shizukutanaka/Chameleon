@@ -663,6 +663,33 @@ landed:
 standard's short-term-loudness update rate) rather than an initial 1s hop
 that would have under-sampled the short-term loudness distribution.
 
+**Key detection was rotated backwards; sevenths collapsed to triads
+(2026-08-08).** The music-theory analysis had two bugs, both invisible from
+reading the code and obvious the moment known-answer musical input was fed in.
+
+`detect_key` rotated the Krumhansl-Schmuckler profile the wrong way. The
+profile is indexed relative to the tonic while the pitch-class histogram is
+absolute, so the weight for pitch class `pc` must come from
+`profile[(pc − tonic) % 12]`; the code computed `profile[(pc + tonic) % 12]`.
+The two coincide only at tonic 0, so C major was right and every other key was
+reported as its inverse — G major as F, D as A#, A as D#. **11 of 12 keys were
+wrong.** The profile *values* match Krumhansl & Kessler (1982) and were left
+alone; only the alignment was broken.
+
+`_analyze_chord` scored templates by `matches / len(template)`, which asks only
+how much of the template is present and never penalises notes it cannot
+explain. C-E-G-B scored 1.0 against the three-note "major" template just as
+against "maj7", and dictionary order broke the tie, so **every seventh chord
+was reported as its bare triad**. Jaccard overlap (divide by the union) makes
+the unexplained note cost the triad.
+
+That surfaced a genuine ambiguity rather than a bug: A-C-E-G is Am7 or C6
+depending only on the bass, and pitch-class content cannot distinguish them.
+Ties now go to the lowest sounding note — the information that actually
+decides it. Worth recording as the general lesson: when two answers are
+equally consistent with the data, the fix is to bring in the missing
+information, not to pick one and call it resolved.
+
 **Denoise estimated its noise profile from the signal (2026-08-08).**
 `remove_noise` took the noise profile from the first half second of the file,
 which assumes every recording opens with silence. On material starting

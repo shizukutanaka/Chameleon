@@ -54,6 +54,16 @@
 
 ### Fixed
 
+- **Key detection reported the wrong key for 11 of 12 keys.** `detect_key`
+  rotated the Krumhansl-Schmuckler profile in the wrong direction, so only
+  C major resolved correctly and the rest came out as their inverse (G major
+  detected as F, D as A#). All 24 major and minor keys are now correct; the
+  published profile values were already right and are unchanged.
+- **Every seventh chord was reported as its bare triad.** Chord templates were
+  scored by `matches / len(template)`, which ignores notes the template cannot
+  explain, so C-E-G-B matched "major" as well as "maj7" and dict order decided.
+  Scoring by Jaccard overlap fixes it. Chords that are genuinely the same
+  pitch-class set (Am7 vs C6) are now resolved by the bass note.
 - **Noise reduction estimated its noise profile from the signal.**
   `remove_noise` sampled the first half second of the file, assuming every
   recording opens with silence. On material starting straight into music the
