@@ -111,13 +111,17 @@ python main.py analyze test.wav --loudness
 
 ### Audio Processing
 
-Only `--normalize` runs on the default, dependency-free install. Everything
-else below needs the `[audio]` extra (numpy).
+`--normalize`, `--mono` and `--trim` run on the default, dependency-free
+install. Everything else below needs the `[audio]` extra (numpy).
 
 ```bash
 # Normalize (default peak 0.95, or choose your own) — standard library only
 python main.py process --normalize input.wav
 python main.py process --normalize --target-peak 0.8 input.wav
+
+# Downmix to mono / trim silence — standard library only
+python main.py process --mono input.wav
+python main.py process --trim --threshold 0.02 input.wav
 
 # Remove noise — requires the [audio] extra
 python main.py process --denoise input.wav
@@ -138,7 +142,7 @@ python main.py process --normalize --denoise input.wav --output-dir processed/
 
 ```bash
 # Process all WAV files in directory
-# (operations: analyze, normalize, denoise, convert, effects)
+# (operations: analyze, normalize, mono, trim, denoise, convert, effects)
 python main.py batch /audio/directory/ normalize
 
 # Normalize a whole directory to a specific peak

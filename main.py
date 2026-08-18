@@ -281,6 +281,24 @@ DEFAULT_SAMPLE_RATE = 44100
 # for a pure-Python filter + block loop regardless of file length (same
 # bounded-analysis principle as core.get_samples_for_analysis's own default).
 LOUDNESS_MAX_SAMPLES = 15 * 48000
+
+# Operations the dependency-free core can perform on a file, mapping to the
+# output suffix and the core call. `analyze` is handled separately because it
+# returns metadata rather than writing a file.
+#
+# core.py has always implemented mono and trim -- they are in
+# ALLOWED_BATCH_OPERATIONS and are covered by core's own tests -- but the CLI
+# exposed neither, so the only way to reach them was the Python API. That put
+# two of the four dependency-free operations out of users' reach while the
+# product's whole claim is its dependency-free core.
+_STDLIB_FILE_OPERATIONS = {
+    "normalize": ("_normalized.wav",
+                  lambda src, dst, kw: core.normalize(src, dst, kw.get("target_peak", 0.95))),
+    "mono": ("_mono.wav",
+             lambda src, dst, kw: core.to_mono(src, dst)),
+    "trim": ("_trimmed.wav",
+             lambda src, dst, kw: core.trim_silence(src, dst, kw.get("threshold", 0.01))),
+}
 # WAV is always supported through the standard-library loader. Extra formats are
 # advertised only when a backend that can actually decode them is installed, so the
 # default dependency-free install stays honestly WAV-only (see CHARTER.md §3) while the
@@ -1188,11 +1206,14 @@ class AudioProcessor:
         # Standard-library fallback: the numpy-based pipeline below cannot run
         # without numpy. analyze/normalize are delegated to the dependency-free
         # core so the CLI works out of the box; other operations need numpy.
+        # mono/trim/normalize have exact dependency-free implementations in
+        # core.py, so route them there whether or not numpy is present -- the
+        # stdlib path is the reference behaviour, not a degraded fallback.
+        if operation in ("mono", "trim") or (not HAS_NUMPY and operation in ("analyze", "normalize")):
+            return self._process_single_file_stdlib(
+                file_path, operation, start_time, dry_run=dry_run, **kwargs
+            )
         if not HAS_NUMPY:
-            if operation in ("analyze", "normalize"):
-                return self._process_single_file_stdlib(
-                    file_path, operation, start_time, dry_run=dry_run, **kwargs
-                )
             raise ValueError(
                 f"Operation '{operation}' requires numpy. Install it with: "
                 "pip install -e .[audio]"
@@ -1410,17 +1431,19 @@ class AudioProcessor:
             return {"file": file_path, "metadata": metadata,
                     "time": time.time() - start_time, "dry_run": dry_run}
 
-        # operation == "normalize"
+        # The remaining stdlib operations all follow the same shape: resolve an
+        # output path, then hand off to the dependency-free core.
+        suffix, run = _STDLIB_FILE_OPERATIONS[operation]
         output_path = self._resolve_output_path(
             file_path,
-            suffix="_normalized.wav",
+            suffix=suffix,
             explicit_path=kwargs.get("output_path"),
             output_dir=kwargs.get("output_dir"),
         )
         if dry_run:
             return {"file": file_path, "planned_output": str(output_path),
                     "time": time.time() - start_time, "dry_run": True}
-        result = core.normalize(file_path, str(output_path), kwargs.get("target_peak", 0.95))
+        result = run(file_path, str(output_path), kwargs)
         if not result.success:
             return {"file": file_path, "error": result.message,
                     "time": time.time() - start_time, "dry_run": False}
@@ -1605,6 +1628,12 @@ def create_cli():
     process.add_argument("--normalize", action="store_true", help="Normalize audio")
     process.add_argument("--target-peak", type=float,
                          help="Target peak level for --normalize, 0.0-1.0 (default 0.95)")
+    process.add_argument("--mono", action="store_true",
+                         help="Downmix to mono (standard library only)")
+    process.add_argument("--trim", action="store_true",
+                         help="Trim leading/trailing silence (standard library only)")
+    process.add_argument("--threshold", type=float,
+                         help="Silence threshold for --trim, 0.0-1.0 (default 0.01)")
     process.add_argument("--denoise", action="store_true", help="Remove noise")
     process.add_argument("--master", choices=["default", "streaming", "cd", "vinyl"],
                          help="Apply a full mastering chain (EQ/compressor/limiter/loudness); "
@@ -1627,7 +1656,9 @@ def create_cli():
     # Batch command
     batch = subparsers.add_parser("batch", help="Batch processing")
     batch.add_argument("directory", help="Directory to process")
-    batch.add_argument("operation", choices=["analyze", "normalize", "denoise", "convert", "effects"])
+    batch.add_argument("operation",
+                       choices=["analyze", "normalize", "mono", "trim", "denoise",
+                                "convert", "effects"])
     batch.add_argument("--recursive", action="store_true", help="Process recursively")
     batch.add_argument("--output-dir", help="Output directory")
     batch.add_argument("--format", help="Output format")
@@ -1863,6 +1894,12 @@ async def main():
             operations.append("normalize")
             if args.target_peak is not None:
                 kwargs["target_peak"] = args.target_peak
+        if args.mono:
+            operations.append("mono")
+        if args.trim:
+            operations.append("trim")
+            if args.threshold is not None:
+                kwargs["threshold"] = args.threshold
         if args.denoise:
             operations.append("denoise")
         if args.master:

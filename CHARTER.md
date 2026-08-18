@@ -663,6 +663,31 @@ landed:
 standard's short-term-loudness update rate) rather than an initial 1s hop
 that would have under-sampled the short-term loudness distribution.
 
+**The CLI hid half the dependency-free core (2026-08-08).** Applying the
+"make the requirements less dumb" step of Musk's algorithm — question the
+requirement before optimising anything — to §1's central claim: the product
+exists because its core runs with no third-party packages.
+
+`core.py` has always implemented **four** such operations. `analyze`,
+`normalize`, `to_mono` and `trim_silence` are all pure standard library, all
+listed in `ALLOWED_BATCH_OPERATIONS`, all covered by core's own tests. The CLI
+exposed **two**. There was no `--mono`, no `--trim`, and `batch` would not
+accept either — so half the differentiator was reachable only from the Python
+API, while users were pushed toward numpy-requiring paths for work the stdlib
+core already did.
+
+That is a dumb requirement, not a missing feature: the capability was written,
+tested and free. Both are now exposed on `process` and `batch`, routed through
+core whether or not numpy is present — the stdlib path is the reference
+behaviour, not a degraded fallback. `tests/test_stdlib_operations.py` runs the
+real CLI as a subprocess with numpy, scipy, librosa and soundfile all made
+unimportable, so a future change that quietly adds a dependency to these
+operations fails the suite. It also pins the flip side: `--denoise` must still
+fail with a message naming the extra.
+
+The general lesson worth keeping: before optimising or deleting anything, check
+whether the product is simply failing to ship what it already has.
+
 **Cross-validated the loudness meter against pyloudnorm (2026-08-08).** Every
 check on `bs1770_loudness` up to now was either our own test or a
 first-principles invariant. Neither can catch a *shared* misreading of the

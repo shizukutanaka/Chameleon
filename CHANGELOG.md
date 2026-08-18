@@ -4,6 +4,13 @@
 
 ### Added
 
+- **`process --mono` and `process --trim`, plus `batch mono` / `batch trim`.**
+  `core.py` had always implemented mono downmix and silence trimming in pure
+  standard library — both are in `ALLOWED_BATCH_OPERATIONS` and covered by
+  core's tests — but the CLI exposed neither, leaving half the dependency-free
+  core reachable only from the Python API. Both now run through the CLI with
+  numpy absent, verified by a test suite that executes the real CLI with
+  numpy/scipy/librosa/soundfile made unimportable.
 - Cross-validation of the loudness meter against `pyloudnorm`, an independent
   BS.1770-4 implementation: integrated loudness agrees to 0.043 LU across
   sines, noise and gated programme material (Tech 3341 allows ±0.1 LU). The

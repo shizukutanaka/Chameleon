@@ -23,7 +23,9 @@ real-time streaming require optional dependencies.
 
 ### Core (standard library, no third-party packages)
 - Audio analysis (duration, sample rate, bit depth, peak/RMS levels)
-- Audio normalization
+- Loudness metering: integrated LUFS, true-peak dBTP, EBU-Mode M/S and
+  loudness range
+- Audio normalization, mono downmix, and silence trimming
 - Batch operations with parallel processing
 - MIDI extraction and analysis
 - Plugin system for extensibility
@@ -110,12 +112,17 @@ chameleon analyze audio.wav --loudness
 chameleon process --normalize audio.wav
 chameleon process --normalize --target-peak 0.8 audio.wav
 
+# Downmix to mono, or trim leading/trailing silence (both standard-library only)
+chameleon process --mono audio.wav
+chameleon process --trim --threshold 0.02 audio.wav
+
 # Full mastering chain (requires [audio] extra; presets: default/streaming/cd/vinyl)
 # Reports integrated LUFS, 4x-oversampled true-peak (dBTP) and the resulting
 # loudness range (LU), so you can see how much the chain narrowed the dynamics.
 chameleon process --master streaming audio.wav
 
-# Batch process directory (operations: analyze/normalize/denoise/convert/effects)
+# Batch process directory
+# (operations: analyze/normalize/mono/trim/denoise/convert/effects)
 chameleon batch /path/to/audio/ normalize --target-peak 0.9 --output-dir /output/
 chameleon batch /path/to/audio/ effects --effects chain.json --output-dir /output/
 
