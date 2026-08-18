@@ -65,7 +65,7 @@ chameleon analyze input.wav --loudness
 ファイルを処理します。複数の操作を組み合わせ可能で、出力は `--output-dir`
 （省略時は入力と同じ場所）に書き出されます。
 
-> **依存ゼロの既定インストールで動くのは `--normalize` だけです。**
+> **依存ゼロの既定インストールで動くのは `--normalize` / `--mono` / `--trim` です。**
 > `--denoise` / `--convert` / `--master` / `--effects` は numpy が必要で、
 > 無い場合はエラーで終了します（`pip install -e .[audio]`）。
 > 下表に各オプションの必要依存を明記しています。
@@ -73,6 +73,12 @@ chameleon analyze input.wav --loudness
 ```bash
 # 正規化（標準ライブラリのみで動作）
 chameleon process input.wav --normalize --target-peak 0.90 --output-dir out/
+
+# モノラル化（標準ライブラリのみ）
+chameleon process input.wav --mono --output-dir out/
+
+# 前後の無音を除去（標準ライブラリのみ）
+chameleon process input.wav --trim --threshold 0.02 --output-dir out/
 
 # ノイズ除去（numpy 必須）
 chameleon process input.wav --denoise --output-dir out/
@@ -93,6 +99,9 @@ chameleon process input.wav --normalize --json
 |-----------|---------|------|
 | `--normalize` | 標準ライブラリ | 音量を正規化 |
 | `--target-peak F` | 標準ライブラリ | `--normalize` の目標ピーク値 0.0〜1.0（既定 0.95） |
+| `--mono` | 標準ライブラリ | 1チャンネルへダウンミックス |
+| `--trim` | 標準ライブラリ | 前後の無音を除去 |
+| `--threshold F` | 標準ライブラリ | `--trim` の無音しきい値 0.0〜1.0（既定 0.01） |
 | `--denoise` | **numpy** | ノイズ除去 |
 | `--master {default,streaming,cd,vinyl}` | **numpy**（scipy 推奨） | マスタリングチェーン（EQ/コンプ/リミッタ/ラウドネス） |
 | `--effects FILE` | **numpy** | JSON ファイルからエフェクトを適用 |
@@ -125,12 +134,14 @@ chameleon process input.wav --normalize --json
 ```bash
 chameleon batch ./audio analyze
 chameleon batch ./audio normalize --target-peak 0.9 --output-dir out/
+chameleon batch ./audio mono --output-dir out/
+chameleon batch ./audio trim --output-dir out/
 chameleon batch ./audio convert --sample-rate 44100 --bit-depth 16 --output-dir out/
 chameleon batch ./audio denoise --recursive --output-dir out/
 ```
 
 位置引数: `directory` と
-`{analyze, normalize, denoise, convert, effects}` のいずれか。
+`{analyze, normalize, mono, trim, denoise, convert, effects}` のいずれか。
 
 | オプション | 意味 |
 |-----------|------|

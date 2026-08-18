@@ -64,14 +64,20 @@ These are honest measurements, not a certified meter: see
 Process one or more files. Operations combine; output goes to `--output-dir`
 (or alongside the input if omitted).
 
-> **Only `--normalize` runs on the default, dependency-free install.**
-> `--denoise`, `--convert`, `--master` and `--effects` all require numpy and
-> exit with an error without it (`pip install -e .[audio]`). The table below
-> marks each one.
+> **`--normalize`, `--mono` and `--trim` run on the default, dependency-free
+> install.** `--denoise`, `--convert`, `--master` and `--effects` require numpy
+> and exit with an error without it (`pip install -e .[audio]`). The table
+> below marks each one.
 
 ```bash
 # Normalize to a target peak (stdlib-only)
 chameleon process input.wav --normalize --target-peak 0.90 --output-dir out/
+
+# Downmix to mono (stdlib-only)
+chameleon process input.wav --mono --output-dir out/
+
+# Trim leading/trailing silence (stdlib-only)
+chameleon process input.wav --trim --threshold 0.02 --output-dir out/
 
 # Noise reduction (needs numpy)
 chameleon process input.wav --denoise --output-dir out/
@@ -92,6 +98,9 @@ chameleon process input.wav --normalize --json
 |------|-------|---------|
 | `--normalize` | stdlib | Normalize audio |
 | `--target-peak F` | stdlib | Target peak for `--normalize`, 0.0–1.0 (default 0.95) |
+| `--mono` | stdlib | Downmix to a single channel |
+| `--trim` | stdlib | Trim leading and trailing silence |
+| `--threshold F` | stdlib | Silence threshold for `--trim`, 0.0–1.0 (default 0.01) |
 | `--denoise` | **numpy** | Remove noise |
 | `--master {default,streaming,cd,vinyl}` | **numpy** (scipy recommended) | Apply a full mastering chain (EQ/compressor/limiter/loudness) |
 | `--effects FILE` | **numpy** | Apply effects from a JSON file |
@@ -125,12 +134,14 @@ Apply one operation to every audio file in a directory.
 ```bash
 chameleon batch ./audio analyze
 chameleon batch ./audio normalize --target-peak 0.9 --output-dir out/
+chameleon batch ./audio mono --output-dir out/
+chameleon batch ./audio trim --output-dir out/
 chameleon batch ./audio convert --sample-rate 44100 --bit-depth 16 --output-dir out/
 chameleon batch ./audio denoise --recursive --output-dir out/
 ```
 
 Positional: `directory` then one of
-`{analyze, normalize, denoise, convert, effects}`.
+`{analyze, normalize, mono, trim, denoise, convert, effects}`.
 
 | Flag | Meaning |
 |------|---------|
