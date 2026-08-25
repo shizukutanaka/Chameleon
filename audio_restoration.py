@@ -3,10 +3,13 @@
 Audio Restoration and Repair Module
 Advanced algorithms for repairing damaged or degraded audio
 
-Standalone / not wired into the CLI (see PRODUCT_ANALYSIS.md). Requires the
-optional [audio] extra (numpy + scipy); imports are guarded so
+Requires the optional [audio] extra (numpy + scipy); imports are guarded so
 `import audio_restoration` never breaks the stdlib-only default install — the
 restoration classes raise a clear error only when used without those packages.
+
+`AdaptiveDenoiser` and `SpectralRepairer` additionally need librosa, which is
+in no extra. They raise when it is absent rather than returning their input
+unchanged, so a caller cannot report a repair that never ran.
 """
 
 from __future__ import annotations
@@ -109,14 +112,13 @@ class ClickRemover:
             end = min(len(audio), click_pos + 10)
 
             if start > 20 and end < len(audio) - 20:
-                # Use autoregressive prediction
-                before = result[start-20:start]
-                after = result[end:end+20]
-
-                # Fit AR model on surrounding data
-                surrounding = np.concatenate([before, after])
-
-                # Simple linear interpolation for the click region
+                # Linear interpolation across the click, crossfaded in at the
+                # edges. This used to be introduced by a comment reading "use
+                # autoregressive prediction", above three lines that gathered
+                # the surrounding samples into a `surrounding` array and then
+                # discarded it unused. No AR model was ever fitted; the label
+                # is removed rather than the method upgraded, because what
+                # ships should be what the comment says.
                 repair_length = end - start
                 repaired = np.linspace(result[start-1], result[end], repair_length)
 
@@ -201,15 +203,30 @@ class HumRemover:
         # Find bin closest to target frequency
         target_bin = np.argmin(np.abs(freqs - freq))
 
-        # Check if there's a peak at this frequency
-        window_size = 10
-        start = max(0, target_bin - window_size)
-        end = min(len(fft), target_bin + window_size)
+        # Compare the bin against its neighbourhood, *excluding* the candidate
+        # itself and the bins it leaks into. Including them made the reference
+        # level rise with the very peak being tested, so the check returned
+        # True for a clean 440 Hz sine with no hum in it at all -- and the
+        # notches were then applied unconditionally, which is not what a
+        # detector is for.
+        leak = 2
+        window_bins = 40
+        low = max(0, target_bin - window_bins)
+        high = min(len(fft), target_bin + window_bins + 1)
 
-        local_mean = np.mean(np.abs(fft[start:end]))
-        peak_value = np.abs(fft[target_bin])
+        neighbourhood = np.concatenate([
+            np.abs(fft[low:max(low, target_bin - leak)]),
+            np.abs(fft[min(high, target_bin + leak + 1):high]),
+        ])
+        if neighbourhood.size == 0:
+            return False
 
-        return peak_value > 2 * local_mean
+        # Median, not mean: one strong neighbouring partial should not raise
+        # the bar for detecting hum, and hum sits in an otherwise quiet band.
+        reference = np.median(neighbourhood)
+        peak_value = np.max(np.abs(fft[max(0, target_bin - leak):target_bin + leak + 1]))
+
+        return bool(peak_value > 10.0 * (reference + 1e-20))
 
 class DeclippingProcessor:
     """Restore clipped audio signals"""
@@ -310,9 +327,15 @@ class SpectralRepairer:
         self.hop_size = 512
 
     def repair_gaps(self, audio: np.ndarray, gap_positions: List[Tuple[int, int]], sample_rate: int) -> np.ndarray:
-        """Repair gaps in audio using spectral interpolation"""
+        """Repair gaps by interpolating across them in the STFT domain.
+
+        Requires librosa; raises rather than returning the input unchanged,
+        so a caller cannot report a repair that never happened.
+        """
         if not HAS_LIBROSA:
-            return audio
+            raise RuntimeError(
+                "SpectralRepairer needs librosa, which is not installed."
+            )
 
         # STFT
         stft = librosa.stft(audio, n_fft=self.fft_size, hop_length=self.hop_size)
@@ -357,9 +380,17 @@ class AdaptiveDenoiser:
         self.reduction_factor = 0.8
 
     def estimate_noise_profile(self, audio: np.ndarray, sample_rate: int) -> np.ndarray:
-        """Estimate noise profile from quiet sections"""
+        """Estimate noise profile from quiet sections. Requires librosa.
+
+        The old fallback returned `np.ones(1025)` -- a noise floor of 1.0 in
+        every bin, which the subtraction below turns into a blanket -20 dB
+        applied to the whole file. Silently wrecking the audio is worse than
+        refusing to run.
+        """
         if not HAS_LIBROSA:
-            return np.ones(1025)  # Default profile
+            raise RuntimeError(
+                "AdaptiveDenoiser needs librosa, which is not installed."
+            )
 
         # Find quiet sections
         rms = librosa.feature.rms(y=audio, frame_length=2048, hop_length=512)[0]
@@ -373,9 +404,18 @@ class AdaptiveDenoiser:
         return noise_spectrum
 
     def denoise(self, audio: np.ndarray, sample_rate: int) -> np.ndarray:
-        """Apply adaptive spectral subtraction"""
+        """Apply adaptive spectral subtraction. Requires librosa.
+
+        Raises rather than returning the input unchanged: a denoiser that
+        silently does nothing is indistinguishable from one that ran and found
+        nothing to remove, and the caller reported "denoising" either way.
+        """
         if not HAS_LIBROSA:
-            return audio
+            raise RuntimeError(
+                "AdaptiveDenoiser needs librosa, which is not installed. "
+                "Install it, or use the numpy/scipy denoiser reached through "
+                "`chameleon process --denoise`."
+            )
 
         # Estimate noise
         noise_profile = self.estimate_noise_profile(audio, sample_rate)
@@ -424,9 +464,14 @@ class VinylRestorer:
         result = self.hum_remover.remove_hum(result, sample_rate)
         info["steps_applied"].append("hum_removal")
 
-        # Denoise
-        result = self.denoiser.denoise(result, sample_rate)
-        info["steps_applied"].append("denoising")
+        # Denoise. Needs librosa; if it is absent, say so instead of
+        # reporting a step that did not run.
+        try:
+            result = self.denoiser.denoise(result, sample_rate)
+            info["steps_applied"].append("denoising")
+        except RuntimeError as exc:
+            info.setdefault("steps_skipped", []).append(
+                {"step": "denoising", "reason": str(exc)})
 
         # Calculate improvement metrics
         info["snr_improvement"] = self._calculate_snr_improvement(audio, result)
@@ -434,12 +479,26 @@ class VinylRestorer:
         return result, info
 
     def _calculate_snr_improvement(self, original: np.ndarray, restored: np.ndarray) -> float:
-        """Calculate SNR improvement"""
-        noise_original = np.std(original[np.abs(original) < 0.1])
-        noise_restored = np.std(restored[np.abs(restored) < 0.1])
+        """Change in residual level between the quiet parts, in dB.
+
+        Deliberately *not* an SNR: this compares the spread of the near-silent
+        samples before and after, which is a proxy for noise-floor reduction,
+        not a signal-to-noise ratio. Positive means the quiet parts got quieter.
+
+        Returns 0.0 when there are too few quiet samples to say anything --
+        `np.std` of an empty or one-element slice is NaN and emits a
+        RuntimeWarning, which this project's DSP gate treats as an error.
+        """
+        quiet_original = original[np.abs(original) < 0.1]
+        quiet_restored = restored[np.abs(restored) < 0.1]
+        if quiet_original.size < 2 or quiet_restored.size < 2:
+            return 0.0
+
+        noise_original = np.std(quiet_original)
+        noise_restored = np.std(quiet_restored)
 
         if noise_original > 0 and noise_restored > 0:
-            return 20 * np.log10(noise_original / noise_restored)
+            return float(20 * np.log10(noise_original / noise_restored))
         return 0.0
 
 class AudioRestorer:
@@ -468,6 +527,10 @@ class AudioRestorer:
         info = {
             "mode": mode,
             "applied_processes": [],
+            # Steps that were configured but could not run, each with the
+            # reason. A caller that prints `applied_processes` alone should
+            # never be able to claim work that did not happen.
+            "skipped_processes": [],
             "quality_metrics": {}
         }
 
@@ -497,8 +560,12 @@ class AudioRestorer:
                 info["applied_processes"].append("declipping")
 
             if self.config.denoise:
-                result = self.denoiser.denoise(result, sample_rate)
-                info["applied_processes"].append("denoising")
+                try:
+                    result = self.denoiser.denoise(result, sample_rate)
+                    info["applied_processes"].append("denoising")
+                except RuntimeError as exc:
+                    info["skipped_processes"].append(
+                        {"process": "denoising", "reason": str(exc)})
 
         # Calculate quality metrics
         info["quality_metrics"] = self._calculate_metrics(audio, result)
@@ -509,11 +576,16 @@ class AudioRestorer:
         """Calculate restoration quality metrics"""
         metrics = {}
 
-        # SNR improvement
+        # How much of the output is *not* what came in. This is a
+        # signal-to-change ratio, not an SNR: it is large when restoration
+        # barely touched the audio and small when it intervened heavily, and
+        # it says nothing about whether the change was an improvement. It was
+        # previously exported as "snr_db", which invited the opposite reading.
         signal_power = np.mean(restored ** 2)
-        noise_power = np.mean((original - restored) ** 2)
-        if noise_power > 0:
-            metrics["snr_db"] = 10 * np.log10(signal_power / noise_power)
+        change_power = np.mean((original - restored) ** 2)
+        if change_power > 0:
+            metrics["signal_to_change_db"] = float(
+                10 * np.log10(signal_power / change_power))
 
         # Dynamic range
         metrics["dynamic_range_original"] = 20 * np.log10(
