@@ -146,7 +146,7 @@ document (kept here as a record, per the honesty culture):
   standalone/orphaned status.
 
 ### Coverage gaps
-- **Zero test coverage:** `personal_config.py`.
+- ~~**Zero test coverage:** `personal_config.py`.~~ — covered 2026-08-25.
   (`audio_restoration.py` and `spectral_editor.py` now have import-safety
   coverage via `tests/test_orphaned_import_safety.py`, but still no coverage
   of their actual DSP.)
@@ -195,7 +195,7 @@ here because they need a user decision first.
 | ~~P1~~ | ~~Fix key detection (profile rotated backwards) and seventh-chord collapse~~ | High | S | Low | **DONE 2026-08-08** — 11/12 keys were wrong; all 24 now correct. Jaccard chord scoring + bass-note tie-break |
 | ~~P1~~ | ~~Fix denoise estimating noise from the signal~~ | High | S | Low | **DONE 2026-08-08** — per-bin percentile + Rayleigh scaling; material without a silent lead-in went -19.4 dB → -0.1 dB |
 | ~~P1~~ | ~~Fix compressor's non-monotonic soft knee~~ | High | S | Low | **DONE 2026-08-08** — centred quadratic knee (Giannoulis 2012); output no longer drops 2 dB at the knee |
-| P2 | Add minimal tests for the remaining zero-coverage modules | Med | S | Low | `personal_config` still uncovered (`performance_optimizer` was deleted instead — the honest resolution for code with no callers) |
+| ~~P2~~ | ~~Add minimal tests for the remaining zero-coverage modules~~ | Med | S | Low | **DONE 2026-08-25** — 18 tests for `personal_config`, which found a config loader that died on any file written by another version, an unhelpful crash on malformed JSON, and playlists stamped with the home directory's mtime. (`performance_optimizer` was deleted instead — the honest resolution for code with no callers) |
 | P3 | `apply_effects` compression is an instantaneous waveshaper | Low | S | Low | No attack/release; the real compressor is in `mastering_chain`. Label or point users at `--master` |
 | P4 | Noise-shaped ("shaped") dither in `mastering_chain` | Low | M | Low | Advertised in the config docstring, unimplemented; falls back to TPDF with a warning |
 | P3 | Consider TPDF dither by default, or a `--dither` CLI flag | Low | S | Med | Currently opt-in via `ProcessingConfig.apply_dither` only, to keep output deterministic (CHARTER §9). No CLI surface yet |

@@ -1202,6 +1202,83 @@ also dropped: librosa is in no extra, so its absence is the normal case, the
 two classes needing it now raise clearly, and the warning was printing on CLI
 runs for a feature nobody had asked for.
 
+**The test suite could not run on the install the product is defined by
+(2026-08-25).** Chameleon's differentiator is a core needing no third-party
+packages. Twelve test modules did a bare `import numpy` at module scope, so on
+a genuinely bare install `pytest` failed at *collection* with twelve errors and
+ran nothing at all. Verifying the dependency-free core required first
+installing the dependency it is defined by not needing. All twelve now use
+`np = pytest.importorskip("numpy")`, and `tests/test_cli_parity.py`'s
+effects-batch case — which drives a numpy-only operation through a subprocess,
+so it never imported numpy itself — is skipped when numpy is absent.
+
+Three configurations now pass, and the numbers are the point:
+
+| Install | Result |
+|---|---|
+| stdlib only | 259 passed, 21 skipped |
+| + numpy | 300 passed, 25 skipped |
+| + numpy + scipy | 410 passed, 2 skipped |
+
+Finding this also revealed that `ci/proposed-ci.yml` installed numpy but not
+scipy, so adopting it would have produced a green tick while ~90 tests
+silently skipped — and, worse, three tests in `tests/test_eq_quality.py`
+actually *failed* there, meaning the proposed replacement CI was red. Both are
+fixed; the workflow now runs a `stdlib-only` job (which refuses to start if an
+audio package leaked into the environment, since otherwise it proves nothing)
+and an `audio-extra` job across Python 3.9–3.12 including a
+`-W error::RuntimeWarning` DSP pass. Every step was executed locally against a
+clean copy of the tree before being written down.
+
+Re-confirmed the same day that this project's automation account still cannot
+adopt it: `git push` is refused with *"refusing to allow a GitHub App to create
+or update workflow `.github/workflows/ci-cd.yml` without `workflows`
+permission"*, and the REST contents API returns 403. A maintainer must run the
+one `cp` in `ci/README.md`. What changed is that the file they will copy is now
+known-good rather than merely plausible.
+
+**Two silent no-ops and a contradictory exit, found by running the CLI the way
+CI would (2026-08-25).**
+
+*`apply_effects` skipped effects it could not apply.* Each effect was guarded
+by its dependency — `if "eq" in effects and HAS_SCIPY and ...` — and simply did
+nothing when the guard was false. On an install without scipy,
+`process --effects eq.json` wrote an output file, printed a success line, and
+applied no EQ; nothing distinguished that from an EQ that had been applied and
+happened to be subtle. It now raises, naming the effect and the extra that
+fixes it. This is the same defect class as the restoration pipeline reporting a
+denoising step it had skipped: the tool was not wrong about the audio, it was
+wrong about itself.
+
+*`--mono` on an already-mono file printed "Error: Already mono", wrote no
+output, and exited 0.* Three things wrong at once: an error message on a
+success exit, a request treated as a failure when it was already satisfied, and
+a promised output file that did not exist — so a batch over mixed material left
+a pipeline believing it had files it did not have. Converting mono to mono is a
+satisfied request; the file is now copied through and reported as such, which
+makes `--mono` idempotent.
+
+**`personal_config.py` covered (2026-08-25).** The last zero-coverage module,
+and the one a user touches *first*: both `quick_install` scripts point new
+users at `python personal_config.py setup`. Eighteen tests found three defects
+in the two functions that flow hits:
+
+- `PersonalConfig.load` did `cls(**data)` straight from the JSON, so a config
+  written by any other version of Chameleon — or hand-edited, which is the
+  entire point of a personal config file — raised `TypeError: __init__() got an
+  unexpected keyword argument` and the tool would not start. Unknown keys are
+  now logged and ignored.
+- Malformed JSON raised `json.JSONDecodeError` with no indication of which file
+  was at fault. It now raises a `ValueError` naming the path and saying what to
+  do, and deliberately does *not* overwrite the file with defaults — silently
+  discarding someone's settings is worse than refusing to start.
+- `create_playlist` stamped every playlist with `Path.home().stat().st_mtime`,
+  the home *directory's* modification time: the same value for every playlist
+  ever created, unrelated to when any of them was made.
+
+Being unimported is not the same as being unexercised, and the allow-list entry
+now says so.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy
