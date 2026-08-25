@@ -45,7 +45,9 @@ ALLOWED_ORPHANS = {
         "personal_config.py setup` as the personal-use onboarding flow, and it "
         "is the one documented entry point for advanced_validation's "
         "IntegrityVerifier / SanitizationEngine. Reachable by a user, just not "
-        "by an import -- deleting it would mean redesigning that flow.",
+        "by an import -- deleting it would mean redesigning that flow. Covered "
+        "by tests/test_personal_config.py, so being unimported no longer means "
+        "being unexercised.",
     "batch_automation":
         "A generic DAG/workflow engine. CHARTER.md §4 would call this a second "
         "product, and its own demo builds tasks for transcoding this tool "

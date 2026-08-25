@@ -8,7 +8,8 @@ import os
 import json
 from pathlib import Path
 from typing import Dict, Any, Optional
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, fields
+from datetime import datetime, timezone
 import logging
 
 logger = logging.getLogger("chameleon.personal")
@@ -59,14 +60,46 @@ class PersonalConfig:
 
     @classmethod
     def load(cls, config_path: Optional[Path] = None) -> 'PersonalConfig':
-        """Load personal configuration"""
+        """Load personal configuration, or write a default one if none exists.
+
+        Tolerates a config written by a different version of Chameleon: keys
+        this version does not recognise are reported and ignored rather than
+        raising. `cls(**data)` on its own turned an extra key into a bare
+        `TypeError: __init__() got an unexpected keyword argument`, so
+        downgrading -- or hand-editing the file, which is the whole point of a
+        personal config -- left the tool unable to start.
+
+        A file that is not valid JSON is a different matter and is reported as
+        such, naming the path, rather than silently replacing the user's
+        settings with defaults.
+        """
         if config_path is None:
             config_path = Path.home() / ".chameleon" / "personal_config.json"
 
         if config_path.exists():
-            with open(config_path, 'r') as f:
-                data = json.load(f)
-                return cls(**data)
+            try:
+                with open(config_path, 'r') as f:
+                    data = json.load(f)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"{config_path} is not valid JSON ({exc}). Fix it, or delete "
+                    "it to start again from the defaults."
+                ) from exc
+
+            if not isinstance(data, dict):
+                raise ValueError(
+                    f"{config_path} should contain a JSON object, found "
+                    f"{type(data).__name__}."
+                )
+
+            known = {field.name for field in fields(cls)}
+            unknown = sorted(set(data) - known)
+            if unknown:
+                logger.warning(
+                    "Ignoring unrecognised setting(s) in %s: %s",
+                    config_path, ", ".join(unknown)
+                )
+            return cls(**{key: value for key, value in data.items() if key in known})
 
         # Create default config
         config = cls()
@@ -301,9 +334,12 @@ class PersonalLibraryManager:
 
     def create_playlist(self, name: str, file_list: list) -> None:
         """Create playlist from file list"""
+        # The timestamp used to be `Path.home().stat().st_mtime` -- the home
+        # directory's modification time, which is the same value for every
+        # playlist ever created and has nothing to do with when this one was.
         self.library_db["playlists"][name] = {
             "files": file_list,
-            "created": str(Path.home().stat().st_mtime)
+            "created": datetime.now(timezone.utc).isoformat()
         }
         self._save_db()
 
