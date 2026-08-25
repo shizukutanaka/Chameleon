@@ -934,7 +934,7 @@ the tree against it. Two conclusions.
 
 *Excess:* ~1 line in 4 of shipped Python is unreachable from the CLI (9,367
 reachable / 3,121 orphaned, plus `RealtimeAudioProcessor`). `performance_optimizer.py`
-is ~100% duplication of `core.py`/`main.py` facilities; spectral subtraction
+is ~100% duplication of `core.py`/`main.py` facilities (deleted 2026-08-25); spectral subtraction
 exists in three places; `api_server.py:52-54` imports three modules that have
 never existed, permanently pinning `HAS_SECURE_MODULES` to False and making
 the `skipif`s in `tests/test_api_fallback.py` no-ops (that last one was deleted
@@ -1081,6 +1081,33 @@ Python stops a `try` body at the first exception, an environment without
 `queue` happens to be imported unconditionally at the top of the file, so
 nothing broke — but the block was one reordering away from a
 `NameError` in the stdlib core. `core.py` 2,780 → 2,367 lines.
+
+**`performance_optimizer.py` — deleted (2026-08-25).** 324 lines,
+zero importers. Every facility in it already existed, better, in code that
+actually runs:
+
+| In `performance_optimizer.py` | The version that ships |
+|---|---|
+| `get_optimal_worker_count` | `main.py`'s `ProcessingConfig.from_environment` (this made it the *third* implementation) |
+| `get_optimal_chunk_size` | `core.py`'s `_determine_chunk_size` / `CHUNK_SIZE` |
+| `CacheManager` | `core.py`'s `MemoryManager` — byte-accounted LRU with mmap, versus a plain dict |
+| `MemoryOptimizer` | same |
+| `SIMDOperations` | the equivalent loops in `core.py`'s WAV path |
+
+The decisive evidence is not the duplication but a defect. `SIMDOperations.
+normalize_int16` computed its scale factor as `int((target_peak * 32767) /
+peak)` — integer truncation of a value that is below 1.0 for any peak above
+about 34% of full scale, so the function returned **digital silence** for
+essentially all real audio. `array('h', [32000, -16000, 8000])` normalizes to
+`[0, 0, 0]`. A normalizer that silences its input cannot have been run even
+once, by anyone, ever. That is what an orphaned module is: not merely unused,
+but unexamined, and therefore untrustworthy on the day someone finally wires
+it in.
+
+This is the same argument that retired `config_manager.py`, applied to the
+same evidence. Deleted with explicit per-item confirmation; removed from
+`setup.py`, `pyproject.toml`, the `Dockerfile` COPY list, `README.md` and
+`docs/agents/SONNET.md` in the same commit.
 
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in

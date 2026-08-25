@@ -258,9 +258,6 @@ Supported operations are `analyze`, `normalize`, `mono` and `trim`. An
 
 ### Support Modules
 - **ux_improvements.py** - Progress bars, colors, formatting
-- **performance_optimizer.py** - Parallel helpers and an `array`-module
-  "SIMD-like" path (not real vector instructions). Standalone: the CLI uses
-  `core.py`'s own chunking, caching and worker handling instead.
 
 ## System Requirements
 

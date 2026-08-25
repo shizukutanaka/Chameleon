@@ -26,7 +26,7 @@ COPY pyproject.toml setup.py ./
 COPY main.py core.py security_validator.py advanced_validation.py \
      plugin_system.py midi_analysis.py api_server.py batch_automation.py \
      spectral_editor.py spectral_utils.py audio_restoration.py \
-     mastering_chain.py performance_optimizer.py ux_improvements.py \
+     mastering_chain.py ux_improvements.py \
      bs1770_loudness.py personal_config.py ./
 COPY README.md ./
 

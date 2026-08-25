@@ -33,9 +33,9 @@ re-verified, not trusted.
   it cannot prove. Honesty about measurement accuracy is a feature.
 - **Honest labeling as a discipline.** Estimates are labeled estimates
   (true-peak), approximations are labeled approximate (the RMS fallback in
-  `mastering_chain.LoudnessMeter`), and `performance_optimizer.py:4` even
-  corrects its own earlier "SIMD" overclaim to "SIMD-like … not real vector
-  instructions." This is the culture to keep.
+  `mastering_chain.LoudnessMeter`). The now-deleted `performance_optimizer.py`
+  even corrected its own earlier "SIMD" overclaim to "SIMD-like … not real
+  vector instructions." This is the culture to keep.
 - **Mechanized scope discipline.** `tests/test_no_fantasy_features.py`
   greps the project's Python sources for the forbidden feature classes in
   `CHARTER.md` §4/§8.4 (quantum / neural / GPU / AI transcription / source
@@ -74,12 +74,14 @@ dependency, with zero callers — was **deleted on 2026-08-25**.
 
 Specific findings, each cited so it can be re-verified:
 
-- **`performance_optimizer.py` is ~100% redundant.** `get_optimal_worker_count`
-  duplicates `main.py`'s `ProcessingConfig.from_environment` (making it the
-  *third* place worker count is resolved); `CacheManager` is a weaker
-  `core.py` `MemoryManager` (which does byte-accounted LRU + mmap);
-  `SIMDOperations`' operations all exist in `core.py`. This is the same
-  argument that retired `config_manager.py`.
+- ~~**`performance_optimizer.py` is ~100% redundant.**~~ — **deleted
+  2026-08-25** with per-item confirmation. `get_optimal_worker_count`
+  duplicated `main.py`'s `ProcessingConfig.from_environment` (the *third*
+  place worker count was resolved); `CacheManager` was a weaker `core.py`
+  `MemoryManager` (which does byte-accounted LRU + mmap); `SIMDOperations`'
+  operations all exist in `core.py`. Same argument that retired
+  `config_manager.py`. Its `normalize_int16` also silenced any signal peaking
+  above ~34% FS — see `CHARTER.md` §9.
 - **Spectral subtraction is implemented three times**: `main.py`'s
   `remove_noise`, `audio_restoration.py`'s `AdaptiveDenoiser`, and
   `spectral_editor.py`'s `noise_reduce_selection`.
@@ -144,7 +146,7 @@ document (kept here as a record, per the honesty culture):
   standalone/orphaned status.
 
 ### Coverage gaps
-- **Zero test coverage:** `performance_optimizer.py`, `personal_config.py`.
+- **Zero test coverage:** `personal_config.py`.
   (`audio_restoration.py` and `spectral_editor.py` now have import-safety
   coverage via `tests/test_orphaned_import_safety.py`, but still no coverage
   of their actual DSP.)
@@ -169,7 +171,7 @@ document (kept here as a record, per the honesty culture):
 ### Orphaned assets awaiting a disposition decision (deletion needs user OK)
 `batch_automation.py`, `spectral_editor.py`, `audio_restoration.py`,
 `personal_config.py` (documented onboarding entry point — see `CHARTER.md` §9),
-`performance_optimizer.py`, `gui/`, `openapi_spec.yaml`. Per project practice,
+`gui/`, `openapi_spec.yaml`. Per project practice,
 deletions require **explicit, per-item user confirmation** — do not delete on
 the strength of this list. (`core.py`'s `RealtimeAudioProcessor` was on this
 list and was deleted on 2026-08-25 after that confirmation was given.)
@@ -193,7 +195,7 @@ here because they need a user decision first.
 | ~~P1~~ | ~~Fix key detection (profile rotated backwards) and seventh-chord collapse~~ | High | S | Low | **DONE 2026-08-08** — 11/12 keys were wrong; all 24 now correct. Jaccard chord scoring + bass-note tie-break |
 | ~~P1~~ | ~~Fix denoise estimating noise from the signal~~ | High | S | Low | **DONE 2026-08-08** — per-bin percentile + Rayleigh scaling; material without a silent lead-in went -19.4 dB → -0.1 dB |
 | ~~P1~~ | ~~Fix compressor's non-monotonic soft knee~~ | High | S | Low | **DONE 2026-08-08** — centred quadratic knee (Giannoulis 2012); output no longer drops 2 dB at the knee |
-| P2 | Add minimal tests for the remaining zero-coverage modules | Med | M | Low | `performance_optimizer`, `personal_config` still uncovered |
+| P2 | Add minimal tests for the remaining zero-coverage modules | Med | S | Low | `personal_config` still uncovered (`performance_optimizer` was deleted instead — the honest resolution for code with no callers) |
 | P3 | `apply_effects` compression is an instantaneous waveshaper | Low | S | Low | No attack/release; the real compressor is in `mastering_chain`. Label or point users at `--master` |
 | P4 | Noise-shaped ("shaped") dither in `mastering_chain` | Low | M | Low | Advertised in the config docstring, unimplemented; falls back to TPDF with a warning |
 | P3 | Consider TPDF dither by default, or a `--dither` CLI flag | Low | S | Med | Currently opt-in via `ProcessingConfig.apply_dither` only, to keep output deterministic (CHARTER §9). No CLI surface yet |

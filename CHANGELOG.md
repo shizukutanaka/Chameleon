@@ -48,6 +48,15 @@
 
 ### Removed
 
+- **`performance_optimizer.py`** (324 lines, zero importers). Everything in it
+  already existed in code that runs: worker count in `main.py`'s
+  `ProcessingConfig.from_environment`, chunk size in `core.py`'s
+  `_determine_chunk_size`, caching in `core.py`'s byte-accounted
+  `MemoryManager`. It also carried a defect proving it had never been
+  executed: `SIMDOperations.normalize_int16` truncated its scale factor to an
+  integer, returning digital silence for any signal peaking above ~34% of full
+  scale. Dropped from `setup.py`, `pyproject.toml`, the `Dockerfile` COPY list,
+  `README.md` and `docs/agents/SONNET.md` at the same time.
 - **`core.py`'s `RealtimeAudioProcessor`** (393 lines, the whole tail of the
   file) — a WebSocket streaming server with zero callers anywhere in the
   repository, which could not run in any install anyway: `websockets` is in no
