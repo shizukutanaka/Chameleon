@@ -7,38 +7,46 @@ on:
     branches: [ main, develop ]
 
 jobs:
-  test:
-    name: Test (Python ${{ matrix.python-version }})
+  # The product's differentiator is a core that runs with no third-party
+  # packages. That claim is only worth something if CI installs nothing and
+  # watches it hold, so this job gets pytest and nothing else.
+  stdlib-only:
+    name: Standard library only (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.9', '3.10', '3.11', '3.12']
+        python-version: ['3.9', '3.12']
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
 
-      - name: Install test dependencies
+      - name: Install pytest only
         run: |
           python -m pip install --upgrade pip
           pip install pytest
-          # The core CLI runs on the standard library alone; numpy enables the
-          # full main.py audio pipeline used by the integration check below.
-          pip install numpy
 
-      - name: Byte-compile all modules
+      - name: Refuse to run if an audio package leaked in
+        run: |
+          python - <<'PY'
+          import importlib.util, sys
+          leaked = [n for n in ("numpy", "scipy", "librosa", "soundfile")
+                    if importlib.util.find_spec(n)]
+          if leaked:
+              sys.exit(f"{leaked} present; this job proves nothing without a bare install")
+          print("confirmed bare install")
+          PY
+
+      - name: Byte-compile every module
         run: python -m compileall -q .
 
-      - name: Import smoke check (standard-library core)
+      - name: Import the core modules
         run: |
-          for m in security_validator plugin_system core main batch_automation spectral_utils bs1770_loudness; do
+          for m in security_validator plugin_system core main spectral_utils bs1770_loudness; do
             python -c "import $m" && echo "OK   $m"
           done
 
@@ -48,13 +56,65 @@ jobs:
       - name: Unit tests
         run: python -m pytest -q
 
-      - name: CLI integration check
+      - name: Dependency-free CLI, end to end
         run: |
           python - <<'PY'
           from validation_test import create_test_wav
           create_test_wav("ci_tone.wav", duration=1.0)
           PY
           python main.py analyze ci_tone.wav --detailed
+          python main.py analyze ci_tone.wav --loudness
           mkdir -p ci_out
-          python main.py process --normalize ci_tone.wav --output-dir ci_out
-          test -f ci_out/ci_tone_normalized.wav && echo "normalize output present"
+          python main.py process ci_tone.wav --normalize --mono --trim --output-dir ci_out
+          for f in ci_tone_normalized ci_tone_mono ci_tone_trimmed; do
+            test -f "ci_out/$f.wav" && echo "OK   $f.wav"
+          done
+          python main.py batch . trim --output-dir ci_out
+
+  # The optional [audio] extra. Installing scipy matters: without it roughly 90
+  # tests are skipped rather than run, and a green tick would mean much less
+  # than it appears to.
+  audio-extra:
+    name: With numpy + scipy (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install test and audio dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest numpy scipy
+
+      - name: Byte-compile every module
+        run: python -m compileall -q .
+
+      - name: Unit tests
+        run: python -m pytest -q
+
+      - name: DSP tests with numeric warnings promoted to errors
+        # NaN, inf and overflow must not pass silently through the DSP paths.
+        run: python -m pytest -q -W error::RuntimeWarning
+
+      - name: Stdlib validation suite
+        run: python validation_test.py
+
+      - name: Restoration and mastering CLI, end to end
+        run: |
+          python - <<'PY'
+          from validation_test import create_test_wav
+          create_test_wav("ci_tone.wav", duration=1.0)
+          PY
+          mkdir -p ci_out
+          python main.py process ci_tone.wav --declip --dehum --output-dir ci_out
+          test -f ci_out/ci_tone_restored.wav && echo "OK   restore"
+          python main.py process ci_tone.wav --master default --output-dir ci_out
+          test -f ci_out/ci_tone_mastered.wav && echo "OK   master"

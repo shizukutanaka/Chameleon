@@ -19,8 +19,13 @@ flat. These tests pin that: clean material must come back untouched, and
 clipped material must come back closer to the truth.
 """
 
-import numpy as np
 import pytest
+
+# Guarded so the suite is runnable on the project's own default install, which
+# has no third-party packages at all. An unguarded `import numpy` here made
+# collection fail outright, so the dependency-free core could not be verified
+# without first installing the dependency it is defined by not needing.
+np = pytest.importorskip("numpy")
 
 pytest.importorskip("scipy")
 

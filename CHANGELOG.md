@@ -4,6 +4,24 @@
 
 ### Added
 
+- **The test suite now runs on the dependency-free install.** Twelve test
+  modules did a bare `import numpy`, so on a bare install `pytest` failed at
+  collection and ran nothing — verifying the stdlib core required installing
+  the dependency it is defined by not needing. Three configurations now pass:
+  stdlib only (259 passed), + numpy (300), + numpy + scipy (410).
+- **18 tests for `personal_config.py`**, the last zero-coverage module and the
+  one new users are pointed at first by `quick_install`. They found a config
+  loader that refused to start on any file written by another version of
+  Chameleon, an unhelpful crash on malformed JSON, and playlists stamped with
+  the home directory's modification time.
+- `ci/proposed-ci.yml` rewritten into two jobs — a `stdlib-only` job that
+  refuses to run if an audio package leaked into the environment, and an
+  `audio-extra` job across Python 3.9–3.12 with a `-W error::RuntimeWarning`
+  DSP pass. As written before, it installed numpy but not scipy: adopting it
+  would have shown green while ~90 tests silently skipped, and three would in
+  fact have failed. Every step has now been executed locally. Adopting it still
+  needs a maintainer — re-confirmed that this automation account cannot write
+  `.github/workflows/` by either git or the REST API.
 - **`process --declip` and `process --dehum`** — the first CLI surface for
   `audio_restoration.py`, 530 lines of restoration DSP that no entry point had
   ever reached. `--declip` reconstructs peaks flattened by clipping;
@@ -72,6 +90,25 @@
   Tech 3341 document could not be retrieved, so correctness is pinned by
   first-principles invariants (stationary signal ⇒ M == S == I, etc.) rather
   than claimed against the standard's text.
+
+### Fixed
+
+- **`process --effects` silently skipped effects it could not apply.** Each
+  effect was gated on its dependency and did nothing when absent, so on an
+  install without scipy the command wrote a file, reported success, and applied
+  no EQ. It now raises, naming the effect and the extra that fixes it.
+- **`process --mono` on an already-mono file printed "Error: Already mono",
+  wrote no output, and exited 0.** An error message on a success exit, a
+  satisfied request reported as a failure, and a promised output file that did
+  not exist — so a batch over mixed material left a pipeline believing it had
+  files it did not. `--mono` is now idempotent: the file is copied through and
+  reported as already mono.
+- `PersonalConfig.load` no longer dies with a bare `TypeError` on a config
+  written by a different version of Chameleon; unrecognised keys are logged and
+  ignored. Malformed JSON now raises an error naming the file, and leaves it
+  alone rather than replacing the user's settings with defaults.
+- `PersonalLibraryManager.create_playlist` recorded the home directory's
+  modification time as every playlist's creation time.
 
 ### Removed
 

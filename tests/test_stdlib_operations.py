@@ -176,3 +176,56 @@ def test_mono_and_trim_can_be_combined(blocker_dir, tmp_path):
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "in_mono.wav").exists()
     assert (tmp_path / "in_trimmed.wav").exists()
+
+
+def _write_mono_wav(path, seconds=1.0, sample_rate=44100):
+    frames = []
+    for i in range(int(sample_rate * seconds)):
+        value = int(0.4 * 32767 * math.sin(2 * math.pi * 440 * i / sample_rate))
+        frames.append(struct.pack("<h", value))
+    with wave.open(str(path), "w") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(sample_rate)
+        handle.writeframes(b"".join(frames))
+
+
+def test_mono_is_idempotent_on_a_file_that_is_already_mono(blocker_dir, tmp_path):
+    # `--mono` on a mono file used to print "Error: Already mono", write no
+    # output, and exit 0 -- so a pipeline saw success and then could not find
+    # the file it had been promised. Asking a mono file to be mono is a
+    # satisfied request.
+    source = tmp_path / "in.wav"
+    _write_mono_wav(source)
+
+    result = _run_cli(blocker_dir, "process", str(source), "--mono",
+                      "--output-dir", str(tmp_path))
+
+    assert result.returncode == 0, result.stderr
+    assert "Error" not in result.stdout
+    output = tmp_path / "in_mono.wav"
+    assert output.exists(), "no output written for an already-mono file"
+    assert _wav_info(output)[0] == 1
+
+
+def test_an_already_mono_file_is_copied_unchanged(blocker_dir, tmp_path):
+    source = tmp_path / "in.wav"
+    _write_mono_wav(source)
+
+    _run_cli(blocker_dir, "process", str(source), "--mono", "--output-dir", str(tmp_path))
+
+    assert (tmp_path / "in_mono.wav").read_bytes() == source.read_bytes()
+
+
+def test_a_batch_of_mixed_channel_counts_all_succeeds(blocker_dir, tmp_path):
+    # The case that surfaced it: one mono and one stereo file in one batch.
+    _write_mono_wav(tmp_path / "already_mono.wav")
+    _write_stereo_wav(tmp_path / "stereo.wav")
+    output = tmp_path / "out"
+    output.mkdir()
+
+    result = _run_cli(blocker_dir, "batch", str(tmp_path), "mono",
+                      "--output-dir", str(output))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "2/2" in result.stdout

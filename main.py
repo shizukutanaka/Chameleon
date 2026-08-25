@@ -857,8 +857,33 @@ class AudioProcessor:
                              for index in range(audio.shape[0])])
         return repaired.astype(audio.dtype, copy=False)
 
+    # Effects whose implementation needs a package the default install does
+    # not have. Requesting one without the package used to produce an
+    # unmodified file and a success message.
+    _EFFECT_REQUIREMENTS = {
+        "eq": ("scipy", lambda: HAS_SCIPY and HAS_MASTERING_CHAIN),
+        "reverb": ("scipy", lambda: HAS_SCIPY),
+    }
+
     def apply_effects(self, audio: np.ndarray, sr: int, effects: Dict[str, Any]) -> np.ndarray:
-        """Apply various audio effects"""
+        """Apply various audio effects.
+
+        Raises if an effect was asked for and cannot be applied. Silently
+        returning the input is the failure mode that makes a tool untrustworthy:
+        the file is written, the command reports success, and the effect simply
+        is not there.
+        """
+        unavailable = [
+            f"{name} (needs {package})"
+            for name, (package, available) in self._EFFECT_REQUIREMENTS.items()
+            if name in effects and not available()
+        ]
+        if unavailable:
+            raise ValueError(
+                "Cannot apply " + ", ".join(unavailable) +
+                ". Install the optional audio extra: pip install -e .[audio]"
+            )
+
         processed = audio.copy()
 
         # EQ -- RBJ peaking biquads (see mastering_chain.design_peaking_eq).
