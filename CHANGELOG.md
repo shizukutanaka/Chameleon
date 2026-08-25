@@ -46,6 +46,28 @@
   first-principles invariants (stationary signal ⇒ M == S == I, etc.) rather
   than claimed against the standard's text.
 
+### Removed
+
+- **`api_server.py`'s three phantom "secure module" imports and the six dead
+  branches behind them.** `government_auth`, `secure_core` and
+  `high_performance_core` have never existed in this repository, so the
+  `try/except ImportError` around them pinned `HAS_SECURE_MODULES` to `False`
+  permanently and every `if HAS_SECURE_MODULES:` branch was structurally
+  unreachable — as were the three `skipif` guards in
+  `tests/test_api_fallback.py`, which could not fire. The reachable code is now
+  unconditional, and `require_permission` states plainly that it requires a
+  session and does not enforce per-permission authorization (which is what it
+  has always done). The "government" naming was also the kind of unverifiable
+  institutional claim `CHARTER.md` §4 forbids.
+
+### Changed
+
+- `import uvicorn` moved from `api_server.py`'s module scope into its
+  `__main__` block. It is needed to *run* the server, never to import `app`,
+  so serving under gunicorn — or importing the module in a test — no longer
+  requires it.
+
+
 ### Changed (honesty / documentation)
 
 - Rewrote `docs/{en,ja}/commands.md`, `docs/{en,ja}/advanced_config.md` and the

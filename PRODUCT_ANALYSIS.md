@@ -88,11 +88,11 @@ Specific findings, each cited so it can be re-verified:
 - **`batch_automation.py` is genuine capability pointed the wrong way** — a
   generic DAG/workflow engine, i.e. §4's "a second product". Its own demo
   builds tasks for MP3/FLAC/OGG transcoding this product cannot do.
-- **`api_server.py:52-54` imports three modules that have never existed**
-  (`government_auth`, `secure_core`, `high_performance_core`). They sit in a
-  `try/except`, so `HAS_SECURE_MODULES` is permanently `False` and the
-  `skipif` guards in `tests/test_api_fallback.py` are permanently no-ops. The
-  "government" naming is also the kind of claim §4 forbids.
+- ~~**`api_server.py` imports three modules that have never existed**
+  (`government_auth`, `secure_core`, `high_performance_core`)~~ — **deleted
+  2026-08-25** with per-item user confirmation, along with the six unreachable
+  `if HAS_SECURE_MODULES:` branches and the three inert `skipif`s in
+  `tests/test_api_fallback.py`. See `CHARTER.md` §9.
 
 **Missing — the gaps were in honesty and in standards coverage, not features.**
 All of these were fixed in this pass (see §2 "Resolved"), except where noted.

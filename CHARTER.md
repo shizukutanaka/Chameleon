@@ -936,7 +936,8 @@ reachable / 3,121 orphaned, plus `RealtimeAudioProcessor`). `performance_optimiz
 is ~100% duplication of `core.py`/`main.py` facilities; spectral subtraction
 exists in three places; `api_server.py:52-54` imports three modules that have
 never existed, permanently pinning `HAS_SECURE_MODULES` to False and making
-the `skipif`s in `tests/test_api_fallback.py` no-ops. **Nothing was deleted** —
+the `skipif`s in `tests/test_api_fallback.py` no-ops (that last one was deleted
+on 2026-08-25 — see the entry below). **Nothing was deleted at the time** —
 the deletion rule requires explicit per-item confirmation, and asking produced
 no answer, so all of it is recorded in `PRODUCT_ANALYSIS.md` §1b for a later
 decision rather than acted on.
@@ -1023,6 +1024,35 @@ working backup/library-scan tool, not a placeholder. It is missing from
 packaging gap (a non-editable install loses this documented feature
 silently) but is a reason to *fix packaging*, not delete the file. **Fixed
 in the same pass this was found** — added to all three lists.
+
+**`api_server.py`'s phantom secure modules — deleted (2026-08-25).** The file
+opened with a `try: from government_auth import ... / from secure_core import
+... / from high_performance_core import ...`, setting `HAS_SECURE_MODULES`.
+None of those three modules has ever existed in this repository, in any commit,
+so the `except ImportError` was the only reachable path and the flag was pinned
+to `False` for the lifetime of the project. Six `if HAS_SECURE_MODULES:`
+branches — a service-instantiation block, a permission check, a login path, an
+upload validation step, and a startup log — were therefore **structurally
+unreachable**, and the three `skipif(api_server.HAS_SECURE_MODULES)` guards in
+`tests/test_api_fallback.py` could never fire, so three tests that looked
+conditional were unconditional and one branch of each conditional was never
+exercised by anything.
+
+Deleted with explicit user confirmation naming this item. What was reachable is
+now unconditional: the stdlib-core adapters are top-level, login checks the
+configured credentials directly, and `require_permission` carries a docstring
+saying plainly what it does — require a session, and *name* a permission it
+does not enforce. That is the honest description of the behaviour that was
+already shipping; the deleted branch was the only thing suggesting otherwise.
+Note also that the "government" naming is exactly the unverifiable
+institutional claim §4 forbids.
+
+Two knock-on fixes in the same commit: `tests/test_api_fallback.py`'s four
+tests now actually run (they were being reported as skipped-or-passed depending
+on a flag that meant nothing), and `import uvicorn` moved from module scope
+into the `__main__` block — it is needed to *run* the server, never to import
+`app`, so importing the module under gunicorn or in a test no longer requires
+it. `api_server.py` 1,637 → 1,565 lines.
 
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
