@@ -23,8 +23,13 @@ The property that ties these together, and the one worth defending hardest:
 **a restorer handed clean audio must return it unchanged.**
 """
 
-import numpy as np
 import pytest
+
+# Guarded so the suite is runnable on the project's own default install, which
+# has no third-party packages at all. An unguarded `import numpy` here made
+# collection fail outright, so the dependency-free core could not be verified
+# without first installing the dependency it is defined by not needing.
+np = pytest.importorskip("numpy")
 
 pytest.importorskip("scipy")
 

@@ -12,6 +12,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 import main
 from tests._helpers import write_sine_wave
 
@@ -97,6 +99,8 @@ def test_batch_effects_requires_effects_flag(tmp_path):
     assert result.returncode == 2
 
 
+@pytest.mark.skipif(not main.HAS_NUMPY,
+                    reason="the effects operation needs numpy; the stdlib core has no effects")
 def test_batch_effects_runs_with_effects_file(tmp_path):
     write_sine_wave(tmp_path / "tone.wav")
     effects_file = tmp_path / "effects.json"

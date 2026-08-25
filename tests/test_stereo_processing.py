@@ -9,8 +9,13 @@ Also documents, by omission, that `MasteringConfig.stereo_enhancement` is
 inert: width is `StereoConfig.width`, and there is deliberately no second knob.
 """
 
-import numpy as np
 import pytest
+
+# Guarded so the suite is runnable on the project's own default install, which
+# has no third-party packages at all. An unguarded `import numpy` here made
+# collection fail outright, so the dependency-free core could not be verified
+# without first installing the dependency it is defined by not needing.
+np = pytest.importorskip("numpy")
 
 import mastering_chain
 
