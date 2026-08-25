@@ -19,6 +19,7 @@ import time
 import json
 import datetime
 import struct
+import shutil
 import hashlib
 import secrets
 import tempfile
@@ -629,7 +630,20 @@ class WAVProcessor:
                 return ProcessingResult(False, "Invalid WAV file")
 
             if info.channels == 1:
-                return ProcessingResult(False, "Already mono")
+                # Asking a mono file to be mono is a satisfied request, not a
+                # failure. Reporting it as one made `--mono` non-idempotent:
+                # a batch over mixed material printed "Error: Already mono",
+                # wrote no output, and still exited 0 -- so a pipeline saw
+                # success and then could not find the file. Copy it through
+                # instead, so the output exists and means what it says.
+                shutil.copyfile(input_path, output_path)
+                duration_ms = self.perf.end("convert_to_mono")
+                return ProcessingResult(
+                    True,
+                    f"Already mono; copied unchanged in {duration_ms}ms",
+                    {"original_channels": 1, "already_mono": True},
+                    duration_ms
+                )
 
             self._convert_to_mono(input_path, output_path, info)
 
