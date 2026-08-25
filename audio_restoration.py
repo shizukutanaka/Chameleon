@@ -37,8 +37,12 @@ try:
     import librosa
     HAS_LIBROSA = True
 except ImportError:
+    # Deliberately silent. librosa is in no extra of this project, so its
+    # absence is the normal case, and the two classes that need it now raise a
+    # clear RuntimeError when used. Warning at import time meant every CLI run
+    # that touched this module printed a notice about a feature the user had
+    # not asked for.
     HAS_LIBROSA = False
-    warnings.warn("Librosa not installed. Some features limited.")
 
 
 def _require_restoration_deps() -> None:
@@ -175,6 +179,15 @@ class HumRemover:
         self.base_freqs = [50, 60]  # Common power line frequencies
         self.harmonics = 5
         self.q_factor = 30
+        # A hum peak must stand this far above its neighbourhood...
+        self.prominence_ratio = 10.0
+        # ...and be at least this loud in absolute terms, roughly -80 dBFS.
+        # Without the second condition the first one fires on nothing at all:
+        # the quantisation noise of a periodic signal is itself periodic, so
+        # it forms lines at the signal's harmonics and leaves the 50/60 Hz
+        # neighbourhood at the numerical floor. Any bin there then beats the
+        # neighbourhood median tenfold while representing 1e-13 of amplitude.
+        self.min_hum_amplitude = 1e-4
 
     def remove_hum(self, audio: np.ndarray, sample_rate: int) -> np.ndarray:
         """Remove hum using notch filters"""
@@ -195,9 +208,17 @@ class HumRemover:
         return result
 
     def _detect_hum(self, audio: np.ndarray, sample_rate: int, freq: float) -> bool:
-        """Detect if hum is present at given frequency"""
-        # Compute FFT
-        fft = np.fft.rfft(audio)
+        """Is there a hum line at `freq` worth removing?
+
+        Two conditions, and both are needed. The peak must stand clear of its
+        neighbourhood *and* be loud enough to matter: prominence alone fires on
+        a numerically empty band, and loudness alone fires on any music with
+        energy near 50 Hz.
+        """
+        # Hann-windowed so a tone that is not an exact bin multiple does not
+        # smear across the low end and manufacture a peak here.
+        window = np.hanning(len(audio))
+        fft = np.fft.rfft(audio * window)
         freqs = np.fft.rfftfreq(len(audio), 1/sample_rate)
 
         # Find bin closest to target frequency
@@ -226,7 +247,13 @@ class HumRemover:
         reference = np.median(neighbourhood)
         peak_value = np.max(np.abs(fft[max(0, target_bin - leak):target_bin + leak + 1]))
 
-        return bool(peak_value > 10.0 * (reference + 1e-20))
+        # Hann's coherent gain is 0.5, so a sinusoid of amplitude A peaks at
+        # A * N / 4 in this transform.
+        amplitude = 4.0 * peak_value / len(audio)
+        if amplitude < self.min_hum_amplitude:
+            return False
+
+        return bool(peak_value > self.prominence_ratio * (reference + 1e-20))
 
 class DeclippingProcessor:
     """Restore clipped audio signals"""

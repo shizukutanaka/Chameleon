@@ -1145,6 +1145,63 @@ concrete. Anyone justifying a deletion here should argue comprehension and
 trust, not milliseconds; claiming a speedup we did not measure would be the
 same overclaiming §8 forbids everywhere else.
 
+**`audio_restoration.py` wired into the CLI — but only the half that works
+(2026-08-25).** 530 lines of restoration DSP that no entry point reached. The
+recommendation had been to keep it because it was the one orphan that was
+*capability* rather than duplication. Wiring it up meant auditing it first,
+and the `performance_optimizer` lesson held: unexercised code is untrustworthy.
+
+Measured, before anything was exposed:
+
+| Class | Verdict |
+|---|---|
+| `HumRemover` | works — 60 Hz cut 30 dB, 440 Hz unchanged |
+| `DeclippingProcessor` | **destroyed clean audio** — see the entry above |
+| `ClickRemover` | improves smooth material, but no trustworthy detector exists |
+| `CrackleRemover` | benign but unverified |
+| `AdaptiveDenoiser` / `SpectralRepairer` | silent no-ops without librosa |
+
+So `process --declip` and `process --dehum` ship, and nothing else does. The
+declipper and the hum detector were both fixed first (separate entries above);
+`--declick` is deliberately absent, because both candidate detectors have a
+regime where they wreck the audio: the shipped envelope/z-score one reports
+354 clicks in one second of white noise and pulls its peak from 0.473 to
+0.325, while a second-difference/MAD detector reports 1,764 in hard-clipped
+material — one per clipping corner, which is a derivative discontinuity that
+looks exactly like an impulse. Distinguishing a click from a clipping corner
+needs a model of what the signal *should* be doing, which is the AR-prediction
+approach the old comment falsely claimed. Shipping a third mediocre detector
+would have been the error Musk's algorithm warns about: optimizing a part that
+should not exist yet.
+
+Two findings from wiring it up that were not visible from reading it:
+
+*Order is not the user's to choose.* Damage must be undone in the reverse of
+the order it happened, and clipping comes last in a recording chain. On a
+220 Hz tone recorded with hum and then hard-clipped, declip→dehum lands 6.8 dB
+closer to the undamaged tone than dehum→declip (-28.2 dB vs -21.5 dB). Worse,
+dehumming first ripples the plateaus just enough that declipping then finds
+**0** of the 720 clipped regions, and the peak it appears to recover is the
+notch filter ringing on the clipping corners. `RESTORATION_REPAIRS` fixes the
+order; command-line flag order is ignored, and a test asserts both facts.
+
+*The hum detector needed an absolute floor, not just prominence.* Comparing a
+bin against its neighbourhood median is necessary but not sufficient: the
+quantisation noise of a periodic signal is itself periodic, so it forms lines
+at the signal's harmonics and leaves the 50/60 Hz neighbourhood at the
+numerical floor, where any bin beats the median tenfold while representing
+1e-13 of amplitude. A real 16-bit file of a clean 440 Hz tone therefore
+"contained" both 50 and 60 Hz hum. Detection now also requires roughly
+-80 dBFS of actual level. Verified across float and 16-bit clean tones, hum at
+0.1 and 0.003, inaudible hum at 1e-5, a musical 55 Hz bass note (which sits
+between the two power-line frequencies), white noise and silence.
+
+`audio_restoration` leaves `tests/test_no_orphan_modules.py`'s allow-list as a
+result — one fewer standing exception. Its import-time librosa warning was
+also dropped: librosa is in no extra, so its absence is the normal case, the
+two classes needing it now raise clearly, and the warning was printing on CLI
+runs for a feature nobody had asked for.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy

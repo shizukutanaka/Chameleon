@@ -4,6 +4,24 @@
 
 ### Added
 
+- **`process --declip` and `process --dehum`** — the first CLI surface for
+  `audio_restoration.py`, 530 lines of restoration DSP that no entry point had
+  ever reached. `--declip` reconstructs peaks flattened by clipping;
+  `--dehum` removes 50/60 Hz mains hum and its harmonics *when they are
+  actually present*. Both are no-ops on material without the defect: a clean
+  file comes back within one LSB, and a musical 55 Hz bass note — which sits
+  between the two power-line frequencies — is left alone.
+
+  They always run declip-then-dehum regardless of flag order, because damage
+  must be undone in reverse: dehumming first ripples the clipped plateaus
+  enough that declipping then finds none of them, and lands 6.8 dB further
+  from the undamaged signal.
+
+  Click removal, crackle removal, gap interpolation and the librosa denoiser
+  are deliberately **not** exposed. Click detection in particular has no
+  trustworthy implementation here — the existing envelope/z-score detector
+  reports 354 clicks in a second of white noise, and a second-difference
+  alternative reports 1,764 in clipped audio, one per clipping corner.
 - **`tests/test_no_orphan_modules.py`** — fails CI when a packaged module is
   not reachable by following imports from `main` or `api_server`. Chameleon
   has repeatedly accumulated files no entry point touches; three were deleted

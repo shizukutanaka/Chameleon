@@ -82,6 +82,11 @@ chameleon process input.wav --trim --threshold 0.02 --output-dir out/
 # Noise reduction (needs numpy)
 chameleon process input.wav --denoise --output-dir out/
 
+# Repair a damaged recording: reconstruct clipped peaks, then remove mains hum.
+# Both are no-ops on material that does not have the defect, and they always
+# run in that order regardless of how the flags are typed.
+chameleon process old-tape.wav --declip --dehum --output-dir out/
+
 # Convert sample rate / bit depth (needs numpy; scipy strongly recommended —
 # see the resampling-quality note below)
 chameleon process input.wav --convert --convert-sample-rate 44100 \
@@ -102,6 +107,8 @@ chameleon process input.wav --normalize --json
 | `--trim` | stdlib | Trim leading and trailing silence |
 | `--threshold F` | stdlib | Silence threshold for `--trim`, 0.0–1.0 (default 0.01) |
 | `--denoise` | **numpy** | Remove noise |
+| `--declip` | **numpy + scipy** | Reconstruct peaks flattened by clipping |
+| `--dehum` | **numpy + scipy** | Remove 50/60 Hz mains hum and harmonics, if present |
 | `--master {default,streaming,cd,vinyl}` | **numpy** (scipy recommended) | Apply a full mastering chain (EQ/compressor/limiter/loudness) |
 | `--effects FILE` | **numpy** | Apply effects from a JSON file |
 | `--convert` | **numpy** | Convert format or resolution |
@@ -141,7 +148,7 @@ chameleon batch ./audio denoise --recursive --output-dir out/
 ```
 
 Positional: `directory` then one of
-`{analyze, normalize, mono, trim, denoise, convert, effects}`.
+`{analyze, normalize, mono, trim, denoise, restore, convert, effects}`.
 
 | Flag | Meaning |
 |------|---------|

@@ -800,6 +800,63 @@ class AudioProcessor:
 
         return cleaned_audio
 
+    # The repairs from audio_restoration.py that are verified to work *and* to
+    # leave clean audio alone. "It exists" is not the same as "it is known to
+    # help", and shipping the difference is how a tool loses trust.
+    #
+    # Deliberately absent: declicking. Both candidate detectors have a regime
+    # where they destroy material rather than repair it -- the shipped
+    # envelope/z-score one reports 354 clicks in one second of white noise
+    # (peak 0.473 -> 0.325), and a second-difference/MAD detector reports 1764
+    # in hard-clipped audio, one per clipping corner. Crackle removal, gap
+    # interpolation and the librosa denoiser are likewise unexposed. See
+    # CHARTER.md §9.
+    #
+    # The order is fixed and is not the order the flags appear on the command
+    # line: damage must be undone in the reverse of the order it was done, and
+    # clipping happens last in a recording chain. Measured on a 220 Hz tone
+    # with hum, hard-clipped, against the undamaged tone: declip->dehum lands
+    # 6.8 dB closer (-28.2 dB vs -21.5 dB). Running dehum first is worse than
+    # the number suggests -- its filtering ripples the plateaus just enough
+    # that declipping then finds 0 of the 720 clipped regions, and the peak it
+    # appears to recover is the notch filter ringing on the clipping corners.
+    RESTORATION_REPAIRS = ("declip", "dehum")
+
+    def repair_audio(self, audio: np.ndarray, sr: int, repairs) -> np.ndarray:
+        """Apply the named restoration repairs, one channel at a time.
+
+        `audio_restoration` is imported here rather than at module scope: it
+        warns on import when numpy/scipy/librosa are missing, and the
+        dependency-free CLI paths must not print those warnings for a feature
+        the user did not ask for.
+        """
+        import audio_restoration
+
+        unknown = [name for name in repairs if name not in self.RESTORATION_REPAIRS]
+        if unknown:
+            raise ValueError(f"Unknown repair(s): {', '.join(unknown)}")
+
+        processors = {
+            "declip": lambda channel: audio_restoration.DeclippingProcessor()
+                                      .restore_clipped(channel, sr),
+            "dehum": lambda channel: audio_restoration.HumRemover()
+                                     .remove_hum(channel, sr),
+        }
+        # Apply in canonical order however the caller listed them.
+        repairs = [name for name in self.RESTORATION_REPAIRS if name in repairs]
+
+        def repair_channel(channel):
+            channel = np.asarray(channel, dtype=np.float64)
+            for name in repairs:
+                channel = processors[name](channel)
+            return channel
+
+        if audio.ndim == 1:
+            return repair_channel(audio).astype(audio.dtype, copy=False)
+        repaired = np.stack([repair_channel(audio[index])
+                             for index in range(audio.shape[0])])
+        return repaired.astype(audio.dtype, copy=False)
+
     def apply_effects(self, audio: np.ndarray, sr: int, effects: Dict[str, Any]) -> np.ndarray:
         """Apply various audio effects"""
         processed = audio.copy()
@@ -1280,6 +1337,32 @@ class AudioProcessor:
                 "dry_run": False
             }
 
+        elif operation == "restore":
+            repairs = kwargs.get("repairs") or list(self.RESTORATION_REPAIRS)
+            output_path = self._resolve_output_path(
+                file_path,
+                suffix="_restored.wav",
+                explicit_path=kwargs.get("output_path"),
+                output_dir=kwargs.get("output_dir")
+            )
+            if dry_run:
+                return {
+                    "file": file_path,
+                    "planned_output": str(output_path),
+                    "time": time.time() - start_time,
+                    "dry_run": True
+                }
+
+            processed = self.repair_audio(audio, sr, repairs)
+            self.save_audio(processed, str(output_path), sr)
+            return {
+                "file": file_path,
+                "output": str(output_path),
+                "repairs": list(repairs),
+                "time": time.time() - start_time,
+                "dry_run": False
+            }
+
         elif operation == "effects":
             effects = kwargs.get("effects", {})
             output_path = self._resolve_output_path(
@@ -1635,6 +1718,12 @@ def create_cli():
     process.add_argument("--threshold", type=float,
                          help="Silence threshold for --trim, 0.0-1.0 (default 0.01)")
     process.add_argument("--denoise", action="store_true", help="Remove noise")
+    process.add_argument("--dehum", action="store_true",
+                         help="Remove 50/60 Hz mains hum and its harmonics, if present "
+                              "(requires the [audio] extra)")
+    process.add_argument("--declip", action="store_true",
+                         help="Reconstruct peaks flattened by clipping "
+                              "(requires the [audio] extra)")
     process.add_argument("--master", choices=["default", "streaming", "cd", "vinyl"],
                          help="Apply a full mastering chain (EQ/compressor/limiter/loudness); "
                               "requires numpy, scipy recommended for the full chain")
@@ -1657,7 +1746,7 @@ def create_cli():
     batch = subparsers.add_parser("batch", help="Batch processing")
     batch.add_argument("directory", help="Directory to process")
     batch.add_argument("operation",
-                       choices=["analyze", "normalize", "mono", "trim", "denoise",
+                       choices=["analyze", "normalize", "mono", "trim", "denoise", "restore",
                                 "convert", "effects"])
     batch.add_argument("--recursive", action="store_true", help="Process recursively")
     batch.add_argument("--output-dir", help="Output directory")
@@ -1902,6 +1991,13 @@ async def main():
                 kwargs["threshold"] = args.threshold
         if args.denoise:
             operations.append("denoise")
+        # Canonical order, not command-line order -- see RESTORATION_REPAIRS.
+        requested = {"dehum": args.dehum, "declip": args.declip}
+        repairs = [name for name in AudioProcessor.RESTORATION_REPAIRS
+                   if requested[name]]
+        if repairs:
+            operations.append("restore")
+            kwargs["repairs"] = repairs
         if args.master:
             operations.append("master")
             kwargs["master_preset"] = args.master
@@ -1918,7 +2014,7 @@ async def main():
             kwargs["bit_depth"] = args.convert_bit_depth or 16
 
         if not operations:
-            print("Error: specify at least one processing option (e.g., --normalize, --denoise, --effects, or --convert).", file=sys.stderr)
+            print("Error: specify at least one processing option (e.g., --normalize, --denoise, --declip, --effects, or --convert).", file=sys.stderr)
             return ExitCode.USAGE
 
         if args.no_parallel:

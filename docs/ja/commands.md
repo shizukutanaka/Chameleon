@@ -83,6 +83,10 @@ chameleon process input.wav --trim --threshold 0.02 --output-dir out/
 # ノイズ除去（numpy 必須）
 chameleon process input.wav --denoise --output-dir out/
 
+# 損傷した録音の修復: クリッピングで潰れたピークを復元してから電源ハムを除去。
+# 該当する欠陥がない素材では何もしない。フラグの記述順によらず常にこの順序で適用。
+chameleon process old-tape.wav --declip --dehum --output-dir out/
+
 # サンプルレート・ビット深度の変換（numpy 必須。scipy 推奨 —
 # 下の「リサンプリング品質」を参照）
 chameleon process input.wav --convert --convert-sample-rate 44100 \
@@ -103,6 +107,8 @@ chameleon process input.wav --normalize --json
 | `--trim` | 標準ライブラリ | 前後の無音を除去 |
 | `--threshold F` | 標準ライブラリ | `--trim` の無音しきい値 0.0〜1.0（既定 0.01） |
 | `--denoise` | **numpy** | ノイズ除去 |
+| `--declip` | **numpy + scipy** | クリッピングで潰れたピークを復元 |
+| `--dehum` | **numpy + scipy** | 50/60 Hz の電源ハムと倍音を除去（検出された場合のみ） |
 | `--master {default,streaming,cd,vinyl}` | **numpy**（scipy 推奨） | マスタリングチェーン（EQ/コンプ/リミッタ/ラウドネス） |
 | `--effects FILE` | **numpy** | JSON ファイルからエフェクトを適用 |
 | `--convert` | **numpy** | フォーマット・解像度を変換 |
@@ -141,7 +147,7 @@ chameleon batch ./audio denoise --recursive --output-dir out/
 ```
 
 位置引数: `directory` と
-`{analyze, normalize, mono, trim, denoise, convert, effects}` のいずれか。
+`{analyze, normalize, mono, trim, denoise, restore, convert, effects}` のいずれか。
 
 | オプション | 意味 |
 |-----------|------|
