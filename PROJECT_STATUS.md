@@ -115,12 +115,9 @@ requested but not yet obtained for these.
 
 1. **`gui/`** — experimental React/TypeScript/Electron scaffold, self-labeled
    "not yet wired up" in its own README, not built by the Dockerfile.
-2. **`core.py`'s `RealtimeAudioProcessor`** (core.py:2342-2738, i.e. the rest
-   of the file — it's the last class) — a standalone `websockets`-based
-   server with zero callers from `main.py` or `api_server.py`. Calls a
-   nonexistent `self.ai_analyzer.analyze_audio_features(...)` method (dead
-   code calling a dead method — inert only because the class itself is
-   unreachable without the undeclared `websockets` dependency).
+2. ~~**`core.py`'s `RealtimeAudioProcessor`**~~ — **deleted 2026-08-25** with
+   explicit per-item confirmation, together with the `websockets` optional
+   import block. `core.py` 2,780 → 2,367 lines. See `CHARTER.md` §9.
 3. **`openapi_spec.yaml`** — referenced by no Python code (`api_server.py`
    generates its own OpenAPI schema live via FastAPI), fails to parse as
    valid YAML past line 28 (a second top-level document with no `---`

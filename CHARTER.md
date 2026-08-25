@@ -368,10 +368,11 @@ own README), not built by the Dockerfile, not referenced by `api_server.py`
 (no `StaticFiles`/`Jinja2`/`HTMLResponse`). `core.py`'s `RealtimeAudioProcessor`
 (~L2809-3195, a standalone `websockets`-based server) has zero callers from
 `main.py` or `api_server.py` — dead code. Decisions on removing `gui/` and
-`RealtimeAudioProcessor` are pending direct user confirmation (tooling
-prevented getting an answer in this pass); until then both are left as-is and
-`gui/README.md`'s own "experimental, unwired" disclosure stands as the
-honest label.
+`RealtimeAudioProcessor` were pending direct user confirmation (tooling
+prevented getting an answer in that pass). `RealtimeAudioProcessor` was
+confirmed and deleted on 2026-08-25 (see the entry below); `gui/` is still
+awaiting an answer, and `gui/README.md`'s own "experimental, unwired"
+disclosure stands as the honest label until it arrives.
 
 **Q: Is api_server.py actually commercial-grade (HTTP-level audit)?**
 A (2026-07): It starts cleanly and every route calls a real backing function
@@ -1054,6 +1055,33 @@ into the `__main__` block — it is needed to *run* the server, never to import
 `app`, so importing the module under gunicorn or in a test no longer requires
 it. `api_server.py` 1,637 → 1,565 lines.
 
+**`core.py`'s `RealtimeAudioProcessor` — deleted (2026-08-25).** 393 lines
+(the whole tail of `core.py`) implementing a WebSocket streaming server:
+client registry, per-client queues, an event-handler table, session state and
+a `websockets.serve` loop. Zero callers — not `main.py`, not `api_server.py`,
+not a single test, not even another orphaned module. It could not have run in
+a default install either: `websockets` is in no extra of `pyproject.toml`, so
+its constructor raised `ImportError` unconditionally for anyone who found it.
+
+Two prior passes recorded it as an open question rather than acting (the
+deletion rule requires per-item confirmation and none had been given). That
+confirmation arrived, naming this item, so it is gone.
+
+Real-time streaming is not in §1's scope: Chameleon is a file-in/file-out CLI
+with a REST server. A streaming server is a different product with a different
+threat model — none of the path-validation layer that justifies §1's "secure"
+claim applies to a socket. Keeping a stub of one implied a capability the
+project has no intention of finishing.
+
+Deleting it also let the `try: import websockets ...` block at the top of
+`core.py` go. That block was itself a trap: it imported `asyncio`, then
+`websockets`, then `json`, `threading`, `queue`, `typing` and `time`. Because
+Python stops a `try` body at the first exception, an environment without
+`websockets` skipped the five imports *after* it. Every one of those except
+`queue` happens to be imported unconditionally at the top of the file, so
+nothing broke — but the block was one reordering away from a
+`NameError` in the stdlib core. `core.py` 2,780 → 2,367 lines.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy
@@ -1092,11 +1120,8 @@ it. `api_server.py` 1,637 → 1,565 lines.
   answered): label honestly and leave as-is, delete like other orphaned
   surfaces, or invest in actually wiring the Electron shell to the CLI/API.
 
-- **core.py's RealtimeAudioProcessor — dead code, delete?** A standalone
-  `websockets`-based server (core.py:2809-3195) with zero callers from
-  `main.py` or `api_server.py`. Matches the exact orphaned-module pattern
-  already resolved for 9 other modules this charter tracked; needs the same
-  explicit confirmation before deletion.
+- **core.py's RealtimeAudioProcessor — RESOLVED (2026-08-25): deleted.**
+  Confirmation was given naming this item; see the resolved entry above.
 
 - **BatchProcessor.process_directory (sync) — RESOLVED (2026-07):** the sync
   `_execute_operation` was implemented (rather than deleting the sync path),

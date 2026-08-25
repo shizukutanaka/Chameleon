@@ -48,6 +48,16 @@
 
 ### Removed
 
+- **`core.py`'s `RealtimeAudioProcessor`** (393 lines, the whole tail of the
+  file) — a WebSocket streaming server with zero callers anywhere in the
+  repository, which could not run in any install anyway: `websockets` is in no
+  extra, so its constructor raised `ImportError` unconditionally. Real-time
+  streaming is outside `CHARTER.md` §1's file-in/file-out scope, and none of
+  the path-validation layer that backs the "secure" claim applies to a socket.
+  The `try: import websockets ...` block went with it — a block that, because
+  a `try` body stops at its first exception, silently skipped the five stdlib
+  imports listed after `websockets` whenever it was absent. `core.py`
+  2,780 → 2,367 lines.
 - **`api_server.py`'s three phantom "secure module" imports and the six dead
   branches behind them.** `government_auth`, `secure_core` and
   `high_performance_core` have never existed in this repository, so the

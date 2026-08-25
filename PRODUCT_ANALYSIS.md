@@ -68,8 +68,9 @@ auditable, deterministic WAV CLI*) and measured the codebase against it.
 | Reachable only via `server` + `[api]` extra | 1,600 | 11.4% |
 | **Orphaned (no entry point reaches it)** | **3,121** | **22.2%** |
 
-Including `core.py`'s `RealtimeAudioProcessor` (needs an undeclared
-`websockets` dependency, zero callers) pushes dead weight to ~25%.
+Including `core.py`'s `RealtimeAudioProcessor` pushed dead weight to ~25% when
+this was measured. That class — 393 lines needing an undeclared `websockets`
+dependency, with zero callers — was **deleted on 2026-08-25**.
 
 Specific findings, each cited so it can be re-verified:
 
@@ -168,9 +169,10 @@ document (kept here as a record, per the honesty culture):
 ### Orphaned assets awaiting a disposition decision (deletion needs user OK)
 `batch_automation.py`, `spectral_editor.py`, `audio_restoration.py`,
 `personal_config.py` (documented onboarding entry point — see `CHARTER.md` §9),
-`performance_optimizer.py`, `gui/`, `core.py`'s `RealtimeAudioProcessor`,
-`openapi_spec.yaml`. Per project practice, deletions require **explicit,
-per-item user confirmation** — do not delete on the strength of this list.
+`performance_optimizer.py`, `gui/`, `openapi_spec.yaml`. Per project practice,
+deletions require **explicit, per-item user confirmation** — do not delete on
+the strength of this list. (`core.py`'s `RealtimeAudioProcessor` was on this
+list and was deleted on 2026-08-25 after that confirmation was given.)
 
 ---
 
