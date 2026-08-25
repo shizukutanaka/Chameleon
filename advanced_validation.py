@@ -40,19 +40,30 @@ class DeepFileInspector:
         b'RIFX': 'WAV_BIG_ENDIAN'
     }
 
-    # Suspicious patterns (executable code, scripts)
-    SUSPICIOUS_PATTERNS = [
-        b'MZ',  # DOS/Windows executable
-        b'\x7fELF',  # Linux executable
-        b'#!',  # Shell script
-        b'<?php',  # PHP code
-        b'<script',  # JavaScript
-        b'import ',  # Python import
-        b'eval(',  # Code evaluation
-        b'exec(',  # Code execution
-        b'system(',  # System command
-        b'<html',  # HTML content
+    # Signatures that make a file executable -- and only do so at offset 0.
+    # `MZ` in the middle of a WAV is two PCM samples; `MZ` at the start is a
+    # Windows binary wearing a .wav extension.
+    EXECUTABLE_SIGNATURES = [
+        (b'MZ', 'DOS/Windows executable'),
+        (b'\x7fELF', 'Linux executable'),
+        (b'#!', 'shell script'),
     ]
+
+    # Markup and code fragments. These matter in a container's *text* regions,
+    # where another tool might read and render them -- never in the `data`
+    # chunk, which holds arbitrary sample values by definition.
+    TEXT_PATTERNS = [
+        (b'<?php', 'PHP code'),
+        (b'<script', 'JavaScript'),
+        (b'<html', 'HTML content'),
+        (b'import ', 'Python import'),
+        (b'eval(', 'code evaluation'),
+        (b'exec(', 'code execution'),
+        (b'system(', 'system command'),
+    ]
+
+    # Retained for callers that referenced the old flat list.
+    SUSPICIOUS_PATTERNS = [pattern for pattern, _ in EXECUTABLE_SIGNATURES + TEXT_PATTERNS]
 
     def __init__(self, max_scan_bytes: int = 10 * 1024 * 1024):
         self.max_scan_bytes = max_scan_bytes
@@ -211,24 +222,86 @@ class DeepFileInspector:
         return "UNKNOWN"
 
     def _scan_for_suspicious_content(self, file_path: Path) -> List[bytes]:
-        """Scan file for suspicious patterns"""
+        """Look for injected code where injected code could actually mean something.
 
-        found_patterns = []
+        This used to search the whole file -- up to 10 MB, PCM payload included
+        -- for every pattern in one flat list. Two of those patterns are two
+        bytes long, so in 16-bit audio each has roughly a 1-in-65,536 chance at
+        every offset, which is to say it is a near-certainty in any real
+        recording. Measured on ordinary content: a 1-second sine, a 10-second
+        sine and 10 seconds of white noise all reported `Suspicious pattern:
+        #!`. A check that fires on almost everything is worse than no check,
+        because a genuine hit arrives looking exactly like the other thousand.
+
+        The patterns are not interchangeable, so they are no longer treated as
+        if they were:
+
+        * `MZ`, `\x7fELF` and `#!` make a file executable, and only at offset
+          0. Elsewhere they are two or four bytes of audio.
+        * Markup and code fragments matter in the container's text regions --
+          RIFF's `LIST`/`INFO` chunks, where a player might read them -- and
+          never inside `data`, whose contents are arbitrary sample values.
+
+        A file that is not RIFF at all gets the whole scanned prefix searched:
+        nothing in it is audio, so there is no payload to exempt.
+        """
+        found_patterns: List[bytes] = []
         scan_size = min(self.max_scan_bytes, file_path.stat().st_size)
+        if scan_size <= 0:
+            return found_patterns
 
         try:
             with open(file_path, 'rb') as f:
-                # Use memory mapping for efficient scanning
-                if scan_size > 0:
-                    with mmap.mmap(f.fileno(), scan_size, access=mmap.ACCESS_READ) as mm:
-                        for pattern in self.SUSPICIOUS_PATTERNS:
-                            if mm.find(pattern) != -1:
+                with mmap.mmap(f.fileno(), scan_size, access=mmap.ACCESS_READ) as mm:
+                    for signature, _description in self.EXECUTABLE_SIGNATURES:
+                        if mm[:len(signature)] == signature:
+                            found_patterns.append(signature)
+
+                    for region in self._non_audio_regions(mm):
+                        for pattern, _description in self.TEXT_PATTERNS:
+                            if pattern in region and pattern not in found_patterns:
                                 found_patterns.append(pattern)
 
         except Exception as e:
             logger.warning(f"Suspicious content scan failed: {e}")
 
         return found_patterns
+
+    def _non_audio_regions(self, mm) -> List[bytes]:
+        """The parts of the mapping that are not PCM samples.
+
+        For a RIFF file: the header plus every chunk except `data`. For
+        anything else: all of it.
+        """
+        if mm[:4] not in (b'RIFF', b'RIFX'):
+            return [mm[:]]
+
+        regions = [mm[:12]]
+        offset = 12
+        limit = len(mm)
+
+        while offset + 8 <= limit:
+            chunk_id = mm[offset:offset + 4]
+            try:
+                chunk_size = struct.unpack('<I', mm[offset + 4:offset + 8])[0]
+            except struct.error:
+                break
+
+            body_start = offset + 8
+            body_end = min(body_start + chunk_size, limit)
+            if body_end < body_start:            # size field overflowed
+                break
+
+            regions.append(mm[offset:body_start])            # the chunk header
+            if chunk_id != b'data':
+                regions.append(mm[body_start:body_end])
+
+            offset = body_end + (chunk_size % 2)   # RIFF pads odd-sized chunks
+            if chunk_size == 0 and chunk_id != b'data':
+                offset = body_start                # never stall on a zero-size chunk
+                break
+
+        return regions
 
     def _validate_wav_structure(self, file_path: Path) -> Dict:
         """Validate WAV file structure"""

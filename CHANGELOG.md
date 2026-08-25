@@ -93,6 +93,18 @@
 
 ### Fixed
 
+- **The file inspector reported "Suspicious pattern" on ordinary audio.** It
+  searched the entire file — PCM payload included — for two-byte patterns like
+  `#!` and `MZ`, which 16-bit audio produces by chance roughly once per 65,536
+  samples. Three of four ordinary test files were flagged; it appeared in CLI
+  output on nearly every run. The scan is now aimed rather than loosened:
+  executable signatures are checked at offset 0 where they actually make a file
+  executable, and code/markup patterns are checked in the container's text
+  regions rather than in the `data` chunk. It reports strictly more information
+  than before — zero warnings on ordinary audio, while still catching a shebang
+  or ELF header at offset 0, `<script>` spliced into a `LIST/INFO` chunk, and
+  markup in a non-RIFF file. Surviving warnings are logged at WARNING rather
+  than INFO, the level they had been given for being noise.
 - **`process --effects` silently skipped effects it could not apply.** Each
   effect was gated on its dependency and did nothing when absent, so on an
   install without scipy the command wrote a file, reported success, and applied

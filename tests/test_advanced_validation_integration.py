@@ -83,15 +83,21 @@ def test_disguised_executable_is_filtered_out(tmp_path):
 # --- 3. false-positive guard ------------------------------------------------
 
 def test_real_wav_with_suspicious_payload_still_passes(tmp_path):
-    """A genuine WAV whose audio data happens to contain bytes like ``MZ`` or
-    ``import `` must NOT be rejected — those patterns are warnings, not errors."""
+    """Bytes that look like code inside the audio payload are audio.
+
+    The `data` chunk holds arbitrary sample values, so `MZ` or `import ` in it
+    carries no information: it is the sound. This used to warn -- and to warn
+    on nearly every real recording, since `MZ` and `#!` are two bytes each and
+    16-bit audio produces any given pair roughly once per 65,536 samples. See
+    tests/test_suspicious_content_scan.py for the measurement.
+    """
     wav = _write_wav_with_payload(
         tmp_path / "noisy.wav", b"MZ here is import os; eval( something )"
     )
     result = DeepFileInspector().validate_for_processing(wav)
     assert result.is_valid, result.errors
-    # The scan should have noticed the pattern (proving it ran) but only warned.
-    assert any("Suspicious pattern" in w for w in result.warnings)
+    assert not any("Suspicious pattern" in w for w in result.warnings), (
+        "sample data was reported as injected code")
 
 
 def test_suspicious_payload_wav_survives_filter(tmp_path):

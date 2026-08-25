@@ -1275,7 +1275,12 @@ class AudioProcessor:
                     )
                     continue
                 for note in result.warnings:
-                    self.logger.info(f"Inspection note for {file_path}: {note}")
+                    # WARNING, not INFO. These used to fire on nearly every
+                    # real recording -- `#!` is two bytes and 16-bit audio
+                    # produces any given pair about once per 65,536 samples --
+                    # so INFO was the right level for what was then noise. The
+                    # scan now only reports things that mean something.
+                    self.logger.warning(f"Inspection note for {file_path}: {note}")
 
             safe.append(file_path)
 

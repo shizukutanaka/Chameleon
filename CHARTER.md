@@ -1279,6 +1279,44 @@ in the two functions that flow hits:
 Being unimported is not the same as being unexercised, and the allow-list entry
 now says so.
 
+**The security scan cried wolf on ordinary audio (2026-08-25).**
+`DeepFileInspector._scan_for_suspicious_content` searched the whole file — up
+to 10 MB, PCM payload included — for every entry in one flat pattern list. Two
+of those entries are two bytes long (`MZ`, `#!`), so in 16-bit audio each has
+roughly a 1-in-65,536 chance at every offset: not a rare event in a recording,
+a near-certainty. Measured on ordinary content before the change, three of four
+test files reported `Suspicious pattern: #!` — a one-second sine, a ten-second
+sine and ten seconds of white noise. It was visible in this session's own CLI
+output on nearly every command run.
+
+This matters more here than a stray log line usually would. §1 offers a
+path-validation security layer as a reason to trust this tool. A check that
+fires on almost everything does not merely waste attention — it hides the real
+hit, which arrives looking exactly like the thousand false ones before it, and
+it teaches the user that the validation layer is noise.
+
+The fix was to aim the check, not to loosen it. The patterns were never
+interchangeable: `MZ`, `\x7fELF` and `#!` make a file executable and only do so
+**at offset 0**; markup and code fragments matter in the container's *text*
+regions — RIFF `LIST`/`INFO` chunks a player might read and render — and never
+inside `data`, whose contents are arbitrary sample values by definition. A file
+that is not RIFF at all still gets its whole scanned prefix searched, since
+none of it is audio.
+
+The result reports strictly *more* information than before, not less: zero
+warnings across sine tones at 100/440/1000 Hz, ten-second tones, white noise
+and a `data` chunk deliberately spelling out `MZ \x7fELF #! <?php <script
+import os; eval( exec( system( <html`; and it still catches a shebang, an ELF
+header or an `MZ` at offset 0, `<script>` spliced into a `LIST/INFO` chunk, and
+markup in a non-RIFF file. Because the surviving warnings mean something, the
+CLI now logs them at WARNING rather than INFO, where they had been filed
+precisely because they were noise.
+
+Four tests cover hostile input directly — an empty file, a truncated RIFF
+header, a chunk declaring size `0xFFFFFFF0`, and a zero-length chunk — because
+a scanner whose entire job is untrusted files must not be walkable off the end
+of its own mapping or into a loop.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy

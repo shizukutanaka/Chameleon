@@ -1607,7 +1607,7 @@ class BatchProcessor:
                         )
                         continue
                     for note in inspection.warnings:
-                        logger.info("Inspection note for %s: %s", candidate, note)
+                        logger.warning("Inspection note for %s: %s", candidate, note)
 
                 wav_files.append(candidate)
                 if isinstance(max_files, int) and max_files > 0 and len(wav_files) >= max_files:
@@ -1825,7 +1825,7 @@ class BatchProcessor:
                         )
                         continue
                     for note in inspection.warnings:
-                        logger.info("Inspection note for %s: %s", candidate, note)
+                        logger.warning("Inspection note for %s: %s", candidate, note)
 
                 wav_files.append(candidate)
                 if isinstance(kwargs.get("max_files"), int) and kwargs.get("max_files") > 0 and len(wav_files) >= kwargs["max_files"]:
