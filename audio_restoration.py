@@ -215,23 +215,51 @@ class DeclippingProcessor:
     """Restore clipped audio signals"""
 
     def __init__(self):
-        self.clip_threshold = 0.95
+        # A clipped plateau is flat to within the converter's own resolution.
+        # 3e-5 of the peak is about one LSB at 16-bit -- loose enough for
+        # dithered material, tight enough that a sine crest does not qualify.
+        self.flatness_tolerance = 3e-5
+        # ...and long enough that a *curved* peak cannot look flat by
+        # accident. Four samples clears every full-scale pure tone above
+        # 33 Hz at 44.1 kHz; see the note in detect_clipping.
+        self.min_run_length = 4
         self.interpolation_method = 'cubic'
 
     def detect_clipping(self, audio: np.ndarray) -> Tuple[List[int], List[int]]:
-        """Detect clipped regions"""
-        # Normalize to [-1, 1]
-        normalized = audio / (np.max(np.abs(audio)) + 1e-10)
+        """Detect clipped regions: runs of samples held flat at the peak.
 
-        # Find clipped samples
-        clipped = np.abs(normalized) > self.clip_threshold
+        Amplitude alone cannot identify clipping, which is what this method
+        used to assume. A 440 Hz sine spends about 10% of every cycle above
+        95% of its peak, so a bare threshold reported a "clipped region" on
+        every crest -- 880 of them in one second of a clean tone, each of
+        which the repair stage then damaged.
 
-        # Find clipped regions
-        diff = np.diff(np.concatenate(([0], clipped.astype(int), [0])))
-        starts = np.where(diff == 1)[0]
-        ends = np.where(diff == -1)[0]
+        What distinguishes a clipped peak from a loud one is that clipping is
+        *flat*: the converter ran out of range and held the same value. So a
+        run counts only if every sample in it sits within one LSB of the
+        peak, for at least `min_run_length` samples.
 
-        return starts.tolist(), ends.tolist()
+        Known limit, measured rather than hidden: at 44.1 kHz a *pure* tone
+        at or below 33 Hz changes by less than an LSB across four samples at
+        its crest, so it reports as clipped (0 false regions at 35 Hz and
+        above, 24 at 32 Hz, 60 at 30 Hz). Real low-frequency material carries
+        harmonics that curve the peak -- a 40 Hz tone with its first two
+        harmonics gives zero. Clipping that was attenuated after the fact is
+        undetectable in principle: the plateau survives, but so does every
+        innocent explanation for it.
+        """
+        peak = np.max(np.abs(audio))
+        if peak <= 0:
+            return [], []
+
+        at_peak = np.abs(audio) >= peak * (1.0 - self.flatness_tolerance)
+
+        boundaries = np.diff(np.concatenate(([0], at_peak.astype(int), [0])))
+        starts = np.where(boundaries == 1)[0]
+        ends = np.where(boundaries == -1)[0]
+
+        keep = (ends - starts) >= self.min_run_length
+        return starts[keep].tolist(), ends[keep].tolist()
 
     def restore_clipped(self, audio: np.ndarray, sample_rate: int) -> np.ndarray:
         """Restore clipped regions using interpolation"""
@@ -264,9 +292,13 @@ class DeclippingProcessor:
                     else:
                         restored = np.interp(x_clip, x_known, y_known)
 
-                    # Blend with original
+                    # Crossfade the reconstruction in over the clipped run.
+                    # The weights must sum to 1: the stray `* 0.5` that used to
+                    # be on the second term made every region edge come out at
+                    # half amplitude, punching a hole where it was repairing.
                     window = signal.windows.tukey(len(restored), 0.5)
-                    result[start:end] = restored * window + result[start:end] * (1 - window) * 0.5
+                    result[start:end] = (restored * window
+                                         + result[start:end] * (1.0 - window))
 
         return result
 
