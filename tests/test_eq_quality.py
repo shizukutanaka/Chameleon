@@ -17,11 +17,22 @@ far from it are left alone, and a boost followed by an equal cut is a no-op.
 
 import math
 
-import numpy as np
 import pytest
+
+# Guarded so the suite is runnable on the project's own default install, which
+# has no third-party packages at all. An unguarded `import numpy` here made
+# collection fail outright, so the dependency-free core could not be verified
+# without first installing the dependency it is defined by not needing.
+np = pytest.importorskip("numpy")
 
 import main
 import mastering_chain
+
+# These exercise the real biquad path, which needs scipy's lfilter. Without it
+# `apply_effects` now refuses rather than returning the input unmodified --
+# covered by tests/test_effect_dependencies.py -- so there is nothing to
+# measure here.
+pytest.importorskip("scipy")
 
 
 SAMPLE_RATE = 48000
