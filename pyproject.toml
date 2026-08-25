@@ -108,7 +108,6 @@ py-modules = [
     "api_server", "batch_automation",
     "spectral_editor", "spectral_utils",
     "audio_restoration", "mastering_chain",
-    "performance_optimizer",
     "ux_improvements",
     "bs1770_loudness",
     "personal_config",

@@ -368,10 +368,11 @@ own README), not built by the Dockerfile, not referenced by `api_server.py`
 (no `StaticFiles`/`Jinja2`/`HTMLResponse`). `core.py`'s `RealtimeAudioProcessor`
 (~L2809-3195, a standalone `websockets`-based server) has zero callers from
 `main.py` or `api_server.py` — dead code. Decisions on removing `gui/` and
-`RealtimeAudioProcessor` are pending direct user confirmation (tooling
-prevented getting an answer in this pass); until then both are left as-is and
-`gui/README.md`'s own "experimental, unwired" disclosure stands as the
-honest label.
+`RealtimeAudioProcessor` were pending direct user confirmation (tooling
+prevented getting an answer in that pass). `RealtimeAudioProcessor` was
+confirmed and deleted on 2026-08-25 (see the entry below); `gui/` is still
+awaiting an answer, and `gui/README.md`'s own "experimental, unwired"
+disclosure stands as the honest label until it arrives.
 
 **Q: Is api_server.py actually commercial-grade (HTTP-level audit)?**
 A (2026-07): It starts cleanly and every route calls a real backing function
@@ -933,10 +934,11 @@ the tree against it. Two conclusions.
 
 *Excess:* ~1 line in 4 of shipped Python is unreachable from the CLI (9,367
 reachable / 3,121 orphaned, plus `RealtimeAudioProcessor`). `performance_optimizer.py`
-is ~100% duplication of `core.py`/`main.py` facilities; spectral subtraction
+is ~100% duplication of `core.py`/`main.py` facilities (deleted 2026-08-25); spectral subtraction
 exists in three places; `api_server.py:52-54` imports three modules that have
 never existed, permanently pinning `HAS_SECURE_MODULES` to False and making
-the `skipif`s in `tests/test_api_fallback.py` no-ops. **Nothing was deleted** —
+the `skipif`s in `tests/test_api_fallback.py` no-ops (that last one was deleted
+on 2026-08-25 — see the entry below). **Nothing was deleted at the time** —
 the deletion rule requires explicit per-item confirmation, and asking produced
 no answer, so all of it is recorded in `PRODUCT_ANALYSIS.md` §1b for a later
 decision rather than acted on.
@@ -1024,6 +1026,125 @@ packaging gap (a non-editable install loses this documented feature
 silently) but is a reason to *fix packaging*, not delete the file. **Fixed
 in the same pass this was found** — added to all three lists.
 
+**`api_server.py`'s phantom secure modules — deleted (2026-08-25).** The file
+opened with a `try: from government_auth import ... / from secure_core import
+... / from high_performance_core import ...`, setting `HAS_SECURE_MODULES`.
+None of those three modules has ever existed in this repository, in any commit,
+so the `except ImportError` was the only reachable path and the flag was pinned
+to `False` for the lifetime of the project. Six `if HAS_SECURE_MODULES:`
+branches — a service-instantiation block, a permission check, a login path, an
+upload validation step, and a startup log — were therefore **structurally
+unreachable**, and the three `skipif(api_server.HAS_SECURE_MODULES)` guards in
+`tests/test_api_fallback.py` could never fire, so three tests that looked
+conditional were unconditional and one branch of each conditional was never
+exercised by anything.
+
+Deleted with explicit user confirmation naming this item. What was reachable is
+now unconditional: the stdlib-core adapters are top-level, login checks the
+configured credentials directly, and `require_permission` carries a docstring
+saying plainly what it does — require a session, and *name* a permission it
+does not enforce. That is the honest description of the behaviour that was
+already shipping; the deleted branch was the only thing suggesting otherwise.
+Note also that the "government" naming is exactly the unverifiable
+institutional claim §4 forbids.
+
+Two knock-on fixes in the same commit: `tests/test_api_fallback.py`'s four
+tests now actually run (they were being reported as skipped-or-passed depending
+on a flag that meant nothing), and `import uvicorn` moved from module scope
+into the `__main__` block — it is needed to *run* the server, never to import
+`app`, so importing the module under gunicorn or in a test no longer requires
+it. `api_server.py` 1,637 → 1,565 lines.
+
+**`core.py`'s `RealtimeAudioProcessor` — deleted (2026-08-25).** 393 lines
+(the whole tail of `core.py`) implementing a WebSocket streaming server:
+client registry, per-client queues, an event-handler table, session state and
+a `websockets.serve` loop. Zero callers — not `main.py`, not `api_server.py`,
+not a single test, not even another orphaned module. It could not have run in
+a default install either: `websockets` is in no extra of `pyproject.toml`, so
+its constructor raised `ImportError` unconditionally for anyone who found it.
+
+Two prior passes recorded it as an open question rather than acting (the
+deletion rule requires per-item confirmation and none had been given). That
+confirmation arrived, naming this item, so it is gone.
+
+Real-time streaming is not in §1's scope: Chameleon is a file-in/file-out CLI
+with a REST server. A streaming server is a different product with a different
+threat model — none of the path-validation layer that justifies §1's "secure"
+claim applies to a socket. Keeping a stub of one implied a capability the
+project has no intention of finishing.
+
+Deleting it also let the `try: import websockets ...` block at the top of
+`core.py` go. That block was itself a trap: it imported `asyncio`, then
+`websockets`, then `json`, `threading`, `queue`, `typing` and `time`. Because
+Python stops a `try` body at the first exception, an environment without
+`websockets` skipped the five imports *after* it. Every one of those except
+`queue` happens to be imported unconditionally at the top of the file, so
+nothing broke — but the block was one reordering away from a
+`NameError` in the stdlib core. `core.py` 2,780 → 2,367 lines.
+
+**`performance_optimizer.py` — deleted (2026-08-25).** 324 lines,
+zero importers. Every facility in it already existed, better, in code that
+actually runs:
+
+| In `performance_optimizer.py` | The version that ships |
+|---|---|
+| `get_optimal_worker_count` | `main.py`'s `ProcessingConfig.from_environment` (this made it the *third* implementation) |
+| `get_optimal_chunk_size` | `core.py`'s `_determine_chunk_size` / `CHUNK_SIZE` |
+| `CacheManager` | `core.py`'s `MemoryManager` — byte-accounted LRU with mmap, versus a plain dict |
+| `MemoryOptimizer` | same |
+| `SIMDOperations` | the equivalent loops in `core.py`'s WAV path |
+
+The decisive evidence is not the duplication but a defect. `SIMDOperations.
+normalize_int16` computed its scale factor as `int((target_peak * 32767) /
+peak)` — integer truncation of a value that is below 1.0 for any peak above
+about 34% of full scale, so the function returned **digital silence** for
+essentially all real audio. `array('h', [32000, -16000, 8000])` normalizes to
+`[0, 0, 0]`. A normalizer that silences its input cannot have been run even
+once, by anyone, ever. That is what an orphaned module is: not merely unused,
+but unexamined, and therefore untrustworthy on the day someone finally wires
+it in.
+
+This is the same argument that retired `config_manager.py`, applied to the
+same evidence. Deleted with explicit per-item confirmation; removed from
+`setup.py`, `pyproject.toml`, the `Dockerfile` COPY list, `README.md` and
+`docs/agents/SONNET.md` in the same commit.
+
+**Orphan modules are now a CI failure, not a doc entry (2026-08-25).**
+`tests/test_no_orphan_modules.py` parses `pyproject.toml`'s `py-modules`,
+walks the import graph from the two entry points a user can actually invoke
+(`main` for the console script, `api_server` for `chameleon server`), and
+fails on any packaged module nothing reaches. The walk covers the whole AST,
+not just module-level statements, because `main.py` deliberately imports
+`mastering_chain` / `bs1770_loudness` / `midi_analysis` inside functions to
+keep the stdlib core importable without numpy.
+
+Four modules are allow-listed with written justifications:
+`audio_restoration` (seven classes of real DSP nothing else implements, a
+candidate for CLI wiring), `personal_config` (reachable by a *user* via
+`quick_install.sh`, just not by an import), and `batch_automation` /
+`spectral_editor` (kept by explicit user decision on 2026-08-25, over a
+recommendation to delete). A companion test fails if an allow-list entry
+becomes stale, so the list cannot decay into folklore. Two further tests
+catch the other half of a botched deletion: a `py-modules` name with no file
+behind it, and drift between `setup.py`'s list and `pyproject.toml`'s.
+
+This is the `test_no_fantasy_features.py` pattern applied to a second failure
+mode. §4 violations were already mechanized; accumulation of unreachable code
+now is too.
+
+**Deleting dead code did not make anything faster — and that is the point
+(2026-08-25).** Measured across the three deletions above: 15,273 → 14,484
+lines of product Python (789 removed, 5.2%), while `compileall` stayed at
+0.17 s, `import core` at ~70 ms and the test suite at ~58 s, all within
+run-to-run noise. Of course: unreachable code has no runtime cost, which is
+exactly why it survives so long. Its cost is that it looks available —
+it ships in the wheel, it imports, its docstring makes a promise — so the
+next person to wire it up inherits however many years of unexercised bugs.
+`performance_optimizer.normalize_int16` returning silence is that cost made
+concrete. Anyone justifying a deletion here should argue comprehension and
+trust, not milliseconds; claiming a speedup we did not measure would be the
+same overclaiming §8 forbids everywhere else.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy
@@ -1062,11 +1183,8 @@ in the same pass this was found** — added to all three lists.
   answered): label honestly and leave as-is, delete like other orphaned
   surfaces, or invest in actually wiring the Electron shell to the CLI/API.
 
-- **core.py's RealtimeAudioProcessor — dead code, delete?** A standalone
-  `websockets`-based server (core.py:2809-3195) with zero callers from
-  `main.py` or `api_server.py`. Matches the exact orphaned-module pattern
-  already resolved for 9 other modules this charter tracked; needs the same
-  explicit confirmation before deletion.
+- **core.py's RealtimeAudioProcessor — RESOLVED (2026-08-25): deleted.**
+  Confirmation was given naming this item; see the resolved entry above.
 
 - **BatchProcessor.process_directory (sync) — RESOLVED (2026-07):** the sync
   `_execute_operation` was implemented (rather than deleting the sync path),

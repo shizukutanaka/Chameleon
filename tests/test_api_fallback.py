@@ -1,9 +1,13 @@
-"""Tests for the api_server fallback adapters.
+"""Tests for the api_server core adapters.
 
-When the optional high-performance modules are absent, api_server wires
-``analyze_audio_fast`` / ``normalize_audio_fast`` to the standard-library core.
-These tests verify the ProcessingResult -> dict adaptation. They require
-fastapi/pydantic (imported at api_server module load) and are skipped otherwise.
+``analyze_audio_fast`` / ``normalize_audio_fast`` wrap the standard-library
+core for the HTTP endpoints; these tests verify the ProcessingResult -> dict
+adaptation. They require fastapi/pydantic (imported at api_server module load)
+and are skipped otherwise.
+
+These used to carry a skipif on a module flag pinned to False by a try/except
+over three modules that never existed in this repository. The guard could not
+fire; the modules are gone and so is it.
 """
 
 import asyncio
@@ -17,14 +21,11 @@ pytest.importorskip("fastapi")
 import api_server  # noqa: E402
 
 
-def test_fallback_mode_defines_adapters():
-    # In an environment without the secure modules the adapters must exist.
+def test_the_adapters_are_defined():
     assert hasattr(api_server, "analyze_audio_fast")
     assert hasattr(api_server, "normalize_audio_fast")
 
 
-@pytest.mark.skipif(api_server.HAS_SECURE_MODULES,
-                    reason="secure modules present; fallback adapters not active")
 def test_analyze_audio_fast_returns_metadata(tmp_path):
     wav = write_sine_wave(tmp_path / "tone.wav", duration=0.5)
 
@@ -37,8 +38,6 @@ def test_analyze_audio_fast_returns_metadata(tmp_path):
     assert result["file_size"] > 0
 
 
-@pytest.mark.skipif(api_server.HAS_SECURE_MODULES,
-                    reason="secure modules present; fallback adapters not active")
 def test_normalize_audio_fast_writes_and_reports(tmp_path):
     src = write_sine_wave(tmp_path / "in.wav", duration=0.5, amplitude=4000)
     dst = tmp_path / "out.wav"
@@ -51,8 +50,6 @@ def test_normalize_audio_fast_writes_and_reports(tmp_path):
     assert dst.exists()
 
 
-@pytest.mark.skipif(api_server.HAS_SECURE_MODULES,
-                    reason="secure modules present; fallback adapters not active")
 def test_analyze_audio_fast_reports_error_for_missing_file(tmp_path):
     result = asyncio.run(api_server.analyze_audio_fast(str(tmp_path / "nope.wav")))
 

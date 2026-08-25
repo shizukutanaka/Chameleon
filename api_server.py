@@ -31,7 +31,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, Field, validator
-import uvicorn
 
 # pydantic v1 ではパターン検証に `regex=` を、v2 では `pattern=` を使う。
 # プロジェクトは pydantic<2 に固定されているが、誤って pydantic 2 が入った
@@ -69,65 +68,50 @@ from security_validator import (
     SecureFileOperations,
 )
 
-# Import our secure modules (optional). When they are unavailable the API runs
-# in fallback mode, wired to the standard-library audio core below.
-try:
-    from government_auth import AuthenticationService, AuthorizationService
-    from secure_core import SecureAudioProcessor, SecureValidator
-    from high_performance_core import get_high_performance_processor, analyze_audio_fast, normalize_audio_fast
-    HAS_SECURE_MODULES = True
-except ImportError:
-    logging.getLogger(__name__).warning(
-        "Secure modules not available. API running in fallback mode (standard-library core)."
-    )
-    HAS_SECURE_MODULES = False
+# The audio endpoints run on the standard-library core. These adapters convert
+# the core's ProcessingResult into the dict shape the endpoints expect.
+import core as _core
 
-if not HAS_SECURE_MODULES:
-    # Wire the audio endpoints to the real standard-library core so they work
-    # without the optional high-performance modules. These adapters convert the
-    # core's ProcessingResult into the dict shape the endpoints expect.
-    import core as _core
+async def analyze_audio_fast(file_path) -> Dict[str, Any]:
+    """Analyze an audio file using the standard-library core."""
+    result = await _core.analyze_async(str(file_path))
+    data = result.data or {}
+    response: Dict[str, Any] = {
+        'success': result.success,
+        'processing_time': result.duration_ms / 1000.0,
+        'processing_method': 'stdlib-core',
+    }
+    if result.success:
+        response.update({
+            'duration': data.get('duration'),
+            'sample_rate': data.get('sample_rate'),
+            'channels': data.get('channels'),
+            'bit_depth': data.get('bit_depth'),
+            'peak_level': data.get('peak_level'),
+            'rms_level': data.get('rms_level'),
+            'file_size': data.get('size_bytes'),
+        })
+    else:
+        response['error'] = result.message
+    return response
 
-    async def analyze_audio_fast(file_path) -> Dict[str, Any]:
-        """Analyze an audio file using the standard-library core."""
-        result = await _core.analyze_async(str(file_path))
-        data = result.data or {}
-        response: Dict[str, Any] = {
-            'success': result.success,
-            'processing_time': result.duration_ms / 1000.0,
-            'processing_method': 'stdlib-core',
-        }
-        if result.success:
-            response.update({
-                'duration': data.get('duration'),
-                'sample_rate': data.get('sample_rate'),
-                'channels': data.get('channels'),
-                'bit_depth': data.get('bit_depth'),
-                'peak_level': data.get('peak_level'),
-                'rms_level': data.get('rms_level'),
-                'file_size': data.get('size_bytes'),
-            })
-        else:
-            response['error'] = result.message
-        return response
-
-    async def normalize_audio_fast(input_path, output_path, target_peak: float = 0.95) -> Dict[str, Any]:
-        """Normalize an audio file using the standard-library core."""
-        result = await _core.normalize_async(str(input_path), str(output_path), target_peak)
-        data = result.data or {}
-        response: Dict[str, Any] = {
-            'success': result.success,
-            'processing_time': result.duration_ms / 1000.0,
-        }
-        if result.success:
-            response.update({
-                'scale_factor': data.get('gain_applied'),
-                'original_peak': data.get('original_peak'),
-                'target_peak': data.get('target_peak', target_peak),
-            })
-        else:
-            response['error'] = result.message
-        return response
+async def normalize_audio_fast(input_path, output_path, target_peak: float = 0.95) -> Dict[str, Any]:
+    """Normalize an audio file using the standard-library core."""
+    result = await _core.normalize_async(str(input_path), str(output_path), target_peak)
+    data = result.data or {}
+    response: Dict[str, Any] = {
+        'success': result.success,
+        'processing_time': result.duration_ms / 1000.0,
+    }
+    if result.success:
+        response.update({
+            'scale_factor': data.get('gain_applied'),
+            'original_peak': data.get('original_peak'),
+            'target_peak': data.get('target_peak', target_peak),
+        })
+    else:
+        response['error'] = result.message
+    return response
 
 # API metadata
 API_VERSION = "1.0.0"
@@ -682,16 +666,6 @@ def _resolve_audit_log_path() -> Path:
 
     return log_dir / 'api-audit.log'
 
-# Initialize security services
-if HAS_SECURE_MODULES:
-    auth_service = AuthenticationService()
-    authz_service = AuthorizationService()
-    secure_processor = SecureAudioProcessor()
-else:
-    auth_service = None
-    authz_service = None
-    secure_processor = None
-
 # FastAPI app initialization
 app = FastAPI(
     title="Chameleon Audio API",
@@ -971,16 +945,15 @@ async def get_current_user(request: Request, credentials: HTTPAuthorizationCrede
 
 # Permission checking
 def require_permission(permission: str):
-    """Decorator to require specific permission"""
-    def permission_check(user: dict = Depends(get_current_user)):
-        if not HAS_SECURE_MODULES:
-            return user  # Skip permission check in fallback mode
+    """Require an authenticated session, and name the permission involved.
 
-        if not authz_service.check_permission(user['session_id'], permission):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Insufficient permissions: {permission} required"
-            )
+    Honest scope: there is **no per-permission authorization** here. Any valid
+    session may call any endpoint. The `permission` argument documents what an
+    endpoint does -- it is not enforced. Chameleon has a single class of API
+    user; adding real roles means adding a permission store, not re-reading
+    this argument.
+    """
+    def permission_check(user: dict = Depends(get_current_user)):
         return user
     return permission_check
 
@@ -1017,51 +990,33 @@ async def login(request: AuthenticationRequest, http_request: Request):
         client_ip = _get_request_ip(http_request)
         _enforce_rate_limit(f"login:{client_ip}:{request.username}")
 
-        if HAS_SECURE_MODULES:
-            # Use secure authentication
-            result = auth_service.authenticate(
-                request.username,
-                request.password,
-                client_ip
+        # Single-user credential check against the configured environment.
+        if not (_DEV_USERNAME and _DEV_PASSWORD_HASH):
+            logging.error("API credentials are not configured; refusing to authenticate")
+            return AuthenticationResponse(
+                success=False,
+                error="Authentication unavailable"
             )
 
-            if not result:
-                log_audit_event(
-                    request.username, "LOGIN", "API", "FAILED",
-                    "Invalid credentials", client_ip, ""
-                )
-                return AuthenticationResponse(
-                    success=False,
-                    error="Invalid credentials"
-                )
-        else:
-            # Fallback authentication for development
-            if not (_DEV_USERNAME and _DEV_PASSWORD_HASH):
-                logging.error("Secure modules unavailable and developer credentials not configured")
-                return AuthenticationResponse(
-                    success=False,
-                    error="Authentication unavailable"
-                )
+        provided_hash = hashlib.sha256(request.password.encode('utf-8')).hexdigest()
 
-            provided_hash = hashlib.sha256(request.password.encode('utf-8')).hexdigest()
-
-            if not (
-                hmac.compare_digest(request.username, _DEV_USERNAME)
-                and hmac.compare_digest(provided_hash, _DEV_PASSWORD_HASH)
-            ):
-                log_audit_event(
-                    request.username,
-                    "LOGIN",
-                    "API",
-                    "FAILED",
-                    "Invalid credentials",
-                    "127.0.0.1",
-                    "",
-                )
-                return AuthenticationResponse(
-                    success=False,
-                    error="Invalid credentials"
-                )
+        if not (
+            hmac.compare_digest(request.username, _DEV_USERNAME)
+            and hmac.compare_digest(provided_hash, _DEV_PASSWORD_HASH)
+        ):
+            log_audit_event(
+                request.username,
+                "LOGIN",
+                "API",
+                "FAILED",
+                "Invalid credentials",
+                client_ip,
+                "",
+            )
+            return AuthenticationResponse(
+                success=False,
+                error="Invalid credentials"
+            )
 
         # Create session
         session_id = str(uuid.uuid4())
@@ -1135,13 +1090,6 @@ async def upload_audio_file(
     """Upload audio file for processing"""
     try:
         _validate_upload_extension(file.filename)
-
-        if HAS_SECURE_MODULES:
-            secure_processor.validate_file(file.file)
-            try:
-                file.file.seek(0)
-            except Exception:
-                pass
 
         sanitized_name = _REQUEST_VALIDATOR.sanitize_filename(Path(file.filename).name)
         unique_name = f"{uuid.uuid4().hex}_{sanitized_name}"
@@ -1606,13 +1554,13 @@ async def startup_event():
         logging.error("Failed to establish upload directory: %s", exc)
         raise
 
-    if HAS_SECURE_MODULES:
-        logging.info("Secure modules loaded successfully")
-    else:
-        logging.warning("Running in fallback mode - security modules not available")
 
 # Main execution
 if __name__ == "__main__":
+    # Imported here, not at module scope: uvicorn is only needed to *run* the
+    # server. Importing `app` (under gunicorn, or in tests) must not require it.
+    import uvicorn
+
     uvicorn.run(
         "api_server:app",
         host="127.0.0.1",

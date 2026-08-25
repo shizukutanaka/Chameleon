@@ -9,7 +9,7 @@ executed quickly and correctly.
   `PRODUCT_ANALYSIS.md` §3 P1–P3 item, a doc-sync.
 - **Test coverage** — adding tests for the zero-coverage modules listed in
   `PRODUCT_ANALYSIS.md` §2 (`audio_restoration`, `spectral_editor`,
-  `performance_optimizer`, `personal_config`): import + a happy path each.
+  `personal_config`): import + a happy path each.
 - **Honesty passes** — the P1 docstring/metadata overclaim fixes
   (`advanced_validation.py:4`, `gui/package.json`, `batch_automation.py:4`).
   Text-only, low-risk, high-value.

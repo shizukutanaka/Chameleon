@@ -4,6 +4,15 @@
 
 ### Added
 
+- **`tests/test_no_orphan_modules.py`** — fails CI when a packaged module is
+  not reachable by following imports from `main` or `api_server`. Chameleon
+  has repeatedly accumulated files no entry point touches; three were deleted
+  in this release. Four modules are allow-listed with written justifications
+  (`audio_restoration`, `personal_config`, `batch_automation`,
+  `spectral_editor`), and a companion test fails if one of those
+  justifications goes stale. Also catches a `py-modules` entry with no file
+  behind it, and drift between `setup.py` and `pyproject.toml`.
+
 - **`process --mono` and `process --trim`, plus `batch mono` / `batch trim`.**
   `core.py` had always implemented mono downmix and silence trimming in pure
   standard library — both are in `ALLOWED_BATCH_OPERATIONS` and covered by
@@ -45,6 +54,47 @@
   Tech 3341 document could not be retrieved, so correctness is pinned by
   first-principles invariants (stationary signal ⇒ M == S == I, etc.) rather
   than claimed against the standard's text.
+
+### Removed
+
+- **`performance_optimizer.py`** (324 lines, zero importers). Everything in it
+  already existed in code that runs: worker count in `main.py`'s
+  `ProcessingConfig.from_environment`, chunk size in `core.py`'s
+  `_determine_chunk_size`, caching in `core.py`'s byte-accounted
+  `MemoryManager`. It also carried a defect proving it had never been
+  executed: `SIMDOperations.normalize_int16` truncated its scale factor to an
+  integer, returning digital silence for any signal peaking above ~34% of full
+  scale. Dropped from `setup.py`, `pyproject.toml`, the `Dockerfile` COPY list,
+  `README.md` and `docs/agents/SONNET.md` at the same time.
+- **`core.py`'s `RealtimeAudioProcessor`** (393 lines, the whole tail of the
+  file) — a WebSocket streaming server with zero callers anywhere in the
+  repository, which could not run in any install anyway: `websockets` is in no
+  extra, so its constructor raised `ImportError` unconditionally. Real-time
+  streaming is outside `CHARTER.md` §1's file-in/file-out scope, and none of
+  the path-validation layer that backs the "secure" claim applies to a socket.
+  The `try: import websockets ...` block went with it — a block that, because
+  a `try` body stops at its first exception, silently skipped the five stdlib
+  imports listed after `websockets` whenever it was absent. `core.py`
+  2,780 → 2,367 lines.
+- **`api_server.py`'s three phantom "secure module" imports and the six dead
+  branches behind them.** `government_auth`, `secure_core` and
+  `high_performance_core` have never existed in this repository, so the
+  `try/except ImportError` around them pinned `HAS_SECURE_MODULES` to `False`
+  permanently and every `if HAS_SECURE_MODULES:` branch was structurally
+  unreachable — as were the three `skipif` guards in
+  `tests/test_api_fallback.py`, which could not fire. The reachable code is now
+  unconditional, and `require_permission` states plainly that it requires a
+  session and does not enforce per-permission authorization (which is what it
+  has always done). The "government" naming was also the kind of unverifiable
+  institutional claim `CHARTER.md` §4 forbids.
+
+### Changed
+
+- `import uvicorn` moved from `api_server.py`'s module scope into its
+  `__main__` block. It is needed to *run* the server, never to import `app`,
+  so serving under gunicorn — or importing the module in a test — no longer
+  requires it.
+
 
 ### Changed (honesty / documentation)
 

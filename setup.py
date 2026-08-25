@@ -77,7 +77,6 @@ setup(
         "spectral_utils",
         "audio_restoration",
         "mastering_chain",
-        "performance_optimizer",
         "ux_improvements",
         "bs1770_loudness",
         "personal_config",
