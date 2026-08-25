@@ -199,7 +199,7 @@ here because they need a user decision first.
 | P3 | `apply_effects` compression is an instantaneous waveshaper | Low | S | Low | No attack/release; the real compressor is in `mastering_chain`. Label or point users at `--master` |
 | P4 | Noise-shaped ("shaped") dither in `mastering_chain` | Low | M | Low | Advertised in the config docstring, unimplemented; falls back to TPDF with a warning |
 | P3 | Consider TPDF dither by default, or a `--dither` CLI flag | Low | S | Med | Currently opt-in via `ProcessingConfig.apply_dither` only, to keep output deterministic (CHARTER §9). No CLI surface yet |
-| P2 | Give `audio_restoration`'s 7 unique repair classes a CLI surface, or record that they stay standalone | Med | M | Med | The only orphan that is capability rather than duplication |
+| ~~P2~~ | ~~Give `audio_restoration` a CLI surface~~ | Med | M | Med | **DONE 2026-08-25** — `process --declip` / `--dehum` ship after an audit that found the declipper damaging clean audio and the hum detector firing on silence. Click/crackle/gap/denoise deliberately not exposed: no trustworthy detector. See `CHARTER.md` §9 |
 | P2 | Adopt `ci/proposed-ci.yml` → `.github/workflows/ci-cd.yml` | High (green CI) | XS (one `cp`) | Low | **Human-only** — needs `workflows` permission |
 | P3 | Decide disposition of each orphaned asset (wire / keep-labeled / delete) | Med | Varies | Med | Deletion needs explicit user confirmation |
 | P3 | Pure-Python true-peak perf, or a documented cap note | Low | S | Low | Currently ~0.4 s/65k samples |

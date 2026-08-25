@@ -40,12 +40,6 @@ ENTRY_POINTS = ("main", "api_server")
 # Packaged modules that deliberately have no importer, and why. Each entry is a
 # standing decision recorded in CHARTER.md §9 -- not a to-do list.
 ALLOWED_ORPHANS = {
-    "audio_restoration":
-        "Seven of its eight classes are real, distinct DSP (click/crackle/hum "
-        "removal, declipping, gap interpolation, vinyl restoration) that "
-        "nothing else in the tree implements. Kept as a candidate for CLI "
-        "wiring (`process --declick` and friends), not as dead weight. "
-        "Import-safety is covered by tests/test_orphaned_import_safety.py.",
     "personal_config":
         "quick_install.sh / quick_install.ps1 document `python "
         "personal_config.py setup` as the personal-use onboarding flow, and it "
