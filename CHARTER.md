@@ -1109,6 +1109,42 @@ same evidence. Deleted with explicit per-item confirmation; removed from
 `setup.py`, `pyproject.toml`, the `Dockerfile` COPY list, `README.md` and
 `docs/agents/SONNET.md` in the same commit.
 
+**Orphan modules are now a CI failure, not a doc entry (2026-08-25).**
+`tests/test_no_orphan_modules.py` parses `pyproject.toml`'s `py-modules`,
+walks the import graph from the two entry points a user can actually invoke
+(`main` for the console script, `api_server` for `chameleon server`), and
+fails on any packaged module nothing reaches. The walk covers the whole AST,
+not just module-level statements, because `main.py` deliberately imports
+`mastering_chain` / `bs1770_loudness` / `midi_analysis` inside functions to
+keep the stdlib core importable without numpy.
+
+Four modules are allow-listed with written justifications:
+`audio_restoration` (seven classes of real DSP nothing else implements, a
+candidate for CLI wiring), `personal_config` (reachable by a *user* via
+`quick_install.sh`, just not by an import), and `batch_automation` /
+`spectral_editor` (kept by explicit user decision on 2026-08-25, over a
+recommendation to delete). A companion test fails if an allow-list entry
+becomes stale, so the list cannot decay into folklore. Two further tests
+catch the other half of a botched deletion: a `py-modules` name with no file
+behind it, and drift between `setup.py`'s list and `pyproject.toml`'s.
+
+This is the `test_no_fantasy_features.py` pattern applied to a second failure
+mode. §4 violations were already mechanized; accumulation of unreachable code
+now is too.
+
+**Deleting dead code did not make anything faster — and that is the point
+(2026-08-25).** Measured across the three deletions above: 15,273 → 14,484
+lines of product Python (789 removed, 5.2%), while `compileall` stayed at
+0.17 s, `import core` at ~70 ms and the test suite at ~58 s, all within
+run-to-run noise. Of course: unreachable code has no runtime cost, which is
+exactly why it survives so long. Its cost is that it looks available —
+it ships in the wheel, it imports, its docstring makes a promise — so the
+next person to wire it up inherits however many years of unexercised bugs.
+`performance_optimizer.normalize_int16` returning silence is that cost made
+concrete. Anyone justifying a deletion here should argue comprehension and
+trust, not milliseconds; claiming a speedup we did not measure would be the
+same overclaiming §8 forbids everywhere else.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy

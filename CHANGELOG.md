@@ -4,6 +4,15 @@
 
 ### Added
 
+- **`tests/test_no_orphan_modules.py`** — fails CI when a packaged module is
+  not reachable by following imports from `main` or `api_server`. Chameleon
+  has repeatedly accumulated files no entry point touches; three were deleted
+  in this release. Four modules are allow-listed with written justifications
+  (`audio_restoration`, `personal_config`, `batch_automation`,
+  `spectral_editor`), and a companion test fails if one of those
+  justifications goes stale. Also catches a `py-modules` entry with no file
+  behind it, and drift between `setup.py` and `pyproject.toml`.
+
 - **`process --mono` and `process --trim`, plus `batch mono` / `batch trim`.**
   `core.py` had always implemented mono downmix and silence trimming in pure
   standard library — both are in `ALLOWED_BATCH_OPERATIONS` and covered by
