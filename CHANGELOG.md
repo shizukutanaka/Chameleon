@@ -93,6 +93,15 @@
 
 ### Fixed
 
+- **`analyze --detailed` reported `Frequency Range: 0.0-0.0Hz`** for any file,
+  on any install without librosa — which is every install, since librosa is in
+  no extra. The dataclass default was being printed as a measurement. It now
+  says `not measured (use --spectrum)`; `analyze --spectrum` measures the same
+  thing for real in pure Python, on every install.
+- **`analyze --detailed` reported `Dynamic Range: 0.0dB` on the
+  dependency-free install.** Crest factor is `20*log10(peak/rms)` and the
+  stdlib core already reports both, but only the numpy path did the division.
+  A sine now correctly reads 3.0 dB with no third-party packages installed.
 - **The file inspector reported "Suspicious pattern" on ordinary audio.** It
   searched the entire file — PCM payload included — for two-byte patterns like
   `#!` and `MZ`, which 16-bit audio produces by chance roughly once per 65,536

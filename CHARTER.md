@@ -1317,6 +1317,33 @@ header, a chunk declaring size `0xFFFFFFF0`, and a zero-length chunk — because
 a scanner whose entire job is untrusted files must not be walkable off the end
 of its own mapping or into a loop.
 
+**`analyze --detailed` printed two dataclass defaults as measurements
+(2026-08-25).** Found by reading the output of the CLI integration step while
+validating the proposed CI, which is a reminder that reading a tool's own
+output is a form of testing nothing else replaces.
+
+`AudioMetadata.frequency_range` defaults to `(0.0, 0.0)` and is populated only
+inside `if HAS_LIBROSA:`. librosa is in no extra of this project, so on
+essentially every install the command reported `Frequency Range: 0.0-0.0Hz`
+for a 440 Hz sine — not an approximation and not a stated limitation, but a
+default dressed as a result. It now says `not measured (use --spectrum)`, and
+says nothing at all when `--spectrum` is already running. `analyze --spectrum`
+measures the same quantity for real via `spectral_utils`' pure-Python DFT and
+reports 419.9–452.2 Hz for that file, on every install.
+
+`dynamic_range` was the worse of the two, because the answer was already in
+hand. It is the crest factor, `20*log10(peak/rms)`, and the standard-library
+core reports both peak and RMS — but only the numpy path performed the
+division, so the dependency-free install, the one §1 leads with, printed
+`Dynamic Range: 0.0dB` for a signal whose crest factor is 3.01 dB. The stdlib
+path now computes it, guarding the zero-signal case so silence reports 0.0 dB
+rather than an inf or a NaN.
+
+Both belong to the pattern this branch has been closing throughout: the tool
+was not wrong about the audio, it was wrong about itself. A default that
+reaches the user as a number is indistinguishable from a measurement, and
+costs more trust than a missing line ever would.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy

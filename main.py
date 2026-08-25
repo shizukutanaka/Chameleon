@@ -1540,6 +1540,13 @@ class AudioProcessor:
                 format="wav",
                 peak_level=info.peak_level,
                 rms_level=info.rms_level,
+                # Crest factor, from two numbers the stdlib core already
+                # reports. Leaving it at the dataclass default meant
+                # `analyze --detailed` printed "Dynamic Range: 0.0dB" for a
+                # sine whose crest factor is 3.01 dB -- a default presented as
+                # a measurement, on the install this project leads with.
+                dynamic_range=(20 * math.log10(info.peak_level / info.rms_level)
+                               if info.rms_level > 0 and info.peak_level > 0 else 0.0),
             )
             return {"file": file_path, "metadata": metadata,
                     "time": time.time() - start_time, "dry_run": dry_run}
@@ -1878,7 +1885,16 @@ async def main():
 
                 if args.detailed:
                     print(f"  Dynamic Range: {metadata.dynamic_range:.1f}dB")
-                    print(f"  Frequency Range: {metadata.frequency_range[0]:.1f}-{metadata.frequency_range[1]:.1f}Hz")
+                    # Only librosa populates this, and librosa is in no extra,
+                    # so for almost every install the line used to read
+                    # "Frequency Range: 0.0-0.0Hz" -- the dataclass default
+                    # printed as though it were a measurement of the audio.
+                    # `--spectrum` measures the same thing for real, in pure
+                    # Python, on every install.
+                    if metadata.frequency_range != (0.0, 0.0):
+                        print(f"  Frequency Range: {metadata.frequency_range[0]:.1f}-{metadata.frequency_range[1]:.1f}Hz")
+                    elif not args.spectrum:
+                        print("  Frequency Range: not measured (use --spectrum)")
                     if metadata.tempo:
                         print(f"  Tempo: {metadata.tempo:.1f} BPM")
                     if metadata.spectral_centroid:
