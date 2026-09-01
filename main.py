@@ -423,7 +423,22 @@ class AudioProcessor:
         self.logger = logger
 
     def load_audio(self, file_path: str) -> Tuple['np.ndarray', int]:
-        """Load audio file with multiple backend support"""
+        """Load audio file into a numpy array, with multiple backend support.
+
+        Checks for numpy here rather than letting each caller discover it.
+        Every backend below returns an ndarray, so without numpy this method
+        cannot succeed -- but `np` was left bound to None, and the failure
+        surfaced 90 lines away as `AttributeError: 'NoneType' object has no
+        attribute 'frombuffer'`. Two commands still reached that traceback
+        after the one that prompted the fix was deleted, which is the
+        difference between removing an instance and removing the cause.
+        """
+        if not HAS_NUMPY:
+            raise ValueError(
+                "Reading audio into arrays requires numpy. "
+                "Install it with: pip install -e .[audio]"
+            )
+
         file_path = os.fspath(file_path)
 
         if Path(file_path).suffix.lower() not in SUPPORTED_FORMATS:
@@ -1795,10 +1810,10 @@ def create_cli():
     batch.add_argument("--bit-depth", type=int, choices=[16, 24, 32], help="Target bit depth for conversion")
     batch.add_argument("--effects", help="Effects configuration for the effects operation (JSON file)")
 
-    # The  command was removed in 2026-08. Its one operation, ,
+    # The `ml` command was removed in 2026-08. Its one operation, `enhance`,
     # called remove_noise() then normalize_audio() -- two pieces of
     # deterministic DSP, no model and no learning -- and was exactly
-    # . A machine-learning name over
+    # `process --denoise --normalize`. A machine-learning name over
     # spectral subtraction is the §4 claim this project mechanizes against,
     # sitting on the first screen a user reads. See CHARTER.md §9.
 
@@ -2453,6 +2468,18 @@ def cli() -> int:
     except KeyboardInterrupt:
         print("\nInterrupted", file=sys.stderr)
         return ExitCode.INTERRUPTED
+    except (ValueError, FileNotFoundError) as exc:
+        # The errors this CLI raises deliberately to tell the user something
+        # they can act on -- an unsupported file type, a missing file, a
+        # missing optional dependency. They reached the terminal as tracebacks,
+        # which buries the one line that mattered.
+        #
+        # Deliberately not `except Exception`. A genuine bug should still show
+        # its traceback: turning a crash into a tidy "Error:" line would make
+        # the tool wrong about itself in a new way, which is the failure mode
+        # this project keeps having to undo.
+        print(f"Error: {exc}", file=sys.stderr)
+        return ExitCode.ERROR
 
 
 if __name__ == "__main__":
