@@ -1,8 +1,16 @@
 # Chameleon — Product Analysis (Strengths, Weaknesses, Improvement Backlog)
 
-**Snapshot date:** 2026-08-08 (first-principles audit) · **Version:** 1.1.0 ·
-**Tests:** 211 passing, 3 skipped in a minimal env (skips are fastapi/numpy-gated,
-not failures; the count varies with which optional extras are installed)
+**Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
+**Version:** 1.1.0 · **Tests:** the suite runs in three dependency
+configurations and is green in all of them —
+**313 passed** on the standard library alone, **354** with numpy,
+**443** with numpy + scipy (2 skipped; the skips are fastapi-gated).
+
+> Every claim in this file was re-checked against the code on the snapshot
+> date. Eight were false — including four "fast checks" in §4 that could no
+> longer fire, and a headline strength that overstated which commands run
+> without numpy. A checklist whose items always pass is not verification; it
+> is the appearance of it. Re-run, do not re-read.
 
 This is a *state snapshot* — an honest inventory of what is strong, what is
 weak, and what to do next, written for the next contributor (human or AI).
@@ -20,10 +28,16 @@ re-verified, not trusted.
 
 ## 1. Strengths (differentiators — preserve these)
 
-- **Zero-dependency core.** `analyze` / `normalize` / `batch` / `midi` /
-  `analyze --loudness` (integrated LUFS **and** true-peak dBTP) all run on the
-  Python standard library alone. This is the product's reason to exist
-  (`CHARTER.md` §1) — do not make the default install require numpy/scipy.
+- **Zero-dependency core.** `analyze` (including `--loudness`, `--detailed`
+  and `--spectrum`), `normalize`, `mono`, `trim`, `batch` and
+  `midi compose` / `midi generate` all run on the Python standard library
+  alone. This is the product's reason to exist (`CHARTER.md` §1) — do not make
+  the default install require numpy/scipy.
+  *Checked 2026-08-25, and the previous version of this line was wrong:* it
+  listed `midi` without qualification, but `midi extract` and `midi analyze`
+  load audio into arrays and exit 1 without numpy. Only the two generative
+  MIDI operations are dependency-free. Verified by running each subcommand
+  with numpy blocked and reading the exit code.
 - **Verifiable standards conformance, not claimed conformance.** The BS.1770-4
   K-weighting coefficients in `bs1770_loudness.py` are validated against the
   standard's published reference table (`tests/test_bs1770_loudness.py`), and
@@ -36,14 +50,29 @@ re-verified, not trusted.
   `mastering_chain.LoudnessMeter`). The now-deleted `performance_optimizer.py`
   even corrected its own earlier "SIMD" overclaim to "SIMD-like … not real
   vector instructions." This is the culture to keep.
-- **Mechanized scope discipline.** `tests/test_no_fantasy_features.py`
-  greps the project's Python sources for the forbidden feature classes in
-  `CHARTER.md` §4/§8.4 (quantum / neural / GPU / AI transcription / source
-  separation), so the add-then-remove fantasy-feature cycle cannot silently
-  return.
-- **Real verification gate.** `python -m compileall -q . && python -m pytest -q
-  && python validation_test.py` is green and covers the wired surface
-  (215 tests, up from 22 at the start of the hardening effort).
+- **Mechanized scope discipline, including the surface users read.**
+  `tests/test_no_fantasy_features.py` scans the project's Python sources for
+  the forbidden feature classes in `CHARTER.md` §4/§8.4 (quantum / neural /
+  GPU / AI transcription / source separation) — *and*, since 2026-08-25, the
+  CLI surface itself: every subcommand name and every `help=` string, read by
+  running the real CLI. That extension was not theoretical. A top-level
+  command literally named `ml` passed the source-only grep for its entire
+  life, because argparse strings are not source. The guard is negative-tested:
+  reintroducing that command makes it fail.
+- **Real verification gate, run against three dependency configurations.**
+  `compileall` + `pytest` + `validation_test.py` is green with no third-party
+  packages (313 tests), with numpy (354) and with numpy + scipy (443) — up
+  from 22 tests at the start of the hardening effort. The three-way run is
+  itself a differentiator and is newer than it looks: until 2026-08-25 twelve
+  test modules imported numpy unguarded, so on a bare install `pytest` failed
+  at *collection* and ran nothing. Verifying the dependency-free core required
+  installing the dependency it is defined by not needing.
+- **DSP claims are checked against ground truth, not eyeballed.** The
+  regression suite asserts measured quantities — a clean sine survives
+  restoration bit-exactly, a clipped signal comes back 14.5 dB closer to the
+  unclipped truth, the loudness meter agrees with `pyloudnorm` to 0.043 LU.
+  Several defects in this codebase were invisible to code review and obvious
+  to a measurement.
 - **Load-bearing, dependency-free security core.** `security_validator.py`
   (trusted-root path containment via `os.path.commonpath`, size limits) plus
   `advanced_validation.py`'s `DeepFileInspector` (WAV magic-number gating,
@@ -60,17 +89,26 @@ Rather than asking "what does an audio tool usually have", this pass derived
 the necessary-and-sufficient feature set from `CHARTER.md` §1 (*dependency-free,
 auditable, deterministic WAV CLI*) and measured the codebase against it.
 
-**Excess — roughly 1 line in 4 of shipped Python is unreachable from the CLI.**
+**Excess — re-measured 2026-08-25, after the deletions and the wiring.**
 
-| Bucket | Lines | Share |
+| Bucket | 2026-08-08 | 2026-08-25 |
 |--------|------:|------:|
-| Reachable from the CLI (the stated product) | 9,367 | 66.5% |
-| Reachable only via `server` + `[api]` extra | 1,600 | 11.4% |
-| **Orphaned (no entry point reaches it)** | **3,121** | **22.2%** |
+| Reachable from the CLI (the stated product) | 9,367 (66.5%) | **10,432 (73.0%)** |
+| Reachable only via `server` + `[api]` extra | 1,600 (11.4%) | 1,572 (11.0%) |
+| **Orphaned (no entry point reaches it)** | **3,121 (22.2%)** | **2,296 (16.1%)** |
 
-Including `core.py`'s `RealtimeAudioProcessor` pushed dead weight to ~25% when
-this was measured. That class — 393 lines needing an undeclared `websockets`
-dependency, with zero callers — was **deleted on 2026-08-25**.
+Orphaned code fell from roughly one line in four to one in six. Two causes,
+and they pull in opposite directions: ~800 lines were **deleted**
+(`performance_optimizer.py`, `core.py`'s `RealtimeAudioProcessor`,
+`api_server.py`'s phantom imports) and `audio_restoration.py` was **wired in**
+rather than removed, moving 530 lines from orphaned to reachable. Deleting is
+not the only way to stop something being dead.
+
+The three modules still in the orphan column are `batch_automation.py`,
+`spectral_editor.py` and `personal_config.py`. Each is allow-listed with a
+written reason in `tests/test_no_orphan_modules.py`, which fails if a fourth
+appears. Re-measure with the reachability walk in that test rather than
+trusting these numbers.
 
 Specific findings, each cited so it can be re-verified:
 
@@ -85,9 +123,13 @@ Specific findings, each cited so it can be re-verified:
 - **Spectral subtraction is implemented three times**: `main.py`'s
   `remove_noise`, `audio_restoration.py`'s `AdaptiveDenoiser`, and
   `spectral_editor.py`'s `noise_reduce_selection`.
-- **`audio_restoration.py` is mostly genuine capability** — 7 of its 8 classes
-  (click/crackle/hum removal, declipping, gap repair, vinyl) have no wired
-  equivalent. It is blocked on a CLI surface, not redundant.
+- ~~**`audio_restoration.py` is blocked on a CLI surface**~~ — **wired
+  2026-08-25** as `process --declip` / `--dehum`, after an audit that had to
+  come first: the declipper reported 880 clipped regions in one second of a
+  *clean* sine and damaged every one, and the hum detector answered yes to
+  audio containing no hum. Click, crackle, gap-repair and the librosa denoiser
+  are deliberately **not** exposed — see §2 for why click detection in
+  particular has no trustworthy implementation here.
 - **`batch_automation.py` is genuine capability pointed the wrong way** — a
   generic DAG/workflow engine, i.e. §4's "a second product". Its own demo
   builds tasks for MP3/FLAC/OGG transcoding this product cannot do.
@@ -145,11 +187,41 @@ document (kept here as a record, per the honesty culture):
   its safe-AST condition evaluator + optional scheduling and notes its
   standalone/orphaned status.
 
+### Unsolved DSP problems (stated, not hidden)
+These are the honest residue of the 2026-08-25 restoration audit. They are not
+bugs to fix but problems without a known-good answer in this codebase.
+
+- **Click detection has no trustworthy implementation.** Two candidates were
+  measured and both have a regime where they destroy audio rather than repair
+  it: the shipped envelope/z-score detector reports 354 clicks in one second
+  of white noise (pulling its peak from 0.473 to 0.325), and a
+  second-difference/MAD detector reports 1,764 in hard-clipped material — one
+  per clipping corner, since a corner is a derivative discontinuity that looks
+  exactly like an impulse. Separating the two needs a model of what the signal
+  should do next, i.e. the autoregressive prediction the old code's comment
+  falsely claimed. `--declick` is therefore **not** shipped. Shipping a third
+  mediocre detector would be the error `CHARTER.md` §9 keeps warning about.
+- **Declipping cannot see clipping that was attenuated afterwards**, and a
+  *pure* tone at or below 33 Hz at full scale reads as a plateau at the
+  detector's one-LSB flatness tolerance (0 false regions at 35 Hz, 24 at
+  32 Hz, 60 at 30 Hz). Real bass carries harmonics that curve the peak — 40 Hz
+  with two harmonics gives zero — and a test pins the boundary so the
+  docstring cannot drift from the behaviour.
+- **Spectral subtraction is still implemented three times**: `main.py`'s
+  `remove_noise` (fixed 2026-08-08), `audio_restoration.py`'s
+  `AdaptiveDenoiser` (librosa-only) and `spectral_editor.py`'s
+  `noise_reduce_selection` (orphaned). Only the first is wired and tested.
+  Consolidating them is a real refactor, not a tidy-up.
+
 ### Coverage gaps
-- ~~**Zero test coverage:** `personal_config.py`.~~ — covered 2026-08-25.
-  (`audio_restoration.py` and `spectral_editor.py` now have import-safety
-  coverage via `tests/test_orphaned_import_safety.py`, but still no coverage
-  of their actual DSP.)
+- ~~**Zero test coverage:** `personal_config.py`.~~ — covered 2026-08-25 by
+  `tests/test_personal_config.py`, which found three defects in the two
+  functions a new user hits first.
+- **The orphaned modules' DSP is still untested.** `spectral_editor.py` and
+  `batch_automation.py` have import-safety coverage
+  (`tests/test_orphaned_import_safety.py`, `tests/test_smoke.py`) but nothing
+  exercises what they compute. The `audio_restoration` audit is the reason to
+  care: every defect it turned up was in code that imported cleanly.
 
 ### Infrastructure / architecture (need a human or a big investment)
 - **The active CI workflow is broken and cannot be fixed by the automation
@@ -169,12 +241,21 @@ document (kept here as a record, per the honesty culture):
   true-peak costs ~0.4 s per 65k-sample bounded prefix.
 
 ### Orphaned assets awaiting a disposition decision (deletion needs user OK)
-`batch_automation.py`, `spectral_editor.py`, `audio_restoration.py`,
-`personal_config.py` (documented onboarding entry point — see `CHARTER.md` §9),
-`gui/`, `openapi_spec.yaml`. Per project practice,
-deletions require **explicit, per-item user confirmation** — do not delete on
-the strength of this list. (`core.py`'s `RealtimeAudioProcessor` was on this
-list and was deleted on 2026-08-25 after that confirmation was given.)
+Measured 2026-08-25: `batch_automation.py`, `spectral_editor.py` (both kept by
+explicit user decision over a recommendation to delete) and `personal_config.py`
+(a documented onboarding entry point — reachable by a *user* via
+`quick_install`, just not by an import). Outside the Python module list:
+`gui/`, `openapi_spec.yaml`.
+
+Per project practice, deletions require **explicit, per-item user
+confirmation** — do not delete on the strength of this list.
+`tests/test_no_orphan_modules.py` holds the same three in an allow-list with
+written justifications and fails if a fourth appears, so this section and that
+test must agree.
+
+Resolved from this list on 2026-08-25: `core.py`'s `RealtimeAudioProcessor`
+and `performance_optimizer.py` (deleted, with confirmation) and
+`audio_restoration.py` (wired into the CLI instead).
 
 ---
 
@@ -201,7 +282,9 @@ here because they need a user decision first.
 | P3 | Consider TPDF dither by default, or a `--dither` CLI flag | Low | S | Med | Currently opt-in via `ProcessingConfig.apply_dither` only, to keep output deterministic (CHARTER §9). No CLI surface yet |
 | ~~P2~~ | ~~Give `audio_restoration` a CLI surface~~ | Med | M | Med | **DONE 2026-08-25** — `process --declip` / `--dehum` ship after an audit that found the declipper damaging clean audio and the hum detector firing on silence. Click/crackle/gap/denoise deliberately not exposed: no trustworthy detector. See `CHARTER.md` §9 |
 | P2 | Adopt `ci/proposed-ci.yml` → `.github/workflows/ci-cd.yml` | High (green CI) | XS (one `cp`) | Low | **Human-only** — needs `workflows` permission |
-| P3 | Decide disposition of each orphaned asset (wire / keep-labeled / delete) | Med | Varies | Med | Deletion needs explicit user confirmation |
+| ~~P3~~ | ~~Decide disposition of each orphaned asset~~ | Med | Varies | Med | **DONE 2026-08-25** — every module now has a decision: deleted (2), wired (1), or allow-listed with a written reason (3). `tests/test_no_orphan_modules.py` fails if a new one appears |
+| P3 | Consolidate the three spectral-subtraction implementations | Low | M | Med | `main.py` (wired, fixed), `audio_restoration` (librosa-only), `spectral_editor` (orphaned). A real refactor, not a tidy-up |
+| P4 | A trustworthy click detector, or a documented decision not to have one | Med | L | High | Both measured candidates destroy audio in some regime — see §2. Needs AR prediction or equivalent; do not ship a third guess |
 | P3 | Pure-Python true-peak perf, or a documented cap note | Low | S | Low | Currently ~0.4 s/65k samples |
 | P4 | Plugin sandbox runtime boundary (restricted builtins for `exec_module`) | High (security) | L | High | Architectural; leaky if done partially — design first |
 | P4 | Surround-channel loudness weighting | Low | M | Low | Only if a real multichannel use case appears |
@@ -210,14 +293,43 @@ here because they need a user decision first.
 
 ## 4. How to keep this current
 
-Re-verify any claim before trusting it — line numbers drift. Fast checks:
+Re-verify any claim before trusting it — line numbers drift and prose rots.
+
+The checks that used to live here were four greps for `malware detection`,
+`Government-Grade` in `gui/package.json`, and unguarded numpy/scipy imports.
+On 2026-08-25 **all four returned zero hits**: every problem they looked for
+had been fixed, some of them months earlier. A check that cannot fail teaches
+you nothing and costs you the feeling of having checked. They are replaced
+with commands that produce a *number to compare*, not a hit to hope for.
 
 ```bash
-python -m pytest -q                      # confirm the test count in the header
-grep -n "malware detection" advanced_validation.py
-grep -n "RESTRICTED\|Government-Grade" gui/package.json
-grep -rn "^import numpy\|^from scipy" spectral_editor.py audio_restoration.py
+# 1. The three dependency configurations. Header says 313 / 354 / 443.
+python -m pytest -q                       # numpy + scipy present
+#   ...and with numpy/scipy made unimportable, and with only scipy blocked:
+#   see tests/test_stdlib_operations.py for the sitecustomize blocker pattern.
+
+# 2. Reachability, for the §1b table. Reuses the walk the guard test performs.
+python -m pytest -q tests/test_no_orphan_modules.py
+
+# 3. Scope discipline, sources *and* the CLI surface.
+python -m pytest -q tests/test_no_fantasy_features.py
+
+# 4. Which commands actually survive without numpy — the §1 claim that was
+#    wrong for months. Run each one with numpy blocked and read the exit code.
+python main.py --help
 ```
 
+Two habits worth more than any of the above:
+
+- **Read the CLI's own output.** Three false statements were fixed on
+  2026-08-25 that had been printing on nearly every command for months — a
+  security warning that fired on ordinary audio, a frequency range of
+  `0.0-0.0Hz`, and a dynamic range of `0.0dB`. No test caught them because no
+  test was looking at what the user reads.
+- **Ask what a claim would look like if it were false**, then run that. "The
+  suite is green" was true and also hid that on a bare install it collected
+  nothing at all.
+
 When you resolve a backlog item, move it out of §3, note it in `CHARTER.md`
-§9 (the decision record), and bump the snapshot date above.
+§9 (the decision record), bump the snapshot date above, and re-run the numbers
+rather than editing them by hand.

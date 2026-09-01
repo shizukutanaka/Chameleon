@@ -1404,6 +1404,42 @@ spent its length undoing. A test asserts the distinction, stripping comments
 first — the handler explains why it does not catch `Exception`, and the first
 version of that test matched its own explanation.
 
+**Every claim in `PRODUCT_ANALYSIS.md` was re-checked; eight were false
+(2026-08-25).** That document opens by saying its claims are "cited to
+`file:line` so it can be re-verified, not trusted". Taking it at its word and
+actually re-running them found:
+
+| Claim | Reality |
+|---|---|
+| "211 passing, 3 skipped" | 313 / 354 / 443 across three dependency configurations |
+| "215 tests, up from 22" | stale by 228 |
+| zero-dependency core includes `midi` | `midi extract` / `analyze` exit 1 without numpy; only `compose` / `generate` are stdlib |
+| the §4 guard greps "Python sources" | it now reads the CLI surface too |
+| orphaned = 3,121 lines / 22.2% | 2,296 / 16.1% |
+| `audio_restoration` "blocked on a CLI surface" | wired on 2026-08-25 |
+| orphan list of six | three, measured |
+| §4's four "fast checks" | **all four return zero hits** |
+
+The last row is the one worth remembering. Those greps looked for
+`malware detection`, `Government-Grade` in `gui/package.json`, and unguarded
+numpy/scipy imports — every one of which had been fixed, some months earlier.
+A maintenance checklist whose items always pass is not verification; it is the
+*appearance* of verification, and it is more dangerous than no checklist
+because it is reassuring. They are replaced with commands that yield a number
+to compare against a recorded one, so drift shows up as a mismatch rather than
+as a silent pass.
+
+The same shape has now appeared three times in this branch: the security scan
+that fired on everything (PR #26), the guard that never looked at the CLI
+surface (this pass), and a checklist that could no longer fail. A check is only
+worth its line if you can say what would make it fail — and, ideally, have
+watched it do so.
+
+Also corrected here: the "zero-dependency core" strength had listed `midi`
+without qualification for months. `midi extract` and `midi analyze` load audio
+into arrays. Verified by running every subcommand with numpy blocked and
+reading exit codes, which is the kind of check the section now prescribes.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy
