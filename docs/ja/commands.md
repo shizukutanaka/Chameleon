@@ -207,20 +207,6 @@ chameleon plugins list --directory /abs/path/to/plugins --json
 以下は依存ゼロの既定インストールでは動作しません。先に該当する extra を
 インストールしてください（`README.md` 参照）。
 
-### `ml` — numpy/scipy が必要
-
-ノイズ除去と正規化による音質改善。
-
-```bash
-pip install -e .[audio]
-chameleon ml enhance --input noisy.wav --output clean.wav
-```
-
-位置引数: `enhance`。オプション: `--input FILE`（必須）、`--output FILE`。
-
-> 名称に関する注記: このサブコマンドが行うのは従来型の DSP（ノイズ除去と
-> 正規化）です。機械学習は行いません（`CHARTER.md` §4 を参照）。
-
 ### `stream` — pyaudio が必要
 
 リアルタイム音声処理。

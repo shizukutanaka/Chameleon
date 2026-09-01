@@ -1795,14 +1795,12 @@ def create_cli():
     batch.add_argument("--bit-depth", type=int, choices=[16, 24, 32], help="Target bit depth for conversion")
     batch.add_argument("--effects", help="Effects configuration for the effects operation (JSON file)")
 
-    # ML command — only 'enhance' is implemented; classify/separate/transcribe
-    # require trained models or external tools that are explicitly out of scope
-    # per CHARTER §4 (non-goals: AI transcription, source separation, ML features).
-    ml = subparsers.add_parser("ml", help="Audio enhancement (numpy/scipy required)")
-    ml.add_argument("operation", choices=["enhance"],
-                    help="enhance: apply noise reduction + normalization")
-    ml.add_argument("--input", required=True, help="Input audio file")
-    ml.add_argument("--output", help="Output file/directory")
+    # The  command was removed in 2026-08. Its one operation, ,
+    # called remove_noise() then normalize_audio() -- two pieces of
+    # deterministic DSP, no model and no learning -- and was exactly
+    # . A machine-learning name over
+    # spectral subtraction is the §4 claim this project mechanizes against,
+    # sitting on the first screen a user reads. See CHARTER.md §9.
 
     # MIDI command
     midi = subparsers.add_parser("midi", help="MIDI analysis and composition")
@@ -2313,18 +2311,6 @@ async def main():
 
         if successful != len(results):
             exit_code = ExitCode.ERROR
-
-    elif args.command == "ml":
-        # Only 'enhance' is a real operation; classify/separate/transcribe were removed
-        # because they require trained models or external services — CHARTER §4 non-goals.
-        audio, sr = processor.load_audio(args.input)
-
-        if args.operation == "enhance":
-            enhanced = processor.remove_noise(audio, sr)
-            enhanced = processor.normalize_audio(enhanced)
-            output = args.output or args.input.replace(".wav", "_enhanced.wav")
-            processor.save_audio(enhanced, output, sr)
-            print(f"Enhanced audio saved to {output}")
 
     elif args.command == "midi":
         print(f"MIDI operation '{args.operation}'")
