@@ -423,7 +423,22 @@ class AudioProcessor:
         self.logger = logger
 
     def load_audio(self, file_path: str) -> Tuple['np.ndarray', int]:
-        """Load audio file with multiple backend support"""
+        """Load audio file into a numpy array, with multiple backend support.
+
+        Checks for numpy here rather than letting each caller discover it.
+        Every backend below returns an ndarray, so without numpy this method
+        cannot succeed -- but `np` was left bound to None, and the failure
+        surfaced 90 lines away as `AttributeError: 'NoneType' object has no
+        attribute 'frombuffer'`. Two commands still reached that traceback
+        after the one that prompted the fix was deleted, which is the
+        difference between removing an instance and removing the cause.
+        """
+        if not HAS_NUMPY:
+            raise ValueError(
+                "Reading audio into arrays requires numpy. "
+                "Install it with: pip install -e .[audio]"
+            )
+
         file_path = os.fspath(file_path)
 
         if Path(file_path).suffix.lower() not in SUPPORTED_FORMATS:
@@ -1795,14 +1810,12 @@ def create_cli():
     batch.add_argument("--bit-depth", type=int, choices=[16, 24, 32], help="Target bit depth for conversion")
     batch.add_argument("--effects", help="Effects configuration for the effects operation (JSON file)")
 
-    # ML command — only 'enhance' is implemented; classify/separate/transcribe
-    # require trained models or external tools that are explicitly out of scope
-    # per CHARTER §4 (non-goals: AI transcription, source separation, ML features).
-    ml = subparsers.add_parser("ml", help="Audio enhancement (numpy/scipy required)")
-    ml.add_argument("operation", choices=["enhance"],
-                    help="enhance: apply noise reduction + normalization")
-    ml.add_argument("--input", required=True, help="Input audio file")
-    ml.add_argument("--output", help="Output file/directory")
+    # The `ml` command was removed in 2026-08. Its one operation, `enhance`,
+    # called remove_noise() then normalize_audio() -- two pieces of
+    # deterministic DSP, no model and no learning -- and was exactly
+    # `process --denoise --normalize`. A machine-learning name over
+    # spectral subtraction is the §4 claim this project mechanizes against,
+    # sitting on the first screen a user reads. See CHARTER.md §9.
 
     # MIDI command
     midi = subparsers.add_parser("midi", help="MIDI analysis and composition")
@@ -2314,18 +2327,6 @@ async def main():
         if successful != len(results):
             exit_code = ExitCode.ERROR
 
-    elif args.command == "ml":
-        # Only 'enhance' is a real operation; classify/separate/transcribe were removed
-        # because they require trained models or external services — CHARTER §4 non-goals.
-        audio, sr = processor.load_audio(args.input)
-
-        if args.operation == "enhance":
-            enhanced = processor.remove_noise(audio, sr)
-            enhanced = processor.normalize_audio(enhanced)
-            output = args.output or args.input.replace(".wav", "_enhanced.wav")
-            processor.save_audio(enhanced, output, sr)
-            print(f"Enhanced audio saved to {output}")
-
     elif args.command == "midi":
         print(f"MIDI operation '{args.operation}'")
 
@@ -2467,6 +2468,18 @@ def cli() -> int:
     except KeyboardInterrupt:
         print("\nInterrupted", file=sys.stderr)
         return ExitCode.INTERRUPTED
+    except (ValueError, FileNotFoundError) as exc:
+        # The errors this CLI raises deliberately to tell the user something
+        # they can act on -- an unsupported file type, a missing file, a
+        # missing optional dependency. They reached the terminal as tracebacks,
+        # which buries the one line that mattered.
+        #
+        # Deliberately not `except Exception`. A genuine bug should still show
+        # its traceback: turning a crash into a tidy "Error:" line would make
+        # the tool wrong about itself in a new way, which is the failure mode
+        # this project keeps having to undo.
+        print(f"Error: {exc}", file=sys.stderr)
+        return ExitCode.ERROR
 
 
 if __name__ == "__main__":

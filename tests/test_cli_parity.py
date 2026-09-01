@@ -47,9 +47,13 @@ def test_process_parallel_flag_removed(tmp_path):
     assert result.returncode == 2
 
 
-def test_ml_model_flag_removed(tmp_path):
+def test_ml_command_removed(tmp_path):
+    # The `--model` flag went first; the command followed it in 2026-08. Its
+    # one operation was remove_noise() + normalize_audio() -- no model, no
+    # learning -- and `process --denoise --normalize` does the same work under
+    # a name that is true. See CHARTER.md §9.
     wav = write_sine_wave(tmp_path / "tone.wav")
-    result = _run("ml", "enhance", "--input", str(wav), "--model", "x", cwd=str(tmp_path))
+    result = _run("ml", "enhance", "--input", str(wav), cwd=str(tmp_path))
     assert result.returncode == 2
 
 

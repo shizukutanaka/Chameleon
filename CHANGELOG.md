@@ -93,6 +93,17 @@
 
 ### Fixed
 
+- **`midi extract` / `midi analyze` crashed with a raw `AttributeError` on the
+  dependency-free install** instead of naming the missing dependency.
+  `load_audio` returns an ndarray from every backend, so it cannot work without
+  numpy; the check now lives there rather than at each call site.
+- **Deliberate errors reached the terminal as tracebacks.** `cli()` caught only
+  `KeyboardInterrupt`, so an unsupported file type, a missing file or a missing
+  optional dependency printed a stack trace with the useful line buried in it.
+  These now print as `Error: ...` with exit code 1. Unexpected exceptions still
+  show their traceback — hiding a real bug behind a tidy message would be a new
+  way of being wrong.
+
 - **`analyze --detailed` reported `Frequency Range: 0.0-0.0Hz`** for any file,
   on any install without librosa — which is every install, since librosa is in
   no extra. The dataclass default was being printed as a measurement. It now
@@ -132,6 +143,15 @@
   modification time as every playlist's creation time.
 
 ### Removed
+
+- **The `ml` command.** Its one operation ran spectral subtraction then peak
+  normalization — deterministic DSP, no model and no learning — and was exactly
+  `process --denoise --normalize`, which was already documented. The handler's
+  own comment noted that the other ML operations had been removed as
+  `CHARTER.md` §4 non-goals while leaving the command called `ml`, and the
+  bilingual docs carried a note saying it *does not perform machine learning*.
+  A caveat under a false name does not retract it. Use
+  `process --denoise --normalize`.
 
 - **`performance_optimizer.py`** (324 lines, zero importers). Everything in it
   already existed in code that runs: worker count in `main.py`'s

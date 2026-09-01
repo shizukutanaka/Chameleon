@@ -208,20 +208,6 @@ files for sandbox compliance).
 These do **not** work on the default, dependency-free install. Install the
 relevant extra first (see `README.md`).
 
-### `ml` — requires numpy/scipy
-
-Audio enhancement: noise reduction plus normalization.
-
-```bash
-pip install -e .[audio]
-chameleon ml enhance --input noisy.wav --output clean.wav
-```
-
-Positional: `enhance`. Flags: `--input FILE` (required), `--output FILE`.
-
-> Naming note: this subcommand applies conventional DSP (noise reduction and
-> normalization). It does not perform machine learning — see `CHARTER.md` §4.
-
 ### `stream` — requires pyaudio
 
 Real-time audio processing.

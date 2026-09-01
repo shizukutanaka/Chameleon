@@ -1344,6 +1344,102 @@ was not wrong about the audio, it was wrong about itself. A default that
 reaches the user as a number is indistinguishable from a measurement, and
 costs more trust than a missing line ever would.
 
+**The `ml` command deleted (2026-08-25).** `main.py` exposed a top-level
+command named `ml`. Its one operation, `enhance`, was:
+
+```python
+enhanced = processor.remove_noise(audio, sr)     # spectral subtraction
+enhanced = processor.normalize_audio(enhanced)   # peak normalization
+```
+
+Two pieces of deterministic DSP. No model, no training, no inference — and
+exactly `process --denoise --normalize`, which was already documented. A
+duplicate command whose only distinguishing feature was a false name.
+
+Two details make it worse than an oversight. The handler's own comment said
+that classify/separate/transcribe had been removed as §4 non-goals, while
+leaving the command called `ml`. And `docs/{en,ja}/commands.md` carried a
+"naming note" stating that the subcommand *does not perform machine learning*.
+The project knew, and answered a false name with a footnote. A caveat under a
+claim does not retract the claim; it just moves the reader's work to them.
+
+Deleted with explicit per-item confirmation. `process --denoise --normalize`
+does the same work under a name that is true.
+
+**§4 is now mechanized on the CLI surface, not just the sources
+(2026-08-25).** `tests/test_no_fantasy_features.py` greps `.py` files for
+`torch` / `neural network` / `quantum`, which is why a command literally called
+`ml` passed cleanly for its entire life. The guard now also runs the real CLI
+and reads what argparse prints — every subcommand name and every `help=` string
+— because that is the surface a user actually reads, and a §4 claim on the
+first screen is more visible than one buried in a source file, not less.
+
+The parser is built inline inside `main()` and is not importable; the guard
+therefore shells out to `main.py --help` and `<cmd> --help`, reusing the
+`_run` pattern from `tests/test_cli_parity.py`. Refactoring product code to
+suit a test would have been the wrong way round. Negative-tested by
+reintroducing an `ml` subparser with the help text "Audio enhancement using
+machine learning": both new tests fail, then pass again once it is removed.
+
+**Deleting the instance is not fixing the cause (2026-08-25).**
+`ml enhance` on the dependency-free install produced
+`AttributeError: 'NoneType' object has no attribute 'frombuffer'` — `np` bound
+to `None`, discovered ninety lines from the cause inside `_load_wav_basic`.
+Deleting the command removed the first *reachable* instance. `midi extract` and
+`midi analyze` still reached it.
+
+`AudioProcessor.load_audio` returns an ndarray from every one of its backends,
+so it cannot succeed without numpy; the check belongs there, where the
+requirement is, not at each call site where it would need re-adding for every
+future caller. It now raises the same actionable message the rest of the CLI
+uses.
+
+That exposed the layer above: `cli()` caught only `KeyboardInterrupt`, so
+errors this CLI raises *deliberately* — unsupported file type, missing file,
+missing optional dependency — reached the terminal as tracebacks with the one
+useful line buried inside. It now prints those, and **still does not catch
+`Exception`**. Turning a genuine bug into a tidy "Error:" line would make the
+tool wrong about itself in a new way, which is the failure mode this branch has
+spent its length undoing. A test asserts the distinction, stripping comments
+first — the handler explains why it does not catch `Exception`, and the first
+version of that test matched its own explanation.
+
+**Every claim in `PRODUCT_ANALYSIS.md` was re-checked; eight were false
+(2026-08-25).** That document opens by saying its claims are "cited to
+`file:line` so it can be re-verified, not trusted". Taking it at its word and
+actually re-running them found:
+
+| Claim | Reality |
+|---|---|
+| "211 passing, 3 skipped" | 313 / 354 / 443 across three dependency configurations |
+| "215 tests, up from 22" | stale by 228 |
+| zero-dependency core includes `midi` | `midi extract` / `analyze` exit 1 without numpy; only `compose` / `generate` are stdlib |
+| the §4 guard greps "Python sources" | it now reads the CLI surface too |
+| orphaned = 3,121 lines / 22.2% | 2,296 / 16.1% |
+| `audio_restoration` "blocked on a CLI surface" | wired on 2026-08-25 |
+| orphan list of six | three, measured |
+| §4's four "fast checks" | **all four return zero hits** |
+
+The last row is the one worth remembering. Those greps looked for
+`malware detection`, `Government-Grade` in `gui/package.json`, and unguarded
+numpy/scipy imports — every one of which had been fixed, some months earlier.
+A maintenance checklist whose items always pass is not verification; it is the
+*appearance* of verification, and it is more dangerous than no checklist
+because it is reassuring. They are replaced with commands that yield a number
+to compare against a recorded one, so drift shows up as a mismatch rather than
+as a silent pass.
+
+The same shape has now appeared three times in this branch: the security scan
+that fired on everything (PR #26), the guard that never looked at the CLI
+surface (this pass), and a checklist that could no longer fail. A check is only
+worth its line if you can say what would make it fail — and, ideally, have
+watched it do so.
+
+Also corrected here: the "zero-dependency core" strength had listed `midi`
+without qualification for months. `midi extract` and `midi analyze` load audio
+into arrays. Verified by running every subcommand with numpy blocked and
+reading exit codes, which is the kind of check the section now prescribes.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy
