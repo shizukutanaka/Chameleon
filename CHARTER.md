@@ -1553,6 +1553,56 @@ looked for two ghost scripts by name and reported `error_recovery.md` as merely
 three more references in that same file. A check finds what it looks for, and
 the gap is never where you already looked.
 
+**The Kubernetes manifest could never have worked (2026-08-25).** Having
+audited the analysis document, the front-door documents, the test suite and
+`docs/`, the last unexamined user-facing artifact was `k8s-deployment.yaml`.
+It is not documentation drift; it is a broken shipped artifact.
+
+All three probes — liveness, readiness and startup — requested `/health` on
+port `http`, declared as `containerPort: 8080`. The container's entrypoint runs
+`main.py server --port "${CHAMELEON_PORT:-8000}"`, and the Dockerfile says
+`EXPOSE 8000`. **Every probe would have failed and no pod would ever have
+become ready.** Alongside that: a `metrics` port 9090 with
+`prometheus.io/path: /metrics`, a `ServiceMonitor` and a `PrometheusRule` whose
+four alert rules queried metrics the API has never exported (`grep -c "/metrics"
+api_server.py` → 0); `image: chameleon/audio-tool:v2.0.0` for a project at
+1.1.0; and five `CHAMELEON_*` environment variables no code reads.
+
+Fixed rather than deleted, by explicit decision: port 8000, image v1.1.0, the
+two Prometheus documents and the metrics port removed, phantom variables
+dropped. 18 YAML documents → 16, and the result is verified programmatically
+against `api_server.py` and the `Dockerfile` rather than by eye. The header now
+states plainly that it is verified against the code and **not** against a live
+cluster, because nobody has applied it from this repository and that limit
+should be visible to whoever does.
+
+Two things worth keeping from how this went. The HPA's `metrics:` block and the
+`metrics.k8s.io` API group are legitimate Kubernetes APIs that a careless
+find-and-replace on "metrics" would have destroyed; the resource-metrics
+autoscaler is intact and asserted. And the first verification script reported
+two failures that were the script's fault, not the manifest's — it flagged
+`/metrics` appearing in a comment recording its own removal, and flagged
+`POD_NAME`/`POD_NAMESPACE`/`NODE_NAME`, which are downward-API values carried
+by `valueFrom` and are k8s convention rather than application config. A check
+that is too strict is not safer than one that is too loose; both report
+something other than the truth.
+
+`DEPLOYMENT_GUIDE.md` was repaired in the same pass. Its "Monitoring Setup"
+configured a Prometheus scrape of `/metrics` and a Grafana dashboard querying
+`chameleon_processing_duration_seconds`, `chameleon_queue_length` and
+`chameleon_errors_total` — none of which exist, so the scrape 404s and every
+panel stays empty. Replaced with the endpoints that do exist (`/health`,
+`/system/status`, `/audit/log`) and the two log files actually written. Its
+"Database Optimization" section tuned a PostgreSQL `audit_log` table; the
+project contains no database code of any kind and the audit trail is a plain
+file, so the section was deleted — "(if using)" hedged a capability that exists
+in no configuration.
+
+The guide's use of port 8080 is *not* an error and was left alone: it passes
+`--port 8080` explicitly, `server --port` is a real flag, and its firewall and
+curl examples agree. The manifest was broken precisely because it changed the
+port without passing the argument that would have made it true.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy
