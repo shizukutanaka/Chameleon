@@ -67,6 +67,17 @@ re-verified, not trusted.
   test modules imported numpy unguarded, so on a bare install `pytest` failed
   at *collection* and ran nothing. Verifying the dependency-free core required
   installing the dependency it is defined by not needing.
+- **The suite is mutation-checked, not just green.** "445 tests pass" says
+  nothing on its own about whether they would fail if the code broke. On
+  2026-08-25 six of this branch's fixes were deliberately reverted in the
+  source, one at a time, and the suite was re-run: the declipper's unbalanced
+  crossfade, the resampler's anti-aliasing cutoff, the key-profile rotation,
+  `--mono`'s idempotency, the quantiser's rounding, and a K-weighting
+  coefficient nudged by 0.1%. **All six were caught**, each by the test written
+  for it. A static audit of the suite in the same pass found no vacuous
+  tests — no `assert True`, no `x == x`, nothing swallowing exceptions, and the
+  only three assertion-free tests are "must not raise" checks where the call
+  itself is the assertion.
 - **DSP claims are checked against ground truth, not eyeballed.** The
   regression suite asserts measured quantities — a clean sine survives
   restoration bit-exactly, a clipped signal comes back 14.5 dB closer to the
@@ -318,6 +329,23 @@ python -m pytest -q tests/test_no_fantasy_features.py
 #    wrong for months. Run each one with numpy blocked and read the exit code.
 python main.py --help
 ```
+
+**The deep check, worth running before any claim that the suite is sound:**
+break the code on purpose and confirm the suite notices. Revert one fix in the
+source, run only its test file, restore. Six known-good pairs, all verified to
+fail-then-pass on 2026-08-25:
+
+| Revert | Should fail |
+|---|---|
+| `(1.0 - window)` → `(1.0 - window) * 0.5` in `audio_restoration.py` | `tests/test_declipping.py` |
+| `cutoff = min(1.0, ratio)` → `cutoff = 1.0` in `main.py` | `tests/test_resample_quality.py` |
+| `(pc - tonic)` → `(pc + tonic)` in `midi_analysis.py` | `tests/test_music_theory.py` |
+| drop the `shutil.copyfile` in `core.py`'s already-mono branch | `tests/test_stdlib_operations.py` |
+| `np.round(scaled)` → `scaled` in `main.py` | `tests/test_quantization.py` |
+| any K-weighting coefficient × 1.001 in `bs1770_loudness.py` | `tests/test_bs1770_loudness.py` |
+
+A green suite that survives none of these is measuring nothing. Restore the
+file after each one — `git status` must come back empty.
 
 Two habits worth more than any of the above:
 
