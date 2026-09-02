@@ -1505,6 +1505,54 @@ is a poor trade — slow, and a failed restore is worse than no check — but th
 pairs are cheap to re-run by hand and are the only thing that distinguishes a
 suite that defends the code from one that merely accompanies it.
 
+**Nine documentation files described a product that does not exist
+(2026-08-25).** The audit that had covered `PRODUCT_ANALYSIS.md`, then the
+front-door documents, then the test suite itself, finally reached `docs/`. It
+found the same defect `api_server.py` carried until PR #23, in a worse place.
+
+Seven files told the reader to `import chameleon_audio`; one used `audio_tool`;
+three invoked `python enterprise_cli.py`, `python chameleon_cli.py` or
+`python security_tools.py`. **None of those modules or scripts has ever existed
+in this repository, in any commit** — confirmed with
+`git log --all --diff-filter=A`. Several pages carried "Enterprise Edition",
+"Commercial Release" and "Enterprise Ready: ✅", which is precisely the
+vocabulary `README.md` says this charter exists to stop.
+
+In `api_server.py` the phantom imports were dead code behind a permanently
+false flag: inert. In documentation they are not inert. Someone copies the
+block into a terminal, it fails, and the failure looks like their mistake
+rather than ours. That is the argument for deleting rather than annotating,
+and it is why a warning banner was rejected — the same footnote-under-a-false-
+claim pattern already rejected for the `ml` command.
+
+Deleted with explicit per-item confirmation, 2,240 lines across nine files, all
+of them linked from nothing: `security_logs`, `test_cases` and `ui_enhancement`
+in both languages, plus the Japanese halves of `batch_processing`,
+`performance_benchmarks` and `error_recovery` whose English counterparts are
+honest. `docs/en/performance_benchmarks.md` is the model the others should have
+followed: it quotes no invented numbers and tells the reader how to measure
+their own.
+
+`docs/en/error_recovery.md` was kept and repaired rather than deleted, and the
+repair is worth recording because the first description of it was wrong. It was
+presented as needing one stale line changed; it actually invoked a nonexistent
+`security_tools.py` three times and a nonexistent log file. Its *structure* —
+symptom, action, audit — is sound, so the invented commands were replaced with
+real ones (`$CHAMELEON_TRUSTED_ROOTS` for path containment,
+`~/.chameleon/logs/chameleon.log` for the log that is actually written).
+
+`tests/test_docs_reference_reality.py` now fails if any documented module or
+script is absent from the tree. It is deliberately narrower than the §4
+vocabulary guard: purely mechanical, checking existence rather than judgement.
+Negative-tested with a probe file carrying the exact first code block of the
+deleted pages.
+
+The lesson repeats one already in this record. The first scan of these files
+looked for two ghost scripts by name and reported `error_recovery.md` as merely
+"overclaim"; broadening it to *every* `python X.py` in every document found
+three more references in that same file. A check finds what it looks for, and
+the gap is never where you already looked.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy
