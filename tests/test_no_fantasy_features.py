@@ -10,7 +10,11 @@ Python sources for active fantasy-feature claims and fails if any are found.
 
 It also scans the **CLI surface** -- subcommand names and their help strings --
 because for a long time it did not, and a top-level command literally called
-`ml` passed the source grep cleanly. Its one operation ran spectral subtraction
+`ml` passed the source grep cleanly. And it scans the **user-facing documents**
+(README, QUICKSTART, docs/), because after `ml` was deleted README.md still
+advertised "advanced spectral/ML processing" as an optional capability. Each
+extension was prompted by a real miss, in order: sources, then the CLI, then
+the docs. A claim does not become true by moving to a file the guard skips. Its one operation ran spectral subtraction
 and peak normalization: deterministic DSP, no model, no learning. A §4 claim
 does not become harmless by living on the first screen a user reads rather than
 in a source file; it becomes more visible.
@@ -158,6 +162,57 @@ def test_no_help_text_claims_a_non_goal():
 
     assert not violations, (
         "CHARTER §4 claim(s) in user-facing help text:\n  " + "\n  ".join(violations))
+
+
+# --- user-facing documents --------------------------------------------------
+
+DOC_FORBIDDEN = [
+    re.compile(r"\bmachine[\s-]*learning\b", re.IGNORECASE),
+    re.compile(r"\bML[\s/-]*(processing|features?|models?|pipeline)\b"),
+    re.compile(r"\bdeep[\s-]*learning\b", re.IGNORECASE),
+    re.compile(r"neural[\s-]*network", re.IGNORECASE),
+    re.compile(r"\bAI[\s-]*(powered|driven|based)\b", re.IGNORECASE),
+    re.compile(r"\bGPU[\s-]*accelerat", re.IGNORECASE),
+    re.compile(r"quantum\s+(computing|processing)", re.IGNORECASE),
+    re.compile(r"source[\s-]*separation", re.IGNORECASE),
+]
+
+
+def _user_facing_docs():
+    yield PROJECT_ROOT / "README.md"
+    yield PROJECT_ROOT / "QUICKSTART.md"
+    for path in (PROJECT_ROOT / "docs").rglob("*.md"):
+        if "agents" not in path.parts:      # agent instructions discuss non-goals by name
+            yield path
+
+
+def test_no_user_facing_doc_advertises_a_non_goal():
+    violations = []
+    for path in _user_facing_docs():
+        if not path.exists():
+            continue
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if _is_removal_record(line):
+                continue
+            for pattern in DOC_FORBIDDEN:
+                if pattern.search(line):
+                    violations.append(f"{path.relative_to(PROJECT_ROOT)}:{lineno}: {line.strip()}")
+                    break
+
+    assert not violations, (
+        "CHARTER §4 claim(s) in user-facing documentation. These are read before "
+        "any source file, so an overclaim here is the first thing a user learns:\n  "
+        + "\n  ".join(violations)
+    )
+
+
+def test_the_doc_guard_would_catch_the_line_it_was_written_for():
+    assert any(p.search("(advanced spectral/ML processing, real-time streaming)")
+               for p in DOC_FORBIDDEN)
+    # ...and does not fire on a sentence that records a removal.
+    assert _is_removal_record("the add-then-remove cycle of ML features was removed")
+    # ...nor on ordinary words that happen to contain the letters.
+    assert not any(p.search("HTML output and XML config") for p in DOC_FORBIDDEN)
 
 
 def test_the_cli_guard_would_catch_the_command_it_was_written_for():
