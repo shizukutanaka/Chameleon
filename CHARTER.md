@@ -1480,6 +1480,31 @@ argparse. It scanned the CLI; "ML processing" lived in README. It now scans
 exemption, and was negative-tested by re-planting the exact README line.
 A claim does not become true by moving to a file the guard skips.
 
+**The suite was mutation-checked, and it holds (2026-08-25).** This branch has
+spent its length asking what a claim would look like if it were false. The
+claim it had not yet turned on itself is the one underwriting all the others:
+*"445 tests pass, therefore the product works."* Passing tests are evidence
+only if they would fail when the code breaks, and nothing had established that.
+
+Six fixes from this branch were reverted in the source one at a time, each
+followed by a run of only its own test file and a restore: the declipper's
+unbalanced crossfade, the resampler's anti-aliasing cutoff, the key-profile
+rotation, `--mono`'s idempotency, the quantiser's rounding, and a K-weighting
+coefficient nudged by 0.1%. **All six failed exactly the test written for
+them**, and `git status` came back empty afterwards.
+
+A static audit in the same pass found no vacuous tests across the suite: no
+`assert True`, no `x == x`, no handler swallowing the body it guards. Three
+tests have no `assert` statement, and all three are "must not raise" checks
+where the call under test is itself the assertion — `_check_module_safety` on a
+benign plugin, and the plain-import smoke test.
+
+The procedure is recorded in `PRODUCT_ANALYSIS.md` §4 as the deep check, with
+the six revert/test pairs, rather than being automated. Mutating source in CI
+is a poor trade — slow, and a failed restore is worse than no check — but the
+pairs are cheap to re-run by hand and are the only thing that distinguishes a
+suite that defends the code from one that merely accompanies it.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy
