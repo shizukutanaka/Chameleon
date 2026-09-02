@@ -16,10 +16,14 @@ This guide documents practical recovery steps for CLI-based deployments. The foc
 - **Symptoms**: `SecurityError` mentioning missing directory or improper permissions.
 - **Action**:
   ```bash
-  python security_tools.py validate-directory --path /absolute/path/output
-  sudo chmod 750 /absolute/path/output
+  # Path containment is enforced against CHAMELEON_TRUSTED_ROOTS. Confirm the
+  # directory is inside one of them, then fix its permissions.
+  echo "$CHAMELEON_TRUSTED_ROOTS"
+  chmod 750 /absolute/path/output
+  chameleon analyze /absolute/path/output/probe.wav   # rejected paths fail here
   ```
-- **Audit**: Confirm new permissions in `~/.chameleon/logs/chameleon_security.log` and note the corrective action.
+- **Audit**: Rejections are logged to `~/.chameleon/logs/chameleon.log` (or
+  `$CHAMELEON_LOG_DIR/chameleon.log`). Note the corrective action.
 
 ### 2. Network URL Rejection
 - **Symptoms**: URL rejected by `validate_url()` due to scheme or host.
@@ -90,9 +94,10 @@ def guarded_operation(operation_name, func, *args, **kwargs):
 
 ## Checklist Before Restarting Jobs
 
-- **Validate Paths**: `python security_tools.py validate-directory --path /absolute/path/input`
-- **Confirm URLs**: `python security_tools.py validate-url --url "$CHAMELEON_ASSET_URL"`
-- **Review Logs**: `tail -n 50 ~/.chameleon/logs/enterprise_cli.log`
+- **Validate Paths**: `chameleon analyze /absolute/path/input/probe.wav` — a path
+  outside `$CHAMELEON_TRUSTED_ROOTS` is rejected before any read.
+- **Review Logs**: `tail -n 50 ~/.chameleon/logs/chameleon.log`
+  (or `$CHAMELEON_LOG_DIR/chameleon.log`).
 - **Clear Stale Temp Data** (POSIX):
   ```bash
   sudo find /tmp -maxdepth 1 -type f -name 'chameleon_*' -mmin +30 -delete
@@ -103,4 +108,5 @@ def guarded_operation(operation_name, func, *args, **kwargs):
 - Attach relevant log excerpts and validator audit entries.
 - Clearly state whether input data or configuration changed between attempts.
 
-Use this playbook to maintain predictable recovery behavior and to ensure every remediation action remains documented for compliance auditing.
+Use this playbook to keep recovery behaviour predictable and to keep a record
+of what was changed between attempts.

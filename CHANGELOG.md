@@ -144,6 +144,19 @@
 
 ### Removed
 
+- **Nine documentation files describing a product that does not exist**
+  (2,240 lines, linked from nothing). Seven told the reader to
+  `import chameleon_audio`, one used `audio_tool`, and three invoked
+  `enterprise_cli.py` / `chameleon_cli.py` / `security_tools.py` — none of
+  which has ever existed in this repository, in any commit. Several were
+  branded "Enterprise Edition" / "Commercial Release". Unlike the equivalent
+  phantom imports in `api_server.py`, documentation is not inert: a reader
+  copies the block, it fails, and the failure looks like their mistake.
+  Deleted with per-item confirmation: `security_logs`, `test_cases` and
+  `ui_enhancement` in both languages, plus the Japanese halves of
+  `batch_processing`, `performance_benchmarks` and `error_recovery`, whose
+  English counterparts are honest and remain.
+
 - **The `ml` command.** Its one operation ran spectral subtraction then peak
   normalization — deterministic DSP, no model and no learning — and was exactly
   `process --denoise --normalize`, which was already documented. The handler's
