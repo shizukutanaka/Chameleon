@@ -6,9 +6,9 @@ A WAV-focused audio processing CLI with a path-validation security layer.
 
 Chameleon is a WAV audio processing toolkit. Its core (analysis, normalization,
 batch processing, MIDI analysis) runs on the Python standard library alone, with
-a consistent path-validation security layer. Heavier capabilities (advanced
-spectral/ML processing, real-time streaming, the REST API) are opt-in and depend
-on optional packages — see [Configuration](#configuration).
+a consistent path-validation security layer. Heavier capabilities (spectral
+processing, mastering, restoration, real-time streaming, the REST API) are
+opt-in and depend on optional packages — see [Configuration](#configuration).
 
 For the project's intended scope, explicit non-goals, threat model and the bar any
 new feature must clear, see [CHARTER.md](CHARTER.md). It exists to stop the recurring
@@ -27,21 +27,24 @@ real-time streaming require optional dependencies.
   loudness range
 - Audio normalization, mono downmix, and silence trimming
 - Batch operations with parallel processing
-- MIDI extraction and analysis
+- MIDI composition and generation
 - Plugin system for extensibility
 
 ### Optional (requires extras — see [Configuration](#configuration))
 - Noise reduction and resampling — requires `[audio]` (numpy/scipy)
+- MIDI extraction from audio and musical analysis — requires `[audio]`
+- Restoration: declipping and mains-hum removal — requires `[audio]`
 - MP3/FLAC/OGG input and format conversion — requires `[audio]`
 - Real-time audio streaming — requires `[audio]` (PyAudio)
-- REST API (health check, rate limiting, RBAC) — requires `[api]`
+- REST API (health check, rate limiting, session authentication) — requires `[api]`
 
 ### Security
 - Path validation and sanitization (trusted-root enforcement)
 - File size limits (500MB default)
 - Audit logging for API operations
 - Rate limiting for API endpoints
-- Sandboxed plugin execution with AST import whitelisting
+- AST-screened plugin loading with an import whitelist (parse-time checks,
+  not a runtime sandbox — see `CHARTER.md` §9)
 
 ### Performance
 - Parallel batch processing across multiple worker threads
@@ -242,7 +245,7 @@ Supported operations are `analyze`, `normalize`, `mono` and `trim`. An
 - **main.py** - CLI entry point with all commands
 - **security_validator.py** - Path/file validation, secure file operations
 - **api_server.py** - Optional REST API (requires fastapi/uvicorn)
-- **plugin_system.py** - Sandboxed plugin execution with AST validation
+- **plugin_system.py** - AST-screened plugin loading (not a runtime sandbox)
 
 ### Security Modules
 - **security_validator.py** - Path validation, trusted-root enforcement, size limits
@@ -313,7 +316,9 @@ python validation_test.py
 # Unit tests (core + security primitives)
 python test_core.py
 
-# Full test suite
+# Full test suite -- green in three dependency configurations (stdlib only,
+# +numpy, +numpy+scipy). Expected counts live in PRODUCT_ANALYSIS.md's dated
+# header and nowhere else.
 pytest
 ```
 

@@ -33,11 +33,17 @@ This file is the common baseline. Read it fully before editing.
 ## Verification gate (run before every commit)
 ```bash
 python -m compileall -q .
-python -m pytest -q                 # 215 passing, 1 skipped as of 2026-07-18
+python -m pytest -q                 # expected counts: PRODUCT_ANALYSIS.md header (re-run, never trust)
 python validation_test.py
 ```
 For DSP/numeric changes also run `python -m pytest -q -W error::RuntimeWarning`
-(NaN/inf/overflow must not sneak through). Note: use `python`, not `python3` —
+(NaN/inf/overflow must not sneak through). The suite is green in **three**
+dependency configurations — stdlib only, +numpy, +numpy+scipy — and a change is
+not verified until all three pass; `tests/test_stdlib_operations.py` shows the
+`sitecustomize` pattern for blocking packages. Test counts live in exactly one
+place, the dated header of `PRODUCT_ANALYSIS.md`; do not copy them anywhere
+else, because four hand-carried copies once read 147, 211, 215 and 443 at the
+same time. Note: use `python`, not `python3` —
 in this environment `python3` may resolve to an interpreter without numpy/scipy.
 
 ## Git conventions

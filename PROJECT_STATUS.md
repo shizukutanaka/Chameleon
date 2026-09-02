@@ -1,13 +1,15 @@
 # Chameleon Audio Processing System — Project Status
 
-**Status**: Beta. Standard-library CLI core is stable and tested (211 automated
-tests, all green). REST API server works end-to-end with `pip install -e .[api]`.
-Container image now actually builds and runs (previously completely broken —
-see §2). No web frontend ships (see §5).
-**Last updated**: 2026-08-08 (first-principles audit: bilingual command/config
-references rewritten to match the real CLI; EBU-Mode momentary/short-term
-loudness; numpy/scipy import guards; README/setup.py/personal_config honesty
-fixes. See `CHARTER.md` §9 and `PRODUCT_ANALYSIS.md` §1b)
+**Status**: Beta. Standard-library CLI core is stable and tested; the suite is
+green in three dependency configurations (counts in the dated header of
+`PRODUCT_ANALYSIS.md` — that is the only place they are kept). REST API server
+works end-to-end with `pip install -e .[api]`. Container image builds and runs.
+No web frontend ships (see §5).
+**Last updated**: 2026-08-25 (PRs #22–#27: 789 unreachable lines deleted with
+per-item confirmation, `audio_restoration` audited and wired as
+`--declip`/`--dehum`, the `ml` command deleted, the §4 guard extended to the
+CLI surface, and every claim in `PRODUCT_ANALYSIS.md` re-verified. See
+`CHARTER.md` §9 and `PRODUCT_ANALYSIS.md`.)
 **Read first**: `CHARTER.md` — the project's scope charter and full decision
 history (Socratic record, §9). This file is a status *snapshot*; `CHARTER.md`
 is the source of truth for *why* each decision was made. For AI agents,
@@ -25,8 +27,12 @@ action.
 ## 1. What this product actually is
 
 - **Core**: `main.py` (CLI) + `core.py` (stdlib-only WAV processing engine).
-  Runs with zero third-party dependencies for `analyze`/`normalize`/`batch`/
-  `midi`. This zero-dependency property is the product's differentiator
+  Runs with zero third-party dependencies for `analyze` (incl. `--loudness`,
+  `--detailed`, `--spectrum`), `normalize`, `mono`, `trim`, `batch`, and
+  `midi compose`/`generate`. (`midi extract`/`analyze` load audio into arrays
+  and need numpy — earlier versions of this line said "midi" without
+  qualification, which was false.) This zero-dependency property is the
+  product's differentiator
   (CHARTER §1) — do not make it require numpy/scipy by default.
 - **Optional extras** (`pip install -e .[audio]`): numpy/scipy/librosa/
   soundfile/pyaudio unlock `--master` (full mastering chain), noise
@@ -73,9 +79,22 @@ action.
 | Feature | No standard-conformant loudness meter existed anywhere in the codebase | Added `bs1770_loudness.py` (pure-stdlib BS.1770-4 K-weighting + gated integrated loudness, coefficients verified against the published reference table) and `analyze --loudness`; also fixed a mono-downmix bug that under-read real stereo content by 3-6 LU |
 | Scope discipline | `core.py`'s `AIMusicAnalyzer` claimed "AI-powered music analysis" / "AI music generation" but every feature extractor returned hardcoded placeholder literals and never read the audio file; 6 `*FeatureExtractor` classes and `AudioFormatSupport` were zero-caller orphans (the latter depending on an undeclared `pydub`) | Deleted (user-confirmed); `core.py` 3,266 → 2,738 lines |
 
-**Test count**: 22 → 204 passed. `python -m compileall -q .`, `python validation_test.py`,
-and `python -m pytest -q` are the standing verification gate — all green as of
-this snapshot. Container build verified via extracted-script syntax checks
+**Since then (2026-08-25, PRs #22–#27)**: `mono`/`trim` exposed on the CLI;
+`performance_optimizer.py`, `core.RealtimeAudioProcessor` and `api_server`'s
+three phantom imports deleted (789 lines, each with per-item confirmation);
+`tests/test_no_orphan_modules.py` fails on any new unreachable module;
+`audio_restoration` audited — its declipper damaged clean audio and its hum
+detector fired on silence — then wired as `process --declip`/`--dehum`; the
+`ml` command deleted (spectral subtraction under a machine-learning name); the
+§4 guard extended to subcommand names and help text; the suite made runnable
+on a bare install and green in three dependency configurations; the security
+scan stopped flagging ordinary audio; `--detailed` stopped printing dataclass
+defaults as measurements.
+
+**Test count**: kept in one place only — the dated header of
+`PRODUCT_ANALYSIS.md`. `python -m compileall -q .`, `python validation_test.py`
+and `python -m pytest -q` (in all three configurations) are the standing
+verification gate — all green as of this snapshot. Container build verified via extracted-script syntax checks
 and a real `import main, core` (no Docker daemon available in this session
 to run an actual `docker build`; the Dockerfile fix has not been build-tested
 end-to-end — recommend a maintainer run `docker build .` once to confirm).
@@ -135,11 +154,10 @@ file imports it), but that was wrong: `quick_install.sh`/`quick_install.ps1`
 document `python personal_config.py setup` as the personal-use onboarding
 flow, and it's the deliberately-kept entry point for
 `advanced_validation.py`'s `IntegrityVerifier`/`SanitizationEngine` (see §5
-below — real backup/library-scan code, not a placeholder). It's missing from
-`pyproject.toml`/`setup.py`/`Dockerfile`'s module lists (a packaging gap: a
-built wheel/container silently loses this feature), which is a reason to fix
-packaging, not delete the file. See CHARTER.md §9 for the full note and the
-open question tracking the packaging fix.
+below — real backup/library-scan code, not a placeholder). It was once missing
+from `pyproject.toml`/`setup.py`/`Dockerfile`'s module lists; that packaging
+gap was fixed in the same pass that found it, and as of 2026-08-25 the module
+is also covered by `tests/test_personal_config.py`. See CHARTER.md §9.
 
 ---
 
@@ -166,7 +184,9 @@ product-scope decision, not a mechanical fix:
 ```bash
 python -m compileall -q .          # syntax check, all files
 python validation_test.py          # 6 functional checks, stdlib only
-python -m pytest -q                # 147 passed, 1 skipped (pyaudio absent)
+python -m pytest -q                # counts: PRODUCT_ANALYSIS.md header. Run it in
+                                   # all three dependency configurations (see
+                                   # tests/test_stdlib_operations.py for the blocker)
 python main.py --version           # single source of truth: VERSION in main.py
 ```
 

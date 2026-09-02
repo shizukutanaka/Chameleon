@@ -40,7 +40,9 @@ this touch" must be answerable. Not a general-purpose audio editor user.
 - **Optional features are genuinely optional.** Anything needing numpy/scipy/librosa/
   pyaudio/mido/fastapi must degrade gracefully and be labelled as requiring extras.
 - **The REST API is a thin adapter over the stdlib core**, not an enterprise platform.
-  RBAC/audit/rate-limiting exist but defend a narrow threat model (see §5).
+  Session auth, audit logging and rate-limiting exist but defend a narrow threat
+  model (see §5). There is no per-permission authorization — `require_permission`
+  names a permission it does not enforce, and says so.
 
 ## 4. Non-goals (anti-scope — reject PRs that add these)
 
@@ -118,7 +120,7 @@ here so the next contributor does not skip them:
 - **CLI vs API:** if the API is not going to be a hosted service, consider trimming its
   enterprise surface to match the local-tool threat model.
   **Decided (2026-06):** the API is a local adapter over the stdlib core, not a hosted
-  service. Its RBAC / rate-limiting / audit-log exist to defend the §5 threat model
+  service. Its session auth / rate-limiting / audit-log exist to defend the §5 threat model
   (path traversal via API callers, resource exhaustion, hostile plugins) — not to build a
   multi-tenant platform. Do not grow the API surface beyond what that model requires. The
   non-goal (§4) against "a second product" applies: the API must stay aligned with the
@@ -1439,6 +1441,44 @@ Also corrected here: the "zero-dependency core" strength had listed `midi`
 without qualification for months. `midi extract` and `midi analyze` load audio
 into arrays. Verified by running every subcommand with numpy blocked and
 reading exit codes, which is the kind of check the section now prescribes.
+
+**The three front-door documents, re-verified: thirteen findings, one root
+cause (2026-08-25).** After `PRODUCT_ANALYSIS.md` (eight false claims, entry
+above), the same question went to the documents a newcomer reads *first* —
+`README.md` for people, `PROJECT_STATUS.md` and `CLAUDE.md` for agents.
+
+Three security words the code does not back, all in README: "**ML
+processing**" as an optional capability (the `ml` command was deleted the same
+day, and §4 forbids the claim regardless); "**RBAC**" for an API whose own
+`require_permission` docstring says there is no per-permission authorization
+— and this charter's §1 and §5 repeated the word; and "**Sandboxed** plugin
+execution", which this section had already conceded is "AST-only, not a
+runtime boundary". A project whose stated discipline is honest labelling had
+three overclaims in the vocabulary that matters most, on its front page.
+"MIDI extraction and analysis" also sat under *Core (standard library)* when
+`midi extract`/`analyze` exit 1 without numpy.
+
+The root cause of the rest is a single fact: **the same test count was
+hand-carried in four files and read 147, 211, 215 and 443 at the same
+time.** Not one of the four was lying when written. Each was a snapshot
+nobody was responsible for refreshing, in a file that presented it as current.
+Step 2 of Musk's algorithm applies to numbers as much as to code: the fix is
+not to correct four copies but to have one. Counts now live only in the dated
+header of `PRODUCT_ANALYSIS.md`, which already says "re-run, do not re-read";
+`CLAUDE.md`, `PROJECT_STATUS.md` and `README.md` point at the command instead.
+
+Smaller: `api_server`'s root endpoint advertised `docs/user_manual.md` as its
+documentation reference. The file does not exist. It now points at
+`docs/api_documentation.md`, which does. And `PROJECT_STATUS.md` §4a still
+described `personal_config`'s packaging gap as open, months after this section
+recorded it fixed.
+
+The §4 guard's third extension follows the same pattern as the first two —
+prompted by a real miss, not by foresight. It scanned sources; `ml` lived in
+argparse. It scanned the CLI; "ML processing" lived in README. It now scans
+`README.md`, `QUICKSTART.md` and `docs/` too, with the same removal-record
+exemption, and was negative-tested by re-planting the exact README line.
+A claim does not become true by moving to a file the guard skips.
 
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in

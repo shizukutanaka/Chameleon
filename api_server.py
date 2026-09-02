@@ -140,7 +140,9 @@ SECURITY_CONFIG = {
 
 PRIVILEGED_CLEARANCE = {"SECRET", "TOP_SECRET"}
 
-_DEFAULT_DOC_PATH = Path(__file__).resolve().parent / 'docs' / 'user_manual.md'
+# The file this points at must exist: the root endpoint advertises it, and for
+# a long time it advertised docs/user_manual.md, which does not.
+_DEFAULT_DOC_PATH = Path(__file__).resolve().parent / 'docs' / 'api_documentation.md'
 if os.environ.get('CHAMELEON_API_DOC'):
     DOCUMENTATION_REFERENCE = os.environ['CHAMELEON_API_DOC']
 else:
