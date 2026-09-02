@@ -3,8 +3,8 @@
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
 **Version:** 1.1.0 · **Tests:** the suite runs in three dependency
 configurations and is green in all of them —
-**313 passed** on the standard library alone, **354** with numpy,
-**443** with numpy + scipy (2 skipped; the skips are fastapi-gated).
+**315 passed** on the standard library alone, **356** with numpy,
+**445** with numpy + scipy (2 skipped; the skips are fastapi-gated).
 
 > Every claim in this file was re-checked against the code on the snapshot
 > date. Eight were false — including four "fast checks" in §4 that could no
@@ -61,7 +61,7 @@ re-verified, not trusted.
   reintroducing that command makes it fail.
 - **Real verification gate, run against three dependency configurations.**
   `compileall` + `pytest` + `validation_test.py` is green with no third-party
-  packages (313 tests), with numpy (354) and with numpy + scipy (443) — up
+  packages (315 tests), with numpy (356) and with numpy + scipy (445) — up
   from 22 tests at the start of the hardening effort. The three-way run is
   itself a differentiator and is newer than it looks: until 2026-08-25 twelve
   test modules imported numpy unguarded, so on a bare install `pytest` failed
@@ -303,7 +303,7 @@ you nothing and costs you the feeling of having checked. They are replaced
 with commands that produce a *number to compare*, not a hit to hope for.
 
 ```bash
-# 1. The three dependency configurations. Header says 313 / 354 / 443.
+# 1. The three dependency configurations. Header says 315 / 356 / 445.
 python -m pytest -q                       # numpy + scipy present
 #   ...and with numpy/scipy made unimportable, and with only scipy blocked:
 #   see tests/test_stdlib_operations.py for the sitecustomize blocker pattern.
