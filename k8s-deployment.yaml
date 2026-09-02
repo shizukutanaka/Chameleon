@@ -1,3 +1,13 @@
+# Kubernetes manifests for the Chameleon REST API (`chameleon server`).
+#
+# Verified against the code, not against a live cluster: ports, image tag,
+# probe paths and environment variables all match what api_server.py and the
+# Dockerfile actually do. Nobody has applied this to a real cluster from this
+# repository, so treat resource limits and replica counts as starting points.
+#
+# It previously declared containerPort 8080 while the app listens on 8000, so
+# every probe would have failed and no pod would ever have become ready. It
+# also scraped a /metrics endpoint the API does not expose. See CHARTER.md §9.
 # Chameleon Audio Tool - Kubernetes Production Deployment
 # Enterprise-grade deployment with high availability and security
 
@@ -19,7 +29,7 @@ metadata:
   namespace: chameleon-system
   labels:
     app: chameleon
-    version: v2.0.0
+    version: v1.1.0
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -60,7 +70,7 @@ metadata:
   namespace: chameleon-system
   labels:
     app: chameleon
-    version: v2.0.0
+    version: v1.1.0
 data:
   production.yaml: |
     version: "2.0.0"
@@ -87,7 +97,7 @@ data:
 
     network:
       bind_address: "0.0.0.0"
-      port: 8080
+      port: 8000
       enable_tls: false
       connection_timeout: 30
 
@@ -100,11 +110,9 @@ data:
       enable_structured_logging: true
 
     monitoring:
-      enable_metrics: true
+      # /health is the only endpoint the API exposes for probing; there is no
+      # Prometheus exporter, so no metrics port is declared anywhere here.
       enable_health_checks: true
-      enable_prometheus: true
-      prometheus_port: 9090
-      metrics_interval: 30
       health_check_interval: 15
 
     backup:
@@ -123,7 +131,7 @@ metadata:
   namespace: chameleon-system
   labels:
     app: chameleon
-    version: v2.0.0
+    version: v1.1.0
 type: Opaque
 data:
   # Base64 encoded values
@@ -140,7 +148,7 @@ metadata:
   namespace: chameleon-system
   labels:
     app: chameleon
-    version: v2.0.0
+    version: v1.1.0
 spec:
   accessModes:
     - ReadWriteOnce
@@ -157,7 +165,7 @@ metadata:
   namespace: chameleon-system
   labels:
     app: chameleon
-    version: v2.0.0
+    version: v1.1.0
 spec:
   accessModes:
     - ReadWriteOnce
@@ -174,7 +182,7 @@ metadata:
   namespace: chameleon-system
   labels:
     app: chameleon
-    version: v2.0.0
+    version: v1.1.0
 spec:
   accessModes:
     - ReadWriteOnce
@@ -192,7 +200,7 @@ metadata:
   namespace: chameleon-system
   labels:
     app: chameleon
-    version: v2.0.0
+    version: v1.1.0
     tier: production
 spec:
   replicas: 3
@@ -204,17 +212,14 @@ spec:
   selector:
     matchLabels:
       app: chameleon
-      version: v2.0.0
+      version: v1.1.0
   template:
     metadata:
       labels:
         app: chameleon
-        version: v2.0.0
+        version: v1.1.0
         tier: production
       annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "9090"
-        prometheus.io/path: "/metrics"
     spec:
       serviceAccountName: chameleon-service-account
       securityContext:
@@ -226,26 +231,13 @@ spec:
           type: RuntimeDefault
       containers:
       - name: chameleon
-        image: chameleon/audio-tool:v2.0.0
+        image: chameleon/audio-tool:v1.1.0
         imagePullPolicy: Always
         ports:
         - name: http
-          containerPort: 8080
-          protocol: TCP
-        - name: metrics
-          containerPort: 9090
+          containerPort: 8000
           protocol: TCP
         env:
-        - name: CHAMELEON_ENV
-          value: "production"
-        - name: CHAMELEON_CONFIG_DIR
-          value: "/app/config"
-        - name: CHAMELEON_LOG_LEVEL
-          value: "INFO"
-        - name: CHAMELEON_SECURITY_ENABLED
-          value: "true"
-        - name: CHAMELEON_PARALLEL_PROCESSING
-          value: "true"
         - name: CHAMELEON_MAX_WORKERS
           value: "8"
         - name: POD_NAME
@@ -370,7 +362,7 @@ metadata:
   namespace: chameleon-system
   labels:
     app: chameleon
-    version: v2.0.0
+    version: v1.1.0
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
@@ -419,24 +411,17 @@ metadata:
   namespace: chameleon-system
   labels:
     app: chameleon
-    version: v2.0.0
+    version: v1.1.0
   annotations:
-    prometheus.io/scrape: "true"
-    prometheus.io/port: "9090"
-    prometheus.io/path: "/metrics"
 spec:
   type: ClusterIP
   selector:
     app: chameleon
-    version: v2.0.0
+    version: v1.1.0
   ports:
   - name: http
     port: 80
     targetPort: http
-    protocol: TCP
-  - name: metrics
-    port: 9090
-    targetPort: metrics
     protocol: TCP
   sessionAffinity: ClientIP
   sessionAffinityConfig:
@@ -452,13 +437,13 @@ metadata:
   namespace: chameleon-system
   labels:
     app: chameleon
-    version: v2.0.0
+    version: v1.1.0
     service: loadbalancer
 spec:
   type: LoadBalancer
   selector:
     app: chameleon
-    version: v2.0.0
+    version: v1.1.0
   ports:
   - name: http
     port: 80
@@ -478,7 +463,7 @@ metadata:
   namespace: chameleon-system
   labels:
     app: chameleon
-    version: v2.0.0
+    version: v1.1.0
 spec:
   podSelector:
     matchLabels:
@@ -499,9 +484,7 @@ spec:
           app: chameleon
     ports:
     - protocol: TCP
-      port: 8080
-    - protocol: TCP
-      port: 9090
+      port: 8000
   egress:
   - to: []
     ports:
@@ -517,7 +500,7 @@ spec:
           app: chameleon
     ports:
     - protocol: TCP
-      port: 8080
+      port: 8000
 
 ---
 # Pod Disruption Budget
@@ -528,94 +511,13 @@ metadata:
   namespace: chameleon-system
   labels:
     app: chameleon
-    version: v2.0.0
+    version: v1.1.0
 spec:
   maxUnavailable: 1
   selector:
     matchLabels:
       app: chameleon
-      version: v2.0.0
-
----
-# ServiceMonitor for Prometheus
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: chameleon-service-monitor
-  namespace: chameleon-system
-  labels:
-    app: chameleon
-    version: v2.0.0
-spec:
-  selector:
-    matchLabels:
-      app: chameleon
-      version: v2.0.0
-  endpoints:
-  - port: metrics
-    interval: 30s
-    path: /metrics
-    scheme: http
-    tlsConfig:
-      insecureSkipVerify: true
-  namespaceSelector:
-    matchNames:
-    - chameleon-system
-
----
-# PrometheusRule for alerting
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: chameleon-prometheus-rules
-  namespace: chameleon-system
-  labels:
-    app: chameleon
-    version: v2.0.0
-spec:
-  groups:
-  - name: chameleon.rules
-    interval: 30s
-    rules:
-    - alert: ChameleonHighCPU
-      expr: rate(process_cpu_seconds_total{job="chameleon-service"}[5m]) * 100 > 80
-      for: 5m
-      labels:
-        severity: warning
-        service: chameleon
-      annotations:
-        summary: "Chameleon CPU usage is high"
-        description: "Chameleon CPU usage has been above 80% for 5 minutes"
-
-    - alert: ChameleonHighMemory
-      expr: process_resident_memory_bytes{job="chameleon-service"} / (1024^3) > 6
-      for: 5m
-      labels:
-        severity: warning
-        service: chameleon
-      annotations:
-        summary: "Chameleon memory usage is high"
-        description: "Chameleon memory usage is above 6GB"
-
-    - alert: ChameleonPodDown
-      expr: up{job="chameleon-service"} == 0
-      for: 1m
-      labels:
-        severity: critical
-        service: chameleon
-      annotations:
-        summary: "Chameleon pod is down"
-        description: "Chameleon pod has been down for more than 1 minute"
-
-    - alert: ChameleonHighErrorRate
-      expr: rate(http_requests_total{job="chameleon-service",status=~"5.."}[5m]) > 0.1
-      for: 2m
-      labels:
-        severity: critical
-        service: chameleon
-      annotations:
-        summary: "Chameleon high error rate"
-        description: "Chameleon error rate is above 10% for 2 minutes"
+      version: v1.1.0
 
 ---
 # Ingress for external access
@@ -626,7 +528,7 @@ metadata:
   namespace: chameleon-system
   labels:
     app: chameleon
-    version: v2.0.0
+    version: v1.1.0
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
     nginx.ingress.kubernetes.io/ssl-redirect: "true"

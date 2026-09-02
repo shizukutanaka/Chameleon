@@ -93,6 +93,21 @@
 
 ### Fixed
 
+- **`k8s-deployment.yaml` could never have worked.** All three probes requested
+  `/health` on `containerPort: 8080` while the container listens on 8000, so no
+  pod would ever have become ready. It also declared a metrics port and a
+  `ServiceMonitor`/`PrometheusRule` scraping a `/metrics` endpoint the API does
+  not expose, pulled an image tagged `v2.0.0` for a project at 1.1.0, and set
+  five environment variables no code reads. Now port 8000, image v1.1.0,
+  Prometheus documents removed, and verified programmatically against
+  `api_server.py` and the `Dockerfile`. The header states that it is verified
+  against the code and not against a live cluster.
+- **`DEPLOYMENT_GUIDE.md` monitoring and database sections.** The monitoring
+  setup scraped `/metrics` and charted three metrics the app never exports;
+  replaced with `/health`, `/system/status`, `/audit/log` and the two log files
+  actually written. The PostgreSQL `audit_log` tuning section was deleted — the
+  project has no database code and its audit trail is a plain file.
+
 - **`midi extract` / `midi analyze` crashed with a raw `AttributeError` on the
   dependency-free install** instead of naming the missing dependency.
   `load_audio` returns an ndarray from every backend, so it cannot work without

@@ -149,42 +149,39 @@ kubectl autoscale deployment chameleon \
 
 ## Monitoring Setup
 
-### Prometheus Integration
+### What the server exposes
 
-Create `/opt/chameleon/prometheus.yml`:
-```yaml
-scrape_configs:
-  - job_name: 'chameleon'
-    static_configs:
-      - targets: ['localhost:8080']
-    metrics_path: '/metrics'
-    scrape_interval: 15s
+There is **no Prometheus exporter and no `/metrics` endpoint**. Earlier versions
+of this guide configured a scrape job against `/metrics` and a Grafana dashboard
+querying `chameleon_processing_duration_seconds`, `chameleon_queue_length` and
+`chameleon_errors_total`; the API exports none of those, so the scrape returned
+404 and every panel stayed empty.
+
+Monitor the endpoints that exist:
+
+```bash
+# Liveness. Returns 200 with uptime_seconds and a timestamp; no auth required.
+curl -sf http://localhost:8080/health
+
+# Runtime counters (requires an authenticated session).
+curl -sf -H "X-API-Key: $CHAMELEON_API_KEY" http://localhost:8080/system/status
 ```
 
-### Grafana Dashboard
+`/health` is what the container's own `HEALTHCHECK` and the Kubernetes
+liveness, readiness and startup probes all use, so anything that can poll an
+HTTP endpoint is enough for uptime alerting.
 
-Import dashboard JSON:
-```json
-{
-  "dashboard": {
-    "title": "Chameleon Audio Processing",
-    "panels": [
-      {
-        "title": "Processing Time",
-        "targets": [{"expr": "chameleon_processing_duration_seconds"}]
-      },
-      {
-        "title": "Queue Length",
-        "targets": [{"expr": "chameleon_queue_length"}]
-      },
-      {
-        "title": "Error Rate",
-        "targets": [{"expr": "rate(chameleon_errors_total[5m])"}]
-      }
-    ]
-  }
-}
+### Logs
+
+Two files, both plain text and both rotated by the application:
+
+```bash
+tail -f ~/.chameleon/logs/chameleon.log      # application log
+tail -f ~/.chameleon/logs/api-audit.log      # per-request audit trail
 ```
+
+Set `CHAMELEON_LOG_DIR` to relocate them. The audit trail is also readable over
+HTTP at `GET /audit/log?limit=100` for an authenticated session.
 
 ## Backup Strategy
 
@@ -241,15 +238,6 @@ CHAMELEON_MAX_WORKERS=8
 CHAMELEON_CHUNK_SIZE=131072
 CHAMELEON_PERFORMANCE_MODE=fast
 CHAMELEON_PARALLEL=true
-```
-
-### Database Optimization (if using)
-
-```sql
--- PostgreSQL tuning for audit logs
-ALTER TABLE audit_log SET (autovacuum_vacuum_scale_factor = 0.01);
-CREATE INDEX idx_audit_timestamp ON audit_log(timestamp);
-CREATE INDEX idx_audit_user ON audit_log(user_id);
 ```
 
 ## Troubleshooting
