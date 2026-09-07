@@ -1603,6 +1603,26 @@ The guide's use of port 8080 is *not* an error and was left alone: it passes
 curl examples agree. The manifest was broken precisely because it changed the
 port without passing the argument that would have made it true.
 
+**`openapi_spec.yaml` deleted (2026-09-07).** The last of the long-standing
+`PROJECT_STATUS.md` §4 deletion candidates, sitting unactioned since it was
+first flagged in 2026-07. Re-verified before acting rather than trusted:
+still failed to parse (`yaml.safe_load_all` errors at line 28, a second
+top-level document with no `---` separator), still referenced by zero code
+(`api_server.py` serves its own live OpenAPI schema via FastAPI at
+`/openapi.json`), and still carried "Government-focused audio processing
+REST API", "authenticate user with government credentials and security
+clearance", and an `enable_simd` parameter — all vocabulary or functionality
+already removed from `api_server.py` itself in PR #23. It also claimed
+version 1.0.0 for a project at 1.1.0.
+
+Repairing 680 lines of hand-maintained, unparseable spec to duplicate a spec
+FastAPI already generates correctly and automatically would have been
+optimizing something that should not exist. Deleted with explicit per-item
+confirmation, alongside the same confirmation that `gui/` should **not** be
+touched: unlike the spec, `gui/`'s own README discloses "experimental / not
+yet wired up" — an honest label, not a broken artifact, and CHARTER §9's
+standing position is that disclosed-unfinished work is not itself a defect.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy
@@ -1627,13 +1647,8 @@ port without passing the argument that would have made it true.
   (custom `__builtins__`/globals for `exec_module`), which is a real
   architectural project, not a follow-up patch.
 
-- **openapi_spec.yaml — orphaned, stale, and structurally broken**: not
-  referenced by any code (`api_server.py` generates its own OpenAPI schema
-  live), fails to parse as YAML past line 28 (a second top-level document
-  with no `---` separator), and repeats claims already removed elsewhere
-  (`government-focused`, `SIMD acceleration`). Candidate for deletion,
-  matching the pattern already applied to `codec_support.py` and the other
-  orphaned modules — needs the same explicit user confirmation before acting.
+- **openapi_spec.yaml — RESOLVED (2026-09-07): deleted.** Confirmation was
+  given naming this item; see the resolved entry below.
 
 - **gui/ scaffold — keep, delete, or actually wire up?** Experimental React/
   TypeScript/Electron app, self-labeled unwired in its own README, not built

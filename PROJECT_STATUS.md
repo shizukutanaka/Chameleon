@@ -137,11 +137,12 @@ requested but not yet obtained for these.
 2. ~~**`core.py`'s `RealtimeAudioProcessor`**~~ — **deleted 2026-08-25** with
    explicit per-item confirmation, together with the `websockets` optional
    import block. `core.py` 2,780 → 2,367 lines. See `CHARTER.md` §9.
-3. **`openapi_spec.yaml`** — referenced by no Python code (`api_server.py`
-   generates its own OpenAPI schema live via FastAPI), fails to parse as
-   valid YAML past line 28 (a second top-level document with no `---`
-   separator), and repeats claims already removed from `api_server.py`
-   ("Government-focused", a deleted SIMD-acceleration parameter).
+3. ~~**`openapi_spec.yaml`**~~ — **deleted 2026-09-07** with explicit
+   per-item confirmation. It was referenced by no Python code
+   (`api_server.py` generates its own OpenAPI schema live via FastAPI),
+   failed to parse as valid YAML past line 28, and still carried the
+   "Government-focused" wording and a deleted SIMD-acceleration parameter
+   removed from `api_server.py` in PR #23. See `CHARTER.md` §9.
 
 If you are a future session picking this up: re-ask the user about these
 three before deleting anything. Do not delete on the strength of this
