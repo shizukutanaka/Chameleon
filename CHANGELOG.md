@@ -159,6 +159,16 @@
 
 ### Removed
 
+- **`openapi_spec.yaml`** (680 lines). The last long-standing deletion
+  candidate from `PROJECT_STATUS.md` §4, re-verified rather than trusted
+  before acting: still unparseable past line 28, referenced by no code
+  (`api_server.py` serves its own live OpenAPI schema via FastAPI), and still
+  carrying "Government-focused" wording and an `enable_simd` parameter
+  already removed from `api_server.py` in PR #23. Deleted with explicit
+  per-item confirmation. `gui/` was reviewed alongside it and left
+  unchanged — its own README honestly discloses "experimental / not yet
+  wired up", which is a label, not a defect.
+
 - **Nine documentation files describing a product that does not exist**
   (2,240 lines, linked from nothing). Seven told the reader to
   `import chameleon_audio`, one used `audio_tool`, and three invoked

@@ -256,7 +256,13 @@ Measured 2026-08-25: `batch_automation.py`, `spectral_editor.py` (both kept by
 explicit user decision over a recommendation to delete) and `personal_config.py`
 (a documented onboarding entry point — reachable by a *user* via
 `quick_install`, just not by an import). Outside the Python module list:
-`gui/`, `openapi_spec.yaml`.
+`gui/` (kept — its own README discloses "experimental / not yet wired up",
+which is the honest label, not an overclaim).
+
+`openapi_spec.yaml` was on this list — unparseable past line 28, referenced
+by no code, and still carrying the "government"-branded wording removed from
+`api_server.py` in PR #23 — and was **deleted 2026-09-07** with explicit
+confirmation.
 
 Per project practice, deletions require **explicit, per-item user
 confirmation** — do not delete on the strength of this list.
