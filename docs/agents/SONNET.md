@@ -6,16 +6,22 @@ executed quickly and correctly.
 
 ## Tasks this session is well-suited for
 - **Clearly-specified fixes** — a named bug with a known cause, a
-  `PRODUCT_ANALYSIS.md` §3 P1–P3 item, a doc-sync.
-- **Test coverage** — adding tests for the zero-coverage modules listed in
-  `PRODUCT_ANALYSIS.md` §2 (`audio_restoration`, `spectral_editor`,
-  `personal_config`): import + a happy path each.
-- **Honesty passes** — the P1 docstring/metadata overclaim fixes
-  (`advanced_validation.py:4`, `gui/package.json`, `batch_automation.py:4`).
-  Text-only, low-risk, high-value.
-- **Import-guard hygiene** — wrapping the unconditional numpy/scipy imports in
-  `spectral_editor.py` / `audio_restoration.py` to match the guarded pattern
-  used elsewhere.
+  `PRODUCT_ANALYSIS.md` §3 P1–P3 item, a doc-sync. **Read that table fresh
+  every session rather than trusting a copy of it here** — a stale, hardcoded
+  task list is exactly the defect class this project keeps finding in its own
+  documentation (see `CHARTER.md` §9's running record: nine fantasy docs, a
+  broken k8s manifest, an unparseable OpenAPI spec, a setup wizard
+  recommending a command that didn't exist). This file listed three specific
+  "honesty pass" targets and an import-guard task for months after all of
+  them were fixed; don't reintroduce that by writing the next one in here.
+- **Test coverage for the modules `PRODUCT_ANALYSIS.md`'s Coverage-gaps
+  section currently names as untested.** As of 2026-09-14 that's
+  `spectral_editor.py`'s actual DSP (it has import-safety coverage only) —
+  `audio_restoration` and `personal_config` are done and covered. Check the
+  live list; it moves.
+- **P4 items are Opus-shaped, not Sonnet-shaped** (per `OPUS.md`) — they
+  need judgment about a design or a risk tradeoff, not just execution. Leave
+  them for that session.
 
 ## How to work here
 - **One concern per commit.** Keep each change small enough to verify and
