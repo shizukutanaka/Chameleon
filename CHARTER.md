@@ -1664,6 +1664,35 @@ commit by re-reading the diff rather than trusting that a green run meant
 the test was checking what its name claimed; removed and replaced with the
 `--help`-derived check described above.
 
+**`docs/agents/SONNET.md`'s own task list was stale (2026-09-14).** Reading
+it while looking for the next thing to verify: its "Tasks this session is
+well-suited for" section named three specific "honesty pass" targets
+(`advanced_validation.py:4`, `gui/package.json`, `batch_automation.py:4`) and
+an "import-guard hygiene" task for `spectral_editor.py`/`audio_restoration.py`.
+All five were checked directly against the current files. **All five were
+already fixed** — the docstrings are honest, `gui/package.json` already
+discloses "Experimental... not yet wired", and both modules already guard
+their numpy/scipy imports (confirmed by grepping for the `try:`/`except
+ImportError` pattern, present in both). The test-coverage bullet also still
+named `audio_restoration` and `personal_config` as zero-coverage; both have
+been covered since PR #24 and the onboarding-flow fix immediately above this
+entry.
+
+This is the same defect class as `PRODUCT_ANALYSIS.md`'s eight false claims
+and `README.md`'s three security overclaims, in a file with a narrower and
+more specific kind of cost: it exists specifically to direct what a future
+Sonnet session works on next, so a stale task list there doesn't just misinform
+a reader, it actively steers the next session's effort at problems that no
+longer exist.
+
+Fixed by removing the specific stale claims rather than replacing them with a
+fresher hardcoded list, which would only rot again the same way. The section
+now points at `PRODUCT_ANALYSIS.md` §3's live backlog table and its
+Coverage-gaps section as the source of truth, states explicitly that P4 items
+are `OPUS.md`'s to take (they need judgment, not just execution — that
+division was already implicit in both files but never stated), and names this
+exact incident as the reason not to hardcode the next one.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy

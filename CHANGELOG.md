@@ -93,6 +93,13 @@
 
 ### Fixed
 
+- **`docs/agents/SONNET.md` was recommending work that was already done.**
+  Its task list named three "honesty pass" targets and an import-guard task
+  that had all been fixed, and listed `audio_restoration`/`personal_config`
+  as zero-coverage after both were covered. Removed the stale specifics
+  rather than swapping in a fresher hardcoded list; it now points at
+  `PRODUCT_ANALYSIS.md`'s live backlog instead, so this can't rot the same
+  way twice.
 - **The documented onboarding flow, `python personal_config.py setup`, was
   broken.** Its "Quick Start Commands" recommended `python main.py personal
   analyze` and two siblings — `main.py` has no `personal` subcommand, and
