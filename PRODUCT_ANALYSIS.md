@@ -3,8 +3,8 @@
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
 **Version:** 1.1.0 · **Tests:** the suite runs in three dependency
 configurations and is green in all of them —
-**324 passed** on the standard library alone, **365** with numpy,
-**454** with numpy + scipy (2 skipped; the skips are fastapi-gated).
+**329 passed** on the standard library alone, **370** with numpy,
+**459** with numpy + scipy (2 skipped; the skips are fastapi-gated).
 
 > Every claim in this file was re-checked against the code on the snapshot
 > date. Eight were false — including four "fast checks" in §4 that could no
@@ -226,8 +226,13 @@ bugs to fix but problems without a known-good answer in this codebase.
 
 ### Coverage gaps
 - ~~**Zero test coverage:** `personal_config.py`.~~ — covered 2026-08-25 by
-  `tests/test_personal_config.py`, which found three defects in the two
-  functions a new user hits first.
+  `tests/test_personal_config.py`, which found three defects in `load` and
+  `create_playlist`. Extended 2026-09-14 to `quick_setup()` itself — the
+  function `python personal_config.py setup` actually runs — and found two
+  more: it recommended a `main.py personal` subcommand that does not exist,
+  and never created the `aliases.sh` file its own documented next step tells
+  you to source. 23 tests total, one of them a real, unmocked run of the
+  onboarding flow end to end. See `CHARTER.md` §9.
 - **The orphaned modules' DSP is still untested.** `spectral_editor.py` and
   `batch_automation.py` have import-safety coverage
   (`tests/test_orphaned_import_safety.py`, `tests/test_smoke.py`) but nothing

@@ -1623,6 +1623,47 @@ touched: unlike the spec, `gui/`'s own README discloses "experimental / not
 yet wired up" — an honest label, not a broken artifact, and CHARTER §9's
 standing position is that disclosed-unfinished work is not itself a defect.
 
+**The documented onboarding flow itself was broken (2026-09-14).** With
+`openapi_spec.yaml` gone, the next unverified artifact was
+`personal_config.py`'s `quick_setup()` — what `python personal_config.py
+setup` runs, which is the exact command `quick_install.sh` and
+`quick_install.ps1` tell a new user to type. It had two defects, both
+invisible to the 18 tests added for this module in an earlier pass, because
+none of them called `quick_setup()` or `create_quick_commands()` at all.
+
+First, its "Quick Start Commands" printed `python main.py personal analyze`,
+`python main.py personal process --normalize`, `python main.py personal
+batch`. `main.py` has no `personal` subcommand — confirmed by running it:
+argparse rejects it with "invalid choice", exit 2. Every command the setup
+wizard recommended to a first-time user failed.
+
+Second, `create_quick_commands()` — which writes `~/.chameleon/aliases.sh`
+and `.ps1`, the file `quick_install.sh`'s own next documented step tells you
+to `source` — was called only from the bare `python personal_config.py`
+branch of `__main__`, never from the `setup` command. A user following the
+documented flow exactly would have hit "no such file" at the step right
+after the phantom commands.
+
+Fixed by having `quick_setup()` call `create_quick_commands()` itself and
+print commands that were actually run, not guessed at, before being written
+down: verified end-to-end in an isolated `$HOME`, including sourcing the
+generated `aliases.sh` in a real (non-interactive) shell and running
+`audio-analyze` against a real WAV file. Five new tests in
+`tests/test_personal_config.py` cover it, including one full subprocess
+run of `personal_config.py setup` piped blank input, followed by sourcing
+its output and using it — no mocking — and one that reads `main.py`'s real
+subcommand list from `--help` rather than hardcoding it, so a future rename
+cannot silently drift out of sync with this test the way it drifted out of
+sync with `quick_setup()` itself.
+
+The building itself briefly harbored one instance of the exact failure mode
+it exists to prevent: a first draft of the new subcommand-checking test
+contained a dead placeholder line (`... if False else None  # placeholder,
+replaced below`) that looked load-bearing but did nothing. Caught before
+commit by re-reading the diff rather than trusting that a green run meant
+the test was checking what its name claimed; removed and replaced with the
+`--help`-derived check described above.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy

@@ -214,3 +214,115 @@ def test_placeholder_workflows_raise_and_point_at_the_real_commands(workflow, tm
             tmp_path / "in.wav", tmp_path / "out")
 
     assert "chameleon" in str(excinfo.value)
+
+
+# --- the setup flow quick_install.sh/.ps1 actually document ----------------
+#
+# `quick_setup()` is what `python personal_config.py setup` runs -- the exact
+# command both install scripts tell a new user to type. Two defects survived
+# here specifically because nothing exercised this function: it printed
+# `python main.py personal analyze` as a "Quick Start Command", and `main.py`
+# has no `personal` subcommand at all (argparse: invalid choice, exit 2). And
+# it never called `create_quick_commands`, so `~/.chameleon/aliases.sh` --
+# the file quick_install.sh's own next step tells you to `source` -- was
+# never written by the documented flow. Both are fixed by having
+# `quick_setup()` call `create_quick_commands` itself and print commands that
+# were run, not guessed at, before being written down here.
+
+@pytest.fixture
+def home(tmp_path, monkeypatch):
+    """Redirect Path.home() so quick_setup() cannot touch the real ~/.chameleon."""
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    monkeypatch.setattr("builtins.input", lambda *_args: "")
+    return tmp_path
+
+
+def test_quick_setup_creates_the_aliases_its_own_output_tells_you_to_source(home):
+    personal_config.PersonalSetup.quick_setup()
+
+    assert (home / ".chameleon" / "aliases.sh").exists()
+    assert (home / ".chameleon" / "aliases.ps1").exists()
+
+
+def test_quick_setup_never_recommends_the_nonexistent_personal_subcommand(home, capsys):
+    personal_config.PersonalSetup.quick_setup()
+
+    printed = capsys.readouterr().out
+    assert "main.py personal" not in printed
+
+
+def test_quick_setup_only_prints_aliases_it_actually_created(home, capsys):
+    import re
+
+    personal_config.PersonalSetup.quick_setup()
+    printed = capsys.readouterr().out
+    aliases_sh = (home / ".chameleon" / "aliases.sh").read_text()
+
+    defined = set(re.findall(r"^alias ([\w-]+)=", aliases_sh, re.M))
+    mentioned = set(re.findall(r"\b(audio-[\w-]+)\b", printed))
+    assert mentioned, "expected quick_setup to mention at least one alias"
+    assert mentioned <= defined, (
+        f"quick_setup printed alias(es) it never defined: {mentioned - defined}")
+
+
+def test_the_printed_direct_invocation_uses_a_real_cli_subcommand(home, capsys):
+    # Read the subcommand list from the CLI itself -- a hardcoded tuple here
+    # would drift out of sync exactly the way the original bug happened, just
+    # one file over.
+    import re
+    import subprocess
+    import sys
+
+    repo_root = Path(__file__).resolve().parent.parent
+    help_text = subprocess.run(
+        [sys.executable, "main.py", "--help"], capture_output=True, text=True,
+        cwd=str(repo_root),
+    ).stdout
+    match = re.search(r"\{([a-z,]+)\}", help_text)
+    assert match, "could not read main.py's subcommand list from --help"
+    real_subcommands = set(match.group(1).split(","))
+
+    personal_config.PersonalSetup.quick_setup()
+    printed = capsys.readouterr().out
+
+    for named in re.finditer(r"python main\.py (\w+)", printed):
+        assert named.group(1) in real_subcommands, (
+            f"quick_setup recommends `python main.py {named.group(1)}`, "
+            "which is not a real subcommand")
+
+
+def test_the_full_documented_flow_works_end_to_end(tmp_path):
+    """The exact chain quick_install.sh promises: run `setup`, source the
+    aliases it creates, then use the alias it told you about -- against a
+    real audio file, for real, with no mocking."""
+    import os
+    import subprocess
+    import sys
+
+    from tests._helpers import write_sine_wave
+
+    repo_root = Path(__file__).resolve().parent.parent
+    home = tmp_path / "home"
+    home.mkdir()
+
+    setup = subprocess.run(
+        [sys.executable, "personal_config.py", "setup"],
+        input="\n\n\n", capture_output=True, text=True,
+        cwd=str(repo_root), env={**os.environ, "HOME": str(home)},
+    )
+    assert setup.returncode == 0, setup.stderr
+    assert "main.py personal" not in setup.stdout
+
+    aliases = home / ".chameleon" / "aliases.sh"
+    assert aliases.exists(), "setup did not create the file its own output names"
+
+    probe = write_sine_wave(tmp_path / "probe.wav")
+    script = f"""
+    set -e
+    shopt -s expand_aliases   # off by default for a non-interactive `bash -c`
+    source "{aliases}"
+    audio-analyze "{probe}"
+    """
+    result = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Sample Rate" in result.stdout
