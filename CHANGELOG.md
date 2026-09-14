@@ -93,6 +93,15 @@
 
 ### Fixed
 
+- **The documented onboarding flow, `python personal_config.py setup`, was
+  broken.** Its "Quick Start Commands" recommended `python main.py personal
+  analyze` and two siblings — `main.py` has no `personal` subcommand, and
+  every one of them failed with argparse's "invalid choice" (exit 2). It also
+  never wrote `~/.chameleon/aliases.sh`, the file `quick_install.sh`'s next
+  step tells you to `source`; that only happened on a bare
+  `python personal_config.py` invocation, which no documentation mentions.
+  Fixed and verified end-to-end, including sourcing the generated aliases in
+  a real shell and running one against a real file — see `CHARTER.md` §9.
 - **`k8s-deployment.yaml` could never have worked.** All three probes requested
   `/health` on `containerPort: 8080` while the container listens on 8000, so no
   pod would ever have become ready. It also declared a metrics port and a

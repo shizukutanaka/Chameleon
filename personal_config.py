@@ -165,12 +165,26 @@ class PersonalSetup:
         # Save configuration
         config.save()
 
+        # Write the shell aliases this method's own printed instructions
+        # below rely on. This used to be missing: `main.py` has no `personal`
+        # subcommand -- `python main.py personal analyze` is an argparse
+        # "invalid choice" (exit 2) -- and this call lived only in the bare
+        # `python personal_config.py` branch of __main__, never in the `setup`
+        # command that quick_install.sh/.ps1 document as the onboarding step.
+        # A user following the documented flow got directions that did not
+        # run and never received the aliases file quick_install.sh's own next
+        # step tells them to source. See CHARTER.md §9.
+        PersonalSetup.create_quick_commands(config)
+
         print(f"\n✅ Setup Complete!")
         print(f"   Configuration saved to ~/.chameleon/personal_config.json")
         print(f"\n🚀 Quick Start Commands:")
-        print(f"   python main.py personal analyze")
-        print(f"   python main.py personal process --normalize")
-        print(f"   python main.py personal batch")
+        print(f"   source ~/.chameleon/aliases.sh   # Linux/Mac -- or aliases.ps1 on Windows")
+        print(f"   audio-analyze your_file.wav")
+        print(f"   audio-batch analyze          # scans {config.audio_library}")
+        print(f"\n   ...or directly, with no aliases loaded:")
+        print(f"   python main.py analyze your_file.wav")
+        print(f"   python main.py batch {config.audio_library} analyze")
 
         return config
 
