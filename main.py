@@ -104,6 +104,45 @@ def _assert_unique_paths(paths: List[str], field_name: str) -> None:
         raise ValueError(message) from exc
 
 
+def _load_effects(effects_path: str) -> Dict[str, Any]:
+    """Load and validate an effects JSON file.
+
+    Raises ValueError on a malformed file -- every caller converts it to
+    ExitCode.INPUT, because a bad effects file is a user-input problem, not
+    an internal failure. An unvalidated shape used to fail deeper: a
+    non-object top level silently matched no "in effects" checks and wrote
+    unchanged audio under a "Processed" message, and a non-object per-effect
+    value crashed inside apply_effects with 'str' object has no attribute
+    'get'.
+    """
+
+    try:
+        with open(effects_path) as f:
+            effects = json.load(f)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Effects file '{effects_path}' is not valid JSON: {exc}") from exc
+    except OSError as exc:
+        raise ValueError(f"Cannot read effects file '{effects_path}': {exc}") from exc
+
+    if not isinstance(effects, dict):
+        raise ValueError(
+            f"Effects file '{effects_path}' must contain a JSON object mapping "
+            f"effect names to parameter objects, got {type(effects).__name__}"
+        )
+
+    known = set(AudioProcessor._EFFECT_REQUIREMENTS)
+    for name, params in effects.items():
+        if not isinstance(params, dict):
+            raise ValueError(
+                f"Effect '{name}' must map to a parameter object, got {type(params).__name__}"
+            )
+        if name not in known:
+            print(f"Warning: unknown effect '{name}' in effects file will be ignored "
+                  f"(known effects: {', '.join(sorted(known))})", file=sys.stderr)
+
+    return effects
+
+
 def _sanitize_plugin_directory(directory: str) -> Path:
     """Validate and normalize plugin directories for secure use."""
 
@@ -2106,8 +2145,11 @@ async def main():
             operations.append("master")
             kwargs["master_preset"] = args.master
         if effects_path:
-            with open(effects_path) as f:
-                effects = json.load(f)
+            try:
+                effects = _load_effects(effects_path)
+            except ValueError as exc:
+                print(f"Input validation error: {exc}", file=sys.stderr)
+                return ExitCode.INPUT
             kwargs["effects"] = effects
             operations.append("effects")
 
@@ -2193,8 +2235,11 @@ async def main():
             return ExitCode.INPUT
 
         if effects_path:
-            with open(effects_path) as f:
-                effects = json.load(f)
+            try:
+                effects = _load_effects(effects_path)
+            except ValueError as exc:
+                print(f"Input validation error: {exc}", file=sys.stderr)
+                return ExitCode.INPUT
         else:
             effects = None
 
@@ -2357,8 +2402,11 @@ async def main():
             if not effects_path:
                 print("Error: --effects <file> is required for the effects operation", file=sys.stderr)
                 return ExitCode.USAGE
-            with open(effects_path) as f:
-                kwargs["effects"] = json.load(f)
+            try:
+                kwargs["effects"] = _load_effects(effects_path)
+            except ValueError as exc:
+                print(f"Input validation error: {exc}", file=sys.stderr)
+                return ExitCode.INPUT
 
         if args.no_parallel:
             processor.config.parallel = False

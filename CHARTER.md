@@ -1809,6 +1809,15 @@ A (2026-09-19): Neither. Dither stays opt-in through
 recorded decision and there is no user demand for a flag. Reopen only on a
 real request.
 
+**Q: Why does the effects-file loader warn on unknown names instead of erroring?**
+A (2026-09-19): `_load_effects` (shared by `process`, `stream`, `batch`)
+rejects malformed shapes as `ExitCode.INPUT` — an unvalidated file either
+silently no-oped (non-object top level) or leaked an AttributeError
+(non-object params). Unknown *names* warn rather than fail because a typo in
+an optional extras' effect should not hard-fail on an install that lacks the
+package anyway; the warning tells the user the effect was ignored, which is
+the honest answer.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy

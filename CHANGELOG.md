@@ -125,6 +125,14 @@
   is `applied_processes` / `skipped_processes` with `{"process", "reason"}` —
   so a caller reading `applied_processes` saw an empty list even though the
   repairs ran. `VinylRestorer.restore` now reports under the shared keys.
+- **`--effects` files were never shape-validated.** A JSON array or scalar
+  top level silently matched no `"x" in effects` check and wrote unchanged
+  audio under a "Processed" message; `{"compression": "x"}` crashed inside
+  `apply_effects` with `'str' object has no attribute 'get'`; malformed JSON
+  exited 1 (ERROR) instead of INPUT. All `process`/`stream`/`batch` loaders
+  now share one `_load_effects` validator: non-object/malformed →
+  `ExitCode.INPUT` with a clean message, unknown effect names warn on stderr
+  but still run.
 - **`stream` printed "Starting real-time audio stream… Press Ctrl+C" when
   no stream could ever start.** Without PyAudio the call fails instantly, so
   the banner is now only printed when `HAS_PYAUDIO` — the failure is a

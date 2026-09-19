@@ -93,3 +93,47 @@ def test_midi_analyze_error_is_reported_not_swallowed(tmp_path):
     assert result.returncode == 1  # ExitCode.ERROR
     assert "error" in result.stderr.lower()
     assert "Analysis error" not in result.stdout
+
+
+def _write_effects(path, content: str):
+    fx = path / "effects.json"
+    fx.write_text(content)
+    return fx
+
+
+def test_effects_file_with_non_object_top_level_is_input_error(tmp_path):
+    # A JSON array used to sail through every "in effects" check and write
+    # unchanged audio under a "Processed" claim.
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    fx = _write_effects(tmp_path, '["compression"]')
+    result = _run("process", str(wav), "--effects", str(fx), cwd=str(tmp_path))
+    assert result.returncode == 3  # ExitCode.INPUT
+    assert "Input validation error" in result.stderr
+    assert "Processed" not in result.stdout
+
+
+def test_effects_file_with_bad_json_is_input_error(tmp_path):
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    fx = _write_effects(tmp_path, "{not json")
+    result = _run("process", str(wav), "--effects", str(fx), cwd=str(tmp_path))
+    assert result.returncode == 3  # ExitCode.INPUT
+    assert "Input validation error" in result.stderr
+
+
+def test_effects_file_with_non_object_effect_is_input_error(tmp_path):
+    # '{"compression": "x"}' used to crash inside apply_effects with
+    # "'str' object has no attribute 'get'" and exit 1.
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    fx = _write_effects(tmp_path, '{"compression": "loud"}')
+    result = _run("process", str(wav), "--effects", str(fx), cwd=str(tmp_path))
+    assert result.returncode == 3  # ExitCode.INPUT
+    assert "parameter object" in result.stderr
+
+
+def test_unknown_effect_name_warns_but_still_runs(tmp_path):
+    pytest.importorskip("numpy")
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    fx = _write_effects(tmp_path, '{"nonexistent_fx": {"x": 1}}')
+    result = _run("process", str(wav), "--effects", str(fx), cwd=str(tmp_path))
+    assert result.returncode == 0
+    assert "unknown effect" in result.stderr.lower()
