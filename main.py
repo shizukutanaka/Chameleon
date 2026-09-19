@@ -878,6 +878,7 @@ class AudioProcessor:
     _EFFECT_REQUIREMENTS = {
         "eq": ("scipy", lambda: HAS_SCIPY and HAS_MASTERING_CHAIN),
         "reverb": ("scipy", lambda: HAS_SCIPY),
+        "compression": ("numpy", lambda: HAS_MASTERING_CHAIN),
     }
 
     def apply_effects(self, audio: np.ndarray, sr: int, effects: Dict[str, Any]) -> np.ndarray:
@@ -938,21 +939,25 @@ class AudioProcessor:
             reverb_signal = signal.convolve(processed, ir, mode='same')
             processed = (1 - wet) * processed + wet * reverb_signal
 
-        # Compression
-        if "compression" in effects:
+        # Compression -- the real dynamics processor in mastering_chain, not
+        # a per-sample waveshaper. Remapping |x| every sample reshapes the
+        # waveform itself (that is soft-clipping; it adds harmonics), whereas
+        # a compressor applies a slowly-varying gain computed from an
+        # attack/release envelope and leaves waveform shape intact.
+        if "compression" in effects and HAS_MASTERING_CHAIN:
             comp_params = effects["compression"]
-            threshold = comp_params.get("threshold", -20)  # dB
-            ratio = comp_params.get("ratio", 4)
-
-            # Convert to dB
-            db = 20 * np.log10(np.abs(processed) + 1e-10)
-
-            # Apply compression
-            over_threshold = db > threshold
-            db[over_threshold] = threshold + (db[over_threshold] - threshold) / ratio
-
-            # Convert back
-            processed = np.sign(processed) * (10 ** (db / 20))
+            compressor = mastering_chain.Compressor(
+                mastering_chain.CompressorConfig(
+                    threshold=comp_params.get("threshold", -20.0),
+                    ratio=comp_params.get("ratio", 4.0),
+                    attack=comp_params.get("attack", 5.0),
+                    release=comp_params.get("release", 50.0),
+                    knee=comp_params.get("knee", 2.0),
+                    makeup_gain=comp_params.get("makeup_gain", 0.0),
+                ),
+                sample_rate=sr,
+            )
+            processed, _gain_curve = compressor.process(processed)
 
         return processed
 
@@ -1193,13 +1198,27 @@ class AudioProcessor:
         """
 
         results: List[Dict] = []
-        safe_files = self._filter_safe_files(files)
+        safe_files, rejections = self._filter_safe_files(files)
 
         dry_run = bool(kwargs.pop("dry_run", False))
         operation_kwargs = dict(kwargs)
 
         if not safe_files:
-            return [{"error": "No valid audio files to process."}]
+            # Sentinel for "every supplied file was rejected in pre-flight".
+            # It has no "file" -- there is no one file to name -- and it
+            # carries the exit code the README/ExitCode table promises: INPUT
+            # for input-validation rejections, SECURITY when a security
+            # policy (trusted roots, size cap) did the rejecting. SECURITY
+            # wins when a mixed batch hit both.
+            return [{
+                "error": "No valid audio files to process.",
+                "files": [path for path, _ in rejections],
+                "exit_code": (
+                    ExitCode.SECURITY
+                    if any(kind == "security" for _, kind in rejections)
+                    else ExitCode.INPUT
+                ),
+            }]
 
         progress = None
         if show_progress and HAS_UX_IMPROVEMENTS:
@@ -1251,8 +1270,19 @@ class AudioProcessor:
 
         return results
 
-    def _filter_safe_files(self, files: List[str]) -> List[str]:
+    def _filter_safe_files(
+        self, files: List[str]
+    ) -> Tuple[List[str], List[Tuple[str, str]]]:
+        """Split *files* into processable paths and rejected ones.
+
+        Each rejection is recorded as ``(path, kind)`` where *kind* is
+        ``"security"`` when a security policy rejected it (trusted-root or
+        size checks) and ``"input"`` for every other pre-flight failure
+        (unsupported suffix, missing file, failed WAV inspection) -- the two
+        kinds map onto ``ExitCode.SECURITY`` / ``ExitCode.INPUT``.
+        """
         safe: List[str] = []
+        rejections: List[Tuple[str, str]] = []
         inspector = DeepFileInspector() if HAS_DEEP_INSPECTOR else None
         for original in files:
             file_path = os.fspath(original)
@@ -1260,18 +1290,22 @@ class AudioProcessor:
 
             if suffix not in SUPPORTED_FORMATS:
                 self.logger.warning(f"Skipping unsupported file type: {file_path}")
+                rejections.append((file_path, "input"))
                 continue
 
             if not SecurityValidator.validate_path(file_path):
                 self.logger.warning(f"Skipping unsafe path: {file_path}")
+                rejections.append((file_path, "security"))
                 continue
 
             if not os.path.exists(file_path):
                 self.logger.warning(f"Skipping missing file: {file_path}")
+                rejections.append((file_path, "input"))
                 continue
 
             if not SecurityValidator.validate_file_size(file_path):
                 self.logger.warning(f"Skipping file outside size limits: {file_path}")
+                rejections.append((file_path, "security"))
                 continue
 
             # Deep format inspection for native WAV files: reject anything whose
@@ -1288,6 +1322,7 @@ class AudioProcessor:
                         f"Skipping file failing format inspection: {file_path} "
                         f"({'; '.join(result.errors)})"
                     )
+                    rejections.append((file_path, "input"))
                     continue
                 for note in result.warnings:
                     # WARNING, not INFO. These used to fire on nearly every
@@ -1299,7 +1334,7 @@ class AudioProcessor:
 
             safe.append(file_path)
 
-        return safe
+        return safe, rejections
 
     def _process_single_file(self, file_path: str, operation: str, *, dry_run: bool = False, **kwargs) -> Dict:
         """Process a single file"""
@@ -1882,11 +1917,21 @@ async def main():
 
         results = processor.batch_process(files, "analyze")
 
+        if len(results) == 1 and "exit_code" in results[0]:
+            # Every supplied file was rejected in pre-flight; per-file reasons
+            # were already logged by _filter_safe_files.
+            print(f"Error: {results[0]['error']}", file=sys.stderr)
+            return results[0]["exit_code"]
+
         had_error = False
         for result in results:
             if "error" in result:
                 had_error = True
-                print(f"Error processing {result['file']}: {result['error']}", file=sys.stderr)
+                print(
+                    f"Error processing {result.get('file', '<input>')}: "
+                    f"{result['error']}",
+                    file=sys.stderr,
+                )
             else:
                 metadata = result["metadata"]
                 print(f"\n{result['file']}:")
@@ -2082,6 +2127,10 @@ async def main():
 
         for operation in operations:
             results = processor.batch_process(files, operation, **kwargs)
+
+            if len(results) == 1 and "exit_code" in results[0]:
+                print(f"Error: {results[0]['error']}", file=sys.stderr)
+                return results[0]["exit_code"]
 
             had_error = False
             for result in results:
@@ -2317,6 +2366,10 @@ async def main():
         results = processor.batch_process(
             file_list, args.operation, show_progress=sys.stdout.isatty(), **kwargs
         )
+
+        if len(results) == 1 and "exit_code" in results[0]:
+            print(f"Error: {results[0]['error']}", file=sys.stderr)
+            return results[0]["exit_code"]
 
         successful = sum(1 for r in results if "error" not in r)
         summary = f"Processed {successful}/{len(results)} files successfully"

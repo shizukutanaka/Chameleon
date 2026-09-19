@@ -41,7 +41,7 @@ def test_help_shows_current_version_not_stale_v3(tmp_path):
 def test_errors_go_to_stderr_not_stdout(tmp_path):
     missing = tmp_path / "missing.wav"
     result = _run("analyze", str(missing), cwd=str(tmp_path))
-    assert result.returncode == 1
+    assert result.returncode == 3  # ExitCode.INPUT -- rejected pre-flight
     assert "Error" in result.stderr
     assert "Error" not in result.stdout
 

@@ -1693,6 +1693,92 @@ are `OPUS.md`'s to take (they need judgment, not just execution — that
 division was already implicit in both files but never stated), and names this
 exact incident as the reason not to hardcode the next one.
 
+**The generated quick commands invoked a `python` that may not exist, and
+the librosa denoiser subtracted the signal itself (2026-09-19).** Two bugs
+surfaced by the same method — running the verification gate on a machine
+whose environment differed from the one the suite was written in.
+
+First, `test_the_full_documented_flow_works_end_to_end` failed on a host with
+no `python` binary at all: `personal_config.py`'s `create_quick_commands`
+wrote `python {cwd}/main.py ...` into every alias in `aliases.sh` and every
+function in `aliases.ps1`. `quick_install.sh` goes out of its way to support
+python3-only systems for its own steps, but the artifacts `setup` produces
+then failed in every shell that did not have a `python` on PATH — which
+includes a fresh shell with no venv activated, the exact situation the
+aliases exist for. Fixed by generating `sys.executable` (quoted): the
+interpreter that ran setup is the one command guaranteed to exist and to see
+the right site-packages. In the same function, `~/.chameleon/` was only ever
+created as a side effect of `PersonalConfig.save()` — calling
+`create_quick_commands` standalone crashed with FileNotFoundError; it now
+makes the directory itself. The PowerShell heredoc also emitted
+`SyntaxWarning: invalid escape sequence` for its literal `\m`/`\S` backslash
+sequences; it is now a raw f-string with identical output.
+
+Second, installing librosa — a package in the `[audio]` extra that none of
+the three documented test configurations installs — turned the suite red on
+`test_restoring_clean_audio_changes_nothing`: `AudioRestorer.restore()` on a
+clean sine returned it ~14 dB down. Root cause in
+`AdaptiveDenoiser.estimate_noise_profile`: it defines "quiet sections" as the
+decile of frames with the lowest RMS and averages their STFT magnitude into
+the noise profile. On stationary material the quietest decile is not noise —
+it is the content — so `denoise` subtracted 0.8× of the signal's own
+spectrum. The `np.ones` fallback the docstring claimed removed was still
+present, producing the same blanket −20 dB when the strict `<` selected no
+frames at all. Fixed the way the module already handles missing librosa:
+refuse with a named reason when the quietest decile is within ~6 dB of the
+loudest (no real quiet sections exist), and let `restore()` report the step
+as skipped rather than applied. Material with genuine quiet sections still
+denoises; a clean sine now passes through bit-exactly.
+
+Both are the same lesson the file keeps re-teaching: an environment is part
+of the test. The alias bug was invisible where `python` exists; the denoiser
+bug was invisible where librosa is absent. The fix for the second is also a
+reminder that `PRODUCT_ANALYSIS.md`'s "three dependency configurations" does
+not exercise the `[audio]` extra's librosa path — a gap worth knowing rather
+than closing (the denoiser is deliberately unexposed on the CLI; see
+`tests/test_restoration_cli.py`'s rationale).
+
+**Q: What should the CLI exit when pre-flight rejects every supplied file?**
+A (2026-09-19): The sentinel `batch_process` returned for an all-filtered
+input list carried only `{"error": ...}`, and `analyze`'s error branch read
+`result['file']` — a `KeyError` traceback and exit 1 where the documented
+table (and the `ExitCode` docstring) promises INPUT(3) for a supplied path
+that fails pre-flight validation and SECURITY(4) for a policy rejection.
+Two subprocess tests had pinned `== 1`, i.e. they were asserting the crash's
+side effect, not the contract. `_filter_safe_files` now returns
+`(safe, rejections)` with each rejection tagged `"input"` (suffix, missing,
+failed WAV inspection) or `"security"` (trusted roots, size cap); the
+sentinel carries `exit_code` — SECURITY if any security rejection occurred,
+else INPUT — and `analyze`, `process` and `batch` return it instead of
+indexing into a file-less dict. Mixed batches (some files rejected, some
+processed) keep the existing per-file-warning + normal-results behavior.
+
+**Q: Should vinyl mode report its own step vocabulary?**
+A (2026-09-19): No — `VinylRestorer.restore` returned `steps_applied` /
+`steps_skipped` with `{"step", "reason"}` entries, which `AudioRestorer.
+restore(mode="vinyl")` merged into a dict already keyed `applied_processes` /
+`skipped_processes` with `{"process", "reason"}`. A caller reading the
+documented keys saw `applied_processes == []` for a vinyl restore whose
+repairs all ran — under-reporting, the same defect class the module's
+honesty tests exist to prevent. `VinylRestorer` is internal: its only
+caller is `AudioRestorer.restore`, so it now emits the shared keys directly
+rather than translating at the seam. `snr_improvement` stays as a
+vinyl-specific extra.
+
+**Q: `apply_effects` "compression" — keep the waveshaper or route to the real
+compressor?**
+A (2026-09-19): Routed to `mastering_chain.Compressor`. The per-sample dB
+remap it replaced is soft-clipping — it reshapes each waveform period, which
+measurably adds harmonics (3rd at −13 dB rel. fundamental on a 0.8 sine at
+−20 dB/4:1). The name "compression" and its threshold/ratio parameters
+promise dynamics control, and the project already owns a correct one
+(envelope follower, centred soft knee, gain smoothing, stereo linking), so
+reusing it is the DRY fix as well as the honest one. New optional params
+`attack`/`release`/`knee`/`makeup_gain` expose the existing config surface.
+`"compression"` joined `_EFFECT_REQUIREMENTS` (numpy) so a numpy-less
+install gets the same named refusal the other guarded effects get instead
+of a silent skip.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy

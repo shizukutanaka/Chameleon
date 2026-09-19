@@ -93,6 +93,67 @@
 
 ### Fixed
 
+- **`personal_config.py` generated quick-command aliases that invoke a bare
+  `python`** — the one interpreter name the documented install flow does not
+  guarantee exists. `quick_install.sh` deliberately supports python3-only
+  systems, but every alias in `~/.chameleon/aliases.sh` and every function in
+  `aliases.ps1` then failed with "command not found" in any new shell (or any
+  shell without the venv activated). Both scripts now invoke `sys.executable`
+  — the interpreter that actually ran `setup` — quoted against spaces, which
+  also makes the aliases venv-aware. The printed "run directly" hints show the
+  same real interpreter instead of a guessed name, and
+  `create_quick_commands` now creates `~/.chameleon` itself rather than
+  relying on `PersonalConfig.save()` having run first. Verified end-to-end:
+  the generated `aliases.sh` is sourced in a real non-interactive shell and
+  `audio-analyze` runs against a real WAV file.
+- **`analyze`/`process`/`batch` crashed or misreported when every supplied
+  file was rejected in pre-flight.** The "no valid files" sentinel carried
+  only an `error` key, so `analyze`'s error branch read `result['file']`
+  and died with a `KeyError` traceback — exit code 1, where the documented
+  table promises INPUT(3) for input-validation rejections and SECURITY(4)
+  for policy rejections. `_filter_safe_files` now classifies each rejection
+  (`"security"` for trusted-root/size-cap failures, `"input"` for the rest),
+  the sentinel carries the matching exit code (SECURITY wins a mixed batch),
+  and all three call sites print the error to stderr and return it. Live
+  checks: a missing file exits 3, a path outside `CHAMELEON_TRUSTED_ROOTS`
+  exits 4 — both previously a traceback and 1. Two tests had pinned the
+  crash's exit code; they now assert the documented codes and that no
+  traceback reaches stderr.
+- **`AudioRestorer.restore(mode="vinyl")` reported a different result
+  schema than every other mode.** `VinylRestorer` emitted `steps_applied` /
+  `steps_skipped` with `{"step", "reason"}` entries while the outer contract
+  is `applied_processes` / `skipped_processes` with `{"process", "reason"}` —
+  so a caller reading `applied_processes` saw an empty list even though the
+  repairs ran. `VinylRestorer.restore` now reports under the shared keys.
+- **`process --effects` "compression" was a per-sample waveshaper, not a
+  compressor.** It remapped `|x|` in dB every sample — soft-clipping that
+  reshapes the waveform and adds harmonics (a 0.8 sine at −20 dB/ratio 4
+  came out with the 3rd harmonic only ~13 dB down). The effect now routes
+  through `mastering_chain.Compressor`, the real envelope-following
+  soft-knee dynamics processor already in the project: the crest still
+  comes down by the requested ratio, but the waveform keeps its shape
+  (harmonics ~100 dB below fundamental, vs ~13–19 dB before). It also now
+  accepts `attack`/`release`/`knee`/`makeup_gain` matching
+  `CompressorConfig`, and is declared in `_EFFECT_REQUIREMENTS` (numpy) so a
+  numpy-less install refuses clearly rather than skipping silently.
+- **`AdaptiveDenoiser` subtracted the signal's own spectrum on stationary
+  material.** `estimate_noise_profile` averaged the STFT magnitude over the
+  quietest 10% of frames — but on stationary content (a sustained tone,
+  uniform-level music, uniform noise) the quietest decile IS the content, so
+  the "noise profile" was the signal itself and `denoise` removed ~80% of it:
+  a clean 440 Hz sine came back ~14 dB down. The `np.ones` fallback the
+  docstring described as removed was still in the code, producing a blanket
+  −20 dB whenever no frame fell below the decile. The estimator now refuses
+  with a named reason when the quietest decile is within ~6 dB of the loudest
+  (i.e. no real quiet sections exist), and `restore()` reports the step as
+  skipped rather than applied. Only reachable from the Python API — the CLI
+  deliberately exposes just `--declip`/`--dehum`. Surfaced by installing
+  librosa, which none of the three documented test configurations had.
+- A `SyntaxWarning` at import: the generated-PowerShell heredoc in
+  `personal_config.py` contained `\m`, `\S` and similar literal backslash
+  sequences inside a plain f-string. The script is now a raw f-string —
+  identical output, no warning.
+
 - **`docs/agents/SONNET.md` was recommending work that was already done.**
   Its task list named three "honesty pass" targets and an import-guard task
   that had all been fixed, and listed `audio_restoration`/`personal_config`

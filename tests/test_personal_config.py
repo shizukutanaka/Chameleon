@@ -251,6 +251,22 @@ def test_quick_setup_never_recommends_the_nonexistent_personal_subcommand(home, 
     assert "main.py personal" not in printed
 
 
+def test_generated_quick_commands_invoke_the_running_interpreter(home):
+    # A bare `python` in the generated scripts only resolves on systems that
+    # happen to ship one -- machines with `python3` alone, or a fresh shell
+    # without the venv activated, get "command not found" from every alias.
+    # sys.executable is the interpreter setup actually ran under, so it is
+    # the one command guaranteed to exist.
+    import sys
+
+    personal_config.PersonalSetup.quick_setup()
+
+    sh = (home / ".chameleon" / "aliases.sh").read_text()
+    ps1 = (home / ".chameleon" / "aliases.ps1").read_text()
+    assert f'"{sys.executable}"' in sh
+    assert f'"{sys.executable}"' in ps1
+
+
 def test_quick_setup_only_prints_aliases_it_actually_created(home, capsys):
     import re
 

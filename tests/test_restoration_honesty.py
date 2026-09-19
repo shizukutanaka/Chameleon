@@ -84,6 +84,41 @@ def test_the_librosa_stages_refuse_rather_than_no_op():
         audio_restoration.SpectralRepairer().repair_gaps(_sine(440), [(100, 200)], SAMPLE_RATE)
 
 
+def test_the_denoiser_refuses_on_stationary_material():
+    # "Quietest 10% of frames" only means something when quiet frames exist.
+    # On a stationary signal the decile IS the content, its mean spectrum is
+    # the signal's own spectrum, and subtracting it is self-mutilation -- a
+    # clean sine came back ~14 dB down before this guard.
+    pytest.importorskip("librosa")
+
+    with pytest.raises(RuntimeError, match="quiet"):
+        audio_restoration.AdaptiveDenoiser().denoise(_sine(440), SAMPLE_RATE)
+
+
+def test_a_refused_denoise_is_reported_as_skipped_with_its_reason():
+    pytest.importorskip("librosa")
+
+    _, info = audio_restoration.AudioRestorer().restore(_sine(440), SAMPLE_RATE)
+
+    skipped = {e["process"]: e["reason"] for e in info["skipped_processes"]}
+    assert "quiet" in skipped["denoising"]
+
+
+def test_vinyl_mode_reports_the_same_schema_as_other_modes():
+    # Vinyl mode used to `info.update()` a differently-keyed dict: a caller
+    # reading `applied_processes` saw [] even though the steps ran, and the
+    # denoiser's skip landed under `steps_skipped`/`"step"` instead of
+    # `skipped_processes`/`"process"`.
+    _, info = audio_restoration.AudioRestorer().restore(
+        _sine(440), SAMPLE_RATE, mode="vinyl")
+
+    assert "steps_applied" not in info and "steps_skipped" not in info
+    assert {"click_removal", "crackle_removal", "hum_removal"} <= set(
+        info["applied_processes"])
+    for entry in info["skipped_processes"]:
+        assert "process" in entry and "reason" in entry
+
+
 def test_no_metric_is_called_snr_unless_it_is_one():
     _, info = audio_restoration.AudioRestorer().restore(_sine(440), SAMPLE_RATE)
 
