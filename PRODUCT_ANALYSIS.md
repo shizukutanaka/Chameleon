@@ -293,6 +293,11 @@ or docs:
   branch (the live async path is `batch_process_async`, which tests use).
 - `PerformanceTracker.get_stats` — never called.
 
+**Stray artifacts at repo root — identified 2026-09-19, same confirmation
+needed.** Six MIDI files (`demo_chords.mid`, `demo_composition.mid`,
+`demo_melody.mid`, `demo_scale.mid`, `test_composition.mid`, `test_scale.mid`)
+referenced by no doc, code, or test — committed demo output, not source.
+
 `tests/test_no_orphan_modules.py` holds the three kept modules above in an
 allow-list with written justifications and fails if a fourth appears, so this
 section and that test must agree.
