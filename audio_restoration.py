@@ -409,9 +409,10 @@ class AdaptiveDenoiser:
     def estimate_noise_profile(self, audio: np.ndarray, sample_rate: int) -> np.ndarray:
         """Estimate noise profile from quiet sections. Requires librosa.
 
-        The old fallback returned `np.ones(1025)` -- a noise floor of 1.0 in
-        every bin, which the subtraction below turns into a blanket -20 dB
-        applied to the whole file. Silently wrecking the audio is worse than
+        Raises when there is nothing to estimate from. The old fallback
+        returned `np.ones(1025)` -- a noise floor of 1.0 in every bin,
+        which the subtraction below turns into a blanket -20 dB applied
+        to the whole file. Silently wrecking the audio is worse than
         refusing to run.
         """
         if not HAS_LIBROSA:
@@ -421,12 +422,30 @@ class AdaptiveDenoiser:
 
         # Find quiet sections
         rms = librosa.feature.rms(y=audio, frame_length=2048, hop_length=512)[0]
-        threshold = np.percentile(rms, 10)
-        quiet_frames = rms < threshold
+        quiet_level = np.percentile(rms, 10)
+        loud_level = np.percentile(rms, 90)
 
-        # Extract noise from quiet sections
+        # The quietest decile only evidences a noise floor when it is
+        # actually quieter than the content. On stationary material -- a
+        # sustained tone, uniform noise, continuously loud music -- the
+        # quietest frames ARE the content, the "profile" becomes the
+        # signal's own spectrum, and subtracting 0.8x of it guts the audio
+        # (measured: a clean 440 Hz sine came back ~14 dB down). When the
+        # quietest decile is within ~6 dB of the loudest there are no quiet
+        # sections, and the honest answer is that no noise floor exists.
+        if loud_level <= quiet_level * 2.0:
+            raise RuntimeError(
+                "AdaptiveDenoiser found no quiet sections to estimate a "
+                "noise floor from: the quietest decile of frames is within "
+                "~6 dB of the loudest, so the level is stationary and "
+                "spectral subtraction would subtract the signal itself."
+            )
+
+        # Extract noise from quiet sections. `<=` keeps the decile frame
+        # itself, so this is never empty.
+        quiet_frames = rms <= quiet_level
         stft = librosa.stft(audio)
-        noise_spectrum = np.abs(stft[:, quiet_frames]).mean(axis=1) if np.any(quiet_frames) else np.ones(stft.shape[0])
+        noise_spectrum = np.abs(stft[:, quiet_frames]).mean(axis=1)
 
         return noise_spectrum
 

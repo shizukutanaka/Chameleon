@@ -1693,6 +1693,51 @@ are `OPUS.md`'s to take (they need judgment, not just execution — that
 division was already implicit in both files but never stated), and names this
 exact incident as the reason not to hardcode the next one.
 
+**The generated quick commands invoked a `python` that may not exist, and
+the librosa denoiser subtracted the signal itself (2026-09-19).** Two bugs
+surfaced by the same method — running the verification gate on a machine
+whose environment differed from the one the suite was written in.
+
+First, `test_the_full_documented_flow_works_end_to_end` failed on a host with
+no `python` binary at all: `personal_config.py`'s `create_quick_commands`
+wrote `python {cwd}/main.py ...` into every alias in `aliases.sh` and every
+function in `aliases.ps1`. `quick_install.sh` goes out of its way to support
+python3-only systems for its own steps, but the artifacts `setup` produces
+then failed in every shell that did not have a `python` on PATH — which
+includes a fresh shell with no venv activated, the exact situation the
+aliases exist for. Fixed by generating `sys.executable` (quoted): the
+interpreter that ran setup is the one command guaranteed to exist and to see
+the right site-packages. In the same function, `~/.chameleon/` was only ever
+created as a side effect of `PersonalConfig.save()` — calling
+`create_quick_commands` standalone crashed with FileNotFoundError; it now
+makes the directory itself. The PowerShell heredoc also emitted
+`SyntaxWarning: invalid escape sequence` for its literal `\m`/`\S` backslash
+sequences; it is now a raw f-string with identical output.
+
+Second, installing librosa — a package in the `[audio]` extra that none of
+the three documented test configurations installs — turned the suite red on
+`test_restoring_clean_audio_changes_nothing`: `AudioRestorer.restore()` on a
+clean sine returned it ~14 dB down. Root cause in
+`AdaptiveDenoiser.estimate_noise_profile`: it defines "quiet sections" as the
+decile of frames with the lowest RMS and averages their STFT magnitude into
+the noise profile. On stationary material the quietest decile is not noise —
+it is the content — so `denoise` subtracted 0.8× of the signal's own
+spectrum. The `np.ones` fallback the docstring claimed removed was still
+present, producing the same blanket −20 dB when the strict `<` selected no
+frames at all. Fixed the way the module already handles missing librosa:
+refuse with a named reason when the quietest decile is within ~6 dB of the
+loudest (no real quiet sections exist), and let `restore()` report the step
+as skipped rather than applied. Material with genuine quiet sections still
+denoises; a clean sine now passes through bit-exactly.
+
+Both are the same lesson the file keeps re-teaching: an environment is part
+of the test. The alias bug was invisible where `python` exists; the denoiser
+bug was invisible where librosa is absent. The fix for the second is also a
+reminder that `PRODUCT_ANALYSIS.md`'s "three dependency configurations" does
+not exercise the `[audio]` extra's librosa path — a gap worth knowing rather
+than closing (the denoiser is deliberately unexposed on the CLI; see
+`tests/test_restoration_cli.py`'s rationale).
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy

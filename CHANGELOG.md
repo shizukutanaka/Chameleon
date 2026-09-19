@@ -93,6 +93,37 @@
 
 ### Fixed
 
+- **`personal_config.py` generated quick-command aliases that invoke a bare
+  `python`** — the one interpreter name the documented install flow does not
+  guarantee exists. `quick_install.sh` deliberately supports python3-only
+  systems, but every alias in `~/.chameleon/aliases.sh` and every function in
+  `aliases.ps1` then failed with "command not found" in any new shell (or any
+  shell without the venv activated). Both scripts now invoke `sys.executable`
+  — the interpreter that actually ran `setup` — quoted against spaces, which
+  also makes the aliases venv-aware. The printed "run directly" hints show the
+  same real interpreter instead of a guessed name, and
+  `create_quick_commands` now creates `~/.chameleon` itself rather than
+  relying on `PersonalConfig.save()` having run first. Verified end-to-end:
+  the generated `aliases.sh` is sourced in a real non-interactive shell and
+  `audio-analyze` runs against a real WAV file.
+- **`AdaptiveDenoiser` subtracted the signal's own spectrum on stationary
+  material.** `estimate_noise_profile` averaged the STFT magnitude over the
+  quietest 10% of frames — but on stationary content (a sustained tone,
+  uniform-level music, uniform noise) the quietest decile IS the content, so
+  the "noise profile" was the signal itself and `denoise` removed ~80% of it:
+  a clean 440 Hz sine came back ~14 dB down. The `np.ones` fallback the
+  docstring described as removed was still in the code, producing a blanket
+  −20 dB whenever no frame fell below the decile. The estimator now refuses
+  with a named reason when the quietest decile is within ~6 dB of the loudest
+  (i.e. no real quiet sections exist), and `restore()` reports the step as
+  skipped rather than applied. Only reachable from the Python API — the CLI
+  deliberately exposes just `--declip`/`--dehum`. Surfaced by installing
+  librosa, which none of the three documented test configurations had.
+- A `SyntaxWarning` at import: the generated-PowerShell heredoc in
+  `personal_config.py` contained `\m`, `\S` and similar literal backslash
+  sequences inside a plain f-string. The script is now a raw f-string —
+  identical output, no warning.
+
 - **`docs/agents/SONNET.md` was recommending work that was already done.**
   Its task list named three "honesty pass" targets and an import-guard task
   that had all been fixed, and listed `audio_restoration`/`personal_config`

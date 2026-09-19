@@ -5,6 +5,7 @@ Simplified setup with maximum security and features
 """
 
 import os
+import sys
 import json
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -183,8 +184,8 @@ class PersonalSetup:
         print(f"   audio-analyze your_file.wav")
         print(f"   audio-batch analyze          # scans {config.audio_library}")
         print(f"\n   ...or directly, with no aliases loaded:")
-        print(f"   python main.py analyze your_file.wav")
-        print(f"   python main.py batch {config.audio_library} analyze")
+        print(f"   {sys.executable} main.py analyze your_file.wav")
+        print(f"   {sys.executable} main.py batch {config.audio_library} analyze")
 
         return config
 
@@ -192,9 +193,18 @@ class PersonalSetup:
     def create_quick_commands(config: PersonalConfig) -> None:
         """Create convenient shell aliases/scripts"""
 
-        # Create bash aliases file
+        # Create bash aliases file. The .chameleon directory is not
+        # guaranteed to exist here -- callers that skip PersonalConfig.save()
+        # (or run this method standalone) would otherwise get a
+        # FileNotFoundError.
         aliases_file = Path.home() / ".chameleon" / "aliases.sh"
+        aliases_file.parent.mkdir(parents=True, exist_ok=True)
 
+        # The aliases must invoke the interpreter that ran setup, not a bare
+        # `python`: on systems with only `python3` (or no activated venv in
+        # the new shell) a literal `python` does not resolve and every alias
+        # fails with "command not found". sys.executable is also venv-aware,
+        # so the aliases keep working without `chameleon-activate` first.
         aliases = f"""#!/bin/bash
 # Chameleon Audio - Personal Quick Commands
 
@@ -202,17 +212,17 @@ class PersonalSetup:
 alias chameleon-activate='source {Path.cwd()}/.venv/bin/activate'
 
 # Quick operations
-alias audio-analyze='python {Path.cwd()}/main.py analyze'
-alias audio-normalize='python {Path.cwd()}/main.py process --normalize'
-alias audio-denoise='python {Path.cwd()}/main.py process --denoise'
-alias audio-batch='python {Path.cwd()}/main.py batch {config.audio_library}'
+alias audio-analyze='"{sys.executable}" "{Path.cwd()}/main.py" analyze'
+alias audio-normalize='"{sys.executable}" "{Path.cwd()}/main.py" process --normalize'
+alias audio-denoise='"{sys.executable}" "{Path.cwd()}/main.py" process --denoise'
+alias audio-batch='"{sys.executable}" "{Path.cwd()}/main.py" batch "{config.audio_library}"'
 
 # Personal library management
 alias audio-lib='cd {config.audio_library}'
 alias audio-processed='cd {config.output_directory}'
 
 # Server
-alias audio-server='python {Path.cwd()}/main.py server --host 127.0.0.1 --port 8080'
+alias audio-server='"{sys.executable}" "{Path.cwd()}/main.py" server --host 127.0.0.1 --port 8080'
 """
 
         with open(aliases_file, 'w') as f:
@@ -221,7 +231,10 @@ alias audio-server='python {Path.cwd()}/main.py server --host 127.0.0.1 --port 8
         # Create PowerShell script for Windows
         ps_file = Path.home() / ".chameleon" / "aliases.ps1"
 
-        ps_script = f"""# Chameleon Audio - Personal Quick Commands
+        # Raw f-string: the Windows paths inside are written with literal
+        # backslashes (\m, \S, ...), which CPython 3.12+ reports as invalid
+        # escape sequences.
+        ps_script = rf"""# Chameleon Audio - Personal Quick Commands
 
 # Activate virtual environment
 function Chameleon-Activate {{
@@ -230,19 +243,19 @@ function Chameleon-Activate {{
 
 # Quick operations
 function Audio-Analyze {{
-    python "{Path.cwd()}\main.py" analyze $args
+    & "{sys.executable}" "{Path.cwd()}\main.py" analyze $args
 }}
 
 function Audio-Normalize {{
-    python "{Path.cwd()}\main.py" process --normalize $args
+    & "{sys.executable}" "{Path.cwd()}\main.py" process --normalize $args
 }}
 
 function Audio-Denoise {{
-    python "{Path.cwd()}\main.py" process --denoise $args
+    & "{sys.executable}" "{Path.cwd()}\main.py" process --denoise $args
 }}
 
 function Audio-Batch {{
-    python "{Path.cwd()}\main.py" batch "{config.audio_library}" $args
+    & "{sys.executable}" "{Path.cwd()}\main.py" batch "{config.audio_library}" $args
 }}
 
 # Directory shortcuts

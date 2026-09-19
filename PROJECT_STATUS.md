@@ -5,11 +5,12 @@ green in three dependency configurations (counts in the dated header of
 `PRODUCT_ANALYSIS.md` — that is the only place they are kept). REST API server
 works end-to-end with `pip install -e .[api]`. Container image builds and runs.
 No web frontend ships (see §5).
-**Last updated**: 2026-08-25 (PRs #22–#27: 789 unreachable lines deleted with
-per-item confirmation, `audio_restoration` audited and wired as
-`--declip`/`--dehum`, the `ml` command deleted, the §4 guard extended to the
-CLI surface, and every claim in `PRODUCT_ANALYSIS.md` re-verified. See
-`CHARTER.md` §9 and `PRODUCT_ANALYSIS.md`.)
+**Last updated**: 2026-09-19 (the onboarding quick commands now invoke the
+interpreter that ran setup instead of a bare `python`, and the librosa
+`AdaptiveDenoiser` refuses to estimate a noise floor from stationary
+material rather than subtracting the signal itself — previously masked
+because no documented test configuration installed librosa. See `CHARTER.md`
+§9 and the dated header of `PRODUCT_ANALYSIS.md`.)
 **Read first**: `CHARTER.md` — the project's scope charter and full decision
 history (Socratic record, §9). This file is a status *snapshot*; `CHARTER.md`
 is the source of truth for *why* each decision was made. For AI agents,
