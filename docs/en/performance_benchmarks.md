@@ -2,13 +2,13 @@
 
 ## Overview
 
-Chameleon Audio Tool is designed for lightweight, single-process workloads. The CLI performs operations sequentially and relies on the Python standard library. This page explains the practical performance characteristics of v1.0.0 and suggests simple ways to measure throughput on your own system.
+Chameleon Audio Tool is designed for lightweight workloads. The core CLI (`analyze`, `normalize`, `mono`, `trim`, `batch`, `midi`) relies on the Python standard library; `[audio]` operations (noise reduction, resampling, mastering) additionally use numpy/scipy. This page explains the practical performance characteristics of v1.1.0 and suggests simple ways to measure throughput on your own system.
 
 ## Expected behaviour
 
 - The tool streams WAV data in fixed-size chunks (default `65536` bytes). Adjust `CHAMELEON_CHUNK_SIZE` to experiment with trade-offs between memory usage and throughput.
 - Normalisation, trimming, and conversion read and write data once; they are limited mainly by disk speed.
-- `batch` runs `analyze` on each file in series. Total time scales linearly with the number of files.
+- `batch` parallelises across files with a `ThreadPoolExecutor` (default `min(4, cpu_count)` workers; tune with `--max-workers` / `CHAMELEON_MAX_WORKERS`, disable with `--no-parallel` / `CHAMELEON_PARALLEL=0`). Total time scales roughly linearly with files-per-worker.
 
 ## Measuring performance
 
@@ -29,8 +29,8 @@ Record the wall-clock time and compare runs after adjusting environment variable
 
 ## Known limits
 
-- Processing is sequential; the tool does not spawn worker pools or distributed schedulers.
-- Only linear PCM WAV files are supported, and audio is not resampled.
+- Work stays inside one process — no distributed schedulers — but batch file handling uses the worker pool described above.
+- WAV is always supported. With the `[audio]` extra, compressed inputs (mp3/flac/ogg/aiff/m4a) decode via librosa/soundfile, and `process --convert*` / `batch ... convert` can resample to a target rate and bit depth.
 - Memory usage scales with `CHAMELEON_CHUNK_SIZE`; extremely small chunks increase CPU overhead while very large chunks raise peak memory.
 
 ## Manual benchmarking checklist
