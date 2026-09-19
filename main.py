@@ -2198,7 +2198,10 @@ async def main():
         else:
             effects = None
 
-        print("Starting real-time audio stream... Press Ctrl+C to stop")
+        # The banner claims a stream is starting; when PyAudio is absent the
+        # call below always fails, so the claim must not be printed.
+        if HAS_PYAUDIO:
+            print("Starting real-time audio stream... Press Ctrl+C to stop")
 
         try:
             await processor.process_stream(input_device, output_device, effects)
@@ -2406,6 +2409,9 @@ async def main():
                     success = processor.generate_midi(notes, args.output)
                     if success:
                         print(f"MIDI file saved to {args.output}")
+                    else:
+                        print(f"Error: failed to write MIDI file to {args.output}", file=sys.stderr)
+                        exit_code = ExitCode.ERROR
             else:
                 print("No MIDI notes extracted")
 
@@ -2415,7 +2421,8 @@ async def main():
             analysis = processor.analyze_music(audio, sr)
 
             if "error" in analysis:
-                print(f"Analysis error: {analysis['error']}")
+                print(f"Analysis error: {analysis['error']}", file=sys.stderr)
+                exit_code = ExitCode.ERROR
             else:
                 print("\n🎵 Musical Analysis Results:")
                 print(f"📊 Notes extracted: {analysis['notes']}")
@@ -2461,8 +2468,12 @@ async def main():
                     success = processor.generate_midi(melody, args.output)
                     if success:
                         print(f"Composition saved to {args.output}")
+                    else:
+                        print(f"Error: failed to write composition to {args.output}", file=sys.stderr)
+                        exit_code = ExitCode.ERROR
             else:
-                print("Failed to generate composition")
+                print("Error: failed to generate composition", file=sys.stderr)
+                exit_code = ExitCode.ERROR
 
         elif args.operation == "generate":
             # Generate MIDI file from scratch
@@ -2491,8 +2502,12 @@ async def main():
                 success = processor.generate_midi(demo_notes, args.output)
                 if success:
                     print(f"Demo MIDI file generated: {args.output}")
+                else:
+                    print(f"Error: failed to write MIDI demo to {args.output}", file=sys.stderr)
+                    exit_code = ExitCode.ERROR
             else:
-                print("Failed to generate MIDI demo")
+                print("Error: failed to generate MIDI demo", file=sys.stderr)
+                exit_code = ExitCode.ERROR
 
     elif args.command == "server":
         print(f"Starting API server on {args.host}:{args.port}")

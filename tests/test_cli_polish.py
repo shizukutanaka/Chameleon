@@ -9,6 +9,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 import main
 from tests._helpers import write_sine_wave
 
@@ -68,3 +70,26 @@ def test_successful_analyze_output_stays_on_stdout(tmp_path):
     assert result.returncode == 0
     assert "tone.wav" in result.stdout
     assert result.stderr.strip() == ""
+
+
+def test_failed_stream_does_not_claim_it_started(tmp_path):
+    # Without PyAudio the stream always fails immediately; the banner that
+    # claims a live stream must not print anyway, and the exit must not be 0.
+    if main.HAS_PYAUDIO:
+        pytest.skip("PyAudio present; the failure path cannot be reached")
+
+    result = _run("stream", cwd=str(tmp_path))
+    assert result.returncode == 1  # ExitCode.ERROR
+    assert "Stream failed" in result.stderr
+    assert "Starting real-time audio stream" not in result.stdout
+
+
+def test_midi_analyze_error_is_reported_not_swallowed(tmp_path):
+    # "No musical content detected" used to print on stdout and still exit 0.
+    from tests._helpers import write_wav_raw
+    silence = tmp_path / "silence.wav"
+    write_wav_raw(silence, frames=b"\x00\x00" * 22050)
+    result = _run("midi", "analyze", "--input", str(silence), cwd=str(tmp_path))
+    assert result.returncode == 1  # ExitCode.ERROR
+    assert "error" in result.stderr.lower()
+    assert "Analysis error" not in result.stdout

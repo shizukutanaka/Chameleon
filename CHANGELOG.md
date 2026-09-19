@@ -125,6 +125,15 @@
   is `applied_processes` / `skipped_processes` with `{"process", "reason"}` —
   so a caller reading `applied_processes` saw an empty list even though the
   repairs ran. `VinylRestorer.restore` now reports under the shared keys.
+- **`stream` printed "Starting real-time audio stream… Press Ctrl+C" when
+  no stream could ever start.** Without PyAudio the call fails instantly, so
+  the banner is now only printed when `HAS_PYAUDIO` — the failure is a
+  single stderr line with exit 1, no misleading banner.
+- **`midi` failure paths printed to stdout and exited 0.** `midi analyze`
+  errors, `compose`/`generate` failures, and silent `generate_midi` write
+  failures now go to stderr with `ExitCode.ERROR` — e.g. `midi analyze` on
+  silence reports "No musical content detected" on stderr and exits 1
+  instead of printing to stdout and exiting 0.
 - **`process --effects` "compression" was a per-sample waveshaper, not a
   compressor.** It remapped `|x|` in dB every sample — soft-clipping that
   reshapes the waveform and adds harmonics (a 0.8 sine at −20 dB/ratio 4

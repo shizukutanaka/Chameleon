@@ -2,9 +2,9 @@
 
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
 **Version:** 1.1.0 · **Tests:** re-run 2026-09-19 on Python 3.12, green in
-all three configurations — **328 passed** on a bare install (stdlib only,
-22 skipped), **385** with numpy (scipy/librosa/soundfile blocked, 24
-skipped), **476** with numpy + scipy + librosa + soundfile + fastapi
+all three configurations — **330 passed** on a bare install (stdlib only,
+22 skipped), **387** with numpy (scipy/librosa/soundfile blocked, 24
+skipped), **478** with numpy + scipy + librosa + soundfile + fastapi
 (2 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
@@ -306,7 +306,7 @@ here because they need a user decision first.
 | ~~P1~~ | ~~Fix denoise estimating noise from the signal~~ | High | S | Low | **DONE 2026-08-08** — per-bin percentile + Rayleigh scaling; material without a silent lead-in went -19.4 dB → -0.1 dB |
 | ~~P1~~ | ~~Fix compressor's non-monotonic soft knee~~ | High | S | Low | **DONE 2026-08-08** — centred quadratic knee (Giannoulis 2012); output no longer drops 2 dB at the knee |
 | ~~P2~~ | ~~Add minimal tests for the remaining zero-coverage modules~~ | Med | S | Low | **DONE 2026-08-25** — 18 tests for `personal_config`, which found a config loader that died on any file written by another version, an unhelpful crash on malformed JSON, and playlists stamped with the home directory's mtime. (`performance_optimizer` was deleted instead — the honest resolution for code with no callers) |
-| P3 | `apply_effects` compression is an instantaneous waveshaper | Low | S | Low | No attack/release; the real compressor is in `mastering_chain`. Label or point users at `--master` |
+| ~~P3~~ | ~~`apply_effects` compression is an instantaneous waveshaper~~ | ~~Low~~ | ~~S~~ | ~~Low~~ | **DONE 2026-09-19** — routed to `mastering_chain.Compressor` (real envelope follower + soft knee); waveshaper's −13 dB 3rd-harmonic distortion now ~−100 dB |
 | P4 | Noise-shaped ("shaped") dither in `mastering_chain` | Low | M | Low | Advertised in the config docstring, unimplemented; falls back to TPDF with a warning |
 | P3 | Consider TPDF dither by default, or a `--dither` CLI flag | Low | S | Med | Currently opt-in via `ProcessingConfig.apply_dither` only, to keep output deterministic (CHARTER §9). No CLI surface yet |
 | ~~P2~~ | ~~Give `audio_restoration` a CLI surface~~ | Med | M | Med | **DONE 2026-08-25** — `process --declip` / `--dehum` ship after an audit that found the declipper damaging clean audio and the hum detector firing on silence. Click/crackle/gap/denoise deliberately not exposed: no trustworthy detector. See `CHARTER.md` §9 |

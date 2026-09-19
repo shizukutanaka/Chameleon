@@ -1779,6 +1779,18 @@ reusing it is the DRY fix as well as the honest one. New optional params
 install gets the same named refusal the other guarded effects get instead
 of a silent skip.
 
+**Q: How far to take the "errors must exit nonzero" sweep?**
+A (2026-09-19): Through `stream` and `midi`. `stream` printed its "Starting
+real-time audio stream" banner unconditionally before the call that always
+fails when PyAudio is absent — now gated on `HAS_PYAUDIO` so the claim is
+only made when it can be true. `midi`'s failure paths printed to stdout and
+fell through to exit 0 (`Analysis error: …`, "Failed to generate
+composition/demo", and three `generate_midi` write failures that printed
+nothing at all); they now go to stderr with `ExitCode.ERROR`. The `batch`
+command's all-rejected case was folded into the same day's exit-code fix.
+Deliberately untouched: `midi extract` finding zero notes stays exit 0 —
+"processed, found nothing" is a result, not an error.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy
