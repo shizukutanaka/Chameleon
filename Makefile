@@ -1,6 +1,6 @@
 # Chameleon Audio Tool - Commercial Build System
 
-.PHONY: help install develop test test-all lint format security benchmark docs build publish docker clean
+.PHONY: help install develop test test-all lint format security benchmark build publish docker clean
 
 help:
 	@echo "Chameleon Audio Tool - Commercial Build Targets"
@@ -12,7 +12,6 @@ help:
 	@echo "  format      Format source using black and isort"
 	@echo "  security    Execute security scanners (bandit, safety)"
 	@echo "  benchmark   Execute performance benchmarks"
-	@echo "  docs        Build HTML documentation"
 	@echo "  build       Build distribution packages"
 	@echo "  publish     Publish artifacts to PyPI"
 	@echo "  docker      Build production Docker image"
@@ -45,9 +44,6 @@ security:
 
 benchmark:
 	pytest -v -m benchmark --benchmark-only || echo "No benchmark tests defined"
-
-docs:
-	sphinx-build -b html docs docs/_build/html
 
 build:
 	python -m build
