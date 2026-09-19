@@ -989,8 +989,11 @@ class AudioProcessor:
             rng = np.random.default_rng(0)
             ir = rng.standard_normal(ir_length) * np.exp(-3 * np.linspace(0, 1, ir_length))
 
-            # Convolve
-            reverb_signal = signal.convolve(processed, ir, mode='same')
+            # Convolve per channel — audio is (channels, samples), so pad the
+            # 1-D impulse response to (1, ir_length): 'same' then returns
+            # (channels, samples), identical to convolving each channel.
+            kernel = ir[np.newaxis, :] if processed.ndim > 1 else ir
+            reverb_signal = signal.convolve(processed, kernel, mode='same')
             processed = (1 - wet) * processed + wet * reverb_signal
 
         # Compression -- the real dynamics processor in mastering_chain, not

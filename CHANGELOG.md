@@ -10,6 +10,11 @@
 
 ### Fixed
 
+- **`reverb` effect on multi-channel audio** — `signal.convolve` was called
+  on `(channels, samples)` audio with a 1-D impulse response, crashing with
+  "volume and kernel should have the same dimensionality" on any stereo
+  file. The impulse response is now padded to 2-D so `mode='same'`
+  convolves each channel.
 - **`--effects` `eq` schema** — `eq` has always consumed a *list* of band
   objects (`frequency`/`gain`/`q`), but the new effects-file validator
   required every effect to map to an object, so the only valid eq file was

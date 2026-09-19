@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 import main
-from tests._helpers import write_sine_wave
+from tests._helpers import write_sine_wave, write_stereo_sine_wave
 
 MAIN_PY = str(Path(__file__).resolve().parent.parent / "main.py")
 
@@ -169,3 +169,20 @@ def test_eq_band_missing_gain_is_input_error(tmp_path):
     result = _run("process", str(wav), "--effects", str(fx), cwd=str(tmp_path))
     assert result.returncode == 3  # ExitCode.INPUT
     assert "gain" in result.stderr
+
+
+def test_reverb_effect_on_stereo_input(tmp_path):
+    """reverb used to crash on multi-channel audio: convolve((C,N), (N,))
+    raised "volume and kernel should have the same dimensionality"."""
+    pytest.importorskip("numpy")
+    pytest.importorskip("scipy")
+    wav = write_stereo_sine_wave(tmp_path / "stereo.wav")
+    fx = _write_effects(tmp_path, '{"reverb": {"room_size": 0.3, "wet": 0.2}}')
+    result = _run("process", str(wav), "--effects", str(fx), cwd=str(tmp_path))
+    assert result.returncode == 0
+
+    import wave as _wave
+    out = tmp_path / "stereo_processed.wav"
+    assert out.exists()
+    with _wave.open(str(out)) as w:
+        assert w.getnchannels() == 2
