@@ -125,6 +125,17 @@
   is `applied_processes` / `skipped_processes` with `{"process", "reason"}` —
   so a caller reading `applied_processes` saw an empty list even though the
   repairs ran. `VinylRestorer.restore` now reports under the shared keys.
+- **`process --effects` "compression" was a per-sample waveshaper, not a
+  compressor.** It remapped `|x|` in dB every sample — soft-clipping that
+  reshapes the waveform and adds harmonics (a 0.8 sine at −20 dB/ratio 4
+  came out with the 3rd harmonic only ~13 dB down). The effect now routes
+  through `mastering_chain.Compressor`, the real envelope-following
+  soft-knee dynamics processor already in the project: the crest still
+  comes down by the requested ratio, but the waveform keeps its shape
+  (harmonics ~100 dB below fundamental, vs ~13–19 dB before). It also now
+  accepts `attack`/`release`/`knee`/`makeup_gain` matching
+  `CompressorConfig`, and is declared in `_EFFECT_REQUIREMENTS` (numpy) so a
+  numpy-less install refuses clearly rather than skipping silently.
 - **`AdaptiveDenoiser` subtracted the signal's own spectrum on stationary
   material.** `estimate_noise_profile` averaged the STFT magnitude over the
   quietest 10% of frames — but on stationary content (a sustained tone,

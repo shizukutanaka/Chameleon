@@ -878,6 +878,7 @@ class AudioProcessor:
     _EFFECT_REQUIREMENTS = {
         "eq": ("scipy", lambda: HAS_SCIPY and HAS_MASTERING_CHAIN),
         "reverb": ("scipy", lambda: HAS_SCIPY),
+        "compression": ("numpy", lambda: HAS_MASTERING_CHAIN),
     }
 
     def apply_effects(self, audio: np.ndarray, sr: int, effects: Dict[str, Any]) -> np.ndarray:
@@ -938,21 +939,25 @@ class AudioProcessor:
             reverb_signal = signal.convolve(processed, ir, mode='same')
             processed = (1 - wet) * processed + wet * reverb_signal
 
-        # Compression
-        if "compression" in effects:
+        # Compression -- the real dynamics processor in mastering_chain, not
+        # a per-sample waveshaper. Remapping |x| every sample reshapes the
+        # waveform itself (that is soft-clipping; it adds harmonics), whereas
+        # a compressor applies a slowly-varying gain computed from an
+        # attack/release envelope and leaves waveform shape intact.
+        if "compression" in effects and HAS_MASTERING_CHAIN:
             comp_params = effects["compression"]
-            threshold = comp_params.get("threshold", -20)  # dB
-            ratio = comp_params.get("ratio", 4)
-
-            # Convert to dB
-            db = 20 * np.log10(np.abs(processed) + 1e-10)
-
-            # Apply compression
-            over_threshold = db > threshold
-            db[over_threshold] = threshold + (db[over_threshold] - threshold) / ratio
-
-            # Convert back
-            processed = np.sign(processed) * (10 ** (db / 20))
+            compressor = mastering_chain.Compressor(
+                mastering_chain.CompressorConfig(
+                    threshold=comp_params.get("threshold", -20.0),
+                    ratio=comp_params.get("ratio", 4.0),
+                    attack=comp_params.get("attack", 5.0),
+                    release=comp_params.get("release", 50.0),
+                    knee=comp_params.get("knee", 2.0),
+                    makeup_gain=comp_params.get("makeup_gain", 0.0),
+                ),
+                sample_rate=sr,
+            )
+            processed, _gain_curve = compressor.process(processed)
 
         return processed
 

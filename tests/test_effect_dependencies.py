@@ -77,3 +77,27 @@ def test_effects_needing_nothing_optional_still_work(processor, monkeypatch):
 def test_an_empty_effects_dict_is_a_passthrough(processor):
     tone = _tone()
     assert np.array_equal(processor.apply_effects(tone, 44100, {}), tone)
+
+
+def test_compression_is_dynamics_processing_not_waveshaping(processor):
+    # The old "compression" remapped |x| sample-by-sample -- soft-clipping,
+    # which adds harmonics: a 0.8 sine at threshold -20 dB / ratio 4 came out
+    # with the 3rd harmonic only ~13 dB below the fundamental. A real
+    # compressor applies a slowly-varying gain from an attack/release
+    # envelope, so a compressed sine stays a sine; the implementation is now
+    # mastering_chain.Compressor. This pins both halves of the claim: the
+    # level actually came down, AND the waveform kept its shape.
+    tone = _tone(440, seconds=1.0) * 1.6  # 0.8 peak -> over the threshold
+    out = processor.apply_effects(
+        tone.copy(), 44100, {"compression": {"threshold": -20.0, "ratio": 4.0}})
+
+    steady = out[22050:]  # skip the attack transient
+    spec = np.abs(np.fft.rfft(steady * np.hanning(len(steady))))
+    freqs = np.fft.rfftfreq(len(steady), 1 / 44100)
+
+    def level(freq):
+        return 20 * np.log10(spec[np.argmin(np.abs(freqs - freq))] + 1e-20)
+
+    assert 20 * np.log10(np.abs(steady).max()) < -10.0, "crest did not come down"
+    assert level(1320) - level(440) < -60.0  # 3rd harmonic
+    assert level(2200) - level(440) < -60.0  # 5th harmonic

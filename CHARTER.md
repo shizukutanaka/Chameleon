@@ -1765,6 +1765,20 @@ caller is `AudioRestorer.restore`, so it now emits the shared keys directly
 rather than translating at the seam. `snr_improvement` stays as a
 vinyl-specific extra.
 
+**Q: `apply_effects` "compression" — keep the waveshaper or route to the real
+compressor?**
+A (2026-09-19): Routed to `mastering_chain.Compressor`. The per-sample dB
+remap it replaced is soft-clipping — it reshapes each waveform period, which
+measurably adds harmonics (3rd at −13 dB rel. fundamental on a 0.8 sine at
+−20 dB/4:1). The name "compression" and its threshold/ratio parameters
+promise dynamics control, and the project already owns a correct one
+(envelope follower, centred soft knee, gain smoothing, stereo linking), so
+reusing it is the DRY fix as well as the honest one. New optional params
+`attack`/`release`/`knee`/`makeup_gain` expose the existing config surface.
+`"compression"` joined `_EFFECT_REQUIREMENTS` (numpy) so a numpy-less
+install gets the same named refusal the other guarded effects get instead
+of a silent skip.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy
