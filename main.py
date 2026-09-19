@@ -131,7 +131,24 @@ def _load_effects(effects_path: str) -> Dict[str, Any]:
 
     known = set(AudioProcessor._EFFECT_REQUIREMENTS)
     for name, params in effects.items():
-        if not isinstance(params, dict):
+        if name == "eq":
+            # apply_effects iterates eq as a list of band dicts, each with a
+            # numeric 'frequency' and 'gain' (optional 'q').
+            if not isinstance(params, list) or not params:
+                raise ValueError(
+                    f"Effect 'eq' must map to a list of band objects, got {type(params).__name__}"
+                )
+            for i, band in enumerate(params):
+                if not isinstance(band, dict):
+                    raise ValueError(
+                        f"Effect 'eq' band #{i} must be a parameter object, got {type(band).__name__}"
+                    )
+                for key in ("frequency", "gain"):
+                    if key not in band or not isinstance(band[key], (int, float)):
+                        raise ValueError(
+                            f"Effect 'eq' band #{i} needs a numeric '{key}'"
+                        )
+        elif not isinstance(params, dict):
             raise ValueError(
                 f"Effect '{name}' must map to a parameter object, got {type(params).__name__}"
             )

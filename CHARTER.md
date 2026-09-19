@@ -1822,7 +1822,13 @@ silently no-oped (non-object top level) or leaked an AttributeError
 (non-object params). Unknown *names* warn rather than fail because a typo in
 an optional extras' effect should not hard-fail on an install that lacks the
 package anyway; the warning tells the user the effect was ignored, which is
-the honest answer.
+the honest answer. Amended same day: the first cut required every effect
+value to be an object, but `eq`'s schema has always been a *list* of band
+objects — the validator rejected the only input that could ever run, and a
+dict-shaped eq crashed downstream instead. Per-effect shapes are now
+validated (`eq` = non-empty list of `{frequency, gain, [q]}` objects;
+`reverb`/`compression` = objects). Lesson recorded: validating shape without
+checking each effect's real schema swaps one lie for another.
 
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in

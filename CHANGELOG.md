@@ -8,6 +8,16 @@
   markdown and has no `conf.py`; it could never succeed. Every remaining
   target's tools exist in the `dev` extra.
 
+### Fixed
+
+- **`--effects` `eq` schema** — `eq` has always consumed a *list* of band
+  objects (`frequency`/`gain`/`q`), but the new effects-file validator
+  required every effect to map to an object, so the only valid eq file was
+  rejected at INPUT while a dict-shaped eq crashed later inside
+  `apply_effects` ("string indices must be integers"). `eq` is now
+  validated as a non-empty band list with numeric `frequency`/`gain`;
+  `reverb`/`compression` keep the object shape.
+
 ### Added
 
 - **5 HTTP-level API tests pinning the authorization gaps** —

@@ -137,3 +137,35 @@ def test_unknown_effect_name_warns_but_still_runs(tmp_path):
     result = _run("process", str(wav), "--effects", str(fx), cwd=str(tmp_path))
     assert result.returncode == 0
     assert "unknown effect" in result.stderr.lower()
+
+
+def test_eq_effect_accepts_list_of_bands(tmp_path):
+    """eq's schema is a LIST of band objects (frequency/gain[/q]) — the first
+    version of _load_effects wrongly required every effect to be a dict and
+    rejected the only schema apply_effects actually consumes."""
+    pytest.importorskip("numpy")
+    pytest.importorskip("scipy")
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    fx = _write_effects(tmp_path, '{"eq": [{"frequency": 1000, "gain": 3, "q": 1.0}]}')
+    result = _run("process", str(wav), "--effects", str(fx), cwd=str(tmp_path))
+    assert result.returncode == 0
+    assert "Processed" in result.stdout or (tmp_path / "tone_processed.wav").exists()
+
+
+def test_eq_effect_as_dict_is_input_error(tmp_path):
+    # A dict eq used to crash inside apply_effects with
+    # "string indices must be integers, not 'str'" and exit 1.
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    fx = _write_effects(tmp_path, '{"eq": {"low_shelf": 2.0}}')
+    result = _run("process", str(wav), "--effects", str(fx), cwd=str(tmp_path))
+    assert result.returncode == 3  # ExitCode.INPUT
+    assert "list of band objects" in result.stderr
+
+
+def test_eq_band_missing_gain_is_input_error(tmp_path):
+    # Without validation this crashed with KeyError('gain') inside apply_effects.
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    fx = _write_effects(tmp_path, '{"eq": [{"frequency": 1000}]}')
+    result = _run("process", str(wav), "--effects", str(fx), cwd=str(tmp_path))
+    assert result.returncode == 3  # ExitCode.INPUT
+    assert "gain" in result.stderr
