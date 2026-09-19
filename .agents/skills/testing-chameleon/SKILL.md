@@ -9,8 +9,15 @@ description: How to e2e-test the Chameleon CLI on this machine — venv interpre
 This machine has **no `python` on PATH** — only Xcode's `python3` (3.9, unusable).
 Always invoke the repo venv explicitly:
 - Full deps: `/Users/devin/repos/Chameleon/.venv/bin/python` (3.12 + numpy/scipy/librosa/soundfile/fastapi)
-- Stdlib-only: `/tmp/ch-bare-venv/bin/python` (pytest only)
-CLAUDE.md's `python -m pytest` gate must be run via these absolute paths.
+- Stdlib-only: `/tmp/ch-bare-venv/bin/python` (pytest only — no third-party
+  packages, so no blocker needed; `/tmp` can be wiped on restart — recreate
+  with `python3 -m venv /tmp/ch-bare-venv && /tmp/ch-bare-venv/bin/pip install pytest`)
+- numpy-only (blocks scipy/librosa/soundfile):
+  `PYTHONPATH=$HOME/chameleon-blockers/numpy_only .venv/bin/python -m pytest -q`
+  (stdlib blocker for the main venv lives alongside at `$HOME/chameleon-blockers/stdlib`;
+  the `$HOME` copies persist — a `/tmp/chameleon-blockers` copy does NOT survive reboots)
+CLAUDE.md's `python -m pytest` gate must be run via these absolute paths, in all
+three configurations.
 
 ## Onboarding flow e2e
 `personal_config.py setup` is interactive: 3 prompts (library path, perf mode,
@@ -26,10 +33,10 @@ Aliases do NOT expand in non-interactive bash by default. Two working patterns:
 
 ## Exit codes (README table, verified)
 0 success · 2 usage/argparse/no-command · 3 input validation (missing dir,
-wildcard/control-char args, empty batch dir) · 1 processing failure · 4 security
-· 130 interrupt. Known wart: analyze on a skipped file (missing/corrupt/
-untrusted) exits 1 via an unhandled `KeyError: 'file'` traceback, not a clean
-diagnostic.
+wildcard/control-char args, empty batch dir, unreadable effects JSON) · 1
+processing failure (e.g. corrupt-but-valid-magic WAV) · 4 security
+· 130 interrupt. When every input is rejected at pre-flight, the command exits
+with the classified reason (3 input / 4 security) — no traceback.
 
 ## Denoiser behavior (audio_restoration.py)
 `AdaptiveDenoiser.denoise` needs librosa (full venv only) and raises
