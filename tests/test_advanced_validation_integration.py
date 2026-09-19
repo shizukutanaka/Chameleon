@@ -49,7 +49,9 @@ def test_real_wav_survives_filter(tmp_path):
 
     wav = write_sine_wave(tmp_path / "tone.wav")
     processor = AudioProcessor()
-    assert processor._filter_safe_files([str(wav)]) == [str(wav)]
+    safe, rejections = processor._filter_safe_files([str(wav)])
+    assert safe == [str(wav)]
+    assert rejections == []
 
 
 # --- 2. disguised non-WAV is rejected ---------------------------------------
@@ -75,9 +77,11 @@ def test_disguised_executable_is_filtered_out(tmp_path):
     bad.write_bytes(b"MZ\x90\x00" + b"\x00" * 128)
 
     processor = AudioProcessor()
-    safe = processor._filter_safe_files([str(good), str(bad)])
+    safe, rejections = processor._filter_safe_files([str(good), str(bad)])
     assert str(good) in safe
     assert str(bad) not in safe
+    # Inspection failure is an input rejection, not a security-policy one.
+    assert rejections == [(str(bad), "input")]
 
 
 # --- 3. false-positive guard ------------------------------------------------
@@ -105,7 +109,9 @@ def test_suspicious_payload_wav_survives_filter(tmp_path):
 
     wav = _write_wav_with_payload(tmp_path / "noisy.wav", b"MZ import os eval(")
     processor = AudioProcessor()
-    assert processor._filter_safe_files([str(wav)]) == [str(wav)]
+    safe, rejections = processor._filter_safe_files([str(wav)])
+    assert safe == [str(wav)]
+    assert rejections == []
 
 
 # --- method contract --------------------------------------------------------

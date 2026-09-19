@@ -106,6 +106,19 @@
   relying on `PersonalConfig.save()` having run first. Verified end-to-end:
   the generated `aliases.sh` is sourced in a real non-interactive shell and
   `audio-analyze` runs against a real WAV file.
+- **`analyze`/`process`/`batch` crashed or misreported when every supplied
+  file was rejected in pre-flight.** The "no valid files" sentinel carried
+  only an `error` key, so `analyze`'s error branch read `result['file']`
+  and died with a `KeyError` traceback — exit code 1, where the documented
+  table promises INPUT(3) for input-validation rejections and SECURITY(4)
+  for policy rejections. `_filter_safe_files` now classifies each rejection
+  (`"security"` for trusted-root/size-cap failures, `"input"` for the rest),
+  the sentinel carries the matching exit code (SECURITY wins a mixed batch),
+  and all three call sites print the error to stderr and return it. Live
+  checks: a missing file exits 3, a path outside `CHAMELEON_TRUSTED_ROOTS`
+  exits 4 — both previously a traceback and 1. Two tests had pinned the
+  crash's exit code; they now assert the documented codes and that no
+  traceback reaches stderr.
 - **`AdaptiveDenoiser` subtracted the signal's own spectrum on stationary
   material.** `estimate_noise_profile` averaged the STFT magnitude over the
   quietest 10% of frames — but on stationary content (a sustained tone,

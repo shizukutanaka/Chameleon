@@ -1738,6 +1738,21 @@ not exercise the `[audio]` extra's librosa path — a gap worth knowing rather
 than closing (the denoiser is deliberately unexposed on the CLI; see
 `tests/test_restoration_cli.py`'s rationale).
 
+**Q: What should the CLI exit when pre-flight rejects every supplied file?**
+A (2026-09-19): The sentinel `batch_process` returned for an all-filtered
+input list carried only `{"error": ...}`, and `analyze`'s error branch read
+`result['file']` — a `KeyError` traceback and exit 1 where the documented
+table (and the `ExitCode` docstring) promises INPUT(3) for a supplied path
+that fails pre-flight validation and SECURITY(4) for a policy rejection.
+Two subprocess tests had pinned `== 1`, i.e. they were asserting the crash's
+side effect, not the contract. `_filter_safe_files` now returns
+`(safe, rejections)` with each rejection tagged `"input"` (suffix, missing,
+failed WAV inspection) or `"security"` (trusted roots, size cap); the
+sentinel carries `exit_code` — SECURITY if any security rejection occurred,
+else INPUT — and `analyze`, `process` and `batch` return it instead of
+indexing into a file-less dict. Mixed batches (some files rejected, some
+processed) keep the existing per-file-warning + normal-results behavior.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy
