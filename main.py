@@ -13,7 +13,6 @@ import sys
 import time
 import json
 import struct
-import hashlib
 import argparse
 import asyncio
 import math
@@ -21,7 +20,7 @@ import re
 import multiprocessing as mp
 from enum import IntEnum
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple, Union, TYPE_CHECKING
+from typing import Dict, List, Optional, Any, Tuple, TYPE_CHECKING
 from dataclasses import dataclass, asdict
 from concurrent.futures import ThreadPoolExecutor
 import logging
@@ -30,7 +29,7 @@ from logging.handlers import RotatingFileHandler
 
 import core
 from core import open_secure, SecurityValidator
-from plugin_system import PluginManager, PluginConfig, PluginLoader, SecurityError
+from plugin_system import PluginManager, PluginConfig, SecurityError
 
 if TYPE_CHECKING:
     import numpy as np
@@ -222,7 +221,6 @@ if not HAS_NUMPY:
 
 try:
     import scipy.signal as signal
-    import scipy.fft as fft
     HAS_SCIPY = True
 except ImportError:
     HAS_SCIPY = False
@@ -272,7 +270,7 @@ except ImportError:
 # optional imports even though this one has no non-stdlib dependency — a
 # trimmed checkout should still run the CLI without progress bars/colour.
 try:
-    from ux_improvements import ProgressBar, ErrorFormatter, ColorText
+    from ux_improvements import ProgressBar, ColorText
     HAS_UX_IMPROVEMENTS = True
 except ImportError:
     HAS_UX_IMPROVEMENTS = False
