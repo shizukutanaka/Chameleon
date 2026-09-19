@@ -1791,6 +1791,24 @@ command's all-rejected case was folded into the same day's exit-code fix.
 Deliberately untouched: `midi extract` finding zero notes stays exit 0 —
 "processed, found nothing" is a result, not an error.
 
+**Q: Should the three spectral-subtraction implementations be consolidated?**
+A (2026-09-19): No — evaluated and declined. They look like three copies but
+are not: `main.remove_noise` auto-estimates the floor per bin (10th
+percentile + Rayleigh rescale) via scipy, `audio_restoration.AdaptiveDenoiser`
+estimates from the quietest decile with an honest refusal on stationary
+material via librosa, and `spectral_editor.noise_reduce_selection` subtracts
+a *user-selected* noise print via its own SpectralProcessor. The only real
+duplication is the 4-line magnitude-subtract-floor-reconstruct kernel; a
+shared helper would save ~4 lines while coupling three working DSP paths and
+three different STFT backends. That is the unnecessary abstraction this
+charter exists to prevent. The backlog row is closed as declined.
+
+**Q: Should dither get a `--dither` CLI flag or become default?**
+A (2026-09-19): Neither. Dither stays opt-in through
+`ProcessingConfig.apply_dither`; deterministic-by-default output is the
+recorded decision and there is no user demand for a flag. Reopen only on a
+real request.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy
