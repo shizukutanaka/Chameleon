@@ -276,11 +276,26 @@ by no code, and still carrying the "government"-branded wording removed from
 `api_server.py` in PR #23 — and was **deleted 2026-09-07** with explicit
 confirmation.
 
-Per project practice, deletions require **explicit, per-item user
-confirmation** — do not delete on the strength of this list.
-`tests/test_no_orphan_modules.py` holds the same three in an allow-list with
-written justifications and fails if a fourth appears, so this section and that
-test must agree.
+**Dead code in `core.py` (~470 lines) — identified 2026-09-19, awaiting
+per-item confirmation.** Verified zero callers anywhere in the repo, tests,
+or docs:
+
+- `EnhancedSecurityValidator` (whole class) — a *parallel* path validator
+  that is never enforced; the real one is `security_validator.SecurityValidator`.
+  Dead "security-looking" code is the worst kind: it invites someone to rely
+  on a check nothing calls.
+- `ParallelBatchProcessor` (whole class) — zero instantiations.
+- `StructuredLogger` (whole class) — zero instantiations.
+- `MemoryManager` (whole class + its `WAVProcessor` instantiation) —
+  instantiated every run but no method of the instance is ever called;
+  pure dead weight holding a 64 MB cache budget.
+- `to_mono_async` + `WAVProcessor.convert_to_mono_async` — orphaned async
+  branch (the live async path is `batch_process_async`, which tests use).
+- `PerformanceTracker.get_stats` — never called.
+
+`tests/test_no_orphan_modules.py` holds the three kept modules above in an
+allow-list with written justifications and fails if a fourth appears, so this
+section and that test must agree.
 
 Resolved from this list on 2026-08-25: `core.py`'s `RealtimeAudioProcessor`
 and `performance_optimizer.py` (deleted, with confirmation) and
