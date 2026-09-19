@@ -4,6 +4,12 @@
 
 ### Added
 
+- **5 HTTP-level API tests pinning the authorization gaps** —
+  the upload→analyze→download golden path (previously verified only by
+  hand), unauthenticated upload rejection, `.exe` extension rejection,
+  unregistered/traversal download names returning 404 instead of a path
+  lookup, and cross-owner downloads returning 403 for non-privileged
+  sessions.
 - **16 tests covering the raising side of `SecurityValidator`** —
   `validate_file_path`/`validate_directory` rejection branches (missing file,
   oversized file, disallowed extension, suspicious character in the resolved

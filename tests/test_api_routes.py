@@ -175,3 +175,94 @@ def test_upload_rejects_flac_extension(client):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 400
+
+
+# ----------------------------------------- golden path + authorization gaps --
+
+def _wav_bytes() -> bytes:
+    """Minimal valid mono WAV (0.05s silence) for upload tests."""
+    import io
+    import struct
+    import wave
+
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(44100)
+        w.writeframes(struct.pack("<" + "h" * 2205, *([0] * 2205)))
+    return buf.getvalue()
+
+
+def test_upload_without_token_rejected(client):
+    response = client.post(
+        "/audio/upload",
+        files={"file": ("x.wav", _wav_bytes(), "audio/wav")},
+    )
+    assert response.status_code in (401, 403)
+
+
+def test_upload_rejects_exe_extension(client):
+    login = _login(client)
+    token = login.json()["token"]
+    response = client.post(
+        "/audio/upload",
+        files={"file": ("evil.exe", b"MZ payload", "application/octet-stream")},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 400
+
+
+def test_upload_analyze_download_roundtrip(client, tmp_path, monkeypatch):
+    """The whole point of the API: upload a WAV, analyze it, download it back.
+    Previously only verified by hand — now pinned."""
+    monkeypatch.setattr(api_server, "UPLOAD_DIRECTORY", tmp_path)
+    login = _login(client)
+    token = login.json()["token"]
+    auth = {"Authorization": f"Bearer {token}"}
+
+    up = client.post(
+        "/audio/upload",
+        files={"file": ("roundtrip.wav", _wav_bytes(), "audio/wav")},
+        headers=auth,
+    )
+    assert up.status_code == 200
+    stored = up.json()["stored_name"]
+
+    an = client.post("/audio/analyze", json={"file_name": stored}, headers=auth)
+    assert an.status_code == 200
+
+    dl = client.get(f"/audio/download/{stored}", headers=auth)
+    assert dl.status_code == 200
+    assert dl.content[:4] == b"RIFF"
+
+
+def test_download_unregistered_name_returns_404(client):
+    """Traversal-style or invented names must not escape the upload registry:
+    an unregistered file_name is a 404, never a path lookup."""
+    login = _login(client)
+    token = login.json()["token"]
+    response = client.get(
+        "/audio/download/..%2F..%2Fetc%2Fpasswd",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code in (400, 404)
+
+
+def test_cross_owner_download_denied(client):
+    """Registry-based authorization: a file owned by another user is 403
+    for a non-privileged session, even with a valid token."""
+    api_server.api_state.register_uploaded_file(
+        "someone-elses.wav",
+        owner="not-the-dev-user",
+        size=1,
+        original_name="victim.wav",
+        session_id="other-session",
+    )
+    login = _login(client)  # dev user logs in with UNCLASSIFIED clearance
+    token = login.json()["token"]
+    response = client.get(
+        "/audio/download/someone-elses.wav",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 403
