@@ -494,30 +494,37 @@ class VinylRestorer:
         self.denoiser = AdaptiveDenoiser()
 
     def restore(self, audio: np.ndarray, sample_rate: int) -> Tuple[np.ndarray, Dict[str, Any]]:
-        """Complete vinyl restoration pipeline"""
-        info = {"steps_applied": []}
+        """Complete vinyl restoration pipeline.
+
+        Reports under the same keys ``AudioRestorer.restore`` uses --
+        ``applied_processes`` / ``skipped_processes`` with ``{"process",
+        "reason"}`` entries -- so a caller reading either mode's result sees
+        one schema (vinyl mode previously left ``applied_processes`` empty
+        and reported under ``steps_applied``/``steps_skipped`` instead).
+        """
+        info: Dict[str, Any] = {"applied_processes": [], "skipped_processes": []}
         result = audio.copy()
 
         # Remove clicks
         result = self.click_remover.remove_clicks(result, sample_rate)
-        info["steps_applied"].append("click_removal")
+        info["applied_processes"].append("click_removal")
 
         # Remove crackle
         result = self.crackle_remover.remove_crackle(result, sample_rate)
-        info["steps_applied"].append("crackle_removal")
+        info["applied_processes"].append("crackle_removal")
 
         # Remove hum
         result = self.hum_remover.remove_hum(result, sample_rate)
-        info["steps_applied"].append("hum_removal")
+        info["applied_processes"].append("hum_removal")
 
         # Denoise. Needs librosa; if it is absent, say so instead of
         # reporting a step that did not run.
         try:
             result = self.denoiser.denoise(result, sample_rate)
-            info["steps_applied"].append("denoising")
+            info["applied_processes"].append("denoising")
         except RuntimeError as exc:
-            info.setdefault("steps_skipped", []).append(
-                {"step": "denoising", "reason": str(exc)})
+            info["skipped_processes"].append(
+                {"process": "denoising", "reason": str(exc)})
 
         # Calculate improvement metrics
         info["snr_improvement"] = self._calculate_snr_improvement(audio, result)

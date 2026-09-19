@@ -119,6 +119,12 @@
   exits 4 — both previously a traceback and 1. Two tests had pinned the
   crash's exit code; they now assert the documented codes and that no
   traceback reaches stderr.
+- **`AudioRestorer.restore(mode="vinyl")` reported a different result
+  schema than every other mode.** `VinylRestorer` emitted `steps_applied` /
+  `steps_skipped` with `{"step", "reason"}` entries while the outer contract
+  is `applied_processes` / `skipped_processes` with `{"process", "reason"}` —
+  so a caller reading `applied_processes` saw an empty list even though the
+  repairs ran. `VinylRestorer.restore` now reports under the shared keys.
 - **`AdaptiveDenoiser` subtracted the signal's own spectrum on stationary
   material.** `estimate_noise_profile` averaged the STFT magnitude over the
   quietest 10% of frames — but on stationary content (a sustained tone,

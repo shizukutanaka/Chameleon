@@ -1753,6 +1753,18 @@ else INPUT — and `analyze`, `process` and `batch` return it instead of
 indexing into a file-less dict. Mixed batches (some files rejected, some
 processed) keep the existing per-file-warning + normal-results behavior.
 
+**Q: Should vinyl mode report its own step vocabulary?**
+A (2026-09-19): No — `VinylRestorer.restore` returned `steps_applied` /
+`steps_skipped` with `{"step", "reason"}` entries, which `AudioRestorer.
+restore(mode="vinyl")` merged into a dict already keyed `applied_processes` /
+`skipped_processes` with `{"process", "reason"}`. A caller reading the
+documented keys saw `applied_processes == []` for a vinyl restore whose
+repairs all ran — under-reporting, the same defect class the module's
+honesty tests exist to prevent. `VinylRestorer` is internal: its only
+caller is `AudioRestorer.restore`, so it now emits the shared keys directly
+rather than translating at the seam. `snr_improvement` stays as a
+vinyl-specific extra.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy

@@ -104,6 +104,21 @@ def test_a_refused_denoise_is_reported_as_skipped_with_its_reason():
     assert "quiet" in skipped["denoising"]
 
 
+def test_vinyl_mode_reports_the_same_schema_as_other_modes():
+    # Vinyl mode used to `info.update()` a differently-keyed dict: a caller
+    # reading `applied_processes` saw [] even though the steps ran, and the
+    # denoiser's skip landed under `steps_skipped`/`"step"` instead of
+    # `skipped_processes`/`"process"`.
+    _, info = audio_restoration.AudioRestorer().restore(
+        _sine(440), SAMPLE_RATE, mode="vinyl")
+
+    assert "steps_applied" not in info and "steps_skipped" not in info
+    assert {"click_removal", "crackle_removal", "hum_removal"} <= set(
+        info["applied_processes"])
+    for entry in info["skipped_processes"]:
+        assert "process" in entry and "reason" in entry
+
+
 def test_no_metric_is_called_snr_unless_it_is_one():
     _, info = audio_restoration.AudioRestorer().restore(_sine(440), SAMPLE_RATE)
 
