@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Removed
+
+- **`make docs`** — the target ran `sphinx-build` on `docs/`, which holds only
+  markdown and has no `conf.py`; it could never succeed. Every remaining
+  target's tools exist in the `dev` extra.
+
 ### Added
 
 - **5 HTTP-level API tests pinning the authorization gaps** —
