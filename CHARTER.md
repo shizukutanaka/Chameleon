@@ -181,7 +181,13 @@ this caveat explicitly instead of implying all 1,100 lines defend every request.
 to integrate `advanced_validation.py` into the default path is an open question below.
 `tests/test_security.py` now exercises `SecurityValidator` directly (path shape, trusted
 roots, extension allowlist, size limit) rather than relying on `validation_test.py`'s
-hand-rolled re-implementation.
+hand-rolled re-implementation. Extended 2026-09-19 to the raising side:
+`validate_file_path`/`validate_directory` rejection reasons, `safe_open_file`'s
+`None` contract, `sanitize_filename`, and `SecurityConfig.from_environment`
+parsing. Verified while writing them: `validate_*` resolves the path *before*
+the shape check, so a raw `..` disappears into the resolved path and is caught
+by the trusted-roots check, not the traversal-pattern check — the shape
+patterns only fire on suspicious characters surviving into the resolved path.
 
 **Q: Neural / source-separation modules still shipped despite §4?**
 A (2026-06): Removed `music_generator.py`, `audio_enhancer.py`, and
