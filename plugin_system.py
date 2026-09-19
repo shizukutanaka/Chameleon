@@ -4,8 +4,6 @@ AST-sandboxed plugin loading for extensible audio processing capabilities
 """
 
 import os
-import sys
-import json
 import importlib
 import importlib.util
 import inspect
@@ -15,7 +13,7 @@ import queue
 import contextlib
 import re
 from abc import ABC, abstractmethod
-from typing import Dict, List, Any, Optional, Callable, Type, Union
+from typing import Dict, List, Any, Optional, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 import time

@@ -7,12 +7,9 @@ table, not AI/ML -- see CHARTER.md §4).
 
 import math
 import struct
-import io
-from typing import List, Dict, Tuple, Optional, Any, Union
+from typing import List, Dict, Tuple, Optional, Any
 from dataclasses import dataclass, field
 from enum import Enum
-import json
-import time
 
 # Spacing between onsets fixes the beat period only up to a factor of two --
 # the same rhythm read as half-notes or eighth-notes is equally consistent

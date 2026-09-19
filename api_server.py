@@ -6,7 +6,6 @@ See CHARTER.md §5 for the threat model this defends against.
 """
 
 import os
-import sys
 import asyncio
 import logging
 import secrets
@@ -18,9 +17,7 @@ import contextvars
 from collections import deque
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional, Any, Union, Deque
-from dataclasses import dataclass
-import json
+from typing import Dict, List, Optional, Any, Deque
 import uuid
 
 # Core frameworks
@@ -30,7 +27,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyHea
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse, FileResponse
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field
 
 # pydantic v1 ではパターン検証に `regex=` を、v2 では `pattern=` を使う。
 # プロジェクトは pydantic<2 に固定されているが、誤って pydantic 2 が入った

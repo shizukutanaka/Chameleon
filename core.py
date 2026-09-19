@@ -20,22 +20,13 @@ import json
 import datetime
 import struct
 import shutil
-import hashlib
-import secrets
 import tempfile
-import threading
 import logging
-import warnings
-from logging.handlers import RotatingFileHandler
-import argparse
 import gc
 from pathlib import Path
 import asyncio
-from typing import Awaitable, Union, Optional, Dict, List, Any, Tuple, Callable
+from typing import Union, Optional, Dict, List, Any, Tuple, Callable
 from dataclasses import dataclass
-from functools import lru_cache
-
-from plugin_system import PluginManager, PluginConfig, PluginLoader, SecurityError
 from security_validator import SecurityValidator, SecurityConfig
 
 # Module logger. Previously sourced from a separate "advanced_logging" module

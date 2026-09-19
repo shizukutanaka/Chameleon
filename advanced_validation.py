@@ -12,7 +12,7 @@ import struct
 import hashlib
 import mmap
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Set
+from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 import logging
 

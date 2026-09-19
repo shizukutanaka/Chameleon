@@ -11,10 +11,8 @@ install — the numpy-dependent classes raise a clear error only when used.
 
 from __future__ import annotations
 
-import os
-import sys
-from typing import Dict, List, Optional, Any, Tuple, Callable
-from dataclasses import dataclass, field
+from typing import Dict, List, Any, Tuple
+from dataclasses import dataclass
 import logging
 import warnings
 
@@ -36,7 +34,6 @@ def _require_numpy() -> None:
 
 # Advanced processing libraries
 try:
-    import scipy.signal as signal
     import scipy.ndimage as ndimage
     HAS_SCIPY = True
 except ImportError:

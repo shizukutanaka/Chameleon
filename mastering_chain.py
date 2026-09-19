@@ -9,20 +9,16 @@ limitations (no true-peak, no surround-channel weighting). Requires NumPy;
 scipy is optional within individual stages.
 """
 
-import os
-import sys
 import copy
 import math
 import numpy as np
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Any, Tuple
 from dataclasses import dataclass, field
 import logging
-import warnings
 
 # Audio processing libraries
 try:
     import scipy.signal as signal
-    import scipy.fft as fft
     HAS_SCIPY = True
 except ImportError:
     HAS_SCIPY = False

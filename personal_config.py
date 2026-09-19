@@ -4,7 +4,6 @@ Personal Use Configuration - Optimized for Individual Users
 Simplified setup with maximum security and features
 """
 
-import os
 import sys
 import json
 from pathlib import Path
