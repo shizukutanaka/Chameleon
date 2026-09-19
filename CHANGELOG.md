@@ -4,6 +4,14 @@
 
 ### Added
 
+- **16 tests covering the raising side of `SecurityValidator`** —
+  `validate_file_path`/`validate_directory` rejection branches (missing file,
+  oversized file, disallowed extension, suspicious character in the resolved
+  path, outside trusted roots, not-a-directory, require-exists, allow-create),
+  `safe_open_file` returning `None` on unsafe paths and on directories,
+  `sanitize_filename` truncation and its `untitled` fallback, and
+  `SecurityConfig.from_environment` parsing. These are the branches that
+  produce the error messages callers actually surface.
 - **The test suite now runs on the dependency-free install.** Twelve test
   modules did a bare `import numpy`, so on a bare install `pytest` failed at
   collection and ran nothing — verifying the stdlib core required installing

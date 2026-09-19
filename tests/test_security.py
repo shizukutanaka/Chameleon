@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from security_validator import SecurityConfig, SecurityValidator
+from security_validator import SecurityConfig, SecurityValidator, SecurityError
 
 
 # ---------------------------------------------------------------------------
@@ -189,3 +189,135 @@ class TestHybridMethod:
         cls_result = SecurityValidator.validate_path(str(p))
         inst_result = SecurityValidator().validate_path(str(p))
         assert cls_result == inst_result
+
+
+# ---------------------------------------------------------------------------
+# Raising-side variants: validate_file_path / validate_directory
+# (validate_path returns bool; these raise SecurityError with a reason —
+# the branches below were uncovered and are the messages callers surface)
+# ---------------------------------------------------------------------------
+
+class TestValidateFilePathRaises:
+    def test_missing_file_for_read_raises(self, tmp_path):
+        v = _validator()
+        with pytest.raises(SecurityError, match="File not found"):
+            v.validate_file_path(str(tmp_path / "missing.wav"), operation="read")
+
+    def test_oversized_file_for_read_raises(self, tmp_path):
+        p = tmp_path / "big.wav"
+        p.write_bytes(b"x" * 1024)
+        v = _validator(max_file_size=512)
+        with pytest.raises(SecurityError, match="File too large"):
+            v.validate_file_path(str(p), operation="read")
+
+    def test_disallowed_extension_raises_with_reason(self, tmp_path):
+        p = tmp_path / "script.exe"
+        p.write_bytes(b"MZ")
+        v = _validator(allowed_extensions={".wav"})
+        with pytest.raises(SecurityError, match="Extension not allowed"):
+            v.validate_file_path(str(p), operation="read")
+
+    def test_write_to_new_file_returns_resolved_path(self, tmp_path):
+        v = _validator()
+        target = tmp_path / "new.wav"
+        resolved = v.validate_file_path(str(target), operation="write")
+        assert resolved == target.resolve()
+
+    def test_suspicious_char_in_resolved_path_raises(self, tmp_path):
+        # validate_file_path resolves first, so a raw ".." resolves away and is
+        # caught by the roots check instead; the shape branch fires when the
+        # RESOLVED path contains a suspicious character (e.g. '<').
+        bad_dir = tmp_path / "bad<dir"
+        bad_dir.mkdir()
+        p = _write_wav(bad_dir / "x.wav")
+        v = _validator()
+        with pytest.raises(SecurityError, match="Unsafe file path"):
+            v.validate_file_path(str(p), operation="read")
+
+
+class TestValidateDirectory:
+    def test_suspicious_char_in_resolved_path_raises(self, tmp_path):
+        # Same resolve-first semantics as validate_file_path.
+        v = _validator()
+        with pytest.raises(SecurityError, match="Unsafe directory path"):
+            v.validate_directory(str(tmp_path / "bad<dir"))
+
+    def test_outside_trusted_roots_raises(self, tmp_path):
+        trusted = tmp_path / "trusted"
+        trusted.mkdir()
+        v = _validator(trusted_roots={str(trusted)})
+        with pytest.raises(SecurityError, match="outside trusted roots"):
+            v.validate_directory(str(tmp_path / "other"))
+
+    def test_existing_file_is_not_a_directory(self, tmp_path):
+        p = _write_wav(tmp_path / "file.wav")
+        v = _validator()
+        with pytest.raises(SecurityError, match="Not a directory"):
+            v.validate_directory(str(p))
+
+    def test_missing_dir_with_require_exists_raises(self, tmp_path):
+        v = _validator()
+        with pytest.raises(SecurityError, match="does not exist"):
+            v.validate_directory(str(tmp_path / "absent"), require_exists=True)
+
+    def test_allow_create_creates_directory(self, tmp_path):
+        v = _validator()
+        target = tmp_path / "new" / "nested"
+        resolved = v.validate_directory(str(target), allow_create=True)
+        assert resolved.is_dir()
+
+
+class TestSafeOpenFile:
+    def test_unsafe_path_returns_none(self):
+        v = _validator()
+        assert v.safe_open_file("../escape.wav") is None
+
+    def test_valid_file_returns_readable_handle(self, tmp_path):
+        p = _write_wav(tmp_path / "tone.wav")
+        v = _validator()
+        handle = v.safe_open_file(str(p))
+        try:
+            assert handle is not None
+            assert handle.read(4) == b"RIFF"
+        finally:
+            if handle:
+                handle.close()
+
+    def test_directory_path_returns_none(self, tmp_path):
+        # A directory passes shape/extension checks but open() raises OSError.
+        v = _validator(allowed_extensions=None)
+        assert v.safe_open_file(str(tmp_path)) is None
+
+
+class TestSanitizeFilename:
+    def test_long_name_truncated_keeping_extension(self):
+        name = "a" * 300 + ".wav"
+        out = SecurityValidator.sanitize_filename(name)
+        assert len(out) <= 255
+        assert out.endswith(".wav")
+
+    def test_dangerous_chars_replaced_with_underscores(self):
+        assert SecurityValidator.sanitize_filename("///...") == "___..."
+        assert SecurityValidator.sanitize_filename('<>:|?*') == "______"
+
+    def test_empty_name_falls_back_to_untitled(self):
+        assert SecurityValidator.sanitize_filename("") == "untitled"
+
+
+class TestSecurityConfigFromEnvironment:
+    def test_invalid_max_file_size_falls_back_to_default(self, monkeypatch):
+        monkeypatch.setenv("CHAMELEON_MAX_FILE_SIZE", "not-a-number")
+        monkeypatch.delenv("CHAMELEON_TRUSTED_ROOTS", raising=False)
+        monkeypatch.delenv("ALLOWED_DIRECTORIES", raising=False)
+        cfg = SecurityConfig.from_environment()
+        assert cfg.max_file_size > 0
+
+    def test_valid_max_file_size_parsed(self, monkeypatch):
+        monkeypatch.setenv("CHAMELEON_MAX_FILE_SIZE", "12345")
+        cfg = SecurityConfig.from_environment()
+        assert cfg.max_file_size == 12345
+
+    def test_trusted_roots_env_parsed(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("CHAMELEON_TRUSTED_ROOTS", str(tmp_path))
+        cfg = SecurityConfig.from_environment()
+        assert str(tmp_path) in cfg.trusted_roots
