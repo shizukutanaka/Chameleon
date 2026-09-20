@@ -55,6 +55,22 @@
 
 ### Fixed
 
+- **`spectral_editor` could not perform a single edit** -- five defects
+  compounded on the only path that actually runs (the `[audio]` extra
+  lacks matplotlib, so `import librosa.display` fails and the manual
+  STFT/ISTFT path serves every install): the frequency axis was built
+  with two-sided `np.fft.fftfreq` against a one-sided spectrum, so the
+  axis ended at -fs/2, `searchsorted` scrambled every selection into an
+  empty mask; `_smooth_mask_edges` returned the float convolution, so
+  `stft[mask]` raised TypeError and every default `fade_edges` call
+  failed; ISTFT normalized the overlap-add by the bare window although
+  the window is applied twice, returning `audio * window` (round-trip
+  off by up to 100% amplitude); the STFT dropped the final partial
+  frame, silently truncating output; and `paste_selection` read the
+  copied buffer at the target mask -- positions copy had zeroed -- so it
+  pasted silence while returning True. Round-trip is now bit-accurate
+  (err ~1e-11), delete silences interiors (0.5 -> 0.005), paste stamps
+  the copied block, and empty/void pastes return False.
 - **`AudioRestorer.restore("auto")` ran two detectors the project itself
   measured as untrustworthy** -- `RestorationConfig` defaulted
   `click_removal`/`decrackle` to True, so the library auto pipeline rewrote

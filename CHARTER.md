@@ -2361,3 +2361,11 @@ any range assertion.
   (gap_filling/spectral_repair/adaptive_mode) wired to nothing. If the CLI
   refuses to expose a stage because it is unmeasured, the library's
   default pipeline must not run it either.
+- "Orphan" modules still ship, so they still have to work:
+  spectral_editor is deliberately not wired into the CLI, but it is a
+  packaged library API -- and five stacked defects meant none of its
+  operations had ever functioned on the default install (the manual STFT
+  path serves everyone, because `import librosa.display` pulls in
+  matplotlib which [audio] does not install). An allowed orphan is a
+  maintenance exemption, not a correctness exemption -- exercise the
+  library paths or they rot invisibly.

@@ -146,8 +146,10 @@ class SpectrogramProcessor:
         if win_length < n_fft:
             window = np.pad(window, (0, n_fft - win_length))
 
-        # Compute STFT
-        n_frames = 1 + (len(audio) - n_fft) // hop_length
+        # Compute STFT. ceil (not floor) so the final partial frame is
+        # included -- floor covered only whole frames and ISTFT silently
+        # dropped the tail (a 44100-sample input round-tripped to 44032).
+        n_frames = max(1, 1 + int(np.ceil((len(audio) - n_fft) / hop_length)))
         stft = np.zeros((n_fft // 2 + 1, n_frames), dtype=complex)
 
         for i in range(n_frames):
@@ -167,7 +169,7 @@ class SpectrogramProcessor:
 
         # Generate axes
         times = np.arange(n_frames) * hop_length / sample_rate
-        freqs = np.fft.fftfreq(n_fft, 1/sample_rate)[:n_fft // 2 + 1]
+        freqs = np.fft.rfftfreq(n_fft, 1/sample_rate)
 
         return stft, times, freqs
 
@@ -214,11 +216,14 @@ class SpectrogramProcessor:
             # IFFT
             frame = np.fft.ifft(full_fft).real
 
-            # Apply window and overlap-add
+            # Apply window and overlap-add. The window is applied twice
+            # (once at analysis, once at synthesis), so the normalizer must
+            # accumulate window**2 -- summing the bare window divided a
+            # w-squared-weighted signal by w and returned audio*window.
             start = i * hop_length
             end = start + n_fft
             output[start:end] += frame * window
-            norm[start:end] += window
+            norm[start:end] += window ** 2
 
         # Normalize
         norm[norm == 0] = 1
@@ -328,12 +333,30 @@ class SpectralEditor:
                        target_selection: SpectralSelection) -> bool:
         """Paste spectral content to target location"""
         try:
-            self._save_state()
+            # `copied_stft` holds content at the SOURCE mask positions;
+            # indexing it by the target mask reads its (zeroed) target
+            # positions and pastes silence. Stamp the nonzero support
+            # block onto the target region instead, top-left aligned and
+            # cropped to whichever is smaller.
+            src_rows = np.where(np.any(copied_stft != 0, axis=1))[0]
+            src_cols = np.where(np.any(copied_stft != 0, axis=0))[0]
+            if src_rows.size == 0 or src_cols.size == 0:
+                self.logger.error("Paste operation failed: nothing to paste")
+                return False
 
             target_mask = self.get_selection_mask(target_selection)
+            tgt_rows = np.where(np.any(target_mask, axis=1))[0]
+            tgt_cols = np.where(np.any(target_mask, axis=0))[0]
+            if tgt_rows.size == 0 or tgt_cols.size == 0:
+                self.logger.error("Paste operation failed: empty target selection")
+                return False
 
-            # Simple pasting - would need more sophisticated blending in practice
-            self.stft[target_mask] = copied_stft[target_mask]
+            self._save_state()
+
+            block = copied_stft[np.ix_(src_rows, src_cols)]
+            h = min(block.shape[0], tgt_rows.size)
+            w = min(block.shape[1], tgt_cols.size)
+            self.stft[np.ix_(tgt_rows[:h], tgt_cols[:w])] = block[:h, :w]
 
             # Reconstruct audio
             self.current_audio = self.spectrogram_processor.compute_istft(
@@ -548,7 +571,10 @@ class SpectralEditor:
         # Apply smoothing
         smoothed = ndimage.convolve(mask.astype(float), kernel, mode='reflect')
 
-        return smoothed
+        # Back to bool: callers index `stft[mask]`, and a float array is not
+        # a valid index -- without this every fade_edges call raised
+        # TypeError and the operation silently reported failure.
+        return smoothed > 0.5
 
     def _save_state(self):
         """Save current state for undo"""
