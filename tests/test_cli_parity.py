@@ -306,3 +306,31 @@ def test_midi_compose_tempo_reaches_the_file(tmp_path):
     assert i >= 0, "no tempo meta-event in file"
     uspq = int.from_bytes(data[i+3:i+6], "big")
     assert uspq == 1_000_000  # 60 BPM
+
+
+# -- midi op-scoped flags: a flag the operation ignores must be rejected ----
+
+def test_midi_analyze_rejects_output_flags(tmp_path):
+    """`midi analyze` only consumes --input; every other flag used to be
+    silently ignored (same class as the process/batch scoping fix)."""
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    for flag, value in [("--tempo", "90"), ("--key", "G"),
+                        ("--output", str(tmp_path / "x.mid"))]:
+        result = _run("midi", "analyze", "--input", str(wav), flag, value,
+                      cwd=str(tmp_path))
+        assert result.returncode == 2, (flag, result.stdout + result.stderr)
+        assert flag in result.stderr
+
+
+def test_midi_compose_rejects_input(tmp_path):
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    result = _run("midi", "compose", "--input", str(wav), cwd=str(tmp_path))
+    assert result.returncode == 2
+    assert "--input" in result.stderr
+
+
+def test_midi_generate_rejects_length(tmp_path):
+    result = _run("midi", "generate", "--output", str(tmp_path / "x.mid"),
+                  "--length", "30", cwd=str(tmp_path))
+    assert result.returncode == 2
+    assert "--length" in result.stderr

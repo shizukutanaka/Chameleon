@@ -1902,6 +1902,20 @@ entries now record the attempted resource and the refusing status for
 every guarded endpoint. LOGIN already logged FAILED; it was the model
 the rest of the file failed to follow.
 
+**Q (2026-09-19, cycle 51): Did the cycle-44 rule reach every flat flag
+namespace?**
+`midi` was the last subcommand whose flags all live on one shared
+parser, and it had the same disease: `midi analyze --tempo 90` parsed
+and discarded the value, `midi generate --length 30` ignored the bound
+and wrote the fixed one-octave demo anyway, `midi compose --input f`
+dropped the file. Six flags, four operations, zero scope checks. The
+fix reused the cycle-44 shape (a per-operation owner map, USAGE(2)
+rejection naming the owning operations) plus one new ingredient:
+`--mode`/`--tempo`/`--length` had parser-level defaults, which makes
+"user typed it" indistinguishable from "default". Their defaults moved
+to the consumers (`args.tempo or 120.0` at the call site) — a flag
+whose default you cannot see is a flag whose scope you cannot enforce.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy

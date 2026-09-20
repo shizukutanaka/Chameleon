@@ -14,6 +14,15 @@
 
 ### Fixed
 
+- **`midi` silently ignored flags that belong to another operation** --
+  `midi analyze --tempo 90` parsed fine and discarded the value; same for
+  `--key`/`--mode`/`--output` off `compose`/`generate`/`extract`, `--input`
+  on `compose`/`generate`, and `--length` anywhere but `compose`. Each
+  operation now rejects flags outside its consumed set with USAGE(2) and
+  a message naming the owning operations (the `process`/`batch` scoping
+  rule applied to the last flat flag namespace). `--mode`/`--tempo`/
+  `--length` defaults moved from the parser to the consumers so an
+  explicitly-typed flag is distinguishable from an unset one.
 - **`midi --tempo` was accepted but never reached the file** -- the
   generated MIDI had no FF 51 03 tempo meta-event, so `--tempo 60`
   produced a file players render at the default 120 BPM. The tempo now

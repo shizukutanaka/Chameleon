@@ -1987,10 +1987,12 @@ def create_cli():
     midi.add_argument("operation", choices=["extract", "analyze", "compose", "generate"])
     midi.add_argument("--input", help="Input audio file")
     midi.add_argument("--output", help="Output MIDI file")
+    # Defaults are None so the dispatcher can tell an explicitly-typed flag
+    # from an unset one; per-operation defaults are applied where consumed.
     midi.add_argument("--key", help="Musical key (e.g., C, G, F#)")
-    midi.add_argument("--mode", choices=["major", "minor"], default="major")
-    midi.add_argument("--tempo", type=float, default=120.0, help="Tempo in BPM")
-    midi.add_argument("--length", type=float, default=8.0, help="Length in seconds")
+    midi.add_argument("--mode", choices=["major", "minor"], default=None)
+    midi.add_argument("--tempo", type=float, default=None, help="Tempo in BPM")
+    midi.add_argument("--length", type=float, default=None, help="Length in seconds")
 
     # Plugins command
     plugins_cmd = subparsers.add_parser("plugins", help="Inspect and audit plugins")
@@ -2609,6 +2611,31 @@ async def main():
             exit_code = ExitCode.ERROR
 
     elif args.command == "midi":
+        # Each operation consumes a different flag subset; a flag outside that
+        # subset is silently ignored unless rejected here. Same rule as
+        # process/batch: name the operation that owns the flag.
+        midi_flag_owners = {
+            "--input": {"extract", "analyze"},
+            "--key": {"compose", "generate"},
+            "--mode": {"compose", "generate"},
+            "--tempo": {"extract", "compose", "generate"},
+            "--length": {"compose"},
+            "--output": {"extract", "compose", "generate"},
+        }
+        midi_flag_values = {
+            "--input": args.input,
+            "--key": args.key,
+            "--mode": args.mode,
+            "--tempo": args.tempo,
+            "--length": args.length,
+            "--output": args.output,
+        }
+        for flag, value in midi_flag_values.items():
+            if value is not None and args.operation not in midi_flag_owners[flag]:
+                owners = "/".join(sorted(midi_flag_owners[flag]))
+                print(f"Error: {flag} only applies to midi {owners}", file=sys.stderr)
+                return ExitCode.USAGE
+
         print(f"MIDI operation '{args.operation}'")
 
         if args.operation in ["extract", "analyze"] and not args.input:
@@ -2619,7 +2646,8 @@ async def main():
             # Extract MIDI from audio
             audio, sr = processor.load_audio(args.input)
 
-            config = MIDIConfig(tempo=args.tempo) if HAS_MIDI else None
+            tempo = args.tempo if args.tempo is not None else 120.0
+            config = MIDIConfig(tempo=tempo) if HAS_MIDI else None
             notes = processor.extract_midi(audio, sr, config)
 
             if notes:
@@ -2642,7 +2670,7 @@ async def main():
 
                 # Save to MIDI file if output specified
                 if args.output:
-                    success = processor.generate_midi(notes, args.output, tempo_bpm=args.tempo)
+                    success = processor.generate_midi(notes, args.output, tempo_bpm=tempo)
                     if success:
                         print(f"MIDI file saved to {args.output}")
                     else:
@@ -2698,11 +2726,15 @@ async def main():
                       f"(expected e.g. C, F#, Bb)", file=sys.stderr)
                 return ExitCode.INPUT
 
+            mode = args.mode if args.mode is not None else "major"
+            tempo = args.tempo if args.tempo is not None else 120.0
+            length = args.length if args.length is not None else 8.0
+
             # Progression transposed into the requested key. I-V-vi-IV in
             # major; i-v-VI-iv in minor -- running the major progression
             # under a minor scale would inject out-of-mode chord tones
             # (e.g. F# into G minor).
-            if args.mode == "major":
+            if mode == "major":
                 progression = [
                     (0, "major", [0, 4, 7]),
                     (7, "major", [7, 11, 2]),
@@ -2727,14 +2759,14 @@ async def main():
                 for i, (root, chord_type, notes) in enumerate(progression)
             ]
 
-            key_info = {"tonic": tonic, "mode": args.mode, "confidence": 1.0}
+            key_info = {"tonic": tonic, "mode": mode, "confidence": 1.0}
 
-            melody = processor.compose_melody(basic_chords, key_info, args.length)
+            melody = processor.compose_melody(basic_chords, key_info, length)
 
             if melody:
                 print(f"Generated melody with {len(melody)} notes")
                 if args.output:
-                    success = processor.generate_midi(melody, args.output, tempo_bpm=args.tempo)
+                    success = processor.generate_midi(melody, args.output, tempo_bpm=tempo)
                     if success:
                         print(f"Composition saved to {args.output}")
                     else:
@@ -2758,9 +2790,12 @@ async def main():
                       f"(expected e.g. C, F#, Bb)", file=sys.stderr)
                 return ExitCode.INPUT
 
+            mode = args.mode if args.mode is not None else "major"
+            tempo = args.tempo if args.tempo is not None else 120.0
+
             # A one-octave scale in the requested key/mode starting at C4-ish
             # (MIDI 60 + tonic). Major and natural minor intervals.
-            intervals = [0, 2, 4, 5, 7, 9, 11] if args.mode == "major" else [0, 2, 3, 5, 7, 8, 10]
+            intervals = [0, 2, 4, 5, 7, 9, 11] if mode == "major" else [0, 2, 3, 5, 7, 8, 10]
             scale_notes = [60 + tonic + i for i in intervals] + [60 + tonic + 12]
             demo_notes = []
 
@@ -2776,7 +2811,7 @@ async def main():
                     demo_notes.append(note)
 
             if demo_notes:
-                success = processor.generate_midi(demo_notes, args.output, tempo_bpm=args.tempo)
+                success = processor.generate_midi(demo_notes, args.output, tempo_bpm=tempo)
                 if success:
                     print(f"Demo MIDI file generated: {args.output}")
                 else:
