@@ -924,14 +924,11 @@ async def get_current_user(request: Request, credentials: HTTPAuthorizationCrede
     api_state.stats['last_request_timestamp'] = datetime.now(timezone.utc).isoformat()
     _cleanup_expired_sessions()
 
-    if not SECURITY_CONFIG['require_authentication']:
-        # Return mock user for development
-        return {
-            'username': 'dev_user',
-            'clearance_level': 'SECRET',
-            'session_id': 'dev_session'
-        }
-
+    # No bypass branch: SECURITY_CONFIG['require_authentication'] is always
+    # True. A `if not ...: return SECRET-clearance mock user` escape hatch
+    # lived here -- unreachable today, but an auth bypass one config edit
+    # away from live. Dead code that grants privilege is worse than no code.
+    #
     # Optional API key verification layered on top of JWT/session auth
     if API_KEY_SCHEME is not None:
         api_key = request.headers.get(api_key_header_name)
@@ -962,7 +959,10 @@ async def get_current_user(request: Request, credentials: HTTPAuthorizationCrede
             detail="Invalid authentication token"
         )
 
-    if datetime.now(timezone.utc) > session_data.get('expires_at', datetime.min):
+    # datetime.min is naive; comparing it to the aware "now" would TypeError
+    # if expires_at were ever absent, so the default must be tz-aware.
+    if datetime.now(timezone.utc) > session_data.get(
+            'expires_at', datetime.min.replace(tzinfo=timezone.utc)):
         api_state.remove_session(session_id)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

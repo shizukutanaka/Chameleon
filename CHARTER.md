@@ -1981,3 +1981,13 @@ audit log now report the granted level rather than the claimed one.
 Removing the field outright was rejected — it is a documented request
 field and the privilege model itself is legitimate; the defect was the
 absence of a server-side bound.
+
+**Q: Is dormant privileged code acceptable if unreachable today?**
+A (2026-09-19): No — `get_current_user` carried a mock-user branch behind
+`require_authentication` (always True): unreachable, but a single dict
+edit from a live SECRET bypass. Dead code that grants privilege is worse
+than no code; removed. Also fixed a latent crash in the same function:
+the expiry default `datetime.min` is naive and would TypeError against
+an aware `now` if `expires_at` were ever absent. Per-request expiry and
+idle cleanup were then verified end to end (expired session -> 401 and
+removed from the registry).

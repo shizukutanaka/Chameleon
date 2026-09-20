@@ -52,6 +52,15 @@
 
 ### Security
 
+- **Dormant auth bypass removed** — `get_current_user` had a
+  `if not require_authentication: return SECRET-clearance mock user`
+  branch. The config key is always True, so it never ran — but one
+  dict edit would have turned it into a live bypass granting SECRET to
+  every request. Dead code that grants privilege is worse than no code.
+  The key still gates the docs endpoints.
+- **Session-expiry check would TypeError if `expires_at` were ever
+  absent** — `datetime.min` (naive) was compared against an aware
+  timestamp; the default is now tz-aware.
 - **Login `clearance_level` was fully self-declared** — any client could
   claim TOP_SECRET and reach privileged cross-owner paths. A
   deployment-side ceiling now applies: `CHAMELEON_API_MAX_CLEARANCE`

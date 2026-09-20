@@ -437,3 +437,21 @@ def test_login_clearance_is_capped_at_the_configured_maximum(client, monkeypatch
     # Asked for TOP_SECRET, capped at UNCLASSIFIED -- and the response
     # reports what was granted, not what was claimed.
     assert login.json()["user_info"]["clearance_level"] == "UNCLASSIFIED"
+
+
+def test_expired_session_is_rejected_and_removed(client, monkeypatch):
+    """Expiry is enforced per-request, not just at cleanup time: a session
+    whose expires_at is in the past must get 401 and be dropped."""
+    from datetime import datetime, timedelta, timezone
+    login = _login(client)
+    token = login.json()["token"]
+    session_id = login.json()["user_info"]["session_id"]
+    session = api_server.api_state.active_sessions[session_id]
+    monkeypatch.setitem(
+        session, "expires_at",
+        datetime.now(timezone.utc) - timedelta(seconds=1),
+    )
+    r = client.get("/system/status",
+                   headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 401
+    assert session_id not in api_server.api_state.active_sessions
