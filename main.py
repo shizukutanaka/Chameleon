@@ -2890,6 +2890,18 @@ async def main():
             print("Error: --input required for extract/analyze operations", file=sys.stderr)
             return ExitCode.USAGE
 
+        if args.operation in ("extract", "analyze") and args.input:
+            # The most natural input for `midi analyze` is a .mid file --
+            # and these commands analyze *audio* for musical content.
+            # "Unsupported file type" leaves the user guessing which part
+            # was wrong, so name the trap.
+            if os.path.splitext(args.input)[1].lower() in (".mid", ".midi"):
+                print("Error: midi extract/analyze take an audio file "
+                      "(e.g. .wav) and analyze its musical content; a .mid "
+                      "file is already MIDI -- there is nothing to extract "
+                      "or analyze.", file=sys.stderr)
+                return ExitCode.INPUT
+
         if args.operation == "extract":
             # Extract MIDI from audio
             audio, sr = processor.load_audio(args.input)

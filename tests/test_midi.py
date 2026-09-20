@@ -174,3 +174,20 @@ def test_compose_writes_eighth_notes_at_any_tempo(tmp_path):
             pytest.skip("midi compose unavailable in this environment")
         deltas = on_deltas(out)
         assert deltas and all(d == 240 for d in deltas), deltas
+
+
+def test_midi_analyze_on_mid_file_explains_the_trap(tmp_path):
+    """`midi analyze --input x.mid` is the most natural mistake: the op
+    analyzes *audio* for musical content, and 'Unsupported file type'
+    leaves the user guessing which part was wrong."""
+    import subprocess
+    import sys
+    from pathlib import Path
+    main_py = str(Path(__file__).resolve().parent.parent / "main.py")
+    mid = tmp_path / "x.mid"
+    mid.write_bytes(b"MThd" + b"\x00" * 20)
+    proc = subprocess.run(
+        [sys.executable, main_py, "midi", "analyze", "--input", str(mid)],
+        capture_output=True, text=True, timeout=30)
+    assert proc.returncode == 3  # INPUT
+    assert "audio file" in proc.stderr

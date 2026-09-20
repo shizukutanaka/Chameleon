@@ -2199,3 +2199,11 @@ the expiry default `datetime.min` is naive and would TypeError against
 an aware `now` if `expires_at` were ever absent. Per-request expiry and
 idle cleanup were then verified end to end (expired session -> 401 and
 removed from the registry).
+
+**Q: Should `midi analyze` reject a .mid input with "Unsupported file type"?**
+A (2026-09-20): The natural input for a command named `midi analyze` is a
+.mid file, but these ops analyze *audio* for musical content. "Unsupported
+file type" + ERROR(1) left the user guessing which part was wrong and
+mis-claimed an internal failure. Pattern: when a command's name invites an
+input its implementation can't take, the refusal must name the trap, not
+the type. Now INPUT(3) with "this command analyzes audio".
