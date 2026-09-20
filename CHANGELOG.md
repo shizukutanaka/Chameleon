@@ -55,6 +55,7 @@
 
 ### Fixed
 
+<<<<<<< HEAD
 - **`--convert-bit-depth 32` wrote an IEEE-float WAV that Chameleon
   itself cannot read** -- `save_audio` mapped bit depth 32 to
   soundfile's `FLOAT` subtype (format tag 3), so the converted artifact
@@ -129,6 +130,16 @@
   pad as the next header, and stripped the data chunk along with the
   metadata (output had no data chunk at all; `wave` refused to open
   it). Skipped chunks now consume the pad byte like kept ones.
+||||||| parent of 04b5fac7 (Stop reporting the quantisation floor as "Dominant Frequencies")
+=======
+- **`analyze --spectrum` listed quantisation noise as "Dominant
+  Frequencies"** -- a pure 16-bit sine reported five peaks, four of them
+  local maxima of the -96 dB quantisation floor, with no level shown to
+  tell them apart. `spectral_utils.analyze_spectrum` now drops peaks more
+  than 60 dB below the strongest (`min_relative_db`, default
+  `DEFAULT_PEAK_FLOOR_DB`), `SpectrumPeak.relative_db()` exposes the
+  level, and the CLI prints it per peak: `440.3Hz (+0.0 dB)`.
+>>>>>>> 04b5fac7 (Stop reporting the quantisation floor as "Dominant Frequencies")
 - **`MIDIAnalyzer.analyze_harmony` reported the key as a raw pitch
   class** -- `"0 major"` for C major; the CLI mapped the same field
   through the note table but the library dict did not. The shared

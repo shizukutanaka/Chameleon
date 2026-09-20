@@ -72,6 +72,50 @@ def test_windowing_reduces_spectral_leakage():
         assert other.magnitude < 0.5 * top
 
 
+def test_quantisation_floor_is_not_reported_as_dominant():
+    # A 16-bit sine truncated with int() carries odd harmonics ~96 dB down.
+    # Before the relative floor, all five reported "dominant frequencies" but
+    # the first were these quantisation artefacts.
+    sample_rate, count, freq = 44100, 4096, 440.0
+    samples = [int(12000 * math.sin(2 * math.pi * freq * i / sample_rate))
+               for i in range(count)]
+
+    report = spectral_utils.analyze_spectrum(samples, sample_rate, max_peaks=5)
+
+    assert len(report.dominant_peaks) == 1, [
+        (p.frequency_hz, p.relative_db(report.dominant_peaks[0]))
+        for p in report.dominant_peaks
+    ]
+    assert abs(report.dominant_peaks[0].frequency_hz - freq) < 2.0
+
+    # Lowering the floor must bring the artefacts back, proving the floor --
+    # not the detector -- is what removes them.
+    permissive = spectral_utils.analyze_spectrum(
+        samples, sample_rate, max_peaks=5, min_relative_db=-120.0
+    )
+    assert len(permissive.dominant_peaks) == 5
+
+
+def test_real_harmonics_survive_the_peak_floor():
+    sample_rate, count = 44100, 4096
+    fundamental = 440.0
+    samples = [
+        math.sin(2 * math.pi * fundamental * i / sample_rate)
+        + 0.1 * math.sin(2 * math.pi * 3 * fundamental * i / sample_rate)      # -20 dB
+        + 1e-4 * math.sin(2 * math.pi * 5 * fundamental * i / sample_rate)     # -80 dB
+        for i in range(count)
+    ]
+
+    report = spectral_utils.analyze_spectrum(samples, sample_rate, max_peaks=5)
+    peaks = report.dominant_peaks
+
+    assert [round(p.frequency_hz / fundamental) for p in peaks] == [1, 3]
+    # Levels come from bin-centre magnitudes, so two tones at different
+    # fractional bin offsets differ by up to the Hann scalloping loss (~1.4 dB).
+    assert abs(peaks[1].relative_db(peaks[0]) - (-20.0)) < 1.5
+    assert peaks[0].relative_db(peaks[0]) == 0.0
+
+
 # --- A2: YIN pitch detection ------------------------------------------------
 
 def _cents(f_detected, f_true):
