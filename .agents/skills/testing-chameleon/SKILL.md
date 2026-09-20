@@ -19,6 +19,12 @@ Always invoke the repo venv explicitly:
 CLAUDE.md's `python -m pytest` gate must be run via these absolute paths, in all
 three configurations.
 
+The verification gate's third step is **`python validation_test.py`** — NOT
+`advanced_validation.py`. The latter is a production module
+(`DeepFileInspector`) whose `__main__` block only prints a demo; exiting 0
+there proves nothing. Same-named files, different roles — check which the
+gate actually names before trusting a green run.
+
 ## Onboarding flow e2e
 `personal_config.py setup` is interactive: 3 prompts (library path, perf mode,
 auto-backup) — pipe `printf '\n\n\n'`. Run it with `HOME=/tmp/isolated` and

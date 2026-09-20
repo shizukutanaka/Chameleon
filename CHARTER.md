@@ -2271,3 +2271,8 @@ json.loads accepts the literals NaN/Infinity by default, so a JSON config
 file can smuggle them into any "numeric" field. The check is
 isinstance(x, (int, float)) AND math.isfinite(x), in that order, before
 any range assertion.
+- Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
+  as the third verification step for many cycles, but it is the production
+  module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
+  gate is `validation_test.py`. A green run of the wrong script is not a green
+  gate; match the command to the document before trusting it.
