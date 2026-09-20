@@ -14,6 +14,13 @@
 
 ### Fixed
 
+- **`midi --output` and `batch --format` had no destination validation** --
+  a MIDI output to a missing directory or a directory-as-path reached the
+  writer and surfaced as "Error generating MIDI file: <errno>" with
+  ERROR(1), and `batch convert --format mp3` parsed fine and then failed
+  identically on every file inside convert_audio. MIDI outputs are now
+  sanitized and pre-flight checked as INPUT(3), and `--format` is an
+  argparse choice (`wav` -- the only converter that exists).
 - **`analyze --export` leaked OSError tracebacks on unwritable
   destinations** -- exporting to a directory or a missing directory
   crashed with IsADirectoryError/NotADirectoryError/PermissionError

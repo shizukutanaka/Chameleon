@@ -2020,7 +2020,9 @@ def create_cli():
                                 "convert", "effects"])
     batch.add_argument("--recursive", action="store_true", help="Process recursively")
     batch.add_argument("--output-dir", help="Output directory")
-    batch.add_argument("--format", help="Output format")
+    # Only 'wav' exists as a converter; a free-form value used to parse and
+    # then fail identically on every file in the batch.
+    batch.add_argument("--format", choices=["wav"], help="Output format")
     batch.add_argument("--quality", choices=["standard", "high", "low", "medium", "lossless"],
                        default=None,
                        help="Normalize only: 'high' applies soft-clipping headroom, "
@@ -2727,6 +2729,23 @@ async def main():
                   file=sys.stderr)
             return ExitCode.INPUT
 
+        # The MIDI writer builds the file in memory and opens once at the
+        # end -- a bad destination surfaces as "Error generating MIDI file:
+        # <errno>" with ERROR(1). A path the user typed is input, so
+        # sanitize it and pre-flight the destination up front.
+        try:
+            output_path = _sanitize_optional_input(args.output, "output")
+        except ValueError as exc:
+            print(f"Input validation error: {exc}", file=sys.stderr)
+            return ExitCode.INPUT
+        if output_path:
+            parent = os.path.dirname(output_path) or "."
+            if os.path.isdir(output_path) or not os.path.isdir(parent):
+                print(f"Error: cannot write MIDI output to '{output_path}' "
+                      f"(missing parent directory, or path is a directory)",
+                      file=sys.stderr)
+                return ExitCode.INPUT
+
         print(f"MIDI operation '{args.operation}'")
 
         if args.operation in ["extract", "analyze"] and not args.input:
@@ -2760,8 +2779,8 @@ async def main():
                     print(f"  ... and {len(notes)-10} more notes")
 
                 # Save to MIDI file if output specified
-                if args.output:
-                    success = processor.generate_midi(notes, args.output, tempo_bpm=tempo)
+                if output_path:
+                    success = processor.generate_midi(notes, output_path, tempo_bpm=tempo)
                     if success:
                         print(f"MIDI file saved to {args.output}")
                     else:
@@ -2856,8 +2875,8 @@ async def main():
 
             if melody:
                 print(f"Generated melody with {len(melody)} notes")
-                if args.output:
-                    success = processor.generate_midi(melody, args.output, tempo_bpm=tempo)
+                if output_path:
+                    success = processor.generate_midi(melody, output_path, tempo_bpm=tempo)
                     if success:
                         print(f"Composition saved to {args.output}")
                     else:
@@ -2869,7 +2888,7 @@ async def main():
 
         elif args.operation == "generate":
             # Generate MIDI file from scratch
-            if not args.output:
+            if not output_path:
                 print("Error: --output required for generate operation", file=sys.stderr)
                 return ExitCode.USAGE
 
@@ -2902,7 +2921,7 @@ async def main():
                     demo_notes.append(note)
 
             if demo_notes:
-                success = processor.generate_midi(demo_notes, args.output, tempo_bpm=tempo)
+                success = processor.generate_midi(demo_notes, output_path, tempo_bpm=tempo)
                 if success:
                     print(f"Demo MIDI file generated: {args.output}")
                 else:

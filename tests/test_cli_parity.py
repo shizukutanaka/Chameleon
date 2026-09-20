@@ -422,3 +422,22 @@ def test_analyze_export_unwritable_path_is_input_error(tmp_path):
                       cwd=str(tmp_path))
         assert result.returncode == 3, (bad, result.stdout + result.stderr)
         assert "Traceback" not in result.stderr
+
+
+def test_midi_output_path_is_preflighted(tmp_path):
+    """A bad --output destination used to reach the writer and surface as
+    'Error generating MIDI file: <errno>' with ERROR(1)."""
+    for bad in (str(tmp_path), str(tmp_path / "no-dir" / "x.mid")):
+        result = _run("midi", "generate", "--output", bad,
+                      cwd=str(tmp_path))
+        assert result.returncode == 3, (bad, result.stdout + result.stderr)
+        assert not (tmp_path / "x.mid").exists()
+
+
+def test_batch_rejects_unknown_format_upfront(tmp_path):
+    """--format had no choices: 'mp3' parsed and then every file failed
+    identically inside convert_audio."""
+    write_sine_wave(tmp_path / "tone.wav")
+    result = _run("batch", str(tmp_path), "convert", "--format", "mp3",
+                  cwd=str(tmp_path))
+    assert result.returncode == 2  # argparse invalid choice
