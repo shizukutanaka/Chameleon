@@ -55,6 +55,17 @@
 
 ### Fixed
 
+- **`WorkflowBuilder`'s `builtin` function type could never run** -- it
+  returned the raw allowlisted callable, but `TaskExecutor` invokes
+  `function(**inputs)` and every allowlisted function (len, math.pow,
+  statistics.mean, ...) is positional-only, so every builtin task ended
+  `FAILED` with "takes no keyword arguments". The builtin is now adapted
+  to positional args in declared input order (verified: len/pow/mean).
+- **`BatchScheduler.schedule_workflow` registered unparseable
+  schedules** -- anything besides 'daily'/'hourly'/'every_<minutes>'
+  fell through to `pass`, so a real cron expression was recorded in
+  `scheduled_jobs` and never ran. It now raises `ValueError` naming the
+  supported forms and registers nothing.
 - **`PersonalWorkflow.backup_workflow` "verified" the backup by
   re-checking the sources** -- the manifest keys on absolute source
   paths, so `verify_manifest()` re-inspected the originals and could

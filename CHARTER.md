@@ -2374,3 +2374,10 @@ any range assertion.
   the files, then "verified" by re-inspecting the sources -- any number
   of corrupt or missing copies still reported success. Verify the thing
   you produced, not the thing you copied.
+- An interface adapter is part of the contract: batch_automation's
+  builtin task type resolved real allowlisted callables but the executor
+  only ever invoked them as `fn(**inputs)`, and the whole allowlist is
+  positional-only C functions -- the documented path failed 100% of the
+  time while looking supported. Similarly a scheduler that registers a
+  job it cannot schedule made "scheduled" mean "never": when a requested
+  form is unsupported, refuse before recording success.

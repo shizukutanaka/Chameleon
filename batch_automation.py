@@ -782,20 +782,25 @@ class BatchScheduler:
             self.logger.warning("Schedule library not available")
             return
 
-        job_id = f"{workflow.id}_{datetime.now().timestamp()}"
-
-        # Parse cron expression and schedule
+        # Parse cron expression and schedule. Supported forms are exactly
+        # "daily", "hourly", "every_<minutes>" -- a real cron expression
+        # ("0 9 * * *") used to fall through to `pass`, so the job was
+        # registered as scheduled and never ran.
+        job = None
         if cron_expression == "daily":
-            schedule.every().day.do(self._execute_scheduled, workflow)
+            job = schedule.every().day
         elif cron_expression == "hourly":
-            schedule.every().hour.do(self._execute_scheduled, workflow)
+            job = schedule.every().hour
         elif cron_expression.startswith("every_"):
             interval = int(cron_expression.split("_")[1])
-            schedule.every(interval).minutes.do(self._execute_scheduled, workflow)
+            job = schedule.every(interval).minutes
         else:
-            # Custom cron parsing would go here
-            pass
+            raise ValueError(
+                f"Unsupported schedule expression {cron_expression!r}: "
+                "use 'daily', 'hourly', or 'every_<minutes>'")
 
+        job.do(self._execute_scheduled, workflow)
+        job_id = f"{workflow.id}_{datetime.now().timestamp()}"
         self.scheduled_jobs[job_id] = workflow
 
     def _execute_scheduled(self, workflow: Workflow) -> None:
@@ -893,11 +898,19 @@ class WorkflowBuilder:
         func_type = func_config.get('type', 'builtin')
 
         if func_type == 'builtin':
-            # Use built-in function
+            # Use built-in function. The allowlist only holds positional-
+            # only C functions (len, math.pow, ...), but the executor calls
+            # `function(**inputs)` -- so the raw callable could never run.
+            # Adapt to positional in the declared input order.
             module_name = func_config.get('module', 'builtins')
             func_name = func_config['name']
 
-            return _import_safe_function(module_name, func_name)
+            func = _import_safe_function(module_name, func_name)
+
+            def builtin_executor(**kwargs):
+                return func(*kwargs.values())
+
+            return builtin_executor
 
         elif func_type == 'lambda':
             # Create lambda function
