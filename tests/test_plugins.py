@@ -241,3 +241,34 @@ def test_plugins_list_json_reports_load_failures(tmp_path):
     # them from the generic message.
     reason = next(r for p, r in failures.items() if "bad.py" in p)
     assert "Unsafe import" in reason
+
+
+def test_load_plugin_initialize_timeout_is_reported_not_swallowed(tmp_path):
+    """initialize() is plugin code: a sleeping/hung plugin used to run
+    unbounded (verified: `plugins list` needed SIGTERM on a sleep(120)
+    plugin). The sandbox's time limit must wrap it, and the timeout must
+    reach load_failures as a TimeoutError, not collapse to a generic
+    'no valid plugin class'."""
+    import time
+    loader = PluginLoader(PluginConfig(max_execution_time=1))
+    slow = tmp_path / "slow_init.py"
+    slow.write_text(
+        "import time\n"
+        "from plugin_system import AudioEffectPlugin, PluginMetadata\n"
+        "class Slow(AudioEffectPlugin):\n"
+        "    def get_metadata(self):\n"
+        "        return PluginMetadata(name='s', version='1.0.0', author='t',\n"
+        "                              description='t', category='effect')\n"
+        "    def initialize(self, config):\n"
+        "        time.sleep(30)\n"
+        "        return True\n"
+        "    def cleanup(self):\n"
+        "        pass\n"
+        "    def process_audio(self, audio_data, sample_rate, **params):\n"
+        "        return audio_data\n"
+    )
+
+    t0 = time.monotonic()
+    with pytest.raises(TimeoutError, match="timed out"):
+        loader.load_plugin(slow)
+    assert time.monotonic() - t0 < 10

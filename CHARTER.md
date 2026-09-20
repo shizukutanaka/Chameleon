@@ -2311,3 +2311,12 @@ any range assertion.
   exception tracebacks, generator gi_frame, coroutine cr_frame/ag_frame,
   tb_next walking -- must be on the attribute blocklist alongside
   __globals__, or the dunder list is a door with a wall missing.
+- Limits that only wrap some plugin code are no limits: the sandbox
+  already enforced max_execution_time around execute_plugin() calls --
+  but `plugins list` runs module top-level code and initialize() at LOAD
+  time, unbounded, and a plugin whose initialize slept 120s hung the CLI
+  outright (verified: SIGTERM needed). Whatever runs plugin bytes must
+  run them inside the limit. Also: a TimeoutError swallowed into the
+  generic except-None path loses the failure's kind -- a timed-out plugin
+  is not "no valid plugin class". Re-raise it like SecurityError so
+  load_failures names the real reason.

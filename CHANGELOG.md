@@ -55,6 +55,15 @@
 
 ### Fixed
 
+- **Plugin code ran unbounded at load time** -- `max_execution_time` was
+  enforced around `execute_plugin()` calls, but `plugins list`/`audit`
+  run the module's top-level code and `initialize()` during loading
+  with no limit: a plugin whose `initialize()` slept 120s hung the CLI
+  until SIGTERM (verified). Both `exec_module()` and `initialize()` now
+  run inside `sandbox.execute_with_limits`, and the resulting
+  `TimeoutError` is re-raised so `plugins list --json`'s
+  `load_failures` reports "Plugin execution timed out" rather than
+  collapsing to the generic "no valid plugin class" message.
 - **`plugins --directory` pointed at a file crashed with a traceback** --
   the path passed sanitization and `PluginManager.initialize()` hit a raw
   `FileExistsError` from `mkdir(exist_ok=True)`. A file is now refused at

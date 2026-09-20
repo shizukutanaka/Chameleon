@@ -375,7 +375,10 @@ class PluginLoader:
             if self.config.sandbox_mode:
                 self._check_module_safety(validated_path)
 
-            spec.loader.exec_module(module)
+            # Module top-level code runs the same unbounded-host risk as a
+            # plugin method -- a `while True:` at module scope hung `plugins
+            # list` forever before the limits wrapped this call.
+            self.sandbox.execute_with_limits(spec.loader.exec_module, module)
 
             # Find plugin classes
             plugin_classes = []
@@ -401,8 +404,9 @@ class PluginLoader:
             if not self._validate_plugin(plugin_instance):
                 return None
 
-            # Initialize plugin
-            if not plugin_instance.initialize({}):
+            # Initialize plugin -- plugin code, so it must respect the
+            # sandbox's time/memory limits like execute_plugin calls do.
+            if not self.sandbox.execute_with_limits(plugin_instance.initialize, {}):
                 self.logger.error(f"Failed to initialize plugin: {metadata.name}")
                 return None
 
@@ -429,6 +433,13 @@ class PluginLoader:
 
         except SecurityError as e:
             self.logger.error(f"Failed to load plugin {plugin_path}: {e}")
+            raise
+        except TimeoutError as e:
+            # Same rule as SecurityError: the failure's *kind* is the
+            # information. Collapsing a timeout to None would make a hung
+            # plugin indistinguishable from a merely broken one in
+            # `plugins list --json` output.
+            self.logger.error(f"Plugin timed out during load {plugin_path}: {e}")
             raise
         except Exception as e:
             self.logger.error(f"Failed to load plugin {plugin_path}: {e}")
