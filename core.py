@@ -22,6 +22,7 @@ import struct
 import shutil
 import tempfile
 import logging
+import warnings
 import gc
 from pathlib import Path
 import asyncio
@@ -66,11 +67,15 @@ def _determine_chunk_size() -> int:
         try:
             parsed = int(env_value)
         except (TypeError, ValueError):
-            parsed = DEFAULT_CHUNK_SIZE
-        else:
-            if parsed < MIN_CHUNK_SIZE or parsed > MAX_CHUNK_SIZE:
-                parsed = DEFAULT_CHUNK_SIZE
-        return parsed
+            parsed = 0
+        if MIN_CHUNK_SIZE <= parsed <= MAX_CHUNK_SIZE:
+            return parsed
+        warnings.warn(
+            f"Ignoring invalid CHAMELEON_CHUNK_SIZE={env_value!r} "
+            f"(must be {MIN_CHUNK_SIZE}..{MAX_CHUNK_SIZE}); using default "
+            f"{DEFAULT_CHUNK_SIZE}"
+        )
+        return DEFAULT_CHUNK_SIZE
 
     mode = os.getenv("CHAMELEON_PERFORMANCE_MODE", "auto").lower()
     if mode == "fast":
@@ -89,11 +94,13 @@ def _determine_timeout() -> int:
         try:
             parsed = int(env_value)
         except (TypeError, ValueError):
-            return DEFAULT_OPERATION_TIMEOUT
-        else:
-            if parsed <= 0:
-                return DEFAULT_OPERATION_TIMEOUT
+            parsed = 0
+        if parsed > 0:
             return parsed
+        warnings.warn(
+            f"Ignoring invalid CHAMELEON_TIMEOUT={env_value!r}; using "
+            f"default {DEFAULT_OPERATION_TIMEOUT}s"
+        )
 
     return DEFAULT_OPERATION_TIMEOUT
 

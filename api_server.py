@@ -145,6 +145,11 @@ _CLEARANCE_ORDER = ["UNCLASSIFIED", "CONFIDENTIAL", "SECRET", "TOP_SECRET"]
 _MAX_CLAIMABLE_CLEARANCE = os.environ.get(
     'CHAMELEON_API_MAX_CLEARANCE', 'TOP_SECRET')
 if _MAX_CLAIMABLE_CLEARANCE not in _CLEARANCE_ORDER:
+    # A typo here silently grants the *maximum* cap -- name it.
+    logging.warning(
+        "Invalid CHAMELEON_API_MAX_CLEARANCE %r; capping at TOP_SECRET",
+        _MAX_CLAIMABLE_CLEARANCE,
+    )
     _MAX_CLAIMABLE_CLEARANCE = 'TOP_SECRET'
 
 

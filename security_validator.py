@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import os
 import re
+import warnings
 import contextlib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -81,10 +82,15 @@ class SecurityConfig:
         if env_max:
             try:
                 parsed = int(env_max)
-                if parsed > 0:
-                    max_size = parsed
             except (TypeError, ValueError):
-                pass
+                parsed = 0
+            if parsed > 0:
+                max_size = parsed
+            else:
+                warnings.warn(
+                    f"Ignoring invalid CHAMELEON_MAX_FILE_SIZE={env_max!r}; "
+                    f"using default {DEFAULT_MAX_FILE_SIZE}"
+                )
 
         return cls(max_file_size=max_size, trusted_roots=roots)
 
