@@ -215,9 +215,15 @@ Writing a plugin: subclass one of the interfaces in `plugin_system.py`
 `UtilityPlugin`), implement every abstract method (e.g. `process_audio`
 for effects), and return a `PluginMetadata` whose `version` is strict
 semver (`1.0.0`, not `1.0`) and whose `category` matches the base class.
-Sandbox rules are enforced statically before the module executes --
-`import os`, `open()`, `eval`/`exec`, `getattr(obj, "__globals__")`-style
-dunder chains are all rejected; run `plugins audit` to check a file.
+Sandbox rules are enforced statically before the module executes.
+Imports are deny-by-default: only the allowlisted pure-computation
+modules (math/json/re/... plus numpy/scipy/soundfile/librosa) load;
+`pathlib`, `os`, `shutil`, `io`, network and introspection modules are
+refused. `open()`, `eval`/`exec`, `getattr(obj, "__globals__")`-style
+dunder chains and frame/exception-object access (`__traceback__`,
+`tb_frame`, `f_globals`) are likewise rejected; run `plugins audit` to
+check a file. Trusted plugins can extend the set via
+`PluginConfig.allowed_imports` or `sandbox_mode=False`.
 
 ---
 

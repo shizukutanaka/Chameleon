@@ -210,9 +210,15 @@ chameleon plugins list --directory /abs/path/to/plugins --json
 （`AudioEffectPlugin` など）を継承し、全抽象メソッド（例: effect は
 `process_audio`）を実装する。`PluginMetadata` の `version` は厳密な
 semver（`1.0.0`。`1.0` は不可）、`category` は基底クラスと一致させる。
-サンドボックスはモジュール実行前の静的検査で強制される（`import os`、
-`open()`、`eval`/`exec`、dunder チェーンは拒否）。検査は
-`plugins audit` で行う。
+サンドボックスはモジュール実行前の静的検査で強制される。import は
+拒否既定（deny-by-default）: 許可リストにある純粋計算モジュール
+（math/json/re 等に加え numpy/scipy/soundfile/librosa）のみ通過し、
+`pathlib`/`os`/`shutil`/`io`・ネットワーク系・イントロスペクション系
+は拒否される。`open()`、`eval`/`exec`、`getattr(obj, "__globals__")`
+系の dunder チェーン、フレーム/例外経由の到達（`__traceback__`、
+`tb_frame`、`f_globals`）も同様に拒否。検査は `plugins audit` で行う。
+信頼済みプラグインは `PluginConfig.allowed_imports` または
+`sandbox_mode=False` で拡張できる。
 
 ---
 
