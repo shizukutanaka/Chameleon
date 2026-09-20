@@ -13,7 +13,7 @@ import queue
 import contextlib
 import re
 from abc import ABC, abstractmethod
-from typing import Dict, List, Any, Optional, Callable
+from typing import Dict, List, Any, Optional, Callable, FrozenSet
 from dataclasses import dataclass, field
 from pathlib import Path
 import time
@@ -44,6 +44,38 @@ class PluginMetadata:
     parameters: Dict[str, Dict] = field(default_factory=dict)
     enabled: bool = True
 
+# Top-level module names a plugin may import under the sandbox.
+# Deny-by-default: a blocklist names what is dangerous and silently admits
+# everything not yet named -- `import pathlib` bypassed the audit and
+# Path(...).write_text wrote a file with zero flagged constructs
+# (verified). The allowlist inverts that: only pure-computation modules
+# are admitted; anything filesystem-, network-, process- or
+# introspection-capable (pathlib, shutil, io, wave, sqlite3, logging
+# file handlers, gc, inspect, threading, ctypes, ...) fails the audit.
+DEFAULT_ALLOWED_IMPORTS: FrozenSet[str] = frozenset({
+    # the plugin framework itself
+    "plugin_system",
+    # future annotations / typing helpers
+    "__future__", "typing", "dataclasses", "enum", "abc", "types",
+    # containers & functional plumbing
+    "collections", "itertools", "functools", "operator", "heapq",
+    "bisect", "array", "queue", "copy", "pprint", "reprlib",
+    "contextlib", "weakref",
+    # text & data (no fs capability of their own)
+    "string", "textwrap", "re", "difflib", "unicodedata", "json",
+    "struct", "binascii", "base64", "csv", "html",
+    # math & numbers
+    "math", "cmath", "numbers", "statistics", "fractions",
+    "decimal", "random",
+    # clocks (runaway plugins are still bounded by the sandbox timeout)
+    "time", "datetime", "calendar", "zoneinfo",
+    # misc stdlib with no fs/net/process/introspection surface
+    "warnings", "traceback", "hashlib", "hmac", "secrets",
+    # the documented audio plugin domain
+    "numpy", "scipy", "soundfile", "librosa",
+})
+
+
 @dataclass
 class PluginConfig:
     """Plugin system configuration"""
@@ -54,6 +86,10 @@ class PluginConfig:
     max_memory_mb: int = 512
     allow_network: bool = False
     cache_plugins: bool = True
+    # Extend only deliberately -- every name added is a capability handed
+    # to unaudited-in-depth code (this is a static audit, not a boundary).
+    allowed_imports: FrozenSet[str] = field(
+        default_factory=lambda: DEFAULT_ALLOWED_IMPORTS)
 
 class PluginInterface(ABC):
     """Base interface for all Chameleon plugins"""
@@ -131,6 +167,7 @@ class PluginSandbox:
             'os', 'sys', 'subprocess', 'socket', 'urllib', 'requests',
             'ftplib', 'smtplib', 'telnetlib', 'xmlrpc'
         }
+        self.allowed_modules = set(config.allowed_imports)
         self.logger = logging.getLogger("plugin_sandbox")
 
     @contextlib.contextmanager
@@ -181,7 +218,11 @@ class PluginSandbox:
             if module_name.startswith(restricted):
                 return False
 
-        return True
+        # Deny-by-default: the module must be on the allowlist. A name
+        # nobody vetted (pathlib, shutil, ctypes, io, sqlite3, gc,
+        # inspect, threading, logging handlers, ...) is a capability the
+        # audit cannot scope -- refuse it rather than trust it.
+        return module_name in self.allowed_modules
 
     def execute_with_limits(self, func: Callable, *args, **kwargs) -> Any:
         """Execute function with resource limits"""
@@ -493,6 +534,12 @@ class PluginLoader:
                 "__globals__", "__builtins__", "__subclasses__", "__mro__",
                 "__bases__", "__base__", "__dict__", "__class__",
                 "__code__", "__getattribute__", "__func__", "__self__",
+                # frame access: e.__traceback__.tb_frame.f_globals needs
+                # no import and reaches __builtins__ (verified: a probe
+                # plugin passed audit with exactly this chain)
+                "__traceback__", "__context__", "__cause__", "tb_frame",
+                "tb_next", "f_globals", "f_builtins", "f_locals",
+                "f_back", "gi_frame", "cr_frame", "ag_frame",
             ):
                 raise SecurityError(
                     f"Unsafe attribute access detected: .{node.attr} can be used for sandbox escape"

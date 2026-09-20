@@ -2296,3 +2296,18 @@ any range assertion.
   the next step. And keep the docstring honest: this is static analysis
   that raises the bar, never a runtime boundary -- `exec_module` still
   runs with host builtins, so the prose says "audit", not "sandbox".
+- Enumerating badness admits everything unenumerated: the plugin audit's
+  module list named os/sys/subprocess/etc., so `import pathlib` sailed
+  through and `Path(...).write_text()` wrote a file with zero flagged
+  constructs (verified end to end). A sandbox import check must be
+  deny-by-default -- an allowlist of pure-computation modules -- because
+  the set of dangerous capabilities is open-ended (io, shutil, wave,
+  sqlite3, gc, inspect, logging file handlers, ctypes, threading all
+  reach the same host). The escape hatch is PluginConfig.allowed_imports
+  or sandbox_mode=False for deliberately trusted code.
+- Frame objects are builtins' back door: `e.__traceback__.tb_frame.
+  f_globals` reaches `__builtins__` with no import and no dunder a naive
+  scan blocks (verified). Any object graph edge that lands on a frame --
+  exception tracebacks, generator gi_frame, coroutine cr_frame/ag_frame,
+  tb_next walking -- must be on the attribute blocklist alongside
+  __globals__, or the dunder list is a door with a wall missing.

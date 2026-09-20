@@ -18,6 +18,22 @@
   upload/analyze/normalize/download, batch submit, and batch status
   (LOGIN already logged FAILED; a log that only shows successes cannot
   reveal probing).
+- **Plugin sandbox import check inverted to deny-by-default** -- the
+  restricted-module list named ten modules, so `import pathlib` passed
+  audit and `Path("/tmp/x").write_text()` wrote a real file (verified).
+  `is_safe_import` now requires membership in `DEFAULT_ALLOWED_IMPORTS`
+  (pure-computation stdlib plus the documented `numpy`/`scipy`/
+  `soundfile`/`librosa` audio domain); anything else -- `shutil`, `io`,
+  `wave`, `sqlite3`, `gc`, `inspect`, `threading`, `ctypes`,
+  `pickle`, `logging` (file handlers), `importlib` -- is refused at
+  audit. Sites running trusted plugins can extend the list via
+  `PluginConfig.allowed_imports` or opt out with `sandbox_mode=False`.
+- **Exception tracebacks leaked frames past the attribute blocklist** --
+  `e.__traceback__.tb_frame.f_globals` reached `__builtins__` with no
+  import and no blocked dunder (verified: a probe plugin passed audit).
+  `__traceback__`, `__context__`, `__cause__`, `tb_frame`, `tb_next`,
+  `f_globals`, `f_builtins`, `f_locals`, `f_back`, `gi_frame`,
+  `cr_frame` and `ag_frame` now join the rejected attribute names.
 - **Plugin audit's attribute blocklist missed the introspection
   dunders** -- `__globals__`/`__subclasses__`/`__mro__`/`__bases__` were
   rejected but `().__class__.__dict__` passed audit untouched, opening

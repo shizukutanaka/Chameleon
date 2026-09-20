@@ -23,6 +23,36 @@ def test_sandbox_allows_safe_imports():
     assert sandbox.is_safe_import("json") is True
 
 
+@pytest.mark.parametrize(
+    "module",
+    ["pathlib", "shutil", "io", "ctypes", "gc", "inspect", "threading",
+     "logging", "sqlite3", "importlib", "wave", "pickle", "mmap"],
+)
+def test_sandbox_import_policy_is_deny_by_default(module):
+    """A blocklist names what is dangerous and admits everything else;
+    `import pathlib` wrote a file with zero flagged constructs before
+    the policy was inverted (verified end to end)."""
+    sandbox = PluginSandbox(PluginConfig())
+    assert sandbox.is_safe_import(module) is False
+
+
+@pytest.mark.parametrize(
+    "attr",
+    ["__traceback__", "tb_frame", "f_globals", "f_builtins", "f_locals",
+     "f_back", "gi_frame", "cr_frame", "ag_frame"],
+)
+def test_check_module_safety_rejects_frame_reaching_attrs(tmp_path, attr):
+    """e.__traceback__.tb_frame.f_globals reaches __builtins__ with no
+    import at all -- the probe plugin passed audit before these names
+    joined the blocked-attribute set."""
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / "bypass_frame.py"
+    bad.write_text(f"def f(e):\n    return e.{attr}\n")
+
+    with pytest.raises(SecurityError, match="Unsafe attribute access"):
+        loader._check_module_safety(Path(bad))
+
+
 def test_check_module_safety_rejects_unsafe_plugin(tmp_path):
     loader = PluginLoader(PluginConfig())
     bad = tmp_path / "bad_plugin.py"
@@ -72,7 +102,9 @@ def test_check_module_safety_rejects_importlib_import_module(tmp_path):
     bad = tmp_path / "bypass2.py"
     bad.write_text('import importlib\n_os = importlib.import_module("os")\n')
 
-    with pytest.raises(SecurityError, match="Unsafe call detected: importlib.import_module"):
+    # `importlib` is off the import allowlist, so the Import node is
+    # rejected before the import_module attribute call is ever inspected.
+    with pytest.raises(SecurityError, match="Unsafe import detected: importlib"):
         loader._check_module_safety(Path(bad))
 
 
