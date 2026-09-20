@@ -136,6 +136,24 @@ SECURITY_CONFIG = {
 
 PRIVILEGED_CLEARANCE = {"SECRET", "TOP_SECRET"}
 
+# Clearance order for capping a self-declared login clearance. The request
+# field exists because the API models multi-clearance sessions, but a
+# deployment should be able to bound what a session may claim -- otherwise
+# the client alone decides its own privilege ceiling. Default keeps the
+# historical behavior (any declared level honored).
+_CLEARANCE_ORDER = ["UNCLASSIFIED", "CONFIDENTIAL", "SECRET", "TOP_SECRET"]
+_MAX_CLAIMABLE_CLEARANCE = os.environ.get(
+    'CHAMELEON_API_MAX_CLEARANCE', 'TOP_SECRET')
+if _MAX_CLAIMABLE_CLEARANCE not in _CLEARANCE_ORDER:
+    _MAX_CLAIMABLE_CLEARANCE = 'TOP_SECRET'
+
+
+def _cap_clearance(requested: str) -> str:
+    """Return min(requested, deployment cap) by clearance order."""
+    cap_idx = _CLEARANCE_ORDER.index(_MAX_CLAIMABLE_CLEARANCE)
+    req_idx = _CLEARANCE_ORDER.index(requested)
+    return _CLEARANCE_ORDER[min(req_idx, cap_idx)]
+
 # The file this points at must exist: the root endpoint advertises it, and for
 # a long time it advertised docs/user_manual.md, which does not.
 _DEFAULT_DOC_PATH = Path(__file__).resolve().parent / 'docs' / 'api_documentation.md'
@@ -1053,7 +1071,9 @@ async def login(request: AuthenticationRequest, http_request: Request):
 
         session_data = {
             'username': request.username,
-            'clearance_level': request.clearance_level,
+            # The request's clearance is self-declared; honor it only up
+            # to the deployment's configured ceiling.
+            'clearance_level': _cap_clearance(request.clearance_level),
             'token': token,
             'expires_at': expires_at,
             'created_at': datetime.now(timezone.utc),
@@ -1067,7 +1087,7 @@ async def login(request: AuthenticationRequest, http_request: Request):
 
         log_audit_event(
             request.username, "LOGIN", "API", "SUCCESS",
-            f"User authenticated with {request.clearance_level} clearance",
+            f"User authenticated with {session_data['clearance_level']} clearance",
             client_ip, session_id
         )
 
@@ -1076,7 +1096,7 @@ async def login(request: AuthenticationRequest, http_request: Request):
             token=token,
             user_info={
                 'username': request.username,
-                'clearance_level': request.clearance_level,
+                'clearance_level': session_data['clearance_level'],
                 'session_id': session_id
             },
             expires_at=expires_at

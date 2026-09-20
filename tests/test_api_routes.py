@@ -422,3 +422,18 @@ def test_system_status_reports_degraded_when_circuit_breaker_open(client, monkey
     assert r.status_code == 200
     assert r.json()["security_status"] == "degraded"
     assert r.json()["circuit_breaker_open"] is True
+
+
+def test_login_clearance_is_capped_at_the_configured_maximum(client, monkeypatch):
+    """The request's clearance is self-declared; honoring it without a
+    bound let any client claim TOP_SECRET. The deployment's cap wins."""
+    monkeypatch.setattr(api_server, "_MAX_CLAIMABLE_CLEARANCE", "UNCLASSIFIED")
+    login = client.post(
+        "/auth/login",
+        json={"username": DEV_USERNAME, "password": DEV_PASSWORD,
+              "clearance_level": "TOP_SECRET"},
+    )
+    assert login.status_code == 200
+    # Asked for TOP_SECRET, capped at UNCLASSIFIED -- and the response
+    # reports what was granted, not what was claimed.
+    assert login.json()["user_info"]["clearance_level"] == "UNCLASSIFIED"

@@ -1967,3 +1967,17 @@ switchable audit log while events logged unconditionally. All three
 removed; the fantasy-features test now source-greps GPU-toggle names so
 they cannot return on a non-CLI surface. Auditing rule extended: a claim
 is a claim whether it lives on a flag, a field, or a config key.
+
+**Q: `/auth/login` accepts a client-declared `clearance_level` — who
+bounds it?**
+A (2026-09-19): Nobody did. A client claiming TOP_SECRET received it,
+and privileged paths (cross-owner file access, others' job status) key
+off that session field. The single-credential dev auth means it cannot
+cross users today, but the model grants whatever is asked with no
+server-side bound — latent the day a second credential exists. Fixed by
+cap: `CHAMELEON_API_MAX_CLEARANCE` (default TOP_SECRET, preserving
+current deployments) bounds claimable clearance, and the response and
+audit log now report the granted level rather than the claimed one.
+Removing the field outright was rejected — it is a documented request
+field and the privilege model itself is legitimate; the defect was the
+absence of a server-side bound.

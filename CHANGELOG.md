@@ -52,6 +52,12 @@
 
 ### Security
 
+- **Login `clearance_level` was fully self-declared** — any client could
+  claim TOP_SECRET and reach privileged cross-owner paths. A
+  deployment-side ceiling now applies: `CHAMELEON_API_MAX_CLEARANCE`
+  (default `TOP_SECRET`, preserving current behavior) bounds what a
+  session may claim, and the response/audit log report the granted
+  level, not the claimed one. See docs/api_documentation.md §6.
 - **Plugin AST audit closed three verified bypass classes** —
   `getattr(__builtins__, "ev" + "al")` and aliases like `e = eval`
   audit-PASSED because only *calls* of dangerous names were checked, not
