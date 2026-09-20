@@ -190,3 +190,9 @@ def test_plugins_list_json_reports_load_failures(tmp_path):
     payload = json.loads(out.stdout[out.stdout.index("{"):])
     failures = payload.get("load_failures", {})
     assert any("bad.py" in path for path in failures)
+    # The failure reason must carry the sandbox's specific verdict, not the
+    # generic "no valid plugin class" -- a sandbox rejection is a security
+    # event, a broken plugin is an authoring bug; consumers can't distinguish
+    # them from the generic message.
+    reason = next(r for p, r in failures.items() if "bad.py" in p)
+    assert "Unsafe import" in reason

@@ -2279,3 +2279,7 @@ any range assertion.
 - A deleted command can survive in a doc's `{a,b,c}` usage synopsis because no
   fantasy-feature grep matches a comma-list token. Compare the docs' choice
   list to the parser's actual subcommands — pattern scans don't see lists.
+- A loader that collapses exceptions to None loses the failure's *kind*: the
+  sandbox's SecurityError reached stderr but `load_failures` could only store
+  a generic string. Re-raise the exceptions whose type is the information
+  (security), swallow only the kind already conveyed by "no plugin loaded".

@@ -1025,3 +1025,7 @@ Initial public release of the Chameleon Audio Tool.
   command lingering in both commands.md usage synopses; a new parity test
   compares the docs' choice list against the parser's actual subcommands so
   a comma-list entry can't survive deletion again.
+- `plugins list --json`'s `load_failures` now carries the sandbox's specific
+  verdict ("Unsafe import detected: os") instead of the generic "no valid
+  plugin class" -- `load_plugin` swallowed every exception into None, so the
+  security reason only reached stderr, never the structured output.

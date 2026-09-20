@@ -386,6 +386,9 @@ class PluginLoader:
 
             return plugin_instance
 
+        except SecurityError as e:
+            self.logger.error(f"Failed to load plugin {plugin_path}: {e}")
+            raise
         except Exception as e:
             self.logger.error(f"Failed to load plugin {plugin_path}: {e}")
             return None
