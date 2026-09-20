@@ -1462,7 +1462,8 @@ class AudioProcessor:
                 file_path,
                 suffix="_normalized.wav",
                 explicit_path=kwargs.get("output_path"),
-                output_dir=kwargs.get("output_dir")
+                output_dir=kwargs.get("output_dir"),
+                create_dirs=not dry_run
             )
             if dry_run:
                 return {
@@ -1486,7 +1487,8 @@ class AudioProcessor:
                 file_path,
                 suffix="_denoised.wav",
                 explicit_path=kwargs.get("output_path"),
-                output_dir=kwargs.get("output_dir")
+                output_dir=kwargs.get("output_dir"),
+                create_dirs=not dry_run
             )
             if dry_run:
                 return {
@@ -1511,7 +1513,8 @@ class AudioProcessor:
                 file_path,
                 suffix="_restored.wav",
                 explicit_path=kwargs.get("output_path"),
-                output_dir=kwargs.get("output_dir")
+                output_dir=kwargs.get("output_dir"),
+                create_dirs=not dry_run
             )
             if dry_run:
                 return {
@@ -1537,7 +1540,8 @@ class AudioProcessor:
                 file_path,
                 suffix="_processed.wav",
                 explicit_path=kwargs.get("output_path"),
-                output_dir=kwargs.get("output_dir")
+                output_dir=kwargs.get("output_dir"),
+                create_dirs=not dry_run
             )
             if dry_run:
                 return {
@@ -1566,7 +1570,8 @@ class AudioProcessor:
                 file_path,
                 suffix="_mastered.wav",
                 explicit_path=kwargs.get("output_path"),
-                output_dir=kwargs.get("output_dir")
+                output_dir=kwargs.get("output_dir"),
+                create_dirs=not dry_run
             )
             if dry_run:
                 return {
@@ -1625,7 +1630,8 @@ class AudioProcessor:
                 file_path,
                 suffix=suffix,
                 explicit_path=kwargs.get("output_path"),
-                output_dir=kwargs.get("output_dir")
+                output_dir=kwargs.get("output_dir"),
+                create_dirs=not dry_run
             )
 
             if dry_run:
@@ -1697,6 +1703,7 @@ class AudioProcessor:
             suffix=suffix,
             explicit_path=kwargs.get("output_path"),
             output_dir=kwargs.get("output_dir"),
+            create_dirs=not dry_run,
         )
         if dry_run:
             return {"file": file_path, "planned_output": str(output_path),
@@ -1758,7 +1765,8 @@ class AudioProcessor:
         *,
         suffix: str,
         explicit_path: Optional[str],
-        output_dir: Optional[str]
+        output_dir: Optional[str],
+        create_dirs: bool = True
     ) -> Path:
         source_path = Path(source_file)
 
@@ -1771,14 +1779,16 @@ class AudioProcessor:
                 if not SecurityValidator.validate_directory(output_dir):
                     raise ValueError(f"Unsafe output directory: {output_dir}")
                 destination_dir = Path(output_dir)
-                destination_dir.mkdir(parents=True, exist_ok=True)
+                if create_dirs:
+                    destination_dir.mkdir(parents=True, exist_ok=True)
             else:
                 destination_dir = source_path.parent
 
             sanitized_name = SecurityValidator.sanitize_filename(f"{source_path.stem}{suffix}")
             destination = destination_dir / sanitized_name
 
-        destination.parent.mkdir(parents=True, exist_ok=True)
+        if create_dirs:
+            destination.parent.mkdir(parents=True, exist_ok=True)
         return destination
 
     def _save_wav_basic(self, audio: np.ndarray, file_path: str, sr: int, *, bit_depth: int = 16):
@@ -1949,6 +1959,8 @@ def create_cli():
     batch.add_argument("--sample-rate", type=int, help="Target sample rate for conversion")
     batch.add_argument("--bit-depth", type=int, choices=[16, 24, 32], help="Target bit depth for conversion")
     batch.add_argument("--effects", help="Effects configuration for the effects operation (JSON file)")
+    batch.add_argument("--dry-run", action="store_true",
+                       help="Preview planned operations without writing files")
 
     # The `ml` command was removed in 2026-08. Its one operation, `enhance`,
     # called remove_noise() then normalize_audio() -- two pieces of
@@ -2484,6 +2496,8 @@ async def main():
             "output_dir": output_dir,
             "format": format_arg,
         }
+        if args.dry_run:
+            kwargs["dry_run"] = True
 
         if args.operation == "convert":
             kwargs["format"] = format_arg or "wav"
@@ -2530,7 +2544,8 @@ async def main():
             return results[0]["exit_code"]
 
         successful = sum(1 for r in results if "error" not in r)
-        summary = f"Processed {successful}/{len(results)} files successfully"
+        verb = "Would process" if args.dry_run else "Processed"
+        summary = f"{verb} {successful}/{len(results)} files successfully"
         if HAS_UX_IMPROVEMENTS:
             summary = ColorText.success(summary) if successful == len(results) else ColorText.error(summary)
         print(f"\n{summary}")

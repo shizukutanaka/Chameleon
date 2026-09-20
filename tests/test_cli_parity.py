@@ -226,3 +226,16 @@ def test_plugins_directory_positions_merge(tmp_path):
     assert result.returncode == 0
     dirs = json.loads(result.stdout)["directories"]
     assert str(a) in dirs and str(b) in dirs, dirs
+
+
+def test_batch_dry_run_writes_nothing(tmp_path):
+    write_sine_wave(tmp_path / "tone.wav")
+    out = tmp_path / "out"
+    result = _run("batch", str(tmp_path), "normalize", "--dry-run",
+                  "--output-dir", str(out), cwd=str(tmp_path))
+    assert result.returncode == 0
+    # README promises a preview; nothing may be written, and the summary
+    # must not claim files were processed.
+    assert not out.exists()
+    assert list(tmp_path.glob("*_normalized.wav")) == []
+    assert "Would process" in result.stdout

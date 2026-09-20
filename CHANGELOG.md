@@ -4,6 +4,14 @@
 
 ### Fixed
 
+- **`batch --dry-run` existed only in the docs and engine, not the
+  parser** -- README/QUICKSTART promised `batch normalize --dry-run` and
+  `BatchProcessor` already implemented `dry_run`, but the flag was never
+  wired into the batch subparser, so the documented command errored. The
+  flag now parses and previews without writing; dry-run also no longer
+  creates the output directory it would have written to (the resolver
+  only mkdirs when it will actually save), and the summary reads "Would
+  process" instead of "Processed".
 - **`plugins list --json` / `plugins list --directory` (the documented
   order) were rejected** -- `--directory`/`--json` lived only on the parent
   `plugins` parser, so argparse demanded `plugins --json list` while the
