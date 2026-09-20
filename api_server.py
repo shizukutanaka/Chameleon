@@ -961,7 +961,8 @@ async def get_current_user(request: Request, credentials: HTTPAuthorizationCrede
     if session_data is None:
         # Backwards compatibility: fall back to search and re-index token
         for candidate_id, candidate_data in api_state.active_sessions.items():
-            if candidate_data.get('token') == token:
+            stored = candidate_data.get('token')
+            if stored is not None and hmac.compare_digest(stored, token):
                 session_id = candidate_id
                 session_data = candidate_data
                 api_state.token_index[token] = candidate_id

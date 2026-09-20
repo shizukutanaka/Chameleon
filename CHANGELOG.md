@@ -14,6 +14,11 @@
 
 ### Fixed
 
+- **Session-token comparison in the fallback index scan was
+  non-constant-time** -- a `==` on secrets is a (minor) timing side
+  channel; now `hmac.compare_digest` like every other credential
+  comparison. Batch-status polling tests also doubled their budget
+  (the worker thread can exceed ~9s under a full-suite run).
 - **Operation-scoped flags were silently ignored on other operations** --
   `batch dir normalize --sample-rate 22050` accepted the flag and did
   nothing with it; same for `--format`/`--bit-depth` off `convert`,
