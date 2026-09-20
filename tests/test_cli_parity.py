@@ -567,3 +567,16 @@ def test_docs_synopsis_lists_only_real_subcommands():
         listed = set(m.group(1).split(","))
         assert listed == real, (
             f"{doc}: synopsis {sorted(listed)} != parser {sorted(real)}")
+
+
+def test_server_rejects_multi_worker():
+    # api_state (sessions, tokens, jobs, audit log) is per-process memory;
+    # N>1 workers each import api_server fresh and cannot share it, so a
+    # session created on worker A 401s when routed to worker B. The flag
+    # must refuse loudly rather than start an API that forgets logins.
+    result = subprocess.run(
+        [sys.executable, MAIN_PY, "server", "--workers", "2"],
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 3
+    assert "--workers must be 1" in result.stderr

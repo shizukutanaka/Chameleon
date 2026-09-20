@@ -2418,3 +2418,7 @@ any range assertion.
   0-1 and returned a (4, N)-shaped array with two silent channels. Gate
   arity at the entry point -- silence downstream is indistinguishable
   from silence in the mix.
+- A scaling flag that cannot be honoured must not exist: --workers N
+  spawned processes that cannot share sessions, so the default made the
+  API forget logins 3 times out of 4. If a knob is only honest at one
+  value, accept only that value and say why.

@@ -55,6 +55,14 @@
 
 ### Fixed
 
+- **`server --workers N` defaulted to 4 and accepted any N, but the API
+  cannot share state across workers** -- sessions, the token index, the
+  job registry, the audit log and the circuit breaker all live in
+  per-process memory, so with the default four workers a login handled
+  by worker A 401s whenever the next request lands on B, C or D (~75%
+  of authenticated calls). The flag now defaults to 1 and refuses
+  `--workers N` (N != 1) with INPUT(3) and an explanation, since only a
+  real shared-state backend could make multi-worker honest.
 - **`--master` silently dropped channels on >2-channel input** -- the
   compressor and limiter's stereo paths wrote only rows 0 and 1 (channels
   3+ came back zeroed, verified on a quad file) and the stereo-width

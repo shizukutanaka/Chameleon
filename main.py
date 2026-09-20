@@ -2314,7 +2314,9 @@ def create_cli():
     server = subparsers.add_parser("server", help="Start API server")
     server.add_argument("--port", type=int, default=8000, help="Server port")
     server.add_argument("--host", default="localhost", help="Server host")
-    server.add_argument("--workers", type=int, default=4, help="Number of workers")
+    server.add_argument("--workers", type=int, default=1,
+                        help="Number of workers (must be 1: sessions, jobs and the "
+                             "audit log live in per-process memory)")
 
     return parser
 
@@ -3298,9 +3300,17 @@ async def main():
             print(f"Error: --port must be 1-65535, got {args.port}",
                   file=sys.stderr)
             return ExitCode.INPUT
-        if args.workers < 1:
-            print(f"Error: --workers must be >= 1, got {args.workers}",
-                  file=sys.stderr)
+        if args.workers != 1:
+            # api_state (sessions, token index, job registry, audit log,
+            # circuit breaker) is per-process memory; uvicorn workers do
+            # not share it, so N>1 randomly routes requests to a process
+            # that does not know the caller's session -> spurious 401s.
+            print(
+                "Error: --workers must be 1. Session, job and audit state "
+                "live in this process's memory; multiple uvicorn workers "
+                "cannot share it. Run several processes behind a real "
+                "load balancer instead (each with its own state).",
+                file=sys.stderr)
             return ExitCode.INPUT
         # The banner claims a server is starting; when uvicorn is absent
         # the call below always fails, so the claim must not be printed.
