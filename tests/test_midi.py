@@ -234,3 +234,16 @@ def test_midi_output_into_unwritable_dir_exits_input(tmp_path):
         locked.chmod(0o755)
     assert proc.returncode == 3
     assert "not writable" in proc.stderr
+
+
+def test_analyze_harmony_names_the_key_not_a_pitch_class():
+    # The library dict used to ship f"{key.tonic} {key.mode}" -- "0 major" --
+    # while the CLI mapped the same field through the note table. A pitch
+    # class integer is not a key name a musician can read.
+    analyzer = MIDIAnalyzer()
+    chords = analyzer.detect_chords(_c_major_progression())
+    key = analyzer.detect_key(_c_major_progression())
+
+    harmony = analyzer.analyze_harmony(chords, key)
+
+    assert harmony["key"] == "C major"

@@ -17,6 +17,7 @@ from enum import Enum
 # estimate into the range listeners actually perceive as a pulse.
 _MIN_PLAUSIBLE_TEMPO = 40.0
 _MAX_PLAUSIBLE_TEMPO = 240.0
+_NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 
 
 @dataclass
@@ -66,9 +67,8 @@ class MIDINote:
     @property
     def note_name(self) -> str:
         """Get note name from MIDI pitch"""
-        note_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
         octave = (self.pitch // 12) - 1
-        note = note_names[self.pitch % 12]
+        note = _NOTE_NAMES[self.pitch % 12]
         return f"{note}{octave}"
 
     @property
@@ -89,8 +89,7 @@ class Chord:
     @property
     def name(self) -> str:
         """Get chord name"""
-        note_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-        root_name = note_names[self.root % 12]
+        root_name = _NOTE_NAMES[self.root % 12]
         return f"{root_name}{self.chord_type}"
 
 @dataclass
@@ -525,7 +524,7 @@ class MIDIAnalyzer:
         return {
             "progression": progression,
             "analysis": analysis,
-            "key": f"{key.tonic} {key.mode}",
+            "key": f"{_NOTE_NAMES[key.tonic % 12]} {key.mode}",
             "key_confidence": key.confidence
         }
 

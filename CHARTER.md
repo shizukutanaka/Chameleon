@@ -2381,3 +2381,8 @@ any range assertion.
   time while looking supported. Similarly a scheduler that registers a
   job it cannot schedule made "scheduled" mean "never": when a requested
   form is unsupported, refuse before recording success.
+- The same datum rendered two ways is a defect in the weaker rendering:
+  the CLI printed the detected key through the note table while the
+  library's analyze_harmony dict shipped the raw pitch-class integer
+  ("0 major"). A value that has a human-facing name should never surface
+  as its enum/int elsewhere.

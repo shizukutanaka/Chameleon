@@ -55,6 +55,12 @@
 
 ### Fixed
 
+- **`MIDIAnalyzer.analyze_harmony` reported the key as a raw pitch
+  class** -- `"0 major"` for C major; the CLI mapped the same field
+  through the note table but the library dict did not. The shared
+  note-name table is now one module constant (`_NOTE_NAMES`, previously
+  inlined identically in `MIDINote.note_name` and `Chord.name`), and the
+  key reports "C major".
 - **`WorkflowBuilder`'s `builtin` function type could never run** -- it
   returned the raw allowlisted callable, but `TaskExecutor` invokes
   `function(**inputs)` and every allowlisted function (len, math.pow,
