@@ -1068,7 +1068,10 @@ class WAVProcessor:
                         if sample_value is None:
                             processed_chunk.extend(sample_bytes)
                         else:
-                            new_sample = int(sample_value * gain)
+                            # int() truncates toward zero, a systematic
+                            # ~0.5-LSB inward bias; the numpy path's writer
+                            # rounds to nearest. Same op, same quantization.
+                            new_sample = int(round(sample_value * gain))
                             processed_chunk.extend(self._encode_sample_value(new_sample, info.bit_depth))
 
                         processed_samples += 1

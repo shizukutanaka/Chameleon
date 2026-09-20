@@ -48,6 +48,13 @@
   `MIDINote`'s docstring pins start_time/duration to seconds so the
   unit ambiguity can't regrow. Verified: a 4-beat composition emits
   240-tick (eighth) note-offs at both 120 and 240 BPM.
+- **stdlib `normalize` truncated samples while numpy rounded** --
+  `int(sample * gain)` truncates toward zero, a systematic ~0.5-LSB
+  inward bias vs the round-to-nearest every PCM writer uses. Now
+  `int(round(...))`; the stdlib path is sample-exact against the ideal
+  quantization (the float32 numpy path still wobbles ±1 LSB on .5
+  boundaries -- inherent to the intermediate precision, both within
+  one LSB of truth).
 - **`analyze --export` described a different file per install** -- the
   numpy path reported `size_bytes` as the decoded array's nbytes,
   `format` as "array", `bit_depth` hardcoded 16, `frequency_range`

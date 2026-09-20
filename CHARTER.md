@@ -2050,6 +2050,16 @@ serializes null -- never a default tuple or 0.0 that reads as data.
 Audit rule #10: when two code paths emit the same schema, diff the
 values on identical input, not just the keys.
 
+**Q (2026-09-19, cycle 69): Is truncation a quantization rule?**
+`core._apply_gain_safe` wrote `int(sample * gain)` -- truncation toward
+zero. Every PCM writer worth the name rounds to nearest; truncation is
+a systematic ~0.5-LSB inward bias on every sample, inaudible but
+provably wrong against the math. One word changed (`int(round(...))`)
+and the stdlib path became sample-exact against the ideal, even
+*ahead* of the float32 numpy path's ±1-LSB wobble on .5 boundaries.
+`int()` on a float destined for a quantization step is a rounding
+decision whether or not you meant to make one -- say which rule.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy
