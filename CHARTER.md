@@ -2427,3 +2427,8 @@ any range assertion.
   when any frame of a row was selected. An operation named for a
   selection must prove its writes stay inside the mask -- check
   coordinates on both axes, not just membership.
+- An output encoder must produce a file the project's own readers can
+  parse: --convert-bit-depth 32 mapped to soundfile's FLOAT subtype, and
+  the artifact was rejected by the dependency-free parser it ships with.
+  Verify writer output against the first-party reader, not just the
+  library's subtype list.

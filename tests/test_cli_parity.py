@@ -580,3 +580,21 @@ def test_server_rejects_multi_worker():
     )
     assert result.returncode == 3
     assert "--workers must be 1" in result.stderr
+
+
+def test_convert_bit_depth_32_writes_pcm_not_float(tmp_path):
+    # soundfile's "FLOAT" subtype produced a format-tag-3 WAV that the
+    # project's own dependency-free parser rejects -- convert must emit
+    # PCM_32 so the artifact stays readable without the [audio] extra.
+    pytest.importorskip("soundfile")
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    result = _run("process", str(wav), "--convert", "--convert-bit-depth", "32",
+                  cwd=str(tmp_path))
+    assert result.returncode == 0, result.stderr
+
+    out = tmp_path / "tone_converted_32bit.wav"
+    body = out.read_bytes()
+    fmt_off = body.find(b"fmt ")
+    assert fmt_off > 0
+    format_tag = int.from_bytes(body[fmt_off + 8:fmt_off + 10], "little")
+    assert format_tag == 1  # PCM, not IEEE float (3)

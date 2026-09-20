@@ -2030,7 +2030,7 @@ class AudioProcessor:
 
         # Try soundfile first
         if HAS_SOUNDFILE:
-            subtype_map = {16: "PCM_16", 24: "PCM_24", 32: "FLOAT"}
+            subtype_map = {16: "PCM_16", 24: "PCM_24", 32: "PCM_32"}
             subtype = subtype_map.get(target_bit_depth)
             try:
                 sf.write(

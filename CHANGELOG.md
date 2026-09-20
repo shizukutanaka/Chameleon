@@ -55,6 +55,13 @@
 
 ### Fixed
 
+- **`--convert-bit-depth 32` wrote an IEEE-float WAV that Chameleon
+  itself cannot read** -- `save_audio` mapped bit depth 32 to
+  soundfile's `FLOAT` subtype (format tag 3), so the converted artifact
+  was rejected by the project's own dependency-free parser
+  ("Unsupported WAV encoding (format tag 3)"). It now writes `PCM_32`:
+  the file stays inside the PCM family every shipped reader supports,
+  verified end-to-end (stdlib `analyze` reads the converted file).
 - **Harmonic enhancement in `spectral_editor` leaked outside the
   selection** -- `harmonic_enhance_selection` multiplied entire
   frequency rows (`magnitude[harmonic_idx] *= ...`) whenever ANY frame
