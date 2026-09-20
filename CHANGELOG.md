@@ -48,6 +48,14 @@
   `MIDINote`'s docstring pins start_time/duration to seconds so the
   unit ambiguity can't regrow. Verified: a 4-beat composition emits
   240-tick (eighth) note-offs at both 120 and 240 BPM.
+- **`batch` exited 0 when pre-flight rejected some inputs** -- files
+  that failed inspection vanished from both the denominator
+  ("Processed 2/2" while 2 were refused) and the exit code, while
+  `process` on the same file answered INPUT(3). Rejections are now
+  surfaced as results: the summary reads 2/4 and the exit code follows
+  the same classification as the all-rejected sentinel (INPUT for
+  input rejections, SECURITY when a security policy rejected, SECURITY
+  wins on a mix).
 - **stdlib `normalize` truncated samples while numpy rounded** --
   `int(sample * gain)` truncates toward zero, a systematic ~0.5-LSB
   inward bias vs the round-to-nearest every PCM writer uses. Now

@@ -2060,6 +2060,17 @@ and the stdlib path became sample-exact against the ideal, even
 `int()` on a float destined for a quantization step is a rounding
 decision whether or not you meant to make one -- say which rule.
 
+**Q (2026-09-19, cycle 70): What does the denominator in "2/2" count?**
+A batch over 2 good + 2 corrupt files printed "Processed 2/2 files
+successfully" and exited 0. The 2 refused files had been filtered at
+pre-flight inspection -- so they existed in *no* tally: not attempted,
+not failed, not counted. `process` on the same file answers INPUT(3);
+`batch` made it disappear. "N/M succeeded" is only honest if M is
+*inputs*, not *inputs that survived a filter the report doesn't
+mention*. Pre-flight rejections are now appended to the results so the
+denominator is the input count and the exit code classifies them the
+same way the all-rejected sentinel already did.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy

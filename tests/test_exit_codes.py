@@ -137,3 +137,17 @@ def test_analyze_mixed_good_and_bad_is_input_error(tmp_path):
     # one success + one input failure -> INPUT, not the generic ERROR
     assert result.returncode == 3
     assert "good.wav" in result.stdout
+
+
+def test_batch_partial_preflight_rejection_exits_input(tmp_path):
+    """A batch where pre-flight rejects some files used to exit 0 with a
+    'Processed 2/2' summary -- the rejected inputs vanished from both the
+    denominator and the exit code, while `process` on the same file
+    answers INPUT(3). Partial rejection must surface."""
+    good = tmp_path / "good.wav"
+    write_sine_wave(good)
+    bad = tmp_path / "bad.wav"
+    bad.write_bytes(b"not a wav" * 8)
+    proc = _run("batch", str(tmp_path), "normalize",
+                "--output-dir", str(tmp_path / "out"))
+    assert proc.returncode == 3  # ExitCode.INPUT

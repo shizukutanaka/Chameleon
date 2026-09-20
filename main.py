@@ -1471,6 +1471,17 @@ class AudioProcessor:
         if progress is not None:
             progress.finish()
 
+        # Pre-flight rejections are results too: a batch that silently drops
+        # half its inputs and exits 0 claims "2/2 processed" while 2 files
+        # were refused. Surface them so the denominator and exit code tell
+        # the truth (same classification as the all-rejected sentinel).
+        for path, kind in rejections:
+            results.append({
+                "file": path,
+                "error": "rejected in pre-flight validation",
+                "kind": kind,
+            })
+
         return results
 
     def _filter_safe_files(
@@ -2357,6 +2368,8 @@ async def main():
             kinds = {r.get("kind") for r in results if "error" in r}
             if kinds and kinds <= {"input"}:
                 exit_code = ExitCode.INPUT
+            elif kinds and "security" in kinds:
+                exit_code = ExitCode.SECURITY
 
     elif args.command == "process":
         operations: List[str] = []
@@ -2517,6 +2530,8 @@ async def main():
                 kinds = {r.get("kind") for r in results if "error" in r}
                 if kinds and kinds <= {"input"}:
                     exit_code = ExitCode.INPUT
+                elif kinds and "security" in kinds:
+                    exit_code = ExitCode.SECURITY
 
     elif args.command == "stream":
         # Device indices are non-negative PyAudio indexes; a negative one
@@ -2787,6 +2802,8 @@ async def main():
             kinds = {r.get("kind") for r in results if "error" in r}
             if kinds and kinds <= {"input"}:
                 exit_code = ExitCode.INPUT
+            elif kinds and "security" in kinds:
+                exit_code = ExitCode.SECURITY
 
     elif args.command == "midi":
         # Each operation consumes a different flag subset; a flag outside that
