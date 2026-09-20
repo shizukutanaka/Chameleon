@@ -78,3 +78,18 @@ def test_template_expression_rejects_oversized_results():
 
     assert _evaluate_template_expression('"ab" * 3', {}) == "ababab"
     assert _evaluate_template_expression('[1, 2] + [3]', {}) == [1, 2, 3]
+
+
+def test_scheduler_fails_loudly_without_schedule_package():
+    # 'schedule' is in no installable extra, so HAS_SCHEDULE is always
+    # False today -- a warning-and-return left callers believing the job
+    # was queued. The scheduler must refuse loudly instead.
+    import pytest
+    from batch_automation import BatchScheduler, HAS_SCHEDULE
+
+    if HAS_SCHEDULE:
+        pytest.skip("schedule package installed")
+
+    scheduler = BatchScheduler()
+    with pytest.raises(ImportError):
+        scheduler.start()

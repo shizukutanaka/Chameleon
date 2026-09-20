@@ -2409,3 +2409,7 @@ any range assertion.
   bound. Any unbounded in-process structure in a long-running server is
   a leak -- bound it, and bound it where eviction cannot break a live
   contract.
+- A capability that cannot be enabled must not fail silently: the batch
+  scheduler guarded on a package present in no extra, then returned
+  success through a log line. Unavailable means refuse loudly -- a
+  warning is not a contract.

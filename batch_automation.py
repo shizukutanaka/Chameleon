@@ -797,8 +797,14 @@ class BatchScheduler:
     def schedule_workflow(self, workflow: Workflow, cron_expression: str) -> None:
         """Schedule workflow execution"""
         if not HAS_SCHEDULE:
-            self.logger.warning("Schedule library not available")
-            return
+            # Fail loudly: a warning-and-return leaves the caller believing
+            # the workflow was scheduled when nothing will ever run. The
+            # 'schedule' package is also not in any installable extra, so
+            # "pip install schedule" is the only way to enable this path.
+            raise ImportError(
+                "The 'schedule' package is not installed; scheduled "
+                "workflows cannot run without it")
+
 
         # Parse cron expression and schedule. Supported forms are exactly
         # "daily", "hourly", "every_<minutes>" -- a real cron expression
@@ -831,7 +837,9 @@ class BatchScheduler:
     def start(self) -> None:
         """Start scheduler"""
         if not HAS_SCHEDULE:
-            return
+            raise ImportError(
+                "The 'schedule' package is not installed; the batch "
+                "scheduler cannot run without it")
 
         self.running = True
         self.thread = threading.Thread(target=self._run_scheduler)
@@ -841,7 +849,6 @@ class BatchScheduler:
         """Run scheduler loop"""
         while self.running:
             schedule.run_pending()
-            import time
             time.sleep(1)
 
     def stop(self) -> None:
@@ -859,7 +866,9 @@ class WorkflowBuilder:
     def from_yaml(self, yaml_path: str) -> Workflow:
         """Build workflow from YAML configuration"""
         if not HAS_YAML:
-            raise ImportError("PyYAML not installed")
+            raise ImportError(
+                "PyYAML is not installed; YAML workflow definitions "
+                "cannot be loaded without it")
 
         validated_path = _validate_config_path(yaml_path)
 

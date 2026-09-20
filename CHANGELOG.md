@@ -55,6 +55,12 @@
 
 ### Fixed
 
+- **`BatchScheduler.schedule_workflow`/`start` silently no-oped when the
+  `schedule` package was missing** -- a logger warning let the caller
+  believe the workflow was queued, and the package is in no installable
+  extra, so the path was unreachable anyway. Both now raise `ImportError`
+  naming the missing package; `WorkflowBuilder.from_yaml` likewise names
+  PyYAML as the missing dependency.
 - **The in-memory audit log grew without bound** -- `api_state.audit_log`
   was a plain list appended on every request while `job_history` and
   `request_histogram` were already capped, so a long-running server
