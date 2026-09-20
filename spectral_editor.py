@@ -414,19 +414,15 @@ class SpectralEditor:
             noise_stft = self.stft[mask]
             noise_magnitude = np.median(np.abs(noise_stft))
 
-            # Apply spectral subtraction to entire spectrogram
             magnitude = np.abs(self.stft)
             phase = np.angle(self.stft)
 
-            # Spectral subtraction
-            reduced_magnitude = magnitude - strength * noise_magnitude
-            reduced_magnitude = np.maximum(reduced_magnitude, 0.1 * magnitude)
-
-            # Reconstruct complex STFT
-            if self.config.preserve_phase:
-                self.stft = reduced_magnitude * np.exp(1j * phase)
-            else:
-                self.stft = reduced_magnitude * np.exp(1j * np.angle(self.stft))
+            # Spectral subtraction, scoped to the selection: writing the
+            # reduced magnitude back across the whole spectrogram would
+            # attenuate audio the user never selected.
+            reduced = magnitude[mask] - strength * noise_magnitude
+            magnitude[mask] = np.maximum(reduced, 0.1 * magnitude[mask])
+            self.stft = magnitude * np.exp(1j * phase)
 
             # Reconstruct audio
             self.current_audio = self.spectrogram_processor.compute_istft(
@@ -539,16 +535,18 @@ class SpectralEditor:
                 # Reconstruct
                 self.stft = magnitude_interp * np.exp(1j * phase)
             else:
-                # Simple averaging interpolation
                 magnitude = np.abs(self.stft)
                 phase = np.angle(self.stft)
 
-                # Simple neighbor averaging
-                kernel = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]]) / 4
-                if HAS_SCIPY:
-                    smoothed = ndimage.convolve(magnitude, kernel, mode='reflect')
-                else:
-                    smoothed = magnitude  # Fallback to no interpolation
+                # Pure-numpy 4-neighbour mean (same kernel as the scipy
+                # branch, computed via shifted slices with edge
+                # replication). Without it the numpy-only path was a
+                # silent no-op that still claimed success.
+                up = np.vstack([magnitude[:1], magnitude[:-1]])
+                down = np.vstack([magnitude[1:], magnitude[-1:]])
+                left = np.hstack([magnitude[:, :1], magnitude[:, :-1]])
+                right = np.hstack([magnitude[:, 1:], magnitude[:, -1:]])
+                smoothed = (up + down + left + right) / 4.0
 
                 magnitude[mask] = smoothed[mask]
                 self.stft = magnitude * np.exp(1j * phase)

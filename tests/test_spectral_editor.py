@@ -109,3 +109,49 @@ def test_harmonic_enhance_stays_inside_selection():
     assert changed.size > 0
     times = ed.times
     assert all(0.4 <= times[c[1]] <= 0.5 for c in changed)
+
+
+def test_noise_reduce_stays_inside_selection():
+    # Spectral subtraction must write only the selected cells; the previous
+    # version rebuilt the entire spectrogram from reduced_magnitude,
+    # attenuating audio the user never selected.
+    ed = spectral_editor.SpectralEditor()
+    ed.load_audio(_sine(440), SAMPLE_RATE)
+    before = np.abs(ed.stft).copy()
+
+    sel = ed.select_region(0.4, 0.5, 100, 1000)
+    mask = ed.get_selection_mask(sel)
+    assert ed.noise_reduce_selection(sel, strength=0.8)
+
+    after = np.abs(ed.stft)
+    assert np.allclose(after[~mask], before[~mask])
+    assert np.any(after[mask] < before[mask] - 1e-9)
+
+
+def test_interpolate_selection_numpy_path_fills_masked_cells(monkeypatch):
+    # With scipy absent the fallback was `smoothed = magnitude`, i.e.
+    # `magnitude[mask] = magnitude[mask]` -- a no-op that still returned
+    # True. The pure-numpy 4-neighbour mean must actually fill the cells.
+    monkeypatch.setattr(spectral_editor, "HAS_SCIPY", False)
+    ed = spectral_editor.SpectralEditor()
+    ed.load_audio(_sine(440), SAMPLE_RATE)
+
+    sel = ed.select_region(0.4, 0.5, 300, 600)
+    mask = ed.get_selection_mask(sel)
+    ed.stft[mask] = 0  # the "missing" content interpolate exists to fill
+
+    assert ed.interpolate_selection(sel)
+    assert np.abs(ed.stft)[mask].max() > 0
+
+
+@pytest.mark.skipif(not spectral_editor.HAS_SCIPY, reason="needs scipy")
+def test_interpolate_selection_scipy_path_fills_masked_cells():
+    ed = spectral_editor.SpectralEditor()
+    ed.load_audio(_sine(440), SAMPLE_RATE)
+
+    sel = ed.select_region(0.4, 0.45, 300, 600)
+    mask = ed.get_selection_mask(sel)
+    ed.stft[mask] = 0
+
+    assert ed.interpolate_selection(sel)
+    assert np.nanmax(np.abs(ed.stft)[mask]) > 0
