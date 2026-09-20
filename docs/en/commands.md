@@ -203,6 +203,15 @@ files for sandbox compliance).
 | `--directory DIR` | Absolute plugin directory to inspect (repeatable) |
 | `--json` | Emit structured JSON output |
 
+Writing a plugin: subclass one of the interfaces in `plugin_system.py`
+(`AudioEffectPlugin`, `AudioAnalyzerPlugin`, `AudioGeneratorPlugin`,
+`UtilityPlugin`), implement every abstract method (e.g. `process_audio`
+for effects), and return a `PluginMetadata` whose `version` is strict
+semver (`1.0.0`, not `1.0`) and whose `category` matches the base class.
+Sandbox rules are enforced statically before the module executes --
+`import os`, `open()`, `eval`/`exec`, `getattr(obj, "__globals__")`-style
+dunder chains are all rejected; run `plugins audit` to check a file.
+
 ---
 
 ## Commands requiring optional extras

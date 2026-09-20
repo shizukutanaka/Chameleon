@@ -200,6 +200,14 @@ chameleon plugins list --directory /abs/path/to/plugins --json
 | `--directory DIR` | 検査対象の絶対パス（複数指定可） |
 | `--json` | 構造化 JSON で出力 |
 
+プラグインの書き方: `plugin_system.py` のインターフェース
+（`AudioEffectPlugin` など）を継承し、全抽象メソッド（例: effect は
+`process_audio`）を実装する。`PluginMetadata` の `version` は厳密な
+semver（`1.0.0`。`1.0` は不可）、`category` は基底クラスと一致させる。
+サンドボックスはモジュール実行前の静的検査で強制される（`import os`、
+`open()`、`eval`/`exec`、dunder チェーンは拒否）。検査は
+`plugins audit` で行う。
+
 ---
 
 ## オプション依存パッケージが必要なコマンド

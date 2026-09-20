@@ -598,6 +598,7 @@ class PluginManager:
         self.executor = ThreadPoolExecutor(max_workers=4)
         self.logger = logging.getLogger("plugin_manager")
         self._plugin_registry: Dict[str, str] = {}  # name -> path mapping
+        self.load_failures: Dict[str, str] = {}  # path -> reason
 
     def initialize(self):
         """Initialize the plugin system"""
@@ -617,12 +618,21 @@ class PluginManager:
         plugin_files = self.loader.discover_plugins()
         self.logger.info(f"Discovered {len(plugin_files)} potential plugins")
 
+        self.load_failures.clear()
         loaded_count = 0
         for plugin_file in plugin_files:
-            plugin = self.loader.load_plugin(plugin_file)
+            try:
+                plugin = self.loader.load_plugin(plugin_file)
+            except Exception as exc:
+                plugin = None
+                self.load_failures[plugin_file] = str(exc)
             if plugin:
                 self._plugin_registry[plugin.metadata.name] = plugin_file
                 loaded_count += 1
+            else:
+                self.load_failures.setdefault(
+                    plugin_file,
+                    "no valid plugin class found, or plugin failed validation")
 
         self.logger.info(f"Successfully loaded {loaded_count} plugins")
 

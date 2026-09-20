@@ -2609,13 +2609,23 @@ async def main():
                             "description": metadata.description,
                         }
                         for name, metadata in plugins.items()
-                    }
+                    },
+                    # A file that failed to load is not the same as a file
+                    # that does not exist -- "plugins": {} must not swallow
+                    # broken plugins for machine consumers.
+                    "load_failures": getattr(manager, "load_failures", {}),
                 }
                 print(json.dumps(payload, indent=2))
             else:
                 print("Registered directories:")
                 for directory in sanitized_dirs:
                     print(f"  - {directory}")
+
+                load_failures = getattr(manager, "load_failures", {})
+                if load_failures:
+                    print("\nFailed to load:")
+                    for path, reason in load_failures.items():
+                        print(f"  - {path}: {reason}")
 
                 if not plugins:
                     print("\nNo plugins discovered.")

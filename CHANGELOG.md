@@ -48,6 +48,16 @@
   `MIDINote`'s docstring pins start_time/duration to seconds so the
   unit ambiguity can't regrow. Verified: a 4-beat composition emits
   240-tick (eighth) note-offs at both 120 and 240 BPM.
+- **`plugins list --json` swallowed load failures** -- a directory of
+  plugins that all failed (unsafe import, missing abstract method,
+  non-semver version) produced `"plugins": {}` with exit 0, making a
+  broken plugin indistinguishable from an absent one for machine
+  consumers. The payload now carries `load_failures` (path -> reason),
+  and text output prints a "Failed to load" section.
+- **Plugin author contract was undiscoverable** -- no docs named the
+  required interface (subclass + abstract methods like `process_audio`,
+  strict semver `version`, `category` matching the base); commands.md
+  (en/ja) now documents it.
 - **`batch` exited 0 when pre-flight rejected some inputs** -- files
   that failed inspection vanished from both the denominator
   ("Processed 2/2" while 2 were refused) and the exit code, while

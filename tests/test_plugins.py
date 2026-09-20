@@ -169,3 +169,24 @@ def test_check_module_safety_rejects_aliased_open(tmp_path):
     bad.write_text('w = open\nw("/tmp/x", "w")\n')
     with pytest.raises(SecurityError, match="Unsafe reference"):
         loader._check_module_safety(Path(bad))
+
+
+def test_plugins_list_json_reports_load_failures(tmp_path):
+    """A plugin file that fails to load used to vanish from `plugins list
+    --json` -- `"plugins": {}` can't distinguish "empty directory" from
+    "everything failed". Machine consumers need the failures named."""
+    import json
+    import subprocess
+    import sys
+    from pathlib import Path
+    main_py = str(Path(__file__).resolve().parent.parent / "main.py")
+
+    (tmp_path / "bad.py").write_text("import os\nx = os\n")
+    out = subprocess.run(
+        [sys.executable, main_py, "plugins", "list",
+         "--directory", str(tmp_path), "--json"],
+        capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0
+    payload = json.loads(out.stdout[out.stdout.index("{"):])
+    failures = payload.get("load_failures", {})
+    assert any("bad.py" in path for path in failures)
