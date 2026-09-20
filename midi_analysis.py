@@ -588,25 +588,22 @@ class MIDIAnalyzer:
             current_time = 0
             active_notes = {}
 
-            # Convert to MIDI events
+            # Convert to MIDI events. start_time is in seconds; ticks are
+            # quarter-note units, so scale by tpq * beats-per-second.
+            ticks_per_second = 480.0 * tempo_bpm / 60.0
             events = []
             for note in sorted_notes:
-                # Note on event
-                delta_time = int((note.start_time - current_time) * 480)
-                events.append((note.start_time, 'note_on', note.pitch, note.velocity, delta_time))
-
-                # Note off event
-                end_time = note.start_time + note.duration
-                delta_time_off = int((end_time - note.start_time) * 480)
-                events.append((end_time, 'note_off', note.pitch, 0, delta_time_off))
+                events.append((note.start_time, 'note_on', note.pitch, note.velocity))
+                events.append((note.start_time + note.duration, 'note_off',
+                               note.pitch, 0))
 
             # Sort all events by time
             events.sort(key=lambda e: e[0])
 
             # Write events to track
             last_time = 0
-            for event_time, event_type, pitch, velocity, _ in events:
-                delta_ticks = int((event_time - last_time) * 480)
+            for event_time, event_type, pitch, velocity in events:
+                delta_ticks = int((event_time - last_time) * ticks_per_second)
 
                 # Write variable-length delta time
                 track_data.extend(self._write_variable_length(delta_ticks))

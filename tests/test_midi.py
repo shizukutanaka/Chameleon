@@ -85,3 +85,42 @@ def test_midi_varint_encodes_deltas_over_127_ticks(tmp_path):
     assert "on" in events and "off" in events
     # 1.0 s at 120 BPM / 480 tpq is 960 ticks -> the off delta must be >=128
     assert any(d >= 128 for d in deltas)
+
+
+def test_midi_duration_scales_with_tempo(tmp_path):
+    # Delta-times were written as seconds * 480 -- i.e. seconds mapped to
+    # quarter notes 1:1 -- so a 1 s note played back as 0.5 s at the default
+    # 120 BPM and changed length with --tempo. Ticks must be seconds *
+    # tpq * bpm / 60 so a 1 s note sounds for 1 s at any tempo.
+    analyzer = MIDIAnalyzer()
+
+    def off_delta(path):
+        track = path.read_bytes()
+        track = track[track.find(b"MTrk") + 8:]
+        i = 0
+        while i < len(track):
+            delta = 0
+            while True:
+                b = track[i]
+                i += 1
+                delta = (delta << 7) | (b & 0x7F)
+                if not b & 0x80:
+                    break
+            status = track[i]
+            i += 1
+            if status == 0xFF:
+                i += 2 + track[i + 1]
+                continue
+            if status == 0x80:
+                return delta
+            i += 2 if status in (0x90,) else 1
+        raise AssertionError("no note-off event")
+
+    for tempo, expected in ((60, 480), (120, 960), (240, 1920)):
+        out = tmp_path / f"t{tempo}.mid"
+        analyzer.generate_midi_file(
+            [MIDINote(69, 100, 0.0, 1.0)], str(out), tempo_bpm=tempo)
+        delta = off_delta(out)
+        # playback seconds = delta / tpq * (60 / bpm) == 1.0 always
+        assert delta == expected
+        assert abs(delta / 480 * 60 / tempo - 1.0) < 0.01

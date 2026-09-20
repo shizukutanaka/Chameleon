@@ -2023,6 +2023,20 @@ the artifact back would have caught this on day one — every binary
 writer should have a round-trip parse test, not just a byte-shape
 assertion.
 
+**Q (2026-09-19, cycle 66): Round-tripped bytes can still be wrong --
+whose clock does a delta tick on?**
+The varint fix made MIDI files *parseable*; the same test then showed
+they were *wrong*: a 1 s note encoded as 480 ticks plays back 0.5 s at
+120 BPM and 1.0 s at 60 BPM, because `seconds * 480` assumed 1 second =
+1 quarter note. The unit error was invisible until the tempo meta event
+(cycle 50) made tempo a real input -- the writer silently hard-coded
+tempo=60-equivalent scaling while the header claimed another. A file
+format's delta fields carry an implied unit (here, "beats", not
+"seconds"); whenever a header field changes the unit's meaning
+(`tempo`, `tpq`), every delta must be computed in the derived unit, not
+the raw input's. A round-trip test that only parses bytes won't catch
+this -- it has to check the value *means* the right thing.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy

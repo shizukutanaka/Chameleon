@@ -37,6 +37,11 @@
   parser can read. `midi extract`/`compose`/`generate` reported
   success while producing corrupt files. Correct MSB-first encoding
   now; verified by strict parsing of the generated track.
+- **MIDI note durations were wrong -- seconds were mapped to quarter
+  notes 1:1** (`seconds * 480` ticks), so a 1 s note played back as
+  0.5 s at the default tempo and changed length with `--tempo`. Ticks
+  are now `seconds * tpq * bpm / 60`, making playback duration
+  tempo-independent; verified at 60/120/240 BPM.
 - **Unparseable/truncated WAVs returned ERROR(1) instead of INPUT(3)** --
   per-file failures carried only a message string, so "Could not parse
   WAV file" (the same class of problem as a missing file) exited with
