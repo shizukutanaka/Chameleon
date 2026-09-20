@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- **`/system/status` reported `security_status: "secure"` unconditionally**
+  — a constant label that stayed "secure" while the circuit breaker was
+  open. It now derives from the breaker state ("degraded" when open).
 - **API batch `options` were accepted, stored, and dropped** — a
   normalize job sent `{"options": {"target_peak": 0.5}}` ran at the
   default 0.95 anyway. `options.target_peak` now reaches the normalize

@@ -410,3 +410,15 @@ def test_batch_submit_rejects_options_the_operation_cannot_use(client, monkeypat
         headers=auth,
     )
     assert sub.status_code == 422
+
+
+def test_system_status_reports_degraded_when_circuit_breaker_open(client, monkeypatch):
+    """security_status is derived, not a constant: a hardcoded "secure"
+    would claim health while the breaker is open."""
+    login = _login(client)
+    auth = {"Authorization": f"Bearer {login.json()['token']}"}
+    monkeypatch.setattr(api_server.api_state, "circuit_breaker_open", True)
+    r = client.get("/system/status", headers=auth)
+    assert r.status_code == 200
+    assert r.json()["security_status"] == "degraded"
+    assert r.json()["circuit_breaker_open"] is True

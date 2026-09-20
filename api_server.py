@@ -1443,7 +1443,11 @@ async def get_system_status(http_request: Request, user: dict = Depends(require_
         error_rate=api_state.stats['failed_jobs'] / max(1, api_state.stats['total_requests']),
         memory_usage=memory_usage,
         cpu_usage=cpu_usage,
-        security_status="secure",
+        # Derived, not a constant: a hardcoded "secure" would keep
+        # reporting secure while the circuit breaker is open.
+        security_status=(
+            "degraded" if api_state.circuit_breaker_open else "secure"
+        ),
         version=API_VERSION,
         active_sessions=len(api_state.active_sessions),
         last_request_timestamp=api_state.stats['last_request_timestamp'],
