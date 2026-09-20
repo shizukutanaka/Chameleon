@@ -1873,8 +1873,12 @@ class AudioProcessor:
         if operation == "analyze":
             result = core.analyze(file_path)
             if not result.success:
+                # A valid file in a non-PCM encoding is a capability gap,
+                # not bad input -- ERROR(1), same as a missing extra.
+                kind = ("internal" if result.message.startswith("Unsupported")
+                        else "input")
                 return {"file": file_path, "error": result.message,
-                        "kind": "input",
+                        "kind": kind,
                         "time": time.time() - start_time, "dry_run": dry_run}
             info = result.data
             metadata = AudioMetadata(
@@ -1912,8 +1916,10 @@ class AudioProcessor:
                     "time": time.time() - start_time, "dry_run": True}
         result = run(file_path, str(output_path), kwargs)
         if not result.success:
+            kind = ("internal" if result.message.startswith("Unsupported")
+                    else "input")
             return {"file": file_path, "error": result.message,
-                    "kind": "input",
+                    "kind": kind,
                     "time": time.time() - start_time, "dry_run": False}
         return {"file": file_path, "output": str(output_path),
                 "time": time.time() - start_time, "dry_run": False}

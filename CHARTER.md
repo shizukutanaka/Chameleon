@@ -2236,3 +2236,13 @@ must be a real exception wherever it lands), and on BaseException shut
 the executor down with cancel_futures=True -- the default
 shutdown(wait=True) would otherwise run every queued file to completion
 even after the interrupt propagated.
+
+**Q: Is a valid-but-undecodable file "invalid input"?**
+A (2026-09-20): No. The PCM-only parser collapsed "non-PCM encoding" into
+the same None as genuine corruption, so a perfectly valid float32 WAV was
+reported "Invalid WAV file format" -- a lie about the user's file that
+sends them debugging the wrong thing. The parser now records a rejection
+reason ("Unsupported WAV encoding (format tag N) ... install the audio
+extra") which flows through every caller, and the CLI maps it to
+"internal" kind: a capability gap is ERROR(1), not INPUT(3) -- the same
+rule as the missing-extra case.

@@ -489,7 +489,8 @@ class WAVProcessor:
                     duration_ms
                 )
             else:
-                return ProcessingResult(False, "Invalid WAV file format")
+                return ProcessingResult(False, self._header_rejection_reason
+                                    or "Invalid WAV file format")
 
         except PermissionError:
             return ProcessingResult(False, "Permission denied accessing file")
@@ -507,7 +508,8 @@ class WAVProcessor:
             # 非同期でファイル情報を取得
             info = await self._async_read_wav_header(file_path)
             if not info:
-                return ProcessingResult(False, "Invalid WAV file format")
+                return ProcessingResult(False, self._header_rejection_reason
+                                    or "Invalid WAV file format")
 
             # 非同期でレベル計算を実行
             peak_level, rms_level = await self._async_calculate_levels(file_path, info)
@@ -579,7 +581,8 @@ class WAVProcessor:
             # Read WAV file
             info = self._read_wav_header(input_path)
             if not info:
-                return ProcessingResult(False, "Invalid WAV file")
+                return ProcessingResult(False, self._header_rejection_reason
+                            or "Invalid WAV file")
 
             # Validate audio content
             if not security_validator.validate_audio_content(input_path):
@@ -618,7 +621,8 @@ class WAVProcessor:
         try:
             info = self._read_wav_header(input_path)
             if not info:
-                return ProcessingResult(False, "Invalid WAV file")
+                return ProcessingResult(False, self._header_rejection_reason
+                            or "Invalid WAV file")
 
             if info.channels == 1:
                 # Asking a mono file to be mono is a satisfied request, not a
@@ -671,7 +675,8 @@ class WAVProcessor:
 
             info = self._read_wav_header(input_path)
             if not info:
-                return ProcessingResult(False, "Invalid WAV file")
+                return ProcessingResult(False, self._header_rejection_reason
+                            or "Invalid WAV file")
 
             if not security_validator.validate_audio_content(input_path):
                 return ProcessingResult(False, "Corrupted audio file")
@@ -720,6 +725,7 @@ class WAVProcessor:
         readers and writers stop hardcoding byte 44. PCM-only by design: float
         (tag 3) files are rejected cleanly rather than misdecoded.
         """
+        self._header_rejection_reason = None
         try:
             file_size = os.path.getsize(file_path)
             with open(file_path, 'rb') as f:
@@ -781,7 +787,13 @@ class WAVProcessor:
 
                 if not fmt_seen or data_offset is None:
                     return None
-                if format_tag != 1:  # PCM-only core; float32 rejected cleanly
+                if format_tag != 1:
+                    # Valid file, unsupported encoding -- the reason must
+                    # reach the user instead of the generic 'invalid' below.
+                    self._header_rejection_reason = (
+                        f"Unsupported WAV encoding (format tag {format_tag}); "
+                        "the dependency-free build reads PCM only. "
+                        "Install the audio extra: pip install -e .[audio]")
                     return None
                 if channels <= 0 or bits_per_sample not in (8, 16, 24, 32) or sample_rate <= 0:
                     return None
@@ -891,7 +903,8 @@ class WAVProcessor:
 
             info = self._read_wav_header_optimized(file_path)
             if not info:
-                return ProcessingResult(False, "Invalid WAV file format")
+                return ProcessingResult(False, self._header_rejection_reason
+                                    or "Invalid WAV file format")
 
             bytes_per_sample = max(1, info.bit_depth // 8) if info.bit_depth != 8 else 1
             frame_size = bytes_per_sample * max(1, info.channels)

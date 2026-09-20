@@ -201,3 +201,26 @@ def test_sigint_during_processing_exits_interrupted(tmp_path):
     rc = proc.wait(timeout=60)
     assert sent, "no output appeared within the polling window"
     assert rc == 130
+
+
+def test_float32_wav_on_stdlib_reports_capability_gap(tmp_path):
+    """A float32 WAV (format tag 3) is a *valid* file the PCM-only stdlib
+    core cannot decode. 'Invalid WAV file format' lied about the file; the
+    message must name the capability gap, and the exit code is ERROR(1) --
+    same class as a missing extra (the UnsupportedOperationError rule)."""
+    try:
+        import numpy  # noqa: F401
+        pytest.skip("full tier decodes float32 via soundfile")
+    except ImportError:
+        pass
+    import struct
+    data = struct.pack("<f", 0.5) * 64
+    fmt = struct.pack("<HHIIHH", 3, 1, 44100, 44100 * 4, 4, 32)
+    body = b"fmt " + struct.pack("<I", len(fmt)) + fmt + \
+        b"data" + struct.pack("<I", len(data)) + data
+    wav = tmp_path / "f32.wav"
+    wav.write_bytes(b"RIFF" + struct.pack("<I", 4 + len(body)) + b"WAVE" + body)
+    proc = _run("analyze", str(wav))
+    assert proc.returncode == 1, proc.stderr
+    assert "Unsupported WAV encoding" in proc.stderr
+    assert "Invalid" not in proc.stderr
