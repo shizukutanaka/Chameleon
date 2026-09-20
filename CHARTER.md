@@ -2328,6 +2328,37 @@ Now warns once per process, debug thereafter. A warning the platform can
 never satisfy, repeated, is noise that trains users to ignore warnings --
 say it once.
 
+**Q: Can a failed write leave a partial file at the destination name?**
+A (2026-09-20): It could -- every producer wrote the destination directly:
+`_apply_gain_safe` / `_convert_to_mono` / `_extract_audio_range` streamed
+via `open_secure(output)`, the already-mono fast path ran
+`shutil.copyfile`, `save_audio` called `sf.write`, and
+`_save_wav_basic`, `generate_midi_file`, `sanitize_wav_metadata`,
+`analyze --export`, and `record_state` each opened the target themselves.
+A crash or exception mid-write left a truncated file under its final name:
+a WAV that still parses at reduced length, an export JSON that doesn't, a
+batch-state file `load_last_state` reports as user corruption. The
+sibling-temp + `os.replace` rule was already on this record -- it just was
+never applied beyond `personal_config`. New `core.atomic_output` (yields
+an open handle) and `core.staged_output_path` (for filename-taking writers
+like `soundfile.write`, which needs the real suffix) now back all of them;
+a failed write removes the temp and preserves whatever was at the
+destination before. `plugin_system.create_plugin_template` keeps its
+direct write -- dev scaffolding with no core dependency and no user data
+at risk.
+
+**Q: Is a temp-file name `.<name>.part-<pid>` unique enough?**
+A (2026-09-20): No. A batch over same-stem inputs into one output dir
+makes two writers share one destination, and in the parallel path they
+share the pid too: the first finisher's `os.replace` deleted the still-open
+temp under the second writer, which then failed `ENOENT` at rename.
+Caught by an existing CLI collision test; temp names now carry a
+per-process counter suffix. Two writers to one destination still race
+(last-writer-wins), but each completed output is a whole file -- the old
+code interleaved bytes from both into one corrupt file. Alignment bonus:
+`generate_midi_file` and `sf.write` outputs now get `open_secure`'s
+0o600 instead of umask-default 0644.
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
