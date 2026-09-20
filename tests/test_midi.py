@@ -41,3 +41,47 @@ def test_note_name_and_frequency():
 
     assert note.note_name == "A4"
     assert abs(note.frequency - 440.0) < 1e-6
+
+
+def test_midi_varint_encodes_deltas_over_127_ticks(tmp_path):
+    # _write_variable_length used to emit groups LSB-first with the
+    # continuation bit on the wrong byte -- any delta >= 128 ticks (a note
+    # longer than ~0.27 s) produced unparseable MIDI. A whole file written
+    # that way is "generated" only in name.
+    analyzer = MIDIAnalyzer()
+    out = tmp_path / "n.mid"
+    note = MIDINote(pitch=69, velocity=100, start_time=0.0, duration=1.0,
+                    channel=0)
+    assert analyzer.generate_midi_file([note], str(out)) is True
+
+    data = out.read_bytes()
+    track = data[data.find(b"MTrk") + 8:]
+    # strict sequential parse: delta varint, then event
+    i = 0
+    deltas = []
+    events = []
+    while i < len(track):
+        delta = 0
+        while True:
+            b = track[i]
+            i += 1
+            delta = (delta << 7) | (b & 0x7F)
+            if not b & 0x80:
+                break
+        status = track[i]
+        i += 1
+        if status == 0xFF:
+            # meta event: FF <type> <len> <len bytes of data>
+            i += 2 + track[i + 1]
+            continue
+        if status == 0x90:
+            i += 2
+            events.append("on")
+        elif status == 0x80:
+            i += 2
+            events.append("off")
+        deltas.append(delta)
+
+    assert "on" in events and "off" in events
+    # 1.0 s at 120 BPM / 480 tpq is 960 ticks -> the off delta must be >=128
+    assert any(d >= 128 for d in deltas)

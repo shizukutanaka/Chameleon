@@ -2009,6 +2009,20 @@ honesty fix in the same pass: a data chunk shorter than its declared
 size used to be analyzed silently; it now logs a truncation warning,
 because a shorter-than-declared file is a fact about the input.
 
+**Q (2026-09-19, cycle 65): Does "file written" mean "file a reader
+can read"?**
+`midi extract` reported "1 MIDI notes: A4" and saved a file with a
+valid MThd header — and a note-off delta encoded as `04 84 80`, which
+no MIDI parser can read. `_write_variable_length` built the varint
+LSB-group-first with the continuation bit on the wrong byte; only
+deltas < 128 ticks survived, and nearly every real note is longer.
+Three commands (extract/compose/generate) claimed success on corrupt
+output. The lesson generalizes past MIDI: a serializer's contract is
+"the next reader accepts this", not "I wrote bytes". Test that reads
+the artifact back would have caught this on day one — every binary
+writer should have a round-trip parse test, not just a byte-shape
+assertion.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy

@@ -30,6 +30,13 @@
 
 ### Fixed
 
+- **Generated MIDI files were malformed for any real note duration** --
+  `_write_variable_length` emitted varint delta-times LSB-group-first
+  with the continuation bit on the wrong byte, so every delta >= 128
+  ticks (~0.27 s at 480 tpq -- nearly every note) wrote bytes no MIDI
+  parser can read. `midi extract`/`compose`/`generate` reported
+  success while producing corrupt files. Correct MSB-first encoding
+  now; verified by strict parsing of the generated track.
 - **Unparseable/truncated WAVs returned ERROR(1) instead of INPUT(3)** --
   per-file failures carried only a message string, so "Could not parse
   WAV file" (the same class of problem as a missing file) exited with

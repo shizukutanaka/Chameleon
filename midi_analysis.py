@@ -637,13 +637,22 @@ class MIDIAnalyzer:
             return False
 
     def _write_variable_length(self, value: int) -> bytes:
-        """Write variable-length quantity for MIDI"""
-        result = []
-        while value > 0x7F:
-            result.insert(0, (value & 0x7F) | 0x80)
+        """Write a MIDI variable-length quantity (MSB group first, the
+        continuation bit set on every byte except the last).
+
+        The previous implementation emitted the groups in reverse order
+        and put the continuation bit on the wrong byte -- any delta >=
+        128 ticks (a note longer than ~0.27 s at 480 tpq, i.e. nearly
+        every real note) produced bytes no MIDI parser can read."""
+        if value < 0:
+            value = 0
+        groups = [value & 0x7F]
+        value >>= 7
+        while value:
+            groups.append((value & 0x7F) | 0x80)
             value >>= 7
-        result.insert(0, value & 0x7F)
-        return bytes(result) if result else bytes([0])
+        groups.reverse()
+        return bytes(groups)
 
     def analyze_rhythm(self, notes: List[MIDINote]) -> Dict[str, Any]:
         """Analyze rhythmic patterns"""
