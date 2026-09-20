@@ -814,6 +814,15 @@ class AudioProcessor:
                 # Convert to mono for analysis
                 audio_mono = librosa.to_mono(audio) if audio.ndim > 1 else audio
 
+                # librosa's default analysis window is 2048 samples. A shorter
+                # signal emits one UserWarning per call (stft, centroid, zcr,
+                # beat_track), each printing a source snippet to stderr --
+                # noise the user cannot act on, for an input that is simply
+                # small. Skip the advanced fields rather than fabricate them;
+                # they stay unset and export as null, same as no librosa.
+                if audio_mono.size < 2048:
+                    return metadata
+
                 # Spectral features
                 spectral_centroids = librosa.feature.spectral_centroid(y=audio_mono, sr=sr)[0]
                 metadata.spectral_centroid = float(np.mean(spectral_centroids))

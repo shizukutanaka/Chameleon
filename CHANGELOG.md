@@ -55,6 +55,14 @@
 
 ### Fixed
 
+- **`analyze --detailed` leaked librosa warnings on any input shorter
+  than 2048 samples** -- stft, spectral_centroid, zcr and beat_track all
+  ran with librosa's default window regardless of signal length, so a
+  small file printed three UserWarnings (with source snippets) to stderr
+  before the report. A merely-small input is not a malfunction and the
+  user cannot act on a library's window size. The advanced block now
+  requires one window of signal; shorter inputs report the advanced
+  fields as unmeasured (null on export), same as a librosa-less install.
 - **`python core.py`'s mini-CLI crashed on bad input and exited 0 on
   failure** -- `float(sys.argv[4])` for `normalize`'s peak and `trim`'s
   threshold was unguarded, so a non-numeric argument died on a raw

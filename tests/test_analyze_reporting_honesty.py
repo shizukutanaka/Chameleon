@@ -117,3 +117,27 @@ def test_silence_does_not_produce_a_nonsense_crest_factor(tmp_path):
     # log(0/0) has no answer; 0.0 dB is the honest placeholder for "no signal",
     # and it must not be an inf, a nan, or a crash.
     assert _field(result.stdout, "Dynamic Range") == "0.0dB"
+
+
+def test_tiny_file_does_not_leak_library_warnings(tmp_path):
+    # Under 2048 samples (librosa's default window) every advanced call --
+    # stft, spectral_centroid, zcr, beat_track -- emitted a UserWarning with a
+    # source snippet on stderr. A merely-small input is not a malfunction, and
+    # the user cannot act on a library's window size.
+    pytest.importorskip("librosa")
+    import struct
+    import wave
+
+    tiny = tmp_path / "tiny.wav"
+    with wave.open(str(tiny), "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(44100)
+        handle.writeframes(struct.pack("<h", 1000) * 100)  # 100 samples < 2048
+
+    result = _run("analyze", str(tiny), "--detailed")
+
+    assert result.returncode == 0
+    assert "UserWarning" not in result.stderr
+    assert "n_fft" not in result.stderr
+    assert result.stderr.strip() == ""

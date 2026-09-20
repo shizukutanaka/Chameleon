@@ -2343,3 +2343,8 @@ any range assertion.
   ships alongside main.py's, and its unguarded float() plus fall-through
   exit 0 were the same defect classes main.py already fixed -- a sweep
   that ends at the primary front door leaves the side door open.
+- A library's warning channel is part of your UI: librosa printed three
+  UserWarnings with source snippets on a 100-sample input, because every
+  call ran with the default 2048-sample window. If the input is below the
+  analysis floor, skip it and report unmeasured -- the alternative is
+  stderr noise the user cannot act on dressed as a diagnostic.
