@@ -441,3 +441,15 @@ def test_batch_rejects_unknown_format_upfront(tmp_path):
     result = _run("batch", str(tmp_path), "convert", "--format", "mp3",
                   cwd=str(tmp_path))
     assert result.returncode == 2  # argparse invalid choice
+
+
+def test_negative_sample_rate_rejected_upfront(tmp_path):
+    """--sample-rate -1 used to parse and then fail identically on every
+    file inside convert_audio."""
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    batch = _run("batch", str(tmp_path), "convert", "--sample-rate", "-1",
+                 cwd=str(tmp_path))
+    assert batch.returncode == 3
+    single = _run("process", str(wav), "--convert", "--convert-sample-rate",
+                  "0", cwd=str(tmp_path))
+    assert single.returncode == 3

@@ -14,6 +14,12 @@
 
 ### Fixed
 
+- **Negative/zero sample rates and non-wav `--convert-format` reached
+  the DSP** -- `batch convert --sample-rate -1` parsed and then every
+  file failed identically inside convert_audio; `--convert-format mp3`
+  did the same through `process`. `--sample-rate`/`--convert-sample-rate`
+  now reject non-positive values as INPUT(3) up front, and
+  `--convert-format` is an argparse choice constrained to `wav`.
 - **`midi --output` and `batch --format` had no destination validation** --
   a MIDI output to a missing directory or a directory-as-path reached the
   writer and surfaced as "Error generating MIDI file: <errno>" with

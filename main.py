@@ -2000,7 +2000,8 @@ def create_cli():
     process.add_argument("--effects", help="Apply effects (JSON file)")
     process.add_argument("--output-dir", help="Output directory")
     process.add_argument("--convert", action="store_true", help="Convert audio format or resolution")
-    process.add_argument("--convert-format", help="Target format (currently only wav supported)")
+    process.add_argument("--convert-format", choices=["wav"],
+                         help="Target format (only wav is supported)")
     process.add_argument("--convert-sample-rate", type=int, help="Target sample rate for conversion")
     process.add_argument("--convert-bit-depth", type=int, choices=[16, 24, 32], help="Target bit depth for conversion")
     process.add_argument("--dry-run", action="store_true", help="Preview planned operations without writing files")
@@ -2323,6 +2324,10 @@ async def main():
             if used:
                 print(f"Error: {used[0]} requires --convert", file=sys.stderr)
                 return ExitCode.USAGE
+        if args.convert_sample_rate is not None and args.convert_sample_rate <= 0:
+            print(f"Error: --convert-sample-rate must be positive, got "
+                  f"{args.convert_sample_rate}", file=sys.stderr)
+            return ExitCode.INPUT
 
         if args.normalize:
             operations.append("normalize")
@@ -2602,6 +2607,12 @@ async def main():
                 print("Error: --quality only applies to the normalize operation",
                       file=sys.stderr)
                 return ExitCode.USAGE
+        if args.sample_rate is not None and args.sample_rate <= 0:
+            # convert_audio raises per-file downstream; a non-positive rate
+            # is bad input, not a batch of identical failures.
+            print(f"Error: --sample-rate must be positive, got "
+                  f"{args.sample_rate}", file=sys.stderr)
+            return ExitCode.INPUT
         if args.operation != "effects" and args.effects:
             print("Error: --effects only applies to the effects operation",
                   file=sys.stderr)
