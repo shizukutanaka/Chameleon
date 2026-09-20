@@ -55,6 +55,17 @@
 
 ### Fixed
 
+- **`AudioRestorer.restore("auto")` ran two detectors the project itself
+  measured as untrustworthy** -- `RestorationConfig` defaulted
+  `click_removal`/`decrackle` to True, so the library auto pipeline rewrote
+  white noise by up to 0.55 while the CLI deliberately exposes neither
+  flag (the envelope/z-score detector finds ~354 clicks per second of
+  click-free noise). Both now default to False and stay reachable as an
+  explicit opt-in; `vinyl` mode still runs them unconditionally because
+  clicks genuinely exist in vinyl material and the mode is itself an
+  opt-in. The dead `gap_filling`/`spectral_repair`/`adaptive_mode` flags
+  (config keys nothing consumed) and the never-invoked
+  `self.spectral_repairer` were removed.
 - **`--declip`/`--dehum` bypassed the dependency gate on a numpy-only
   install** -- `repair_audio` constructs `DeclippingProcessor`/`HumRemover`
   directly, skipping the `_require_restoration_deps()` check that

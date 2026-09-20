@@ -2354,3 +2354,10 @@ any range assertion.
   on `interpolate` mid-DSP (clipped input) or wrote input-identical
   "success" (clean input). Check dependency gates at the point the
   dependency is actually consumed, not only at the facade.
+- A config flag nothing consumes is a control that lies, and defaults are
+  a claim about safety: RestorationConfig defaulted click_removal/
+  decrackle on even though the project's own measurements found those
+  detectors rewrite click-free noise, and shipped three flags
+  (gap_filling/spectral_repair/adaptive_mode) wired to nothing. If the CLI
+  refuses to expose a stage because it is unmeasured, the library's
+  default pipeline must not run it either.

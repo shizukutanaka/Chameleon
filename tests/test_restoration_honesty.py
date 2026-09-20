@@ -203,3 +203,24 @@ def test_click_repair_does_not_claim_an_ar_model_it_never_fits():
     assert "Use autoregressive prediction" not in source
     assert "surrounding = np.concatenate" not in source, (
         "the AR-model scaffolding was computed and discarded")
+
+
+def test_auto_mode_does_not_run_unvetted_detectors():
+    # ClickRemover/CrackleRemover detect clicks that are not there (354 in a
+    # second of white noise) and were measured rewriting noise by ~0.5.
+    # `restore(auto)` must run only the measured-safe pair; both stay
+    # reachable as explicit opt-in through RestorationConfig.
+    rng = np.random.default_rng(0)
+    noise = 0.1 * rng.standard_normal(SAMPLE_RATE)
+
+    restored, info = audio_restoration.AudioRestorer().restore(noise, SAMPLE_RATE)
+
+    assert "click_removal" not in info["applied_processes"]
+    assert "decrackle" not in info["applied_processes"]
+    assert np.abs(restored - noise).max() == 0.0, (
+        "auto restoration rewrote noise it should have left alone")
+
+    restorer = audio_restoration.AudioRestorer(
+        audio_restoration.RestorationConfig(click_removal=True))
+    _, opt_in = restorer.restore(noise, SAMPLE_RATE)
+    assert "click_removal" in opt_in["applied_processes"]

@@ -56,15 +56,21 @@ def _require_restoration_deps() -> None:
 
 @dataclass
 class RestorationConfig:
-    """Configuration for audio restoration"""
-    click_removal: bool = True
-    decrackle: bool = True
+    """Configuration for audio restoration
+
+    `click_removal` and `decrackle` default to False because their
+    envelope/z-score detectors fire on content that has no clicks or
+    crackle at all (white noise shows hundreds of false detections per
+    second) -- they stay opt-in, matching the CLI which exposes neither
+    (``--declip``/``--dehum`` are the measured-safe pair). `vinyl` mode
+    runs them unconditionally because clicks genuinely exist in vinyl
+    material and the mode is itself an explicit opt-in.
+    """
+    click_removal: bool = False
+    decrackle: bool = False
     dehum: bool = True
     denoise: bool = True
     declip: bool = True
-    gap_filling: bool = True
-    spectral_repair: bool = True
-    adaptive_mode: bool = True
 
 class ClickRemover:
     """Remove clicks and pops from audio"""
@@ -564,7 +570,6 @@ class AudioRestorer:
         self.crackle_remover = CrackleRemover()
         self.hum_remover = HumRemover()
         self.declipper = DeclippingProcessor()
-        self.spectral_repairer = SpectralRepairer()
         self.denoiser = AdaptiveDenoiser()
         self.vinyl_restorer = VinylRestorer()
 
