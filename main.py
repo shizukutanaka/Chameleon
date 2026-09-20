@@ -819,9 +819,13 @@ class AudioProcessor:
                 zcr = librosa.feature.zero_crossing_rate(audio_mono)[0]
                 metadata.zero_crossing_rate = float(np.mean(zcr))
 
-                # Tempo detection
+                # Tempo detection -- librosa returns an ndarray, not a
+                # scalar; float() on a non-0-dim array raises and aborts the
+                # whole advanced block, losing the spectral fields too.
                 tempo, _ = librosa.beat.beat_track(y=audio_mono, sr=sr)
-                metadata.tempo = float(tempo)
+                tempo_values = np.asarray(tempo).ravel()
+                if tempo_values.size:
+                    metadata.tempo = float(tempo_values[0])
 
                 # Frequency range estimation
                 stft = np.abs(librosa.stft(audio_mono))

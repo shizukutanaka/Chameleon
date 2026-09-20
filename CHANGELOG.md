@@ -1049,3 +1049,7 @@ Initial public release of the Chameleon Audio Tool.
   +1.5 dB, LFE is excluded. The parser now captures the mask instead of
   discarding it; plain-PCM files (no declared layout) keep equal weighting
   and the label says which path ran.
+- `analyze --detailed` on 8-bit WAVs no longer aborts its advanced-analysis
+  block: `float(librosa.beat.beat_track(...))` raised "only 0-dimensional
+  arrays can be converted" because librosa returns an ndarray, taking the
+  spectral fields down with it. The tempo array is now ravelled safely.
