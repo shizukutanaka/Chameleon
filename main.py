@@ -1019,6 +1019,14 @@ class AudioProcessor:
             # (channels, samples), identical to convolving each channel.
             kernel = ir[np.newaxis, :] if processed.ndim > 1 else ir
             reverb_signal = signal.convolve(processed, kernel, mode='same')
+            # The noise IR above is not normalized: a room_size-0.3 kernel
+            # applies ~+10 dB of random gain, so the wet path drowned the
+            # dry one. Scale the convolved signal to the input's RMS so the
+            # 'wet' knob controls the blend ratio, not the loudness.
+            dry_rms = float(np.sqrt(np.mean(processed ** 2)))
+            wet_rms = float(np.sqrt(np.mean(reverb_signal ** 2)))
+            if wet_rms > 0:
+                reverb_signal = reverb_signal * (dry_rms / wet_rms)
             processed = (1 - wet) * processed + wet * reverb_signal
 
         # Compression -- the real dynamics processor in mastering_chain, not

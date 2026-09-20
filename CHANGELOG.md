@@ -21,6 +21,13 @@
 
 ### Fixed
 
+- **`reverb` effect amplified the mix by ~+10 dB** — the synthetic
+  exponentially-decaying noise IR was never normalized, so its
+  convolution applied tens of dB of random gain and the `wet` blend
+  drowned the dry signal. The convolved (wet) path is now scaled to the
+  input's RMS before blending, so `wet` controls the blend ratio rather
+  than the loudness. Regression test asserts reverb holds RMS within
+  ±3 dB.
 - **Batch `normalize` jobs produced output that could never be
   downloaded** — the generated file was registered under
   `normalized_<uuid>_<name>` but the job result carried no output name

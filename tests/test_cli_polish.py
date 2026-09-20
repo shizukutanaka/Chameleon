@@ -186,3 +186,33 @@ def test_reverb_effect_on_stereo_input(tmp_path):
     assert out.exists()
     with _wave.open(str(out)) as w:
         assert w.getnchannels() == 2
+
+
+def test_reverb_does_not_amplify_the_mix(tmp_path):
+    """The synthetic noise IR carried unnormalized gain — a wet=0.3 mix
+    raised the signal ~+10 dB instead of blending. The wet path is now
+    normalized to the dry RMS before blending."""
+    np_ = pytest.importorskip("numpy")
+    pytest.importorskip("scipy")
+    import wave as _wave
+
+    wav = tmp_path / "tone.wav"
+    sr = 44100
+    n = sr
+    tone = 0.4 * np_.sin(2 * np_.pi * 220 * np_.arange(n) / sr)
+    with _wave.open(str(wav), "w") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(sr)
+        w.writeframes((tone * 32767).astype("<i2").tobytes())
+
+    fx = _write_effects(tmp_path, '{"reverb": {"room_size": 0.5, "wet": 0.4}}')
+    result = _run("process", str(wav), "--effects", str(fx), cwd=str(tmp_path))
+    assert result.returncode == 0
+
+    with _wave.open(str(tmp_path / "tone_processed.wav")) as w:
+        out = np_.frombuffer(w.readframes(w.getnframes()), dtype="<i2").astype(float) / 32768
+    in_rms = float(np_.sqrt(np_.mean(tone ** 2)))
+    out_rms = float(np_.sqrt(np_.mean(out ** 2)))
+    change_db = 20 * np_.log10(out_rms / in_rms)
+    assert -3.0 < change_db < 3.0, f"reverb changed level by {change_db:+.1f} dB"
