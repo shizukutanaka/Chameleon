@@ -82,6 +82,11 @@ def _determine_chunk_size() -> int:
         return min(MAX_CHUNK_SIZE, DEFAULT_CHUNK_SIZE * 2)
     if mode == "safe":
         return max(MIN_CHUNK_SIZE, DEFAULT_CHUNK_SIZE // 2)
+    if mode != "auto":
+        warnings.warn(
+            f"Ignoring unknown CHAMELEON_PERFORMANCE_MODE={mode!r} "
+            f"(expected auto/fast/safe); using auto"
+        )
 
     return DEFAULT_CHUNK_SIZE
 

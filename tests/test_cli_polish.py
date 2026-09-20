@@ -239,3 +239,18 @@ def test_effects_file_with_nonfinite_param_is_input_error(tmp_path):
     assert result.returncode == 3  # ExitCode.INPUT
     assert "finite" in result.stderr
     assert "Processed" not in result.stdout
+
+
+def test_invalid_parallel_env_warns_not_silently_coerced(monkeypatch):
+    """CHAMELEON_PARALLEL=banana used to be truthy-tested into parallel=True:
+    a garbage value silently meant 'on'. Now it must warn and keep the
+    default -- an env knob you can't tell is broken isn't a knob."""
+    import warnings
+    import main
+    monkeypatch.setenv("CHAMELEON_PARALLEL", "banana")
+    monkeypatch.delenv("CHAMELEON_MAX_WORKERS", raising=False)
+    with warnings.catch_warnings(record=True) as seen:
+        warnings.simplefilter("always")
+        cfg = main.ProcessingConfig.from_environment()
+    assert cfg.parallel is True  # the default, not a coercion of "banana"
+    assert any("CHAMELEON_PARALLEL" in str(w.message) for w in seen)

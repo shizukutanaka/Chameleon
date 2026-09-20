@@ -1040,3 +1040,7 @@ Initial public release of the Chameleon Audio Tool.
 - `/audit/log?limit=` now rejects non-positive values with 422 (was:
   limit=0 returned the whole log via entries[-0:], negatives silently
   truncated from the wrong end).
+- `CHAMELEON_PARALLEL=banana` (silently truthy), `CHAMELEON_PERFORMANCE_MODE=turbo`
+  (silently "auto"), and `CHAMELEON_TRUSTED_ROOTS=/typo` (silently locks every
+  file out) now warn. The argv=reject/env=warn rule now covers every tunable
+  env var in the project.

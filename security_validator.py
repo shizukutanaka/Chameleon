@@ -75,7 +75,13 @@ class SecurityConfig:
             for entry in raw.replace(";", ":" if os.sep == "/" else ";").split(os.pathsep):
                 entry = entry.strip()
                 if entry:
-                    roots.add(str(Path(entry).expanduser()))
+                    root = str(Path(entry).expanduser())
+                    roots.add(root)
+                    if not Path(root).exists():
+                        warnings.warn(
+                            f"{var} entry {root!r} does not exist; "
+                            f"nothing under it can be trusted"
+                        )
 
         max_size = DEFAULT_MAX_FILE_SIZE
         env_max = os.getenv("CHAMELEON_MAX_FILE_SIZE")

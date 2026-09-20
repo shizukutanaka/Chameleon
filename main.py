@@ -576,7 +576,16 @@ class ProcessingConfig:
 
         env_parallel = os.getenv("CHAMELEON_PARALLEL")
         if env_parallel is not None:
-            config.parallel = env_parallel.strip().lower() not in {"0", "false", "off", "no"}
+            normalized = env_parallel.strip().lower()
+            if normalized in {"0", "false", "off", "no"}:
+                config.parallel = False
+            elif normalized in {"1", "true", "on", "yes"}:
+                config.parallel = True
+            else:
+                warnings.warn(
+                    f"Ignoring invalid CHAMELEON_PARALLEL={env_parallel!r}; "
+                    f"expected one of 1/0/true/false/on/off/yes/no"
+                )
 
         return config
 

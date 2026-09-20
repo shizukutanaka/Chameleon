@@ -321,3 +321,12 @@ class TestSecurityConfigFromEnvironment:
         monkeypatch.setenv("CHAMELEON_TRUSTED_ROOTS", str(tmp_path))
         cfg = SecurityConfig.from_environment()
         assert str(tmp_path) in cfg.trusted_roots
+
+    def test_nonexistent_trusted_root_warns(self, monkeypatch, tmp_path):
+        """A typo'd trusted root used to load silently -- every file would be
+        rejected with no hint why. The entry stays (the dir may appear later
+        -- a mount, a later mkdir) but the user must hear about it."""
+        monkeypatch.setenv("CHAMELEON_TRUSTED_ROOTS", str(tmp_path / "ghost"))
+        with pytest.warns(UserWarning, match="does not exist"):
+            cfg = SecurityConfig.from_environment()
+        assert str(tmp_path / "ghost") in cfg.trusted_roots
