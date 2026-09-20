@@ -2651,7 +2651,10 @@ async def main():
 
                 if analysis['rhythm']:
                     rhythm = analysis['rhythm']
-                    print(f"🥁 Estimated tempo: {rhythm['tempo']:.1f} BPM")
+                    if rhythm['tempo'] > 0:
+                        print(f"🥁 Estimated tempo: {rhythm['tempo']:.1f} BPM")
+                    else:
+                        print("🥁 Estimated tempo: not estimable (insufficient onsets)")
 
                 if analysis['suggestions']['next_chords']:
                     print("🤖 Next chord suggestions:")

@@ -187,3 +187,10 @@ def test_tempo_survives_small_timing_jitter():
 
 def test_no_notes_reports_zero_tempo():
     assert _analyzer().analyze_rhythm([])["tempo"] == 0
+
+
+def test_single_note_reports_no_tempo():
+    """One onset has no inter-onset interval: tempo 0 = 'not estimable',
+    not the 120 BPM config default dressed up as a measurement."""
+    note = midi_analysis.MIDINote(pitch=69, velocity=100, start_time=0.0, duration=1.0)
+    assert _analyzer().analyze_rhythm([note])["tempo"] == 0

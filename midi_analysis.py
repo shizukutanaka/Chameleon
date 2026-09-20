@@ -644,7 +644,9 @@ class MIDIAnalyzer:
         intervals = [onsets[i+1] - onsets[i] for i in range(len(onsets)-1)]
 
         if not intervals:
-            return {"tempo": self.config.tempo, "time_signature": self.config.time_signature, "patterns": []}
+            # One note has no rhythm; 0 means "not estimable" like the
+            # no-notes path above, not a default tempo dressed as a measure.
+            return {"tempo": 0, "time_signature": self.config.time_signature, "patterns": []}
 
         # Estimate the beat from the commonest inter-onset interval. Intervals
         # are grouped on a LOG scale (48 buckets to the octave, ~1.4% apart)
@@ -666,7 +668,7 @@ class MIDIAnalyzer:
             interval_buckets.setdefault(bucket, []).append(interval)
 
         if not interval_buckets:
-            return {"tempo": self.config.tempo, "time_signature": self.config.time_signature, "patterns": []}
+            return {"tempo": 0, "time_signature": self.config.time_signature, "patterns": []}
 
         largest = max(interval_buckets.values(), key=len)
         ordered = sorted(largest)
@@ -690,7 +692,7 @@ class MIDIAnalyzer:
             while estimated_tempo > _MAX_PLAUSIBLE_TEMPO:
                 estimated_tempo /= 2.0
         else:
-            estimated_tempo = self.config.tempo  # Fallback to config tempo
+            estimated_tempo = 0  # no usable interval -- not estimable
 
         return {
             "tempo": estimated_tempo,
@@ -844,7 +846,10 @@ def demo_midi_analysis():
     # Rhythm analysis
     print("\n🥁 Rhythm Analysis:")
     rhythm = analyzer.analyze_rhythm(all_notes)
-    print(f"  Estimated Tempo: {rhythm['tempo']:.1f} BPM")
+    if rhythm['tempo'] > 0:
+        print(f"  Estimated Tempo: {rhythm['tempo']:.1f} BPM")
+    else:
+        print("  Estimated Tempo: not estimable (insufficient onsets)")
     print(f"  Time Signature: {rhythm['time_signature'][0]}/{rhythm['time_signature'][1]}")
     print(f"  Rhythmic Complexity: {rhythm['rhythmic_complexity']:.3f}")
 

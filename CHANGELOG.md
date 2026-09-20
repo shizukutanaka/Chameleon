@@ -14,6 +14,12 @@
 
 ### Fixed
 
+- **`midi analyze` reported "120.0 BPM" for audio with no detectable
+  rhythm** -- a single sustained note (or onsets with no usable
+  interval) returned the config default and the CLI printed it as an
+  estimate. Insufficient-data paths now report tempo 0, and the CLI
+  prints "not estimable" (the empty-notes path already did this).
+  Verified end to end: 0.5 s-spaced bursts still estimate 120.2 BPM.
 - **Session-token comparison in the fallback index scan was
   non-constant-time** -- a `==` on secrets is a (minor) timing side
   channel; now `hmac.compare_digest` like every other credential
