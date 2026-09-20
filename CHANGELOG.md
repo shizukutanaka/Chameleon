@@ -14,6 +14,11 @@
 
 ### Fixed
 
+- **`--denoise` output was longer than its input** -- scipy's `istft`
+  emits frame-aligned output, so its boundary padding left denoised
+  files up to one hop longer (a 2-second file grew +888 samples =
+  +20 ms of dead air, breaking sync against the original). The output
+  is now trimmed to the input's exact sample count.
 - **`stream` accepted negative device indices** -- `--input-device -1`
   parsed and reached the PyAudio backend where it fails opaquely (or
   with a bare RuntimeError when PyAudio is absent). Indices are now

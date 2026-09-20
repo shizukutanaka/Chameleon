@@ -161,3 +161,15 @@ def test_input_shorter_than_the_stft_window_does_not_crash():
 
     processed = _processor().remove_noise(short.copy(), SAMPLE_RATE)
     assert np.all(np.isfinite(processed))
+
+
+def test_output_preserves_input_length():
+    # scipy istft emits frame-aligned output: its boundary padding left
+    # denoised files ~+1% longer (88200 -> 89088 samples). A processor that
+    # changes duration misaligns sync and lies about what it did.
+    t = np.arange(88200) / SAMPLE_RATE
+    signal = 0.2 * np.sin(2 * np.pi * 440.0 * t) + 0.02 * np.random.randn(len(t))
+
+    processed = _processor().remove_noise(signal.copy(), SAMPLE_RATE)
+
+    assert processed.shape[-1] == signal.shape[-1]

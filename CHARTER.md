@@ -1951,6 +1951,22 @@ wherever the CLI opens a path the user supplied, the failure answer is
 "Error: ..." + INPUT(3), never a traceback — and the exception class to
 catch is OSError, not whichever subclass happened to fire first.
 
+**Q (2026-09-19, cycle 58): Does a processed file have to match its
+input's length?**
+`process --denoise` produced output 888 samples longer than the input —
+`signal.istft` emits frame-aligned output, so its boundary extension
+pads the tail to a full hop. A 2-second file came back with +20 ms of
+dead air: harmless to listen to, but it silently breaks sync with any
+asset aligned to the original timeline, and it makes "Processed" a
+lie about what the operation did. The fix is one slice
+(`[..., :audio.shape[-1]]`); the rule it generalizes is that an
+operation which does not change duration must return exactly the
+input's duration — not approximately, exactly. All other istft paths
+(librosa in `audio_restoration`, `spectral_editor`) already take a
+`length` argument; scipy's does not, which is why this one survived
+input-validation and flag-consumer audits alike — it needed a
+measured output, not a code read.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy

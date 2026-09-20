@@ -942,11 +942,16 @@ class AudioProcessor:
         cleaned_magnitude = magnitude - noise_profile
         cleaned_magnitude = np.maximum(cleaned_magnitude, 0.1 * magnitude)
 
-        # Reconstruct signal
+        # Reconstruct signal. scipy's istft emits frame-aligned output --
+        # its boundary extension pads the tail out to a full hop, so the
+        # result can be longer than the input (88200 -> 89088 samples,
+        # i.e. +20 ms of silence-padding in the written file). A length
+        # change is a lie about what denoising did; trim back to the
+        # input's exact sample count.
         cleaned_stft = cleaned_magnitude * np.exp(1j * phase)
         _, cleaned_audio = signal.istft(cleaned_stft, fs=sr, nperseg=nperseg)
 
-        return cleaned_audio
+        return cleaned_audio[..., :audio.shape[-1]]
 
     # The repairs from audio_restoration.py that are verified to work *and* to
     # leave clean audio alone. "It exists" is not the same as "it is known to
