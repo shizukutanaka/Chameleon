@@ -409,6 +409,12 @@ class PluginLoader:
         # which __builtins__ is reachable without any attribute access the
         # walk below can see.
         "globals", "locals", "vars",
+        # Builtins that need no import to escape the sandbox. open() reads
+        # and writes arbitrary files (verified: a plugin wrote /tmp/P5 via
+        # a bare open() call); input() hijacks the prompt; breakpoint()
+        # drops into pdb -- an interactive interpreter on the host;
+        # exit()/quit() kill the host interpreter outright.
+        "open", "input", "breakpoint", "exit", "quit", "help",
     })
     _DANGEROUS_REF_NAMES = _DANGEROUS_CALL_NAMES | frozenset({
         # Referenced-but-not-called is the aliasing bypass: `e = eval` or

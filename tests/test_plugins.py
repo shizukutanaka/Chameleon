@@ -148,3 +148,24 @@ def test_check_module_safety_rejects_namespace_dict_calls(tmp_path, call):
 
     with pytest.raises(SecurityError, match="Unsafe call detected"):
         loader._check_module_safety(Path(bad))
+
+
+@pytest.mark.parametrize("name", ["open", "input", "breakpoint", "exit", "quit"])
+def test_check_module_safety_rejects_dangerous_builtins(tmp_path, name):
+    # Builtins need no import: a bare open("/tmp/x","w") escaped the sandbox
+    # entirely (wrote a real file) while every import was audited.
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / "bad.py"
+    bad.write_text(f'{name}("x")\n')
+    with pytest.raises(SecurityError, match="Unsafe (call|reference)"):
+        loader._check_module_safety(Path(bad))
+
+
+def test_check_module_safety_rejects_aliased_open(tmp_path):
+    # `w = open; w(...)` never puts "open" in Call position -- the
+    # referenced-name check has to catch the alias.
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / "bad.py"
+    bad.write_text('w = open\nw("/tmp/x", "w")\n')
+    with pytest.raises(SecurityError, match="Unsafe reference"):
+        loader._check_module_safety(Path(bad))

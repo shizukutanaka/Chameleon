@@ -4,6 +4,13 @@
 
 ### Security
 
+- **Plugin sandbox escaped via builtins needing no import** -- the AST
+  audit checked imports, `__import__`, `eval`/`exec`/`compile` and
+  dunder attribute chains, but a bare `open("/tmp/x", "w")` wrote a
+  file with zero imports (verified end-to-end). `open`, `input`,
+  `breakpoint`, `exit`, `quit` and `help` are now rejected in both
+  call position and aliased-reference position (`w = open; w(...)`
+  never puts `open` in a Call node).
 - **Denied API requests were never audited** -- every endpoint logged
   only its SUCCESS path; a 403 on someone else's file, a 404 probing
   filenames, or a 429 login throttle left no trail. DENIED entries now
