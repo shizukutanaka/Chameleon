@@ -165,6 +165,11 @@ class UtilityPlugin(PluginInterface):
 class PluginSandbox:
     """Security sandbox for plugin execution"""
 
+    # RLIMIT_AS cannot be lowered on some platforms (macOS makes the
+    # sandbox's memory cap unenforceable); warn once per process instead
+    # of once per plugin execution.
+    _rlimit_warned = False
+
     def __init__(self, config: PluginConfig):
         self.config = config
         self.restricted_modules = {
@@ -207,7 +212,13 @@ class PluginSandbox:
             # makes the restore legal for an unprivileged caller.
             resource.setrlimit(resource.RLIMIT_AS, (target_limit, hard_before))
         except (ValueError, resource.error, OSError) as exc:  # pragma: no cover - platform dependent
-            self.logger.warning("Failed to apply memory limit: %s", exc)
+            if not PluginSandbox._rlimit_warned:
+                PluginSandbox._rlimit_warned = True
+                self.logger.warning(
+                    "Failed to apply memory limit (further failures logged at DEBUG): %s", exc
+                )
+            else:
+                self.logger.debug("Failed to apply memory limit: %s", exc)
             yield
             return
 
