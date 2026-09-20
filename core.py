@@ -24,9 +24,11 @@ import tempfile
 import logging
 import warnings
 import gc
+import contextlib
+import itertools
 from pathlib import Path
 import asyncio
-from typing import Union, Optional, Dict, List, Any, Tuple, Callable
+from typing import Union, Optional, Dict, List, Any, Tuple, Callable, Iterator
 from dataclasses import dataclass
 from security_validator import SecurityValidator, SecurityConfig
 
@@ -137,6 +139,49 @@ def open_secure(path: Union[str, Path], mode: str = "wb", *, encoding: Optional[
 
     fd = os.open(os.fspath(path), flags, 0o600)
     return os.fdopen(fd, mode, encoding=encoding)
+
+
+# Two writers may legally target the same destination (e.g. a batch over
+# same-named inputs into one output dir) -- temp names must be unique per
+# invocation, or one writer's os.replace would remove the other's temp file.
+_TMP_COUNTER = itertools.count()
+
+
+@contextlib.contextmanager
+def atomic_output(path: Union[str, Path], mode: str = "wb", *, encoding: Optional[str] = None):
+    """Open a sibling temp file for writing and rename it onto `path` on success.
+
+    Readers only see the destination under its final name once the write is
+    complete -- a crash or exception mid-write leaves a hidden
+    ``.part-<pid>`` file, never a truncated file that still parses."""
+    dest = Path(path)
+    tmp = dest.parent / f".{dest.name}.part-{os.getpid()}-{next(_TMP_COUNTER)}"
+    try:
+        with open_secure(tmp, mode, encoding=encoding) as handle:
+            yield handle
+        os.replace(tmp, dest)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+@contextlib.contextmanager
+def staged_output_path(path: Union[str, Path]) -> Iterator[Path]:
+    """Yield a sibling temp path renamed onto `path` on success.
+
+    For writers that take a filename rather than an open handle (e.g.
+    ``soundfile.write``, which infers the container from the suffix, and
+    ``shutil.copyfile``). The result gets open_secure's 0o600 permissions."""
+    dest = Path(path)
+    tmp_name = f".{dest.stem}.part-{os.getpid()}-{next(_TMP_COUNTER)}{dest.suffix}"
+    tmp = dest.parent / tmp_name
+    try:
+        yield tmp
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, dest)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 @dataclass
@@ -652,7 +697,8 @@ class WAVProcessor:
                 # wrote no output, and still exited 0 -- so a pipeline saw
                 # success and then could not find the file. Copy it through
                 # instead, so the output exists and means what it says.
-                shutil.copyfile(input_path, output_path)
+                with staged_output_path(output_path) as tmp:
+                    shutil.copyfile(input_path, tmp)
                 duration_ms = self.perf.end("convert_to_mono")
                 return ProcessingResult(
                     True,
@@ -1074,7 +1120,7 @@ class WAVProcessor:
         # size fields written up front are exact.
         new_data_size = (info.data_size // frame_size) * frame_size
 
-        with open(input_path, 'rb') as src, open_secure(output_path, 'wb') as dst:
+        with open(input_path, 'rb') as src, atomic_output(output_path) as dst:
             self._copy_patched_header(src, dst, info, new_data_size)
 
             processed_samples = 0
@@ -1134,7 +1180,7 @@ class WAVProcessor:
         frames = info.data_size // frame_size
         new_data_size = frames * bytes_per_sample
 
-        with open(input_path, 'rb') as src, open_secure(output_path, 'wb') as dst:
+        with open(input_path, 'rb') as src, atomic_output(output_path) as dst:
             self._copy_patched_header(src, dst, info, new_data_size, channels=1)
 
             to_consume = frames * frame_size
@@ -1255,7 +1301,7 @@ class WAVProcessor:
         new_data_size = min(sample_count * frame_size,
                             max(0, info.data_size - start_byte))
 
-        with open(input_path, 'rb') as src, open_secure(output_path, 'wb') as dst:
+        with open(input_path, 'rb') as src, atomic_output(output_path) as dst:
             self._copy_patched_header(src, dst, info, new_data_size)
 
             src.seek(info.data_offset + start_byte)
@@ -1545,7 +1591,7 @@ class StateRecoveryManager:
         if not self._ensure_state_dir():
             return None
         try:
-            with target_path.open("w", encoding="utf-8") as handle:
+            with atomic_output(target_path, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle, ensure_ascii=False, indent=2)
         except OSError:
             return None

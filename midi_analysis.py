@@ -11,6 +11,8 @@ from typing import List, Dict, Tuple, Optional, Any
 from dataclasses import dataclass, field
 from enum import Enum
 
+from core import atomic_output
+
 # Spacing between onsets fixes the beat period only up to a factor of two --
 # the same rhythm read as half-notes or eighth-notes is equally consistent
 # with the timings. Beat trackers conventionally resolve that by folding the
@@ -625,7 +627,7 @@ class MIDIAnalyzer:
             midi_data.extend(track_data)
 
             # Write to file
-            with open(filename, 'wb') as f:
+            with atomic_output(filename) as f:
                 f.write(midi_data)
 
             return True

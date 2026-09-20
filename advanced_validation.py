@@ -464,7 +464,11 @@ class SanitizationEngine:
 
         KEEP_CHUNKS = {b'RIFF', b'WAVE', b'fmt ', b'data'}
 
-        with open(file_path, 'rb') as infile, open(output_path, 'wb') as outfile:
+        # Lazy import: core.py imports this module for DeepFileInspector at
+        # module level, so a top-level core import here would be circular.
+        from core import atomic_output
+
+        with open(file_path, 'rb') as infile, atomic_output(output_path) as outfile:
             # Read and write RIFF header
             riff_header = infile.read(12)
             outfile.write(riff_header[:4])  # RIFF

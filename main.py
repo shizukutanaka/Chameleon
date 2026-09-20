@@ -30,7 +30,7 @@ from collections import Counter
 from logging.handlers import RotatingFileHandler
 
 import core
-from core import open_secure, SecurityValidator
+from core import open_secure, SecurityValidator, atomic_output, staged_output_path
 from plugin_system import PluginManager, PluginConfig, SecurityError
 
 if TYPE_CHECKING:
@@ -2067,12 +2067,13 @@ class AudioProcessor:
             subtype_map = {16: "PCM_16", 24: "PCM_24", 32: "PCM_32"}
             subtype = subtype_map.get(target_bit_depth)
             try:
-                sf.write(
-                    file_path,
-                    audio.T if audio.ndim > 1 else audio,
-                    sr,
-                    subtype=subtype
-                )
+                with staged_output_path(file_path) as tmp:
+                    sf.write(
+                        str(tmp),
+                        audio.T if audio.ndim > 1 else audio,
+                        sr,
+                        subtype=subtype
+                    )
                 return target_bit_depth
             except Exception as e:
                 self.logger.warning(f"Soundfile save failed: {e}")
@@ -2156,7 +2157,7 @@ class AudioProcessor:
 
         channels = 1 if pcm_audio.ndim == 1 else pcm_audio.shape[0]
 
-        with open_secure(file_path, 'wb') as f:
+        with atomic_output(file_path) as f:
             # RIFF header
             f.write(b'RIFF')
             f.write(struct.pack('<I', 0))  # File size (will update later)
@@ -2557,7 +2558,7 @@ async def main():
             # the whole family (missing dir, directory-as-file, permissions).
             try:
                 export_path = _sanitize_cli_input(args.export, "export path")
-                with open(export_path, 'w') as f:
+                with atomic_output(export_path, 'w', encoding='utf-8') as f:
                     json.dump(results, f, indent=2, default=_json_export_default)
             except (OSError, ValueError) as exc:
                 print(f"Error: cannot write analysis export: {exc}",
