@@ -10,8 +10,8 @@ Chameleon の設定は**環境変数**とコマンドラインフラグのみで
 |------|-----------|------|
 | `CHAMELEON_PERFORMANCE_MODE` | `core.py` | `auto`（既定）/ `fast` / `safe`。`fast` は既定チャンクサイズを2倍（上限 4 MiB）、`safe` は半分（下限 4 KiB）、`auto` は既定の 64 KiB を維持。 |
 | `CHAMELEON_CHUNK_SIZE` | `core.py` | チャンクサイズ（バイト）。4096〜4194304 の範囲外は既定の 65536 にフォールバック。パフォーマンスモードの設定より優先されます。 |
-| `CHAMELEON_TIMEOUT` | `core.py` | 長時間バッチ処理の上限時間（秒）。 |
-| `CHAMELEON_STATE_DIR` | `core.py` | バッチ状態ファイルの保存先ディレクトリ。既定はユーザーごとの場所。 |
+| `CHAMELEON_TIMEOUT` | `core.py` / `main.py` | CLI `batch` コマンド全体の実行時間上限（秒）。発火時に未処理だったファイルは `timeout` エラーとして報告され、黙ってスキップされない。既定の `0` で無制限。 |
+| `CHAMELEON_STATE_DIR` | `core.py` | バッチ状態ファイルの保存先ディレクトリ。既定は `~/.chameleon_state`（起動時ではなく初回書き込み時に作成）。 |
 | `CHAMELEON_MAX_WORKERS` | `main.py` | バッチ処理のワーカー数。数値でない値は無視されます。 |
 | `CHAMELEON_PARALLEL` | `main.py` | `0` / `false` / `off` / `no` のいずれかで並列実行を無効化。それ以外の値は有効。 |
 | `CHAMELEON_LOG_DIR` | `main.py` | ログ出力先。既定は `~/.chameleon/logs`（POSIX では `0700` で作成）。 |

@@ -55,7 +55,10 @@ MAX_FILE_SIZE = 500 * 1024 * 1024  # 500MB - practical limit
 DEFAULT_CHUNK_SIZE = 64 * 1024  # 64KB chunks
 MIN_CHUNK_SIZE = 4 * 1024
 MAX_CHUNK_SIZE = 4 * 1024 * 1024
-DEFAULT_OPERATION_TIMEOUT = 30  # seconds
+# 0 = no cap. A wall-clock deadline only exists when CHAMELEON_TIMEOUT is
+# explicitly set; an unconditional 30s default used to silently truncate
+# legitimate batches (the cap fires on *total* duration, not per file).
+DEFAULT_OPERATION_TIMEOUT = 0  # seconds
 ALLOWED_BATCH_OPERATIONS = ("analyze", "normalize", "mono", "trim")
 
 
@@ -99,12 +102,12 @@ def _determine_timeout() -> int:
         try:
             parsed = int(env_value)
         except (TypeError, ValueError):
-            parsed = 0
-        if parsed > 0:
+            parsed = -1
+        if parsed >= 0:
             return parsed
         warnings.warn(
             f"Ignoring invalid CHAMELEON_TIMEOUT={env_value!r}; using "
-            f"default {DEFAULT_OPERATION_TIMEOUT}s"
+            f"default {DEFAULT_OPERATION_TIMEOUT}s (no cap)"
         )
 
     return DEFAULT_OPERATION_TIMEOUT

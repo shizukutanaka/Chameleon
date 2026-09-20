@@ -10,8 +10,8 @@ sub-command — every variable below was verified against the code that reads it
 |----------|---------|--------|
 | `CHAMELEON_PERFORMANCE_MODE` | `core.py` | `auto` (default), `fast`, or `safe`. `fast` doubles the default chunk size (capped at 4 MiB); `safe` halves it (floored at 4 KiB); `auto` keeps the 64 KiB default. |
 | `CHAMELEON_CHUNK_SIZE` | `core.py` | Chunk size in bytes. Values outside 4096–4194304 fall back to the 65536 default. Overrides the performance-mode preset. |
-| `CHAMELEON_TIMEOUT` | `core.py` | Caps the duration of long-running batch operations, in seconds. |
-| `CHAMELEON_STATE_DIR` | `core.py` | Directory for batch state files. Defaults to a per-user location. |
+| `CHAMELEON_TIMEOUT` | `core.py` / `main.py` | Wall-clock cap (seconds) on the CLI `batch` command's total duration. Files not yet processed when it fires are reported as `timeout` errors, not silently skipped. `0` (the default) disables the cap. |
+| `CHAMELEON_STATE_DIR` | `core.py` | Directory for batch state files. Defaults to `~/.chameleon_state`, created lazily on the first state write — never at startup. |
 | `CHAMELEON_MAX_WORKERS` | `main.py` | Worker count for batch operations. Non-numeric values are ignored. |
 | `CHAMELEON_PARALLEL` | `main.py` | Set to `0`, `false`, `off`, or `no` to disable parallel execution. Any other value enables it. |
 | `CHAMELEON_LOG_DIR` | `main.py` | Log directory. Defaults to `~/.chameleon/logs`, created with `0700` permissions on POSIX systems. |

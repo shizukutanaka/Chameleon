@@ -1508,16 +1508,39 @@ class AudioProcessor:
             return []
 
     def batch_process(self, files: List[str], operation: str, *,
-                      show_progress: bool = False, **kwargs) -> List[Dict]:
+                      show_progress: bool = False,
+                      timeout_seconds: Optional[float] = None,
+                      **kwargs) -> List[Dict]:
         """Process multiple files with secure validation and optional threading.
 
         *show_progress* renders a live terminal progress bar (opt-in; the CLI
         enables it only when stdout is a real terminal, so captured/piped
         output and tests stay unaffected).
+
+        *timeout_seconds* caps the batch's total wall-clock duration; files
+        not yet processed when it fires are marked ``kind="timeout"`` in the
+        results rather than silently dropped. ``None`` resolves
+        ``CHAMELEON_TIMEOUT`` via ``core.OPERATION_TIMEOUT`` (0 = no cap).
         """
 
         results: List[Dict] = []
         safe_files, rejections = self._filter_safe_files(files)
+
+        if timeout_seconds is None:
+            timeout_seconds = core.OPERATION_TIMEOUT
+        deadline = (
+            time.perf_counter() + timeout_seconds
+            if timeout_seconds and timeout_seconds > 0
+            else None
+        )
+
+        def _mark_timed_out(remaining: List[str]) -> None:
+            for leftover_path in remaining:
+                results.append({
+                    "file": leftover_path,
+                    "error": f"skipped: batch timeout ({timeout_seconds:g}s) reached",
+                    "kind": "timeout",
+                })
 
         dry_run = bool(kwargs.pop("dry_run", False))
         operation_kwargs = dict(kwargs)
@@ -1560,6 +1583,7 @@ class AudioProcessor:
                     for file_path in safe_files
                 }
 
+                pending = dict(future_map)
                 for future, file_path in future_map.items():
                     try:
                         results.append(future.result())
@@ -1570,8 +1594,15 @@ class AudioProcessor:
                             "file": file_path,
                             "kind": _error_kind(exc),
                         })
+                    pending.pop(future, None)
                     if progress is not None:
                         progress.update()
+                    if deadline is not None and time.perf_counter() >= deadline:
+                        # Stop taking new work; in-flight futures still
+                        # finish so their outputs are not torn.
+                        executor.shutdown(wait=False, cancel_futures=True)
+                        _mark_timed_out(list(pending.values()))
+                        break
             except BaseException:
                 # Ctrl-C: abandon queued work instead of running it to
                 # completion inside executor shutdown(wait=True).
@@ -1580,7 +1611,7 @@ class AudioProcessor:
             else:
                 executor.shutdown(wait=True)
         else:
-            for file_path in safe_files:
+            for index, file_path in enumerate(safe_files):
                 try:
                     results.append(
                         self._process_single_file(
@@ -1599,6 +1630,9 @@ class AudioProcessor:
                     })
                 if progress is not None:
                     progress.update()
+                if deadline is not None and time.perf_counter() >= deadline:
+                    _mark_timed_out(safe_files[index + 1:])
+                    break
 
         if progress is not None:
             progress.finish()
@@ -3004,6 +3038,10 @@ async def main():
             return results[0]["exit_code"]
 
         successful = sum(1 for r in results if "error" not in r)
+        timed_out = sum(1 for r in results if r.get("kind") == "timeout")
+        if timed_out:
+            print(f"Warning: CHAMELEON_TIMEOUT reached — "
+                  f"{timed_out} file(s) not processed", file=sys.stderr)
         verb = "Would process" if args.dry_run else "Processed"
         summary = f"{verb} {successful}/{len(results)} files successfully"
         if HAS_UX_IMPROVEMENTS:
