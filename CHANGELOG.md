@@ -14,6 +14,11 @@
 
 ### Fixed
 
+- **`midi --tempo` was accepted but never reached the file** -- the
+  generated MIDI had no FF 51 03 tempo meta-event, so `--tempo 60`
+  produced a file players render at the default 120 BPM. The tempo now
+  lands in the track (verified: 60 BPM -> 1,000,000 us/qn, 240 ->
+  250,000), and `--length` was confirmed to bound note count.
 - **`midi extract` silently emitted garbage on polyphonic input** --
   YIN is monophonic; a C-major chord produced 159 spurious notes with
   no hint that the input was outside scope. Extraction now warns on

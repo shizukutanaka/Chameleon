@@ -292,3 +292,17 @@ def test_analyze_export_metadata_is_structured(tmp_path):
     assert isinstance(entry["metadata"], dict)
     assert isinstance(entry["metadata"]["duration"], float)
     assert "np.float64" not in out.read_text()
+
+
+def test_midi_compose_tempo_reaches_the_file(tmp_path):
+    """--tempo was accepted but never written: the file had no FF 51 03
+    meta event, so every composition played at the player's default 120."""
+    out = tmp_path / "t.mid"
+    result = _run("midi", "compose", "--key", "C", "--tempo", "60",
+                  "--output", str(out), cwd=str(tmp_path))
+    assert result.returncode == 0
+    data = out.read_bytes()
+    i = data.find(b"\xff\x51\x03")
+    assert i >= 0, "no tempo meta-event in file"
+    uspq = int.from_bytes(data[i+3:i+6], "big")
+    assert uspq == 1_000_000  # 60 BPM

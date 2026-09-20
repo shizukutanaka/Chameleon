@@ -555,8 +555,13 @@ class MIDIAnalyzer:
 
         return "Original progression"
 
-    def generate_midi_file(self, notes: List[MIDINote], filename: str) -> bool:
-        """Generate a basic MIDI file from notes"""
+    def generate_midi_file(self, notes: List[MIDINote], filename: str,
+                           tempo_bpm: float = 120.0) -> bool:
+        """Generate a basic MIDI file from notes.
+
+        ``tempo_bpm`` is written as the FF 51 03 meta event -- without it
+        every player defaults to 120 BPM and a requested tempo would have no
+        effect on the produced file."""
         try:
             # Basic MIDI file structure
             midi_data = bytearray()
@@ -570,6 +575,12 @@ class MIDIAnalyzer:
 
             # Track chunk
             track_data = bytearray()
+
+            # Tempo meta event at tick 0 so the requested BPM reaches the
+            # file instead of dying in the caller.
+            us_per_quarter = int(round(60_000_000 / tempo_bpm))
+            track_data.extend(b'\x00\xff\x51\x03')
+            track_data.extend(us_per_quarter.to_bytes(3, 'big'))
 
             # Sort notes by start time
             sorted_notes = sorted(notes, key=lambda n: n.start_time)

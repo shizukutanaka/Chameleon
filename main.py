@@ -1229,7 +1229,8 @@ class AudioProcessor:
             self.logger.error(f"Musical analysis failed: {e}")
             return {"error": str(e)}
 
-    def generate_midi(self, notes: List[MIDINote], output_path: str) -> bool:
+    def generate_midi(self, notes: List[MIDINote], output_path: str,
+                      tempo_bpm: float = 120.0) -> bool:
         """Generate MIDI file from notes"""
         if not HAS_MIDI:
             self.logger.warning("MIDI generation not available")
@@ -1237,7 +1238,8 @@ class AudioProcessor:
 
         try:
             analyzer = MIDIAnalyzer()
-            success = analyzer.generate_midi_file(notes, output_path)
+            success = analyzer.generate_midi_file(notes, output_path,
+                                                  tempo_bpm=tempo_bpm)
 
             if success:
                 self.logger.info(f"MIDI file generated: {output_path}")
@@ -2640,7 +2642,7 @@ async def main():
 
                 # Save to MIDI file if output specified
                 if args.output:
-                    success = processor.generate_midi(notes, args.output)
+                    success = processor.generate_midi(notes, args.output, tempo_bpm=args.tempo)
                     if success:
                         print(f"MIDI file saved to {args.output}")
                     else:
@@ -2732,7 +2734,7 @@ async def main():
             if melody:
                 print(f"Generated melody with {len(melody)} notes")
                 if args.output:
-                    success = processor.generate_midi(melody, args.output)
+                    success = processor.generate_midi(melody, args.output, tempo_bpm=args.tempo)
                     if success:
                         print(f"Composition saved to {args.output}")
                     else:
@@ -2774,7 +2776,7 @@ async def main():
                     demo_notes.append(note)
 
             if demo_notes:
-                success = processor.generate_midi(demo_notes, args.output)
+                success = processor.generate_midi(demo_notes, args.output, tempo_bpm=args.tempo)
                 if success:
                     print(f"Demo MIDI file generated: {args.output}")
                 else:
