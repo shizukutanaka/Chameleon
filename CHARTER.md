@@ -2348,3 +2348,9 @@ any range assertion.
   call ran with the default 2048-sample window. If the input is below the
   analysis floor, skip it and report unmeasured -- the alternative is
   stderr noise the user cannot act on dressed as a diagnostic.
+- A gate on the wrapper is not a gate on the parts: AudioRestorer's
+  constructor checked deps, but repair_audio built DeclippingProcessor/
+  HumRemover directly and bypassed it -- on numpy-only installs declip died
+  on `interpolate` mid-DSP (clipped input) or wrote input-identical
+  "success" (clean input). Check dependency gates at the point the
+  dependency is actually consumed, not only at the facade.

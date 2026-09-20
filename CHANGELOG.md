@@ -55,6 +55,16 @@
 
 ### Fixed
 
+- **`--declip`/`--dehum` bypassed the dependency gate on a numpy-only
+  install** -- `repair_audio` constructs `DeclippingProcessor`/`HumRemover`
+  directly, skipping the `_require_restoration_deps()` check that
+  `AudioRestorer` puts on its own constructor. On an install without
+  scipy, declip on a *clipped* file died mid-DSP with
+  `name 'interpolate' is not defined` (scipy never imported), and clean
+  audio "succeeded" by writing input-identical output -- the repair only
+  looked finished because detection found nothing to do. The gate now
+  runs before the processors are built, so a scipy-less install gets the
+  honest refusal: "Audio restoration requires SciPy. Install ... [audio]".
 - **`analyze --detailed` leaked librosa warnings on any input shorter
   than 2048 samples** -- stft, spectral_centroid, zcr and beat_track all
   ran with librosa's default window regardless of signal length, so a

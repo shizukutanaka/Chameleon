@@ -1117,6 +1117,14 @@ class AudioProcessor:
             # on a 0-frame file.
             return audio
 
+        # AudioRestorer gates its own constructor on this, but the repair
+        # path below instantiates DeclippingProcessor/HumRemover directly --
+        # on a numpy-only install that meant declip on a *clipped* file died
+        # on `interpolate` (scipy) never having been imported, and dehum
+        # could do the same on `signal`. Clean audio slipped through as a
+        # no-op "success" only because detection found nothing to repair.
+        audio_restoration._require_restoration_deps()
+
         processors = {
             "declip": lambda channel: audio_restoration.DeclippingProcessor()
                                       .restore_clipped(channel, sr),

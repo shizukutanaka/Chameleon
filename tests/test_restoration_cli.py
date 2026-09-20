@@ -234,3 +234,19 @@ def test_stereo_files_are_repaired_channel_by_channel(tmp_path):
 
     assert repaired.shape == stereo.shape
     assert np.abs(repaired - stereo).max() < 1e-9   # nothing wrong with it
+
+
+def test_repairs_refuse_cleanly_when_scipy_is_absent(monkeypatch):
+    # The bypass: repair_audio constructs DeclippingProcessor/HumRemover
+    # directly, skipping the dependency gate AudioRestorer puts on its own
+    # constructor. Without scipy the declipper then died mid-DSP on
+    # `interpolate` never having been imported -- a NameError on a clipped
+    # file, and a silent no-op "Processed" on a clean one.
+    import audio_restoration
+    import main
+
+    monkeypatch.setattr(audio_restoration, "HAS_SCIPY", False)
+    processor = main.AudioProcessor(main.ProcessingConfig())
+
+    with pytest.raises(RuntimeError, match="SciPy"):
+        processor.repair_audio(_tone(440), SAMPLE_RATE, ["declip"])
