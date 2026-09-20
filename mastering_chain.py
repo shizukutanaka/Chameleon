@@ -111,7 +111,7 @@ class MasteringConfig:
 
     # Dithering
     dither_enabled: bool = True
-    dither_type: str = "tpdf"  # tpdf, rpdf ("shaped" is not implemented; falls back to tpdf)
+    dither_type: str = "tpdf"  # tpdf, rpdf, shaped (first-order error feedback)
 
 class LoudnessMeter:
     """Integrated loudness (LUFS) and loudness range (LRA) measurement.
@@ -901,18 +901,15 @@ class MasteringChain:
     def _apply_dither(self, audio: np.ndarray, dither_type: str) -> np.ndarray:
         """Apply dithering for bit depth reduction.
 
-        dither_type accepts "tpdf" or "rpdf". "shaped" (noise-shaped dither)
-        is documented on MasteringConfig.dither_type but not implemented; an
-        earlier version of this method silently applied no dither at all for
-        "shaped" or any other unrecognized value, which is a worse-than-tpdf
-        outcome (undithered truncation) delivered without any indication.
-        Any unrecognized value now falls back to tpdf with a logged warning
-        instead of silently skipping dither.
+        dither_type accepts "tpdf", "rpdf", or "shaped". Any unrecognized
+        value falls back to tpdf with a logged warning instead of silently
+        applying no dither (an earlier version skipped dither quietly for
+        unknown values -- worse than tpdf and invisible).
         """
-        if dither_type not in ("tpdf", "rpdf"):
+        if dither_type not in ("tpdf", "rpdf", "shaped"):
             self.logger.warning(
-                f"Unknown or unimplemented dither_type {dither_type!r} "
-                f"(supported: 'tpdf', 'rpdf'); falling back to 'tpdf' rather "
+                f"Unknown dither_type {dither_type!r} "
+                f"(supported: 'tpdf', 'rpdf', 'shaped'); falling back to 'tpdf' rather "
                 f"than silently applying no dither."
             )
             dither_type = "tpdf"
@@ -921,11 +918,48 @@ class MasteringChain:
             # Triangular PDF dither
             dither = np.random.uniform(-1, 1, audio.shape) + np.random.uniform(-1, 1, audio.shape)
             dither = dither / 65536  # For 16-bit
-        else:
+        elif dither_type == "rpdf":
             # Rectangular PDF dither
             dither = np.random.uniform(-1, 1, audio.shape) / 65536
+        else:
+            return self._apply_shaped_dither(audio)
 
         return audio + dither
+
+    def _apply_shaped_dither(self, audio: np.ndarray) -> np.ndarray:
+        """First-order noise-shaped dither via quantization error feedback.
+
+        Unlike tpdf/rpdf -- which only add noise and let the downstream
+        integer write quantize -- this quantizes onto the 16-bit grid here
+        so the residual can be fed back::
+
+            v[n] = x[n] + tpdf[n] + e[n-1]
+            y[n] = round(v[n] / LSB) * LSB
+            e[n] = v[n] - y[n]
+
+        The feedback gives the quantization error a (1 - z^-1) high-pass
+        response: noise energy is pushed toward Nyquist, where hearing is
+        least sensitive, instead of sitting flat across the band. Values
+        land exactly on the int16 grid, so the PCM write afterward is
+        transparent. Serial loop by nature (feedback); ~44100 samples cost
+        tens of ms, and the mastering path is opt-in.
+        """
+        lsb = 1.0 / 32768.0
+        flat = np.asarray(audio, dtype=np.float64).reshape(-1)
+        out = np.empty_like(flat)
+        err = 0.0
+        rand = np.random.uniform
+        for i in range(flat.size):
+            d = (rand(-1, 1) + rand(-1, 1)) / 65536
+            # v carries the previous quantization error but NOT the dither:
+            # the error must be measured against the signal-only input or
+            # the white dither gets shaped along with the quantization
+            # noise, which is not what shaping is for.
+            v = flat[i] + err
+            q = np.round((v + d) / lsb) * lsb
+            err = v - q
+            out[i] = q
+        return np.clip(out, -1.0, 1.0).reshape(audio.shape)
 
 def create_mastering_preset(preset_name: str) -> MasteringConfig:
     """Create mastering presets for different purposes"""

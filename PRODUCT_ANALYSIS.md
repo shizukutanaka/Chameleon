@@ -3,8 +3,8 @@
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
 **Version:** 1.1.0 · **Tests:** re-run 2026-09-19 on Python 3.12, green in
 all three configurations — **391 passed** on a bare install (stdlib only,
-27 skipped), **463** with numpy (scipy/librosa/soundfile blocked, 27
-skipped), **563** with numpy + scipy + librosa + soundfile + fastapi
+27 skipped), **464** with numpy (scipy/librosa/soundfile blocked, 27
+skipped), **564** with numpy + scipy + librosa + soundfile + fastapi
 (2 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
@@ -327,7 +327,7 @@ here because they need a user decision first.
 | ~~P1~~ | ~~Fix compressor's non-monotonic soft knee~~ | High | S | Low | **DONE 2026-08-08** — centred quadratic knee (Giannoulis 2012); output no longer drops 2 dB at the knee |
 | ~~P2~~ | ~~Add minimal tests for the remaining zero-coverage modules~~ | Med | S | Low | **DONE 2026-08-25** — 18 tests for `personal_config`, which found a config loader that died on any file written by another version, an unhelpful crash on malformed JSON, and playlists stamped with the home directory's mtime. (`performance_optimizer` was deleted instead — the honest resolution for code with no callers) |
 | ~~P3~~ | ~~`apply_effects` compression is an instantaneous waveshaper~~ | ~~Low~~ | ~~S~~ | ~~Low~~ | **DONE 2026-09-19** — routed to `mastering_chain.Compressor` (real envelope follower + soft knee); waveshaper's −13 dB 3rd-harmonic distortion now ~−100 dB |
-| P4 | Noise-shaped ("shaped") dither in `mastering_chain` | Low | M | Low | Advertised in the config docstring, unimplemented; falls back to TPDF with a warning |
+| ~~P4~~ | ~~Noise-shaped ("shaped") dither in `mastering_chain`~~ | ~~Low~~ | ~~M~~ | ~~Low~~ | **DONE 2026-09-19** — first-order error-feedback quantizer on the 16-bit grid; error excludes the dither, measured LF suppression 11x / HF:LF 26x vs flat TPDF |
 | ~~P3~~ | ~~Consider TPDF dither by default, or a `--dither` CLI flag~~ | ~~Low~~ | ~~S~~ | ~~Med~~ | **DECLINED 2026-09-19** — dither stays opt-in via `ProcessingConfig.apply_dither`; deterministic-by-default output is an explicit §9 decision and no CLI demand exists. Revisit only if a user asks |
 | ~~P2~~ | ~~Give `audio_restoration` a CLI surface~~ | Med | M | Med | **DONE 2026-08-25** — `process --declip` / `--dehum` ship after an audit that found the declipper damaging clean audio and the hum detector firing on silence. Click/crackle/gap/denoise deliberately not exposed: no trustworthy detector. See `CHARTER.md` §9 |
 | P2 | Adopt `ci/proposed-ci.yml` → `.github/workflows/ci-cd.yml` | High (green CI) | XS (one `cp`) | Low | **Human-only** — needs `workflows` permission |

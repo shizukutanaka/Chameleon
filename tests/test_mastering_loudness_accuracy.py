@@ -216,9 +216,35 @@ def test_unknown_dither_type_falls_back_to_tpdf_not_silence(caplog):
     chain = mastering_chain.MasteringChain(config, sample_rate=48000)
     audio = np.zeros((2, 1000))
 
-    dithered = chain._apply_dither(audio, "shaped")
+    dithered = chain._apply_dither(audio, "bogus")
 
     assert not np.array_equal(dithered, audio)  # dither noise was actually added
+
+
+def test_shaped_dither_pushes_error_energy_toward_nyquist():
+    # Shaped dither exists to move quantization noise where hearing is
+    # least sensitive. A sub-LSB DC input makes the quantization error a
+    # deterministic flicker: TPDF spreads it flat, error feedback must
+    # pile it up at high frequencies.
+    config = mastering_chain.MasteringConfig()
+    chain = mastering_chain.MasteringChain(config, sample_rate=48000)
+    lsb = 1.0 / 32768.0
+    audio = np.full(48000, 0.4 * lsb)
+
+    def hf_lf_ratio(out):
+        err = (out - audio) * np.hanning(len(audio))
+        spectrum = np.abs(np.fft.rfft(err))
+        freqs = np.fft.rfftfreq(len(audio), 1 / 48000)
+        lo = spectrum[(freqs > 20) & (freqs < 1000)].mean()
+        hi = spectrum[(freqs > 15000) & (freqs < 20000)].mean()
+        return hi / lo
+
+    shaped = chain._apply_dither(audio.copy(), "shaped")
+    flat = chain._apply_dither(audio.copy(), "tpdf")
+
+    assert hf_lf_ratio(shaped) > 4 * hf_lf_ratio(flat)
+    # Values land exactly on the int16 grid -- the PCM write is transparent
+    assert np.allclose(np.round(shaped / lsb) * lsb, shaped)
 
 
 # --- analyze(): dynamic_range is no longer a P95/P10 blow-up --------------

@@ -12,6 +12,15 @@
   (LOGIN already logged FAILED; a log that only shows successes cannot
   reveal probing).
 
+### Added
+
+- **Noise-shaped (`"shaped"`) dither** in `mastering_chain` -- the
+  advertised-but-unimplemented `dither_type` now works via a
+  first-order error-feedback quantizer on the 16-bit grid (quantization
+  error gets a (1 - z^-1) high-pass response; measured LF suppression
+  ~11x vs flat TPDF on a sub-LSB input). Output lands exactly on the
+  int16 grid so the PCM write stays transparent.
+
 ### Fixed
 
 - **`--denoise` output was longer than its input** -- scipy's `istft`

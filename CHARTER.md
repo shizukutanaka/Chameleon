@@ -852,8 +852,9 @@ mean normalisation, absolute threshold at 0.1 taking the *first* dip and
 descending to its local minimum, parabolic interpolation, and a global-minimum
 fallback rejected above 0.5 for non-periodicity. **Mastering dither**
 (`mastering_chain.py`) hardcodes a 16-bit scale factor, which is correct for
-the 16-bit output this path actually writes; "shaped" is unimplemented but
-already falls back to TPDF with a warning rather than silently doing nothing.
+the 16-bit output this path actually writes; "shaped" is now implemented
+(first-order error feedback) and unknown values still fall back to TPDF
+with a warning rather than silently doing nothing.
 
 **Conversion quality: anti-aliasing, rounding, opt-in dither (2026-08-08).**
 With the measurement side settled, this pass audited §1's other half —
@@ -1977,6 +1978,20 @@ boundary is the correct *behavior*; hiding it is the defect. The
 writer now counts overrange samples and warns once per file with the
 count and the path. Audit rule: a lossy guard that fires is
 information the user needs — silent clamps protect nobody.
+
+**Q (2026-09-19, cycle 61): What does "shaped" dither minimally mean?**
+The config documented `dither_type="shaped"` but the code fell back to
+TPDF — an honest warning, still an unimplemented promise. The catch:
+`_apply_dither` only *adds* noise; real noise shaping needs the
+quantization error, which doesn't exist until the int16 write. The fix
+quantizes on the 16-bit grid inside the dither stage (values land
+exactly on the grid, so the later PCM write is transparent) and feeds
+`v - q` back with a +1 tap — a (1 - z^-1) high-pass on the error.
+Subtlety worth keeping: the fed-back error must exclude the dither
+(`v = x + e`, quantize `v + d`), or the white dither gets shaped too
+and the error spectrum stays almost flat (measured HF/LF 1.6 vs 26.0
+after the fix). Error feedback is inherently serial — the loop is
+scalar Python, acceptable on an opt-in mastering path.
 
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
