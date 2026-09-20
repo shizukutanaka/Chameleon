@@ -3021,6 +3021,11 @@ async def main():
                       f"(missing parent directory, or path is a directory)",
                       file=sys.stderr)
                 return ExitCode.INPUT
+            if not os.access(parent, os.W_OK | os.X_OK):
+                print(f"Error: cannot write MIDI output to '{output_path}' "
+                      f"(parent directory not writable)",
+                      file=sys.stderr)
+                return ExitCode.INPUT
 
         print(f"MIDI operation '{args.operation}'")
 

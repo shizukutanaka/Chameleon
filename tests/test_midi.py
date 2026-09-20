@@ -212,3 +212,25 @@ def test_midi_compose_rejects_nonfinite_tempo_and_length(tmp_path):
         assert proc.returncode == 3, (extra, proc.stderr)
         assert "finite" in proc.stderr.lower()
         assert not out.exists()
+
+
+def test_midi_output_into_unwritable_dir_exits_input(tmp_path):
+    """`midi compose --output` into a chmod-555 dir used to build the whole
+    MIDI file in memory, then surface PermissionError as ERROR(1). The
+    destination is user input: INPUT(3) before any work."""
+    import subprocess
+    import sys
+    from pathlib import Path
+    main_py = str(Path(__file__).resolve().parent.parent / "main.py")
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    locked.chmod(0o555)
+    try:
+        proc = subprocess.run(
+            [sys.executable, main_py, "midi", "compose", "--length", "4",
+             "--output", str(locked / "x.mid")],
+            capture_output=True, text=True, timeout=30)
+    finally:
+        locked.chmod(0o755)
+    assert proc.returncode == 3
+    assert "not writable" in proc.stderr
