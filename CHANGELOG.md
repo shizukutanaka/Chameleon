@@ -55,6 +55,12 @@
 
 ### Fixed
 
+- **Workflow template expressions could allocate unbounded memory** --
+  `_LiteralExpressionEvaluator` capped AST complexity at 200 nodes, but
+  `"x" * 500_000_000` is three nodes and materialised a 500 MB string
+  (measured 0.03 s). Binary ops now project the result size before
+  multiplying sequences and every produced value is capped at 100,000
+  elements/chars; oversized results raise `TemplateEvaluationError`.
 - **`spectral_utils.apply_spectral_mask` silently discarded input past
   sample 4096 and re-normalised every output to full scale** -- the
   pure-Python DFT fallback transforms at most 4096 samples, so a longer

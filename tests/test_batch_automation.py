@@ -61,3 +61,20 @@ def test_scheduler_rejects_an_expression_it_cannot_parse(monkeypatch):
     with pytest.raises(ValueError, match="Unsupported schedule"):
         scheduler.schedule_workflow(workflow, "0 9 * * *")
     assert len(scheduler.scheduled_jobs) == 1  # not silently registered
+
+
+def test_template_expression_rejects_oversized_results():
+    # "x" * 500_000_000 is a three-node expression that would allocate
+    # half a gigabyte -- the node cap limits complexity, not size, so the
+    # evaluator must bound the materialised result too.
+    import pytest
+    from batch_automation import (
+        _evaluate_template_expression,
+        TemplateEvaluationError,
+    )
+
+    with pytest.raises(TemplateEvaluationError):
+        _evaluate_template_expression('"x" * 500_000_000', {})
+
+    assert _evaluate_template_expression('"ab" * 3', {}) == "ababab"
+    assert _evaluate_template_expression('[1, 2] + [3]', {}) == [1, 2, 3]

@@ -112,6 +112,11 @@ SAFE_MODULE_FUNCTIONS = MappingProxyType({
 RESULT_ALLOWED_ATTRIBUTES = frozenset({'status', 'success', 'error'})
 SAFE_LITERAL_ALLOWED_TYPES = (str, int, float, bool, type(None))
 
+# Bound the size of any value a template expression can materialise --
+# "x" * 500_000_000 is a three-node expression but allocates half a
+# gigabyte. The node-count cap limits complexity, not result size.
+_TEMPLATE_RESULT_LIMIT = 100_000
+
 
 CONFIG_VALIDATOR = SecurityValidator(
     SecurityConfig(allowed_extensions={'.yaml', '.yml', '.json'})
@@ -359,15 +364,28 @@ class _LiteralExpressionEvaluator(ast.NodeVisitor):
     def visit_BinOp(self, node: ast.BinOp) -> Any:
         left = self.visit(node.left)
         right = self.visit(node.right)
-        if isinstance(node.op, ast.Add):
-            return left + right
-        if isinstance(node.op, ast.Sub):
-            return left - right
         if isinstance(node.op, ast.Mult):
-            return left * right
-        if isinstance(node.op, ast.Div):
-            return left / right
-        raise TemplateEvaluationError("Unsupported binary operator in template")
+            # Check the projected size before materialising the result:
+            # "x" * 500_000_000 allocates half a gigabyte, so a post-hoc
+            # length check would still let the allocation happen.
+            for seq, factor in ((left, right), (right, left)):
+                if isinstance(seq, (str, bytes, list, tuple)) and isinstance(factor, int) \
+                        and not isinstance(factor, bool) \
+                        and factor > 0 and len(seq) * factor > _TEMPLATE_RESULT_LIMIT:
+                    raise TemplateEvaluationError("Template result exceeds size limit")
+        if isinstance(node.op, ast.Add):
+            result = left + right
+        elif isinstance(node.op, ast.Sub):
+            result = left - right
+        elif isinstance(node.op, ast.Mult):
+            result = left * right
+        elif isinstance(node.op, ast.Div):
+            result = left / right
+        else:
+            raise TemplateEvaluationError("Unsupported binary operator in template")
+        if isinstance(result, (str, list, tuple, set, dict)) and len(result) > _TEMPLATE_RESULT_LIMIT:
+            raise TemplateEvaluationError("Template result exceeds size limit")
+        return result
 
     def visit_Subscript(self, node: ast.Subscript) -> Any:
         base = self.visit(node.value)

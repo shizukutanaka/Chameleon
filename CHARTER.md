@@ -2396,3 +2396,7 @@ any range assertion.
   the caller asked about all of them, and the equaliser zeroed the tail.
   Fallbacks must degrade fidelity, not coverage -- and a gain stage that
   re-normalises to full scale is an attenuator that lies.
+- A complexity cap is not a size cap: the template evaluator limited AST
+  node count yet "x" * 500_000_000 -- three nodes -- allocated 500 MB.
+  Any sandbox or safe-evaluator must bound the *materialised* value, and
+  the check must precede the allocation, not just the return.
