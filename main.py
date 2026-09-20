@@ -2440,6 +2440,14 @@ async def main():
                 exit_code = ExitCode.ERROR
 
     elif args.command == "stream":
+        # Device indices are non-negative PyAudio indexes; a negative one
+        # would reach the backend and fail opaquely.
+        for flag, dev in (("--input-device", args.input_device),
+                          ("--output-device", args.output_device)):
+            if dev is not None and dev < 0:
+                print(f"Error: {flag} must be >= 0, got {dev}",
+                      file=sys.stderr)
+                return ExitCode.INPUT
         input_device = args.input_device
         output_device = args.output_device
         try:

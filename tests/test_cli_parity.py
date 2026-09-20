@@ -453,3 +453,11 @@ def test_negative_sample_rate_rejected_upfront(tmp_path):
     single = _run("process", str(wav), "--convert", "--convert-sample-rate",
                   "0", cwd=str(tmp_path))
     assert single.returncode == 3
+
+
+def test_stream_rejects_negative_device_index(tmp_path):
+    """PyAudio device indices are >= 0; a negative index used to reach the
+    backend (or fail opaquely when PyAudio is absent)."""
+    result = _run("stream", "--input-device", "-1", cwd=str(tmp_path))
+    assert result.returncode == 3
+    assert "--input-device" in result.stderr

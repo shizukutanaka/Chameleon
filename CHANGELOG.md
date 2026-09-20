@@ -14,6 +14,10 @@
 
 ### Fixed
 
+- **`stream` accepted negative device indices** -- `--input-device -1`
+  parsed and reached the PyAudio backend where it fails opaquely (or
+  with a bare RuntimeError when PyAudio is absent). Indices are now
+  validated >= 0 at dispatch as INPUT(3).
 - **Negative/zero sample rates and non-wav `--convert-format` reached
   the DSP** -- `batch convert --sample-rate -1` parsed and then every
   file failed identically inside convert_audio; `--convert-format mp3`
