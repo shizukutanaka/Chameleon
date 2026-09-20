@@ -1286,7 +1286,10 @@ class AudioProcessor:
         uses PyAudio's default device for that direction.
         """
         if not HAS_PYAUDIO:
-            raise RuntimeError("PyAudio not installed. Cannot process streams.")
+            raise RuntimeError(
+                "PyAudio not installed. Real-time streaming requires the "
+                "optional [audio] extra (pip install 'chameleon[audio]')."
+            )
 
         p = pyaudio.PyAudio()
 

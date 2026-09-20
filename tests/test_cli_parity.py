@@ -538,3 +538,23 @@ def test_process_warns_when_inputs_collide_in_output_dir(tmp_path):
     assert proc.returncode == 0, proc.stderr
     assert "overwrite" in proc.stderr
     assert "same" in proc.stderr
+
+
+def test_docs_synopsis_lists_only_real_subcommands():
+    """docs/*/commands.md show a `{a,b,c}` choice list in their usage synopsis.
+    The deleted `ml` command survived there as a bare token for months because
+    no fantasy-feature grep matches a comma-list entry -- the doc synopsis must
+    be compared against the parser's actual choices, not pattern-scanned."""
+    import re, subprocess, sys
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    help_out = subprocess.run(
+        [sys.executable, str(root / "main.py"), "--help"],
+        capture_output=True, text=True, timeout=30).stdout
+    real = set(re.search(r"\{([a-z,]+)\}", help_out).group(1).split(","))
+    for doc in (root / "docs").rglob("commands.md"):
+        m = re.search(r"\{([a-z,]+)\}", doc.read_text())
+        assert m, f"{doc} has no subcommand synopsis to check"
+        listed = set(m.group(1).split(","))
+        assert listed == real, (
+            f"{doc}: synopsis {sorted(listed)} != parser {sorted(real)}")

@@ -9,7 +9,7 @@ Invoke either as `python main.py <command>` or, after `pip install -e .`, as
 
 ```
 chameleon [--version] [--max-workers N] [--no-parallel]
-          {analyze,process,stream,batch,ml,midi,plugins,server} ...
+          {analyze,process,stream,batch,midi,plugins,server} ...
 ```
 
 Global options:

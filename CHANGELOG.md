@@ -1020,3 +1020,8 @@ Initial public release of the Chameleon Audio Tool.
 - A corrupt ~/.chameleon/library.json now raises a named, actionable ValueError ("not valid JSON ... fix it, or delete it") instead of a raw JSONDecodeError traceback killing every library operation -- same rigor as PersonalConfig.load.
 - Invalid CHAMELEON_* env values no longer silently fall back: CHAMELEON_MAX_FILE_SIZE, CHAMELEON_CHUNK_SIZE, and CHAMELEON_TIMEOUT now warn with the offending value; a garbage CHAMELEON_API_MAX_CLEARANCE warns instead of silently capping at TOP_SECRET.
 - `--convert-sample-rate` / `batch --sample-rate` above 768000 (DXD) now exit INPUT(3). An unbounded rate was a resource bomb: 1s at 1e9Hz resampled into a 2GB WAV reported as "Processed".
+- `stream`'s missing-PyAudio error now names the remedy (`[audio] extra`),
+  matching every other missing-dependency message. Removed the deleted `ml`
+  command lingering in both commands.md usage synopses; a new parity test
+  compares the docs' choice list against the parser's actual subcommands so
+  a comma-list entry can't survive deletion again.

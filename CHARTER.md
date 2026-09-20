@@ -2276,3 +2276,6 @@ any range assertion.
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
   gate is `validation_test.py`. A green run of the wrong script is not a green
   gate; match the command to the document before trusting it.
+- A deleted command can survive in a doc's `{a,b,c}` usage synopsis because no
+  fantasy-feature grep matches a comma-list token. Compare the docs' choice
+  list to the parser's actual subcommands — pattern scans don't see lists.

@@ -9,7 +9,7 @@
 
 ```
 chameleon [--version] [--max-workers N] [--no-parallel]
-          {analyze,process,stream,batch,ml,midi,plugins,server} ...
+          {analyze,process,stream,batch,midi,plugins,server} ...
 ```
 
 グローバルオプション:
