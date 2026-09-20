@@ -2320,3 +2320,9 @@ any range assertion.
   generic except-None path loses the failure's kind -- a timed-out plugin
   is not "no valid plugin class". Re-raise it like SecurityError so
   load_failures names the real reason.
+- State files are written like state files: open('w') truncates first, so
+  a kill mid-write produced a truncated JSON that the next load reported
+  as *user* corruption -- the crash was ours, the blame theirs. Every
+  state write (config, library db, generated scripts) goes through a
+  sibling temp file + os.replace now: readers see the old file or the
+  new one, never a partial write.

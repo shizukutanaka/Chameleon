@@ -356,3 +356,19 @@ def test_non_object_library_db_is_rejected(manager):
     manager.db_path.write_text('["a.wav"]')
     with pytest.raises(ValueError, match="JSON object"):
         manager._load_db()
+
+
+def test_save_writes_atomically_no_partial_state(tmp_path):
+    # A crash mid-open('w') used to leave a truncated JSON that the next
+    # load reported as user corruption. The write now goes through a
+    # sibling temp file + os.replace, so readers see old or new, never
+    # a partial file -- and no .tmp is left behind on success.
+    from personal_config import PersonalConfig
+    target = tmp_path / "personal_config.json"
+    cfg = PersonalConfig()
+    cfg.save(target)
+
+    assert target.exists()
+    assert not (tmp_path / "personal_config.json.tmp").exists()
+    # And a load of what was written must succeed.
+    assert PersonalConfig.load(target).audio_library == cfg.audio_library

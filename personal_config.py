@@ -5,6 +5,7 @@ Simplified setup with maximum security and features
 """
 
 import sys
+import os
 import json
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -13,6 +14,21 @@ from datetime import datetime, timezone
 import logging
 
 logger = logging.getLogger("chameleon.personal")
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    """Write text to path atomically: sibling temp file + os.replace.
+
+    A plain open('w') truncates first, so a crash or kill mid-write left a
+    half-written JSON that PersonalConfig.load then reported as corrupt --
+    the user's settings were lost *and* named as their fault. os.replace
+    is atomic on POSIX and Windows: readers see the old file or the new
+    one, never a partial write.
+    """
+    tmp = path.parent / (path.name + ".tmp")
+    with open(tmp, 'w') as f:
+        f.write(content)
+    os.replace(tmp, path)
 
 
 @dataclass
@@ -113,8 +129,7 @@ class PersonalConfig:
 
         config_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(config_path, 'w') as f:
-            json.dump(asdict(self), f, indent=2)
+        _atomic_write_text(config_path, json.dumps(asdict(self), indent=2))
 
         logger.info(f"Configuration saved to {config_path}")
 
@@ -224,8 +239,7 @@ alias audio-processed='cd {config.output_directory}'
 alias audio-server='"{sys.executable}" "{Path.cwd()}/main.py" server --host 127.0.0.1 --port 8080'
 """
 
-        with open(aliases_file, 'w') as f:
-            f.write(aliases)
+        _atomic_write_text(aliases_file, aliases)
 
         # Create PowerShell script for Windows
         ps_file = Path.home() / ".chameleon" / "aliases.ps1"
@@ -267,8 +281,7 @@ function Audio-Processed {{
 }}
 """
 
-        with open(ps_file, 'w') as f:
-            f.write(ps_script)
+        _atomic_write_text(ps_file, ps_script)
 
         print(f"\n📝 Quick commands created:")
         print(f"   Linux/Mac: source ~/.chameleon/aliases.sh")
@@ -309,8 +322,7 @@ class PersonalLibraryManager:
     def _save_db(self) -> None:
         """Save library database"""
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.db_path, 'w') as f:
-            json.dump(self.library_db, f, indent=2)
+        _atomic_write_text(self.db_path, json.dumps(self.library_db, indent=2))
 
     def scan_library(self) -> Dict[str, Any]:
         """Scan audio library and update database"""
