@@ -271,6 +271,38 @@ def test_invalid_parallel_env_warns_not_silently_coerced(monkeypatch):
     assert any("CHAMELEON_PARALLEL" in str(w.message) for w in seen)
 
 
+CORE_PY = str(Path(__file__).resolve().parent.parent / "core.py")
+
+
+def _run_core(*args, cwd=None):
+    return subprocess.run(
+        [sys.executable, CORE_PY, *args],
+        capture_output=True,
+        text=True,
+        cwd=cwd,
+        timeout=30,
+    )
+
+
+def test_core_mini_cli_rejects_nonnumeric_float_arg(tmp_path):
+    # `float(sys.argv[4])` was unguarded: `core.py normalize a b.wav banana`
+    # died on a raw ValueError traceback. A bad number is user input, not a
+    # crash.
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    result = _run_core("normalize", str(wav), "out.wav", "banana", cwd=str(tmp_path))
+    assert result.returncode == 1
+    assert "must be a number" in result.stdout
+    assert "Traceback" not in result.stderr + result.stdout
+
+
+def test_core_mini_cli_failure_exits_nonzero(tmp_path):
+    # Every op printed result.message and fell through to exit 0: a missing
+    # input reported its failure and still exited OK.
+    result = _run_core("normalize", "missing.wav", "out.wav", cwd=str(tmp_path))
+    assert result.returncode == 1
+    assert result.stdout.strip()  # the failure message did print
+
+
 def test_eq_effect_with_empty_band_list_is_a_noop(tmp_path):
     pytest.importorskip("numpy")
     # {} is already accepted as pass-through; {"eq": []} is the same

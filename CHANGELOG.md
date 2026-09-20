@@ -55,6 +55,13 @@
 
 ### Fixed
 
+- **`python core.py`'s mini-CLI crashed on bad input and exited 0 on
+  failure** -- `float(sys.argv[4])` for `normalize`'s peak and `trim`'s
+  threshold was unguarded, so a non-numeric argument died on a raw
+  ValueError traceback; and every op printed `result.message` then fell
+  through to exit 0, so `normalize missing.wav` reported its failure and
+  still exited OK. Bad numbers now print "must be a number" and exit 1,
+  and each op's exit status follows result.success.
 - **`--loudness`'s own help understated the feature it ships** -- the
   argparse help still said "omits surround-channel weighting and
   true-peak", both false since dwChannelMask-driven surround weighting

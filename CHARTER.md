@@ -2339,3 +2339,7 @@ any range assertion.
   surround weighting and true-peak, docs were updated, and its argparse
   help still said "omits" both -- understating is the same drift class as
   overstating. When a capability lands, its --help string is a doc too.
+- A second entry point is still an entry point: `python core.py`'s mini-CLI
+  ships alongside main.py's, and its unguarded float() plus fall-through
+  exit 0 were the same defect classes main.py already fixed -- a sweep
+  that ends at the primary front door leaves the side door open.

@@ -2206,9 +2206,22 @@ if __name__ == "__main__":
 
     command = sys.argv[1].lower()
 
+    def _float_arg(index: int, name: str, default: float) -> float:
+        """Parse an optional trailing float, exiting on a non-number."""
+        if len(sys.argv) <= index:
+            return default
+        try:
+            return float(sys.argv[index])
+        except ValueError:
+            print(f"Error: {name} must be a number, got '{sys.argv[index]}'")
+            sys.exit(1)
+
+    ok = False
+
     if command == "analyze" and len(sys.argv) >= 3:
         result = analyze(sys.argv[2])
-        if result.success:
+        ok = result.success
+        if ok:
             info = result.data
             print(f"Duration: {info.duration:.2f}s")
             print(f"Sample Rate: {info.sample_rate}Hz")
@@ -2221,26 +2234,31 @@ if __name__ == "__main__":
             print(f"Error: {result.message}")
 
     elif command == "normalize" and len(sys.argv) >= 4:
-        peak = float(sys.argv[4]) if len(sys.argv) > 4 else 0.95
+        peak = _float_arg(4, "peak", 0.95)
         result = normalize(sys.argv[2], sys.argv[3], peak)
+        ok = result.success
         print(f"Result: {result.message}")
-        if result.success and result.data:
+        if ok and result.data:
             print(f"Gain applied: {result.data['gain_applied']:.2f}x")
 
     elif command == "mono" and len(sys.argv) >= 4:
         result = to_mono(sys.argv[2], sys.argv[3])
+        ok = result.success
         print(f"Result: {result.message}")
 
     elif command == "trim" and len(sys.argv) >= 4:
-        threshold = float(sys.argv[4]) if len(sys.argv) > 4 else 0.01
+        threshold = _float_arg(4, "threshold", 0.01)
         result = trim_silence(sys.argv[2], sys.argv[3], threshold)
+        ok = result.success
         print(f"Result: {result.message}")
-        if result.success and result.data:
+        if ok and result.data:
             print(f"Removed: {result.data['removed_seconds']:.2f}s")
 
     else:
         print(f"Unknown or incomplete command: {command}")
         sys.exit(1)
+
+    sys.exit(0 if ok else 1)
 
 
 
