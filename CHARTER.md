@@ -2274,6 +2274,60 @@ json.loads accepts the literals NaN/Infinity by default, so a JSON config
 file can smuggle them into any "numeric" field. The check is
 isinstance(x, (int, float)) AND math.isfinite(x), in that order, before
 any range assertion.
+
+**Q: `CHAMELEON_TIMEOUT` is documented -- does the CLI batch path read it?**
+A (2026-09-20): No -- and the value it carried was itself wrong. Two stacked
+defects: (1) the knob was documented in advanced_config.md and consumed by
+core's `BatchProcessor.process_directory`, but `main.py`'s `batch_process`
+(sequential and ThreadPoolExecutor paths -- the surface the doc describes)
+never read it; a documented control with no wire. (2) The default was an
+unconditional 30s cap on the batch's *total* wall-clock time, not per file,
+silently truncating legitimate batches. Fixed both ways: the default is now
+0 (no cap), `CHAMELEON_TIMEOUT=0` explicitly disables instead of parsing as
+"invalid -> warn -> 30s", and both batch paths honor it. Files not yet
+processed when the cap fires are marked `kind="timeout"` and the CLI prints
+a stderr warning -- a timeout is a partial result, which is information,
+not silence. In the parallel path pending futures are cancelled; in-flight
+ones finish so their outputs are not torn.
+
+**Q: May a constructor write to the user's filesystem?**
+A (2026-09-20): No -- `StateRecoveryManager.__init__` ran
+`state_dir.mkdir(parents=True)` eagerly, and because `BatchProcessor` is a
+module-level singleton, every `import core` (i.e. every CLI invocation,
+including `--help`) created `~/.chameleon_state`. A side effect nobody
+asked for, on a surface that might never write state at all. The mkdir and
+its tempdir fallback now run lazily via `_ensure_state_dir()` on the first
+`record_state()` call. Singleton construction must be pure: defer side
+effects to the operation that needs them.
+
+**Q: Does `noise_reduce_selection` edit only the selection?**
+A (2026-09-20): No -- it estimated the noise floor inside the mask and then
+rebuilt the *entire* spectrogram from the reduced magnitude, attenuating
+audio the user never selected. Same defect class as
+`harmonic_enhance_selection`'s whole-row writes already on this record: an
+operation named for a selection must prove its writes stay inside the
+mask. Now only `magnitude[mask]` cells are rewritten. (The
+preserve_phase if/else was also collapsed -- both branches computed the
+identical `np.angle(self.stft)`.)
+
+**Q: What does the numpy-only `interpolate_selection` fallback interpolate?**
+A (2026-09-20): Nothing. A dead `if HAS_SCIPY:` nested inside the `else` of
+`if HAS_SCIPY:` meant `smoothed = magnitude`, so
+`magnitude[mask] = magnitude[mask]` -- a no-op that still returned True and
+recorded "interpolate" in the edit history. Replaced with a real
+pure-numpy 4-neighbour mean via shifted slices (same kernel shape as the
+scipy convolve it stands in for). A fallback that returns success without
+doing the thing is worse than refusing -- it converts "missing
+dependency" into "file says it was processed".
+
+**Q: Should a warning that can never succeed repeat on every call?**
+A (2026-09-20): No -- `PluginSandbox._apply_memory_limit` warned every time
+`setrlimit(RLIMIT_AS)` failed, and on macOS lowering RLIMIT_AS always
+fails (verified), so every sandboxed plugin call spammed the same line.
+Now warns once per process, debug thereafter. A warning the platform can
+never satisfy, repeated, is noise that trains users to ignore warnings --
+say it once.
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
@@ -2432,3 +2486,19 @@ any range assertion.
   the artifact was rejected by the dependency-free parser it ships with.
   Verify writer output against the first-party reader, not just the
   library's subtype list.
+- A documented knob that no consumer reads is a lie twice over:
+  CHAMELEON_TIMEOUT was in advanced_config.md and honored by core's
+  process_directory, but the CLI batch path the doc describes never read
+  it. Trace env vars to a consumer the same way flags are traced.
+- A timeout that silently drops the tail is a truncator, not a guard:
+  files not yet processed must be marked (kind="timeout"), and the
+  default must be no cap -- a cap on *total* batch time charges the
+  10,000th file for the 9,999 before it.
+- A module-level singleton's constructor must not touch the filesystem:
+  `BatchProcessor()` made every `import core` create
+  ~/.chameleon_state. Defer side effects to first use.
+- A per-call warning for a deterministically unsupported platform op is
+  spam (macOS cannot lower RLIMIT_AS): warn once per process, then debug.
+- A fallback branch inside `else:` of the same flag is dead by
+  construction; its "fallback" (`smoothed = magnitude`) was a no-op that
+  still reported success. Test the degraded path, not just the fast one.

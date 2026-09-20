@@ -2,9 +2,9 @@
 
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
 **Version:** 1.1.0 · **Tests:** re-run 2026-09-20 on Python 3.12, green in
-all three configurations — **475 passed** on a bare install (stdlib only,
-32 skipped), **555** with numpy (scipy/librosa/soundfile blocked, 32
-skipped), **660** with numpy + scipy + librosa + soundfile + fastapi
+all three configurations — **487 passed** on a bare install (stdlib only,
+33 skipped), **569** with numpy (scipy/librosa/soundfile blocked, 34
+skipped), **675** with numpy + scipy + librosa + soundfile + fastapi
 (5 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
@@ -68,8 +68,9 @@ re-verified, not trusted.
   reintroducing that command makes it fail.
 - **Real verification gate, run against three dependency configurations.**
   `compileall` + `pytest` + `validation_test.py` is green with no third-party
-  packages (324 tests), with numpy (365) and with numpy + scipy (454) — up
-  from 22 tests at the start of the hardening effort. The three-way run is
+  packages, with numpy, and with numpy + scipy — up from 22 tests at the
+  start of the hardening effort (current counts live in this file's header,
+  which is their only home). The three-way run is
   itself a differentiator and is newer than it looks: until 2026-08-25 twelve
   test modules imported numpy unguarded, so on a bare install `pytest` failed
   at *collection* and ran nothing. Verifying the dependency-free core required
@@ -259,6 +260,15 @@ bugs to fix but problems without a known-good answer in this codebase.
   `plugin_system.py` blocks dangerous patterns at parse time but
   `exec_module()` still runs with full builtins. Closing this fully is a real
   architectural project, not a patch.
+- **One observed test flake, recorded not hidden:** on 2026-09-20 two
+  `test_api_routes` batch-normalize tests stalled once under the full suite —
+  the job sat `processing`/`progress: 0.0` for the whole 60 s poll, meaning
+  `process_batch_job` entered the semaphore but the first
+  `run_in_executor` await never resolved. Both pass in isolation and passed
+  on two subsequent full-suite runs. Deterministic causes were ruled out
+  (ordering, circuit breaker, semaphore cross-loop binding); most likely an
+  executor starvation stall specific to the 600+-test run. If it recurs,
+  instrument `process_batch_job` around the `normalize_audio_fast` await.
 - **Loudness scope, honestly bounded:** BS.1770-4 channel weighting applies
   when a file carries dwChannelMask (surrounds +1.5 dB, LFE excluded);
   plain-PCM WAVs have no layout to apply, so their channels weight equally.
@@ -336,6 +346,9 @@ here because they need a user decision first.
 | ~~P3~~ | ~~Consolidate the three spectral-subtraction implementations~~ | ~~Low~~ | ~~M~~ | ~~Med~~ | **DECLINED 2026-09-19** — evaluated in CHARTER §9: not three copies of one algorithm. The shared part is a 4-line kernel; the estimators are semantically different (auto noise-floor vs quiet-decile-with-refusal vs user-selected noise print) and the STFT backends differ (scipy / librosa / SpectralProcessor). A shared helper would dedupe ~4 lines at the cost of a new abstraction across three working DSP paths — the kind of unnecessary abstraction the charter forbids |
 | ~~P4~~ | ~~A trustworthy click detector, or a documented decision not to have one~~ | ~~Med~~ | ~~L~~ | ~~High~~ | **DONE 2026-09-19** — chose the documented decision: §2 already records both measured candidates destroy audio (354 false clicks in 1 s of noise; 1764 via second-difference/MAD), so `--declick` deliberately does not ship |
 | ~~P3~~ | ~~Pure-Python true-peak perf, or a documented cap note~~ | ~~Low~~ | ~~S~~ | ~~Low~~ | **DONE 2026-09-19** — chose the documented cap: §2 already states ~0.4 s per 65k-sample bounded prefix |
+| ~~P2~~ | ~~`CHAMELEON_TIMEOUT` documented but unread by the CLI batch path; default 30 s cap silently truncated batches~~ | Med | S | Low | **DONE 2026-09-20** — default is now 0 (no cap); both sequential and parallel `batch_process` honor it, leftover files are marked `kind="timeout"` and the CLI warns on stderr (`tests/test_batch_timeout.py`) |
+| ~~P3~~ | ~~`spectral_editor` selection-scope leak + dead numpy-only interpolate fallback~~ | Med | S | Low | **DONE 2026-09-20** — `noise_reduce_selection` now writes only masked cells; the scipy-absent interpolate path is a real 4-neighbour mean instead of `magnitude[mask] = magnitude[mask]` returning True |
+| ~~P4~~ | ~~Eager `~/.chameleon_state` mkdir on `import core`; per-call RLIMIT_AS warning spam~~ | Low | XS | Low | **DONE 2026-09-20** — state dir created lazily on first `record_state()`; the sandbox warns once per process (macOS cannot lower RLIMIT_AS — verified) |
 | P4 | Plugin sandbox runtime boundary (restricted builtins for `exec_module`) | High (security) | L | High | Architectural; leaky if done partially — design first |
 | P4 | Surround-channel loudness weighting | Low | M | Low | Only if a real multichannel use case appears |
 
