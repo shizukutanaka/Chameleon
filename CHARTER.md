@@ -1923,3 +1923,16 @@ scripts keep running while the docs stop lying about what the knob does.
 Deleting the flag outright was rejected: `high`'s soft clipper is real
 behavior users may want off, and a boolean-ish choice is the smallest
 honest surface that keeps it reachable.
+
+**Q: `midi --key`/`--mode`/`--quality` are real flags — are they wired?**
+A (2026-09-19): Two of three were dials connected to nothing. A
+consumer-audit of every CLI flag found `midi compose`/`generate`
+hard-coded C major while accepting `--key`/`--mode` (documented in both
+docs and help), and `batch --quality` offered four tiers where only
+`high` had any effect. The midi flags are now wired (transposition,
+flat spellings, a real i-v-VI-iv minor progression, unknown key →
+INPUT); --quality collapsed to `standard`/`high` with legacy values
+aliased with a note. The audit pattern that found them — "accepting an
+argument without a consumer is a claim, not a convenience" — is the same
+one that caught the eq-schema regression: verify a flag by tracing it to
+a consumer, not by reading the help text.

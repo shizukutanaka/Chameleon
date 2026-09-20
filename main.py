@@ -1854,6 +1854,18 @@ class AudioProcessor:
             f.seek(4)
             f.write(struct.pack('<I', file_size))
 
+_MIDI_NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+_MIDI_FLATS = {'Db': 'C#', 'Eb': 'D#', 'Gb': 'F#', 'Ab': 'G#', 'Bb': 'A#'}
+
+
+def _midi_tonic(key: Optional[str]) -> Optional[int]:
+    """Resolve a --key argument to a tonic pitch class, or None if unknown."""
+    if not key:
+        return 0
+    name = _MIDI_FLATS.get(key, key)
+    return _MIDI_NOTE_NAMES.index(name) if name in _MIDI_NOTE_NAMES else None
+
+
 def create_cli():
     """Create comprehensive CLI interface"""
     parser = argparse.ArgumentParser(
@@ -2562,15 +2574,45 @@ async def main():
             # Generate a basic composition
             print("🎵 Generating musical composition...")
 
-            # Create basic chord progression (I-V-vi-IV)
+            # --key selects the tonic, --mode the scale intervals used by
+            # compose_melody; both were previously ignored and every
+            # composition came out in C major.
+            tonic = _midi_tonic(args.key)
+            if tonic is None:
+                print(f"Error: unknown key '{args.key}' "
+                      f"(expected e.g. C, F#, Bb)", file=sys.stderr)
+                return ExitCode.INPUT
+
+            # Progression transposed into the requested key. I-V-vi-IV in
+            # major; i-v-VI-iv in minor -- running the major progression
+            # under a minor scale would inject out-of-mode chord tones
+            # (e.g. F# into G minor).
+            if args.mode == "major":
+                progression = [
+                    (0, "major", [0, 4, 7]),
+                    (7, "major", [7, 11, 2]),
+                    (9, "minor", [9, 0, 4]),
+                    (5, "major", [5, 9, 0]),
+                ]
+            else:
+                progression = [
+                    (0, "minor", [0, 3, 7]),
+                    (7, "minor", [7, 10, 2]),
+                    (8, "major", [8, 0, 3]),
+                    (5, "minor", [5, 8, 0]),
+                ]
             basic_chords = [
-                {"root": 0, "chord_type": "major", "notes": [0, 4, 7], "start_time": 0.0, "duration": 2.0},
-                {"root": 7, "chord_type": "major", "notes": [7, 11, 2], "start_time": 2.0, "duration": 2.0},
-                {"root": 9, "chord_type": "minor", "notes": [9, 0, 4], "start_time": 4.0, "duration": 2.0},
-                {"root": 5, "chord_type": "major", "notes": [5, 9, 0], "start_time": 6.0, "duration": 2.0}
+                {
+                    "root": (root + tonic) % 12,
+                    "chord_type": chord_type,
+                    "notes": [(n + tonic) % 12 for n in notes],
+                    "start_time": i * 2.0,
+                    "duration": 2.0,
+                }
+                for i, (root, chord_type, notes) in enumerate(progression)
             ]
 
-            key_info = {"tonic": 0, "mode": "major", "confidence": 1.0}  # C major
+            key_info = {"tonic": tonic, "mode": args.mode, "confidence": 1.0}
 
             melody = processor.compose_melody(basic_chords, key_info, args.length)
 
@@ -2595,9 +2637,17 @@ async def main():
 
             print("🎼 Generating MIDI demo...")
 
-            # Create a simple scale
+            tonic = _midi_tonic(args.key)
+            if tonic is None:
+                print(f"Error: unknown key '{args.key}' "
+                      f"(expected e.g. C, F#, Bb)", file=sys.stderr)
+                return ExitCode.INPUT
+
+            # A one-octave scale in the requested key/mode starting at C4-ish
+            # (MIDI 60 + tonic). Major and natural minor intervals.
+            intervals = [0, 2, 4, 5, 7, 9, 11] if args.mode == "major" else [0, 2, 3, 5, 7, 8, 10]
+            scale_notes = [60 + tonic + i for i in intervals] + [60 + tonic + 12]
             demo_notes = []
-            scale_notes = [60, 62, 64, 65, 67, 69, 71, 72]  # C major scale
 
             for i, pitch in enumerate(scale_notes):
                 note = MIDINote(

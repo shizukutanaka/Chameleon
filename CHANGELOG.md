@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Fixed
+
+- **`midi compose`/`generate` ignored `--key` and `--mode` entirely** —
+  both documented flags were accepted but the progression and scale were
+  hard-coded to C major, so `compose --key G --mode minor` silently
+  produced C major. `--key` now transposes the output (flat spellings
+  like `Bb` accepted, unknown keys rejected as INPUT), and `compose`
+  uses a real minor-mode progression (i-v-VI-iv) under `--mode minor`
+  so chord tones stay inside the requested scale.
+
 ### Changed
 
 - **`batch --quality` collapsed to the two real behaviors** — the flag

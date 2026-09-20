@@ -140,3 +140,49 @@ def test_batch_quality_flag_sets_processor_config(tmp_path, monkeypatch):
     # Legacy tier names never had distinct behavior; they map to 'standard'
     # (the flag is still wired end to end).
     assert captured["processor"].config.quality == "standard"
+
+
+# -- midi --key/--mode: wired for real (previously accepted and ignored) -----
+
+def _midi_pitch_classes(mid_path):
+    """Pitch classes of note-on/note-off events in a SMF file."""
+    data = Path(mid_path).read_bytes()
+    pitches = [
+        data[i - 1] for i in range(2, len(data))
+        if data[i - 2] in (0x90, 0x80) and 0 < data[i - 1] < 128
+    ]
+    return {p % 12 for p in pitches}
+
+
+def test_midi_generate_honors_key_and_mode(tmp_path):
+    out = tmp_path / "ebm.mid"
+    result = _run(
+        "midi", "generate", "--key", "Eb", "--mode", "minor", "--output", str(out),
+        cwd=str(tmp_path),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    # Eb natural minor pitch classes: Eb F Gb Ab Bb Cb Db -> {1,3,5,6,8,10,11}
+    pcs = _midi_pitch_classes(out)
+    assert pcs <= {1, 3, 5, 6, 8, 10, 11}, pcs
+    assert 3 in pcs  # the tonic actually moves
+
+
+def test_midi_compose_honors_key_and_mode(tmp_path):
+    out = tmp_path / "gm.mid"
+    result = _run(
+        "midi", "compose", "--key", "G", "--mode", "minor", "--output", str(out),
+        cwd=str(tmp_path),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    # Melody AND chords must stay inside G natural minor; a transposed
+    # major-mode progression would inject F# (pc 6).
+    assert _midi_pitch_classes(out) <= {0, 2, 3, 5, 7, 9, 10}
+
+
+def test_midi_generate_rejects_an_unknown_key(tmp_path):
+    result = _run(
+        "midi", "generate", "--key", "ZZ", "--output", str(tmp_path / "x.mid"),
+        cwd=str(tmp_path),
+    )
+    assert result.returncode == 3  # INPUT -- a bad key is a bad argument
+    assert not (tmp_path / "x.mid").exists()
