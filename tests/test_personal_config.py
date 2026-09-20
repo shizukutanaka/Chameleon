@@ -342,3 +342,17 @@ def test_the_full_documented_flow_works_end_to_end(tmp_path):
     result = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Sample Rate" in result.stdout
+
+
+def test_corrupt_library_db_names_the_file_and_says_what_to_do(manager):
+    # _load_db used to json.load unguarded: a truncated library.json killed
+    # every library operation with a raw JSONDecodeError traceback.
+    manager.db_path.write_text("{ not json")
+    with pytest.raises(ValueError, match="not valid JSON"):
+        manager._load_db()
+
+
+def test_non_object_library_db_is_rejected(manager):
+    manager.db_path.write_text('["a.wav"]')
+    with pytest.raises(ValueError, match="JSON object"):
+        manager._load_db()

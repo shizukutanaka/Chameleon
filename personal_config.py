@@ -285,10 +285,25 @@ class PersonalLibraryManager:
         self.library_db = self._load_db()
 
     def _load_db(self) -> Dict:
-        """Load library database"""
+        """Load library database.
+
+        Same rigor as PersonalConfig.load: a corrupt file must say so and
+        offer recovery, not die on a raw JSONDecodeError traceback."""
         if self.db_path.exists():
-            with open(self.db_path, 'r') as f:
-                return json.load(f)
+            try:
+                with open(self.db_path, 'r') as f:
+                    data = json.load(f)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"{self.db_path} is not valid JSON ({exc}). Fix it, or "
+                    "delete it to start again from an empty library."
+                ) from exc
+            if not isinstance(data, dict):
+                raise ValueError(
+                    f"{self.db_path} should contain a JSON object, found "
+                    f"{type(data).__name__}."
+                )
+            return data
         return {"files": {}, "playlists": {}, "tags": {}}
 
     def _save_db(self) -> None:
