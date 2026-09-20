@@ -1796,7 +1796,10 @@ of a silent skip.
 A (2026-09-19): Through `stream` and `midi`. `stream` printed its "Starting
 real-time audio stream" banner unconditionally before the call that always
 fails when PyAudio is absent — now gated on `HAS_PYAUDIO` so the claim is
-only made when it can be true. `midi`'s failure paths printed to stdout and
+only made when it can be true. The same rule later caught `server`, which
+printed "Starting API server on ..." before the uvicorn import that
+decides whether a server can start at all — the banner moved inside the
+success branch. `midi`'s failure paths printed to stdout and
 fell through to exit 0 (`Analysis error: …`, "Failed to generate
 composition/demo", and three `generate_midi` write failures that printed
 nothing at all); they now go to stderr with `ExitCode.ERROR`. The `batch`

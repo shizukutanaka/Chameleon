@@ -55,6 +55,11 @@
 
 ### Fixed
 
+- **`server` claimed it was starting before checking it could** -- the
+  "Starting API server on ..." banner printed unconditionally, so on a
+  uvicorn-less install the user read a success claim immediately followed
+  by the real error. The banner now prints only after the uvicorn import
+  succeeds -- the same rule the stream banner already follows.
 - **`{"eq": []}` was rejected by validation and demanded scipy for a
   no-op** -- `_load_effects` refused the empty band list with a
   "must map to a list, got list" message that both misdescribed the

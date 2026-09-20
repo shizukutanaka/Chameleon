@@ -3284,7 +3284,8 @@ async def main():
             print(f"Error: --workers must be >= 1, got {args.workers}",
                   file=sys.stderr)
             return ExitCode.INPUT
-        print(f"Starting API server on {args.host}:{args.port}")
+        # The banner claims a server is starting; when uvicorn is absent
+        # the call below always fails, so the claim must not be printed.
         try:
             import uvicorn  # type: ignore
         except ImportError:
@@ -3293,6 +3294,7 @@ async def main():
                   file=sys.stderr)
             exit_code = ExitCode.ERROR
         else:
+            print(f"Starting API server on {args.host}:{args.port}")
             uvicorn.run(
                 "api_server:app",
                 host=args.host,

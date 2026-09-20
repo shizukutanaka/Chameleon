@@ -84,6 +84,21 @@ def test_failed_stream_does_not_claim_it_started(tmp_path):
     assert "Starting real-time audio stream" not in result.stdout
 
 
+def test_server_banner_not_printed_when_uvicorn_missing(tmp_path):
+    # Same class as the stream banner: "Starting API server" used to print
+    # unconditionally, before the import that decides whether a server can
+    # start at all. On a uvicorn-less install the banner was a lie followed
+    # immediately by the real error.
+    import importlib.util
+    if importlib.util.find_spec("uvicorn") is not None:
+        pytest.skip("uvicorn present; the failure path cannot be reached")
+
+    result = _run("server", "--port", "8000", cwd=str(tmp_path))
+    assert result.returncode == 1  # ExitCode.ERROR
+    assert "requires fastapi and uvicorn" in result.stderr
+    assert "Starting API server" not in result.stdout
+
+
 def test_midi_analyze_error_is_reported_not_swallowed(tmp_path):
     # "No musical content detected" used to print on stdout and still exit 0.
     from tests._helpers import write_wav_raw
