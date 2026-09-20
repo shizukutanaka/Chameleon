@@ -2,9 +2,9 @@
 
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
 **Version:** 1.1.0 · **Tests:** re-run 2026-09-20 on Python 3.12, green in
-all three configurations — **424 passed** on a bare install (stdlib only,
-27 skipped), **495** with numpy (scipy/librosa/soundfile blocked, 28
-skipped), **596** with numpy + scipy + librosa + soundfile + fastapi
+all three configurations — **426 passed** on a bare install (stdlib only,
+27 skipped), **497** with numpy (scipy/librosa/soundfile blocked, 28
+skipped), **598** with numpy + scipy + librosa + soundfile + fastapi
 (3 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
@@ -259,9 +259,10 @@ bugs to fix but problems without a known-good answer in this codebase.
   `plugin_system.py` blocks dangerous patterns at parse time but
   `exec_module()` still runs with full builtins. Closing this fully is a real
   architectural project, not a patch.
-- **Loudness scope, honestly bounded:** no surround-channel weighting (every
-  channel weighted equally — correct for mono/stereo only); pure-Python
-  true-peak costs ~0.4 s per 65k-sample bounded prefix.
+- **Loudness scope, honestly bounded:** BS.1770-4 channel weighting applies
+  when a file carries dwChannelMask (surrounds +1.5 dB, LFE excluded);
+  plain-PCM WAVs have no layout to apply, so their channels weight equally.
+  Pure-Python true-peak costs ~0.4 s per 65k-sample bounded prefix.
 
 ### Orphaned assets awaiting a disposition decision (deletion needs user OK)
 Measured 2026-08-25: `batch_automation.py`, `spectral_editor.py` (both kept by

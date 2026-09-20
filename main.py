@@ -2416,6 +2416,7 @@ async def main():
                                 lufs = bs1770_loudness.measure_integrated_loudness_multichannel(
                                     samples_result.data["channels"],
                                     samples_result.data["sample_rate"],
+                                    samples_result.data.get("channel_mask", 0),
                                 )
                             except ValueError as exc:
                                 print(f"  Loudness: unsupported ({exc})")
@@ -2423,9 +2424,17 @@ async def main():
                                 if not math.isfinite(lufs):
                                     print("  Loudness: below measurement gate (silent or too short)")
                                 else:
+                                    weighting_label = (
+                                        "BS.1770 surround weighting"
+                                        if any(w != 1.0 for w in
+                                               bs1770_loudness._channel_weights(
+                                                   samples_result.data.get("channel_mask", 0),
+                                                   len(samples_result.data["channels"])))
+                                        else "no surround weighting"
+                                    )
                                     metadata.loudness_lufs = lufs
                                     print(f"  Loudness: {lufs:.1f} LUFS (integrated, "
-                                          f"ITU-R BS.1770 K-weighting, no surround weighting, first "
+                                          f"ITU-R BS.1770 K-weighting, {weighting_label}, first "
                                           f"{LOUDNESS_MAX_SAMPLES / samples_result.data['sample_rate']:.0f}s max)")
                                 # True-peak (dBTP) over the same bounded prefix -- 4x
                                 # oversampled inter-sample peak per BS.1770-4 Annex 2,

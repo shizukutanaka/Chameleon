@@ -2283,3 +2283,8 @@ any range assertion.
   sandbox's SecurityError reached stderr but `load_failures` could only store
   a generic string. Re-raise the exceptions whose type is the information
   (security), swallow only the kind already conveyed by "no plugin loaded".
+- Channel weighting needs the layout: implementing BS.1770 surround weighting
+  by *guessing* a layout from the channel count would read wrong on quad/
+  ambisonic material. The WAV dwChannelMask is the only honest source; when
+  it's absent every channel stays at 1.0 and the label says "no surround
+  weighting" rather than pretending. If you can't identify it, don't guess it.

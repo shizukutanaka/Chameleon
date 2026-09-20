@@ -8,9 +8,10 @@ this project's differentiator (see CHARTER.md §1).
 
 Scope, stated honestly (this is not a certified loudness meter):
 - `measure_integrated_loudness` is mono-only; `measure_integrated_loudness_multichannel`
-  sums per-channel energy (correct for mono/stereo). Neither implements the
-  standard's surround-channel weighting (e.g. a +1.5 dB boost for Ls/Rs) --
-  every channel is weighted equally. A caller that averages samples to mono
+  sums per-channel energy (correct for mono/stereo) and applies BS.1770-4
+  channel weighting when the file's dwChannelMask identifies the layout
+  (surrounds +1.5 dB, LFE excluded). For plain-PCM WAVs with no channel
+  mask the layout is unknown and every channel is weighted equally. A caller that averages samples to mono
   *before* filtering (rather than using the multichannel entry point)
   under-reads a real stereo signal by roughly 3 LU (identical L/R) up to
   6 LU (uncorrelated, equal-power L/R), and can read far too quiet for
@@ -156,15 +157,53 @@ def _block_mean_squares(weighted: Sequence[float], sample_rate: int) -> List[flo
     return blocks
 
 
+# dwChannelMask bits that BS.1770-4 treats as surround channels (G=1.41 in
+# the mean-square sum): back, back-center, and side speakers. LFE is
+# excluded entirely (G=0). Front channels and any bit we can't identify
+# keep G=1.0 -- an unidentified channel is safer counted flat than guessed.
+_SURROUND_MASK_BITS = 0x10 | 0x20 | 0x100 | 0x200 | 0x400
+_LFE_MASK_BITS = 0x8 | 0x40000
+_SURROUND_WEIGHT = 10 ** (1.5 / 10.0)  # +1.5 dB energy weight
+
+
+def _channel_weights(channel_mask: int, n_channels: int) -> List[float]:
+    """Per-channel BS.1770-4 weights derived from a dwChannelMask.
+
+    WAV channel order follows ascending mask-bit order, so channel i maps to
+    the i-th set bit. A mask of 0 (plain PCM fmt, no extensible header) means
+    "layout unknown" and yields all-1.0 -- the pre-existing equal-weight
+    behavior -- rather than guessing a layout from the channel count."""
+    weights = [1.0] * n_channels
+    if not channel_mask:
+        return weights
+    bit = 0
+    for i in range(n_channels):
+        while bit < 32 and not (channel_mask >> bit) & 1:
+            bit += 1
+        if bit >= 32:
+            break
+        if (1 << bit) & _LFE_MASK_BITS:
+            weights[i] = 0.0
+        elif (1 << bit) & _SURROUND_MASK_BITS:
+            weights[i] = _SURROUND_WEIGHT
+        bit += 1
+    return weights
+
+
 def _block_summed_mean_squares(weighted_channels: Sequence[Sequence[float]], sample_rate: int,
                                block_seconds: float = _BLOCK_SECONDS,
-                               hop_seconds: float = _HOP_SECONDS) -> List[float]:
-    """Per-block energy summed across channels (equal weight 1.0 each).
+                               hop_seconds: float = _HOP_SECONDS,
+                               channel_weights: Optional[Sequence[float]] = None) -> List[float]:
+    """Per-block energy summed across channels.
 
     This is what BS.1770 actually requires for multi-channel content: sum
     each channel's mean-square energy per block, not average the channels'
     *samples* together before filtering (which is what a mono downmix does,
     and which under-reads real stereo content -- see module docstring).
+
+    `channel_weights` applies BS.1770-4's channel weighting G_i to each
+    channel's mean-square (surrounds 1.41, LFE 0); None means equal weight
+    1.0, the right answer when the layout is unknown.
 
     `block_seconds` / `hop_seconds` default to the BS.1770 integrated-loudness
     geometry (400 ms / 100 ms). They are parameters so the EBU-Mode momentary
@@ -175,6 +214,7 @@ def _block_summed_mean_squares(weighted_channels: Sequence[Sequence[float]], sam
     if not weighted_channels:
         return []
 
+    weights = channel_weights or [1.0] * len(weighted_channels)
     block_size = max(1, int(round(block_seconds * sample_rate)))
     hop = max(1, int(round(hop_seconds * sample_rate)))
     length = min(len(channel) for channel in weighted_channels)
@@ -184,9 +224,11 @@ def _block_summed_mean_squares(weighted_channels: Sequence[Sequence[float]], sam
     blocks: List[float] = []
     for start in range(0, length - block_size + 1, hop):
         total = 0.0
-        for channel in weighted_channels:
+        for weight, channel in zip(weights, weighted_channels):
+            if weight == 0.0:
+                continue
             block = channel[start:start + block_size]
-            total += sum(s * s for s in block) / block_size
+            total += weight * sum(s * s for s in block) / block_size
         blocks.append(total)
     return blocks
 
@@ -230,15 +272,18 @@ def measure_integrated_loudness(samples: Sequence[float], sample_rate: int) -> f
     return _gate_and_convert_to_lufs(blocks)
 
 
-def measure_integrated_loudness_multichannel(channels: Sequence[Sequence[float]], sample_rate: int) -> float:
+def measure_integrated_loudness_multichannel(channels: Sequence[Sequence[float]], sample_rate: int,
+                                             channel_mask: int = 0) -> float:
     """Gated integrated loudness (LUFS) per ITU-R BS.1770-4, summing energy
-    across channels with equal weight 1.0 each -- correct for mono/stereo.
+    across channels.
 
     Unlike `measure_integrated_loudness` fed a mono downmix, this does not
     under-read stereo content (see the module docstring for the magnitude of
-    that error). Standard multi-channel weighting for layouts beyond L/R
-    (e.g. a +1.5 dB boost for surround channels) is not implemented; every
-    channel here is weighted equally.
+    that error). When `channel_mask` (the file's dwChannelMask from
+    WAVE_FORMAT_EXTENSIBLE) identifies surround channels, the standard's
+    channel weighting applies: surrounds count +1.5 dB, the LFE channel is
+    excluded. With an unknown layout (mask 0 -- every plain-PCM WAV), all
+    channels weight equally, which is correct for mono/stereo.
 
     Returns float('-inf') if there are no channels, the signal is silent,
     all-gated, or too short to form a single 400ms measurement block.
@@ -247,8 +292,10 @@ def measure_integrated_loudness_multichannel(channels: Sequence[Sequence[float]]
     if not channels:
         return float('-inf')
 
+    weights = _channel_weights(channel_mask, len(channels))
     weighted_channels = [apply_k_weighting(channel, sample_rate) for channel in channels]
-    blocks = _block_summed_mean_squares(weighted_channels, sample_rate)
+    blocks = _block_summed_mean_squares(weighted_channels, sample_rate,
+                                        channel_weights=weights)
     return _gate_and_convert_to_lufs(blocks)
 
 

@@ -1044,3 +1044,8 @@ Initial public release of the Chameleon Audio Tool.
   (silently "auto"), and `CHAMELEON_TRUSTED_ROOTS=/typo` (silently locks every
   file out) now warn. The argv=reject/env=warn rule now covers every tunable
   env var in the project.
+- `analyze --loudness` now applies BS.1770-4 channel weighting when the file
+  carries a dwChannelMask (WAVE_FORMAT_EXTENSIBLE): surround channels count
+  +1.5 dB, LFE is excluded. The parser now captures the mask instead of
+  discarding it; plain-PCM files (no declared layout) keep equal weighting
+  and the label says which path ran.

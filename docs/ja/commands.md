@@ -46,8 +46,10 @@ chameleon analyze input.wav --loudness
 `--loudness` はファイル先頭の一定長を対象に以下を報告します:
 
 - **Integrated loudness (LUFS)** — ITU-R BS.1770 K-weighting・ゲート付き。
-  モノラル/ステレオではチャンネルのエネルギーを正しく合算します
-  （サラウンドのチャンネル重み付けは未実装）。
+  モノラル/ステレオではチャンネルのエネルギーを正しく合算します。
+  dwChannelMask(WAVE_FORMAT_EXTENSIBLE)を持つファイルでは規格のチャンネル
+  重み付けを適用 — サラウンド +1.5dB、LFE は除外。マスクのない通常の
+  PCM WAV はレイアウト不明のため全チャンネル等重みです。
 - **True Peak (dBTP)** — 4倍オーバーサンプリングによるインターサンプルピーク
   推定値（BS.1770-4 Annex 2 方式）。
 - **Max Momentary (LUFS)** — 400ms 窓の最大値、ゲートなし（EBU Mode）。

@@ -156,6 +156,11 @@ class AudioInfo:
     data_size: int = 0
     fmt_offset: int = 20
     format_tag: int = 1
+    # dwChannelMask from WAVE_FORMAT_EXTENSIBLE (0 = unknown/plain PCM).
+    # Identifies which channels are surrounds/LFE so BS.1770 loudness can
+    # apply the standard's channel weighting instead of treating every
+    # channel as front.
+    channel_mask: int = 0
 
 @dataclass
 class ProcessingResult:
@@ -751,6 +756,7 @@ class WAVProcessor:
                 data_size = 0
                 fmt_offset = 20
                 format_tag = channels = sample_rate = bits_per_sample = 0
+                channel_mask = 0
 
                 for _ in range(self._MAX_WAV_CHUNKS):
                     chunk_header = f.read(8)
@@ -774,6 +780,7 @@ class WAVProcessor:
                         if format_tag == 0xFFFE:
                             if len(body) < 40:
                                 return None
+                            channel_mask = struct.unpack('<I', body[20:24])[0]
                             guid = body[24:40]
                             if guid == self._PCM_SUBFORMAT_GUID:
                                 format_tag = 1
@@ -824,6 +831,7 @@ class WAVProcessor:
                     data_size=data_size,
                     fmt_offset=fmt_offset,
                     format_tag=format_tag,
+                    channel_mask=channel_mask,
                 )
 
         except Exception:
@@ -968,7 +976,8 @@ class WAVProcessor:
 
                 return ProcessingResult(
                     True, "Samples extracted",
-                    {"channels": channels_out, "sample_rate": info.sample_rate}
+                    {"channels": channels_out, "sample_rate": info.sample_rate,
+                     "channel_mask": info.channel_mask}
                 )
 
             samples: List[float] = []

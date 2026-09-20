@@ -46,7 +46,10 @@ chameleon analyze input.wav --loudness
 `--loudness` reports, over a bounded prefix of the file:
 
 - **Integrated loudness (LUFS)** — ITU-R BS.1770 K-weighted, gated. Sums
-  per-channel energy correctly for mono/stereo; no surround-channel weighting.
+  per-channel energy correctly for mono/stereo; for files carrying a
+  dwChannelMask (WAVE_FORMAT_EXTENSIBLE), the standard's channel weighting
+  applies — surround channels +1.5 dB, LFE excluded. Plain-PCM WAVs declare
+  no layout, so their channels all weight equally.
 - **True Peak (dBTP)** — 4×-oversampled inter-sample peak estimate
   (BS.1770-4 Annex 2 method).
 - **Max Momentary (LUFS)** — loudest 400 ms window, ungated (EBU Mode).
