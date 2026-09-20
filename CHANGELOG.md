@@ -1005,3 +1005,4 @@ Initial public release of the Chameleon Audio Tool.
 - Basic security features
 - Performance optimization foundation
 - `midi analyze`/`extract --input x.mid` now answer INPUT(3) with an explicit "this command analyzes audio" message instead of a generic "Unsupported file type" + ERROR(1) -- the most natural input for a `midi` command named the trap.
+- Batch-status polling in the API tests now runs on a 60s wall-clock deadline instead of a 120-iteration cap -- a rate-limited poll burns 0.5s of sleep, so an iteration count gave a wildly variable real budget and could flake as `status=None` under load.

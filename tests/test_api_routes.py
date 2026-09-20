@@ -298,7 +298,10 @@ def test_batch_normalize_job_produces_a_downloadable_output(client, tmp_path, mo
     job_id = sub.json()["job_id"]
 
     status = None
-    for _ in range(120):  # under a full-suite run the worker thread may need >9s
+    # Poll by wall-clock deadline, not a poll count: a 429 costs 0.5s of
+    # sleep, so an iteration cap gives a wildly variable real budget.
+    deadline = time.time() + 60
+    while time.time() < deadline:
         s = client.get(f"/batch/status/{job_id}", headers=auth)
         if s.status_code == 429:  # rate limiter: keep polling, the job still runs
             time.sleep(0.5)
@@ -308,7 +311,7 @@ def test_batch_normalize_job_produces_a_downloadable_output(client, tmp_path, mo
         if status["status"] in ("completed", "failed"):
             break
         time.sleep(0.15)
-    assert status["status"] == "completed", status
+    assert status is not None and status["status"] == "completed", status
     assert status["results"][0]["result"].get("success") is True
 
     output_name = status["results"][0]["result"].get("output_file")
@@ -379,7 +382,8 @@ def test_batch_normalize_options_target_peak_reaches_the_output(client, tmp_path
     job_id = sub.json()["job_id"]
 
     status = None
-    for _ in range(120):  # under a full-suite run the worker thread may need >9s
+    deadline = time.time() + 60
+    while time.time() < deadline:
         s = client.get(f"/batch/status/{job_id}", headers=auth)
         if s.status_code == 429:
             time.sleep(0.5)
@@ -389,7 +393,7 @@ def test_batch_normalize_options_target_peak_reaches_the_output(client, tmp_path
         if status["status"] in ("completed", "failed"):
             break
         time.sleep(0.15)
-    assert status["status"] == "completed", status
+    assert status is not None and status["status"] == "completed", status
     result = status["results"][0]["result"]
     assert result.get("success") is True
     # The option reached core.normalize: it reports the applied target.
