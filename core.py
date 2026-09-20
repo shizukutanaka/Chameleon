@@ -1502,12 +1502,23 @@ class StateRecoveryManager:
             self.state_dir = Path.home() / ".chameleon_state"
 
         self.max_backups = max(1, max_backups)
+        # The directory is created lazily on the first record_state() write,
+        # not here: BatchProcessor is a module-level singleton, so an
+        # unconditional mkdir made every `import core` (i.e. every CLI
+        # invocation) create ~/.chameleon_state -- a filesystem write the
+        # user never asked for.
+
+    def _ensure_state_dir(self) -> bool:
         try:
             self.state_dir.mkdir(parents=True, exist_ok=True)
         except OSError:
             fallback = Path(tempfile.gettempdir()) / "chameleon_state"
-            fallback.mkdir(parents=True, exist_ok=True)
+            try:
+                fallback.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                return False
             self.state_dir = fallback
+        return True
 
     def load_last_state(self) -> Optional[Dict[str, Any]]:
         try:
@@ -1531,6 +1542,8 @@ class StateRecoveryManager:
             "summary": summary,
         }
 
+        if not self._ensure_state_dir():
+            return None
         try:
             with target_path.open("w", encoding="utf-8") as handle:
                 json.dump(payload, handle, ensure_ascii=False, indent=2)
