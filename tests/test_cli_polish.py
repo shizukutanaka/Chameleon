@@ -216,3 +216,26 @@ def test_reverb_does_not_amplify_the_mix(tmp_path):
     out_rms = float(np_.sqrt(np_.mean(out ** 2)))
     change_db = 20 * np_.log10(out_rms / in_rms)
     assert -3.0 < change_db < 3.0, f"reverb changed level by {change_db:+.1f} dB"
+
+
+def test_effects_file_with_wrong_param_type_is_input_error(tmp_path):
+    # '{"reverb": {"room_size": "big"}}' used to reach `params["room_size"] <= 0`
+    # and leak a TypeError traceback instead of a validation error.
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    fx = _write_effects(tmp_path, '{"reverb": {"room_size": "big"}}')
+    result = _run("process", str(wav), "--effects", str(fx), cwd=str(tmp_path))
+    assert result.returncode == 3  # ExitCode.INPUT
+    assert "Input validation error" in result.stderr
+    assert "TypeError" not in result.stderr
+
+
+def test_effects_file_with_nonfinite_param_is_input_error(tmp_path):
+    # JSON NaN/Infinity literals are accepted by json.loads and satisfy
+    # isinstance(x, float) while defeating every domain comparison
+    # (NaN <= 0 is False) -- a NaN frequency used to run under "Processed".
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    fx = _write_effects(tmp_path, '{"eq": [{"frequency": NaN, "gain": 6}]}')
+    result = _run("process", str(wav), "--effects", str(fx), cwd=str(tmp_path))
+    assert result.returncode == 3  # ExitCode.INPUT
+    assert "finite" in result.stderr
+    assert "Processed" not in result.stdout

@@ -2263,3 +2263,11 @@ the default: env vars feed a dataclass factory with no exit-code channel,
 and refusing to start over a stray shell variable is worse than warning.
 The shared rule: never let a bad value through *silently* -- the user must
 either be stopped (argv) or told (ambient config).
+
+**Q: A parameter is a float -- is it validated?**
+A (2026-09-20): No -- isinstance(x, float) admits NaN and Infinity, which
+defeat every domain comparison (NaN <= 0 is False; 0 <= NaN <= 1 is False).
+json.loads accepts the literals NaN/Infinity by default, so a JSON config
+file can smuggle them into any "numeric" field. The check is
+isinstance(x, (int, float)) AND math.isfinite(x), in that order, before
+any range assertion.

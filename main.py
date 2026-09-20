@@ -216,9 +216,11 @@ def _load_effects(effects_path: str) -> Dict[str, Any]:
                         f"Effect 'eq' band #{i} must be a parameter object, got {type(band).__name__}"
                     )
                 for key in ("frequency", "gain"):
-                    if key not in band or not isinstance(band[key], (int, float)):
+                    if (key not in band
+                            or not isinstance(band[key], (int, float))
+                            or not math.isfinite(band[key])):
                         raise ValueError(
-                            f"Effect 'eq' band #{i} needs a numeric '{key}'"
+                            f"Effect 'eq' band #{i} needs a finite numeric '{key}'"
                         )
                 # A band at/below DC is meaningless; apply_effects used to
                 # skip it silently (a +99 dB boost at -100 Hz produced
@@ -229,6 +231,7 @@ def _load_effects(effects_path: str) -> Dict[str, Any]:
                         f"got {band['frequency']}"
                     )
                 if "q" in band and (not isinstance(band["q"], (int, float))
+                                    or not math.isfinite(band["q"])
                                     or band["q"] <= 0):
                     raise ValueError(
                         f"Effect 'eq' band #{i} 'q' must be a positive number"
@@ -247,6 +250,13 @@ def _load_effects(effects_path: str) -> Dict[str, Any]:
                     print(f"Warning: unknown parameter '{key}' for effect "
                           f"'{name}' will be ignored", file=sys.stderr)
             if name == "reverb":
+                for key in ("room_size", "wet"):
+                    if key in params and (not isinstance(params[key], (int, float))
+                                          or not math.isfinite(params[key])):
+                        raise ValueError(
+                            f"Effect 'reverb' '{key}' must be a finite number, "
+                            f"got {params[key]!r}"
+                        )
                 if "room_size" in params and params["room_size"] <= 0:
                     raise ValueError("Effect 'reverb' 'room_size' must be positive")
                 if "wet" in params and not 0.0 <= params["wet"] <= 1.0:
@@ -255,9 +265,19 @@ def _load_effects(effects_path: str) -> Dict[str, Any]:
                         f"{params['wet']}"
                     )
             elif name == "compression":
+                # Type-check before any domain comparison: a string here used
+                # to reach `<=`/`<` and leak a TypeError traceback instead of
+                # a validation error.
+                for key in ("threshold", "ratio", "attack", "release",
+                            "knee", "makeup_gain"):
+                    if key in params and (not isinstance(params[key], (int, float))
+                                          or not math.isfinite(params[key])):
+                        raise ValueError(
+                            f"Effect 'compression' '{key}' must be a finite "
+                            f"number, got {params[key]!r}"
+                        )
                 ratio = params.get("ratio")
-                if ratio is not None and (not isinstance(ratio, (int, float))
-                                          or ratio < 1):
+                if ratio is not None and ratio < 1:
                     raise ValueError(
                         f"Effect 'compression' 'ratio' must be >= 1 "
                         f"(below 1 is expansion, not compression), got {ratio}"
