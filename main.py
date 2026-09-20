@@ -24,6 +24,7 @@ from typing import Dict, List, Optional, Any, Tuple, TYPE_CHECKING
 from dataclasses import dataclass, asdict, is_dataclass
 from concurrent.futures import ThreadPoolExecutor
 import logging
+import signal as _signal
 import warnings
 from collections import Counter
 from logging.handlers import RotatingFileHandler
@@ -1468,7 +1469,8 @@ class AudioProcessor:
 
         if use_parallel:
             max_workers = min(self.max_workers, len(safe_files))
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            executor = ThreadPoolExecutor(max_workers=max_workers)
+            try:
                 future_map = {
                     executor.submit(
                         self._process_single_file,
@@ -1492,6 +1494,13 @@ class AudioProcessor:
                         })
                     if progress is not None:
                         progress.update()
+            except BaseException:
+                # Ctrl-C: abandon queued work instead of running it to
+                # completion inside executor shutdown(wait=True).
+                executor.shutdown(wait=False, cancel_futures=True)
+                raise
+            else:
+                executor.shutdown(wait=True)
         else:
             for file_path in safe_files:
                 try:
@@ -2226,6 +2235,17 @@ def create_cli():
 
 async def main():
     """Main entry point"""
+    # asyncio.Runner installs a SIGINT handler that cancels the main task --
+    # which is only delivered at await points. Nearly every command here is
+    # synchronous work inside the coroutine, so Ctrl-C would be queued and
+    # silently dropped when the task finishes (measured: exit 0, all files
+    # processed). Restore the default handler so the interrupt is a real
+    # KeyboardInterrupt wherever it lands.
+    try:
+        _signal.signal(_signal.SIGINT, _signal.default_int_handler)
+    except (ValueError, OSError):
+        pass  # not the main thread (embedded/test use) -- leave it alone
+
     parser = create_cli()
     args = parser.parse_args()
 

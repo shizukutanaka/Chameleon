@@ -8,7 +8,11 @@ actual ``sys.exit(cli())`` wiring, not just the in-process return value of
 import os
 import subprocess
 import sys
+import signal
+import time
 from pathlib import Path
+
+import pytest
 
 from tests._helpers import write_sine_wave
 
@@ -163,3 +167,37 @@ def test_output_dir_that_is_a_file_exits_input(tmp_path):
                 "--output-dir", str(wav))
     assert proc.returncode == 3  # ExitCode.INPUT
     assert "not a directory" in proc.stderr
+
+
+def test_sigint_during_processing_exits_interrupted(tmp_path):
+    """asyncio.Runner converts SIGINT into a main-task cancellation that can
+    only be delivered at await points -- the whole process pipeline is
+    synchronous, so Ctrl-C used to be queued and dropped: exit 0, all files
+    processed. The CLI restores the default handler so the interrupt is a
+    real KeyboardInterrupt.
+
+    The signal is sent when the first output file appears -- guaranteed
+    mid-run for a serial 8-file job, independent of machine speed."""
+    pytest.importorskip("scipy")  # --denoise requires the audio extra
+    files = []
+    for i in range(8):
+        f = tmp_path / f"f{i}.wav"
+        write_sine_wave(str(f), duration=2.0)
+        files.append(str(f))
+    out_dir = tmp_path / "out"
+    main_py = MAIN_PY
+    proc = subprocess.Popen(
+        [sys.executable, main_py, "--no-parallel", "process", *files,
+         "--denoise", "--output-dir", str(out_dir)],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_DFL))
+    sent = False
+    deadline = time.time() + 60
+    while proc.poll() is None and time.time() < deadline:
+        if not sent and out_dir.exists() and any(out_dir.iterdir()):
+            proc.send_signal(signal.SIGINT)
+            sent = True
+        time.sleep(0.05)
+    rc = proc.wait(timeout=60)
+    assert sent, "no output appeared within the polling window"
+    assert rc == 130

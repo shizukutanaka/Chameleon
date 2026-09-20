@@ -2224,3 +2224,15 @@ A (2026-09-20): Warn. Rejecting breaks legitimate same-name workflows
 scripts may parse. But "Processed x2, output x1" without a word is a
 silent clobber -- the guard that fires is information. Warning names the
 colliding stems and the directory so the user can act.
+
+**Q: Why did Ctrl-C do nothing during a batch?**
+A (2026-09-20): asyncio.Runner installs a SIGINT handler that *cancels the
+main task* -- a cancellation deliverable only where the coroutine
+suspends. All processing is synchronous inside that coroutine, so the
+interrupt queued behind work that never awaited and evaporated when it
+returned: Ctrl-C produced exit 0 with every file processed. Two fixes:
+restore `default_int_handler` at the top of main() (the KeyboardInterrupt
+must be a real exception wherever it lands), and on BaseException shut
+the executor down with cancel_futures=True -- the default
+shutdown(wait=True) would otherwise run every queued file to completion
+even after the interrupt propagated.
