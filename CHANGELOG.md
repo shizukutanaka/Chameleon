@@ -55,6 +55,13 @@
 
 ### Fixed
 
+- **State files could be truncated by a mid-write crash** -- `open('w')`
+  truncates first, so a kill during save left `personal_config.json` /
+  `library.json` half-written, and the next load blamed *the user* for
+  the corruption. Config, library DB and generated alias scripts now
+  write via a sibling `.tmp` file + `os.replace`, which is atomic on
+  POSIX and Windows: readers see the old file or the new one, never a
+  partial write.
 - **Plugin constructor and get_metadata() also ran unbounded** -- the
   previous fix bounded exec_module() and initialize(), but plugin code
   runs at two more load-path sites: `plugin_class()` and
