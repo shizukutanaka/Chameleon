@@ -123,6 +123,22 @@ def _assert_unique_paths(paths: List[str], field_name: str) -> None:
         raise ValueError(message) from exc
 
 
+def _preflight_output_dir(output_dir: Optional[str]) -> Optional[str]:
+    """An output dir that is actually a file -- or whose parent chain hits
+    one -- only fails later, inside per-file processing, as a raw OSError
+    classified ERROR(1). The path is user input: refuse it as INPUT(3)."""
+    if output_dir is None:
+        return None
+    probe = Path(output_dir)
+    while not probe.exists():
+        probe = probe.parent
+        if str(probe) == probe.anchor:
+            break
+    if probe.exists() and not probe.is_dir():
+        raise ValueError(f"output_dir is not a directory: {output_dir}")
+    return output_dir
+
+
 class UnsupportedOperationError(ValueError):
     """The operation exists, but this install cannot run it (a required
     extra is missing). A ValueError subclass so existing callers/tests
@@ -2410,7 +2426,8 @@ async def main():
         operations: List[str] = []
         try:
             files = [_sanitize_cli_input(path, "files") for path in args.files]
-            output_dir = _sanitize_optional_input(args.output_dir, "output_dir")
+            output_dir = _preflight_output_dir(
+                _sanitize_optional_input(args.output_dir, "output_dir"))
             effects_path = _sanitize_optional_input(args.effects, "effects")
             _assert_unique_paths(files, "file input")
         except ValueError as exc:
@@ -2720,7 +2737,8 @@ async def main():
         try:
             directory_arg = _sanitize_cli_input(args.directory, "directory")
             directory = Path(directory_arg)
-            output_dir = _sanitize_optional_input(args.output_dir, "output_dir")
+            output_dir = _preflight_output_dir(
+                _sanitize_optional_input(args.output_dir, "output_dir"))
             format_arg = _sanitize_optional_input(args.format, "format")
             effects_path = _sanitize_optional_input(args.effects, "effects")
         except ValueError as exc:

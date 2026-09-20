@@ -151,3 +151,15 @@ def test_batch_partial_preflight_rejection_exits_input(tmp_path):
     proc = _run("batch", str(tmp_path), "normalize",
                 "--output-dir", str(tmp_path / "out"))
     assert proc.returncode == 3  # ExitCode.INPUT
+
+
+def test_output_dir_that_is_a_file_exits_input(tmp_path):
+    """--output-dir pointing at a regular file used to surface deep inside
+    per-file processing as a raw OSError classified ERROR(1). The path is
+    user input: it must answer INPUT(3) before any work starts."""
+    wav = tmp_path / "a.wav"
+    write_sine_wave(str(wav))
+    proc = _run("process", str(wav), "--normalize",
+                "--output-dir", str(wav))
+    assert proc.returncode == 3  # ExitCode.INPUT
+    assert "not a directory" in proc.stderr
