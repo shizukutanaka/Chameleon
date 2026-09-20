@@ -30,7 +30,7 @@ from collections import Counter
 from logging.handlers import RotatingFileHandler
 
 import core
-from core import open_secure, SecurityValidator
+from core import open_secure, SecurityValidator, atomic_output, staged_output_path
 from plugin_system import PluginManager, PluginConfig, SecurityError
 
 if TYPE_CHECKING:
@@ -2107,12 +2107,13 @@ class AudioProcessor:
                     write_audio = write_audio + (
                         rng.random(audio.shape) - rng.random(audio.shape)
                     ) * lsb
-                sf.write(
-                    file_path,
-                    write_audio.T if write_audio.ndim > 1 else write_audio,
-                    sr,
-                    subtype=subtype
-                )
+                with staged_output_path(file_path) as tmp:
+                    sf.write(
+                        str(tmp),
+                        write_audio.T if write_audio.ndim > 1 else write_audio,
+                        sr,
+                        subtype=subtype
+                    )
                 return target_bit_depth
             except Exception as e:
                 self.logger.warning(f"Soundfile save failed: {e}")
@@ -2201,7 +2202,7 @@ class AudioProcessor:
 
         channels = 1 if pcm_audio.ndim == 1 else pcm_audio.shape[0]
 
-        with open_secure(file_path, 'wb') as f:
+        with atomic_output(file_path) as f:
             # RIFF header
             f.write(b'RIFF')
             f.write(struct.pack('<I', 0))  # File size (will update later)
@@ -2602,7 +2603,7 @@ async def main():
             # the whole family (missing dir, directory-as-file, permissions).
             try:
                 export_path = _sanitize_cli_input(args.export, "export path")
-                with open(export_path, 'w') as f:
+                with atomic_output(export_path, 'w', encoding='utf-8') as f:
                     json.dump(results, f, indent=2, default=_json_export_default)
             except (OSError, ValueError) as exc:
                 print(f"Error: cannot write analysis export: {exc}",
