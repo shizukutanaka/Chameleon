@@ -476,6 +476,10 @@ DEFAULT_SAMPLE_RATE = 44100
 # for a pure-Python filter + block loop regardless of file length (same
 # bounded-analysis principle as core.get_samples_for_analysis's own default).
 LOUDNESS_MAX_SAMPLES = 15 * 48000
+# Upper bound for user-supplied target sample rates. 768kHz (DXD) is the
+# practical ceiling for PCM audio; beyond it the resampler's output buffer
+# is a memory/disk bomb (1s at 1e9Hz ≈ a 2GB WAV that "succeeded").
+MAX_TARGET_SAMPLE_RATE = 768_000
 
 # Operations the dependency-free core can perform on a file, mapping to the
 # output suffix and the core call. `analyze` is handled separately because it
@@ -2540,8 +2544,10 @@ async def main():
             if used:
                 print(f"Error: {used[0]} requires --convert", file=sys.stderr)
                 return ExitCode.USAGE
-        if args.convert_sample_rate is not None and args.convert_sample_rate <= 0:
-            print(f"Error: --convert-sample-rate must be positive, got "
+        if (args.convert_sample_rate is not None
+                and not 0 < args.convert_sample_rate <= MAX_TARGET_SAMPLE_RATE):
+            print(f"Error: --convert-sample-rate must be within "
+                  f"(0, {MAX_TARGET_SAMPLE_RATE}], got "
                   f"{args.convert_sample_rate}", file=sys.stderr)
             return ExitCode.INPUT
 
@@ -2850,10 +2856,12 @@ async def main():
                 print("Error: --quality only applies to the normalize operation",
                       file=sys.stderr)
                 return ExitCode.USAGE
-        if args.sample_rate is not None and args.sample_rate <= 0:
-            # convert_audio raises per-file downstream; a non-positive rate
+        if (args.sample_rate is not None
+                and not 0 < args.sample_rate <= MAX_TARGET_SAMPLE_RATE):
+            # convert_audio raises per-file downstream; an out-of-domain rate
             # is bad input, not a batch of identical failures.
-            print(f"Error: --sample-rate must be positive, got "
+            print(f"Error: --sample-rate must be within "
+                  f"(0, {MAX_TARGET_SAMPLE_RATE}], got "
                   f"{args.sample_rate}", file=sys.stderr)
             return ExitCode.INPUT
         if args.operation != "effects" and args.effects:

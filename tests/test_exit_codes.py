@@ -187,6 +187,18 @@ def test_output_dir_that_is_unwritable_exits_input(tmp_path):
     assert "not writable" in proc.stderr
 
 
+def test_absurd_sample_rate_exits_input(tmp_path):
+    """--convert-sample-rate 999999999 used to resample 1s of audio into a
+    ~2GB WAV that "succeeded" -- a memory/disk bomb, not a rate. Target
+    rates are bounded at 768kHz (DXD)."""
+    wav = tmp_path / "a.wav"
+    write_sine_wave(str(wav))
+    proc = _run("process", str(wav), "--convert",
+                "--convert-sample-rate", "999999999")
+    assert proc.returncode == 3  # ExitCode.INPUT
+    assert "768000" in proc.stderr
+
+
 def test_sigint_during_processing_exits_interrupted(tmp_path):
     """asyncio.Runner converts SIGINT into a main-task cancellation that can
     only be delivered at await points -- the whole process pipeline is
