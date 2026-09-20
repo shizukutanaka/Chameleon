@@ -154,7 +154,7 @@ chameleon batch ./audio denoise --recursive --output-dir out/
 | `--recursive` | サブディレクトリも処理 |
 | `--output-dir DIR` | 出力ディレクトリ |
 | `--format FMT` | 出力フォーマット |
-| `--quality {low,medium,high,lossless}` | 出力品質 |
+| `--quality {standard,high}` | `normalize` のみ: `high` はソフトクリップでヘッドルームを確保、`standard` は適用しない。`low`/`medium`/`lossless` は互換性のため受理され `standard` と同等 |
 | `--target-peak F` | `normalize` 操作の目標ピーク値 |
 | `--sample-rate N` | `convert` の変換先サンプルレート |
 | `--bit-depth {16,24,32}` | `convert` の変換先ビット深度 |

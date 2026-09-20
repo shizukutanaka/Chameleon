@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Changed
+
+- **`batch --quality` collapsed to the two real behaviors** — the flag
+  advertised four tiers (`low`/`medium`/`high`/`lossless`) but only
+  `high` did anything (enables the soft clipper during `normalize`);
+  the other three were indistinguishable no-ops — a fantasy tier list.
+  Choices are now `standard`/`high`; the legacy names are still
+  accepted with a stderr note mapping them to `standard`, so existing
+  scripts keep working without implying capability that never existed.
+
 ### Removed
 
 - **`make docs`** — the target ran `sphinx-build` on `docs/`, which holds only

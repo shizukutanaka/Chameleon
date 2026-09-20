@@ -404,7 +404,7 @@ class ProcessingConfig:
     parallel: bool = True
     max_workers: int = max(1, min(4, mp.cpu_count() or 1))
     cache_enabled: bool = True
-    quality: str = "high"  # low, medium, high, lossless
+    quality: str = "high"  # standard | high -- only 'high' adds a soft clipper
 
     @classmethod
     def from_environment(cls) -> "ProcessingConfig":
@@ -1928,7 +1928,12 @@ def create_cli():
     batch.add_argument("--recursive", action="store_true", help="Process recursively")
     batch.add_argument("--output-dir", help="Output directory")
     batch.add_argument("--format", help="Output format")
-    batch.add_argument("--quality", choices=["low", "medium", "high", "lossless"], default="high")
+    batch.add_argument("--quality", choices=["standard", "high", "low", "medium", "lossless"],
+                       default="high",
+                       help="Normalize only: 'high' applies soft-clipping headroom, "
+                            "'standard' does not. Legacy values low/medium/lossless are "
+                            "accepted but equivalent to 'standard' -- they never had "
+                            "separate behavior.")
     batch.add_argument("--target-peak", type=float,
                        help="Target peak level for the normalize operation, 0.0-1.0 (default 0.95)")
     batch.add_argument("--sample-rate", type=int, help="Target sample rate for conversion")
@@ -2462,6 +2467,14 @@ async def main():
         if args.no_parallel:
             processor.config.parallel = False
         if args.quality:
+            # The four-tier knob only ever had one behavior: 'high' adds a
+            # soft clipper during normalize, every other value did nothing.
+            # Accept the legacy names rather than break scripts, but say so
+            # instead of letting them imply a difference that is not there.
+            if args.quality in ("low", "medium", "lossless"):
+                print(f"Note: --quality {args.quality} is equivalent to 'standard' "
+                      "(no soft clipping); only 'high' enables it.", file=sys.stderr)
+                args.quality = "standard"
             processor.config.quality = args.quality
         processor.update_worker_limits()
 

@@ -1910,3 +1910,16 @@ also pin the pathological input the property is supposed to survive.
   `ci/proposed-ci.yml`; adopting it needs a maintainer with `workflows` permission to run
   the copy documented in `ci/README.md` (the automation account that produced this branch
   cannot push workflow changes).
+
+**Q: `batch --quality` offers four tiers — do four behaviors exist?**
+A (2026-09-19): No — the knob was a fantasy tier list. `config.quality` had
+exactly one consumer (`normalize` applies a soft clipper only when
+`quality == "high"`); `low`/`medium`/`lossless` were accepted, stored, and
+did nothing distinguishable. An option whose values cannot be told apart is
+the §4 sin in miniature — it promises a dial that is not connected. The
+flag now offers the two real behaviors (`standard`/`high`); the legacy
+names are still accepted but map to `standard` with a stderr note, so
+scripts keep running while the docs stop lying about what the knob does.
+Deleting the flag outright was rejected: `high`'s soft clipper is real
+behavior users may want off, and a boolean-ish choice is the smallest
+honest surface that keeps it reachable.

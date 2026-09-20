@@ -137,4 +137,6 @@ def test_batch_quality_flag_sets_processor_config(tmp_path, monkeypatch):
 
     asyncio.run(main.main())
 
-    assert captured["processor"].config.quality == "low"
+    # Legacy tier names never had distinct behavior; they map to 'standard'
+    # (the flag is still wired end to end).
+    assert captured["processor"].config.quality == "standard"
