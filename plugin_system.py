@@ -392,12 +392,15 @@ class PluginLoader:
                 self.logger.warning(f"No valid plugin classes found in {plugin_path}")
                 return None
 
-            # Instantiate first valid plugin class
+            # Instantiate + read metadata -- the constructor and
+            # get_metadata() are plugin code too, and ran unbounded until
+            # they were wrapped here (a sleeping get_metadata() ignored
+            # the limit, verified). Every plugin-defined callable on the
+            # load path stays inside the sandbox limits.
             plugin_class = plugin_classes[0]
-            plugin_instance = plugin_class()
+            plugin_instance = self.sandbox.execute_with_limits(plugin_class)
 
-            # Get metadata
-            metadata = plugin_instance.get_metadata()
+            metadata = self.sandbox.execute_with_limits(plugin_instance.get_metadata)
             plugin_instance.metadata = metadata
 
             # Validate plugin

@@ -272,3 +272,35 @@ def test_load_plugin_initialize_timeout_is_reported_not_swallowed(tmp_path):
     with pytest.raises(TimeoutError, match="timed out"):
         loader.load_plugin(slow)
     assert time.monotonic() - t0 < 10
+
+
+@pytest.mark.parametrize("hang_site", ["module", "init", "metadata"])
+def test_load_plugin_limits_all_plugin_code_sites(tmp_path, hang_site):
+    """Every plugin-defined callable on the load path runs inside the
+    sandbox's time limit -- module top level, __init__, get_metadata and
+    initialize. Until the wrap, only execute_plugin() was bounded; a
+    sleep in any of the others hung `plugins list` (verified)."""
+    import time
+    loader = PluginLoader(PluginConfig(max_execution_time=1))
+    body = "import time\n" + ("time.sleep(30)\n" if hang_site == "module" else "")
+    init_sleep = "        time.sleep(30)\n" if hang_site == "init" else "        return True\n"
+    meta_sleep = "        time.sleep(30)\n" if hang_site == "metadata" else ""
+    plugin = tmp_path / "hanging.py"
+    plugin.write_text(
+        body +
+        "from plugin_system import AudioEffectPlugin, PluginMetadata\n"
+        "class H(AudioEffectPlugin):\n"
+        "    def get_metadata(self):\n" + meta_sleep +
+        "        return PluginMetadata(name='h', version='1.0.0', author='t',\n"
+        "                              description='t', category='effect')\n"
+        "    def initialize(self, config):\n" + init_sleep +
+        "    def cleanup(self):\n"
+        "        pass\n"
+        "    def process_audio(self, audio_data, sample_rate, **params):\n"
+        "        return audio_data\n"
+    )
+
+    t0 = time.monotonic()
+    with pytest.raises(TimeoutError, match="timed out"):
+        loader.load_plugin(plugin)
+    assert time.monotonic() - t0 < 10

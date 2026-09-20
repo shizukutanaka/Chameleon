@@ -55,6 +55,13 @@
 
 ### Fixed
 
+- **Plugin constructor and get_metadata() also ran unbounded** -- the
+  previous fix bounded exec_module() and initialize(), but plugin code
+  runs at two more load-path sites: `plugin_class()` and
+  `get_metadata()` both called plugin-defined code outside the limit
+  (verified: a sleeping get_metadata() ignored max_execution_time).
+  Both now run inside `sandbox.execute_with_limits`, so every
+  plugin-defined callable reached during loading is bounded.
 - **Plugin code ran unbounded at load time** -- `max_execution_time` was
   enforced around `execute_plugin()` calls, but `plugins list`/`audit`
   run the module's top-level code and `initialize()` during loading
