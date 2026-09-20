@@ -128,7 +128,6 @@ SECURITY_CONFIG = {
     'session_timeout': 3600,  # 1 hour
     'max_session_idle_seconds': 900,
     'max_concurrent_jobs': 10,
-    'audit_logging': True,
     'max_active_sessions': 100,
     'max_job_history': 200,
     'max_job_queue_size': 200,

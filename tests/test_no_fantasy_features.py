@@ -42,6 +42,10 @@ FORBIDDEN_PATTERNS = [
     re.compile(r"neural[\s-]*network", re.IGNORECASE),
     re.compile(r"\bspleeter\b", re.IGNORECASE),
     re.compile(r"quantum\s+(computing|processing)", re.IGNORECASE),
+    # A GPU toggle that does nothing is a §4 claim even without an import:
+    # ProcessingConfig.use_gpu existed for a year with zero consumers and
+    # was removed 2026-09. Keep it out of any config/argparse surface.
+    re.compile(r"\b(use|enable)_gpu\b|\bgpu_(enabled|acceleration)\b", re.IGNORECASE),
 ]
 
 # Substrings that mark a line as a sanctioned removal / avoidance record.

@@ -398,9 +398,7 @@ class ProcessingConfig:
     bit_depth: int = 16
     normalize: bool = True
     target_peak: float = 0.95
-    remove_dc_offset: bool = True
     apply_dither: bool = False
-    use_gpu: bool = False
     parallel: bool = True
     max_workers: int = max(1, min(4, mp.cpu_count() or 1))
     cache_enabled: bool = True

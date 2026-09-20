@@ -35,6 +35,14 @@
 
 ### Removed
 
+- **Dead config fields** — `ProcessingConfig.use_gpu` (a GPU toggle that
+  never had a consumer — a §4 claim embedded in the config schema) and
+  `remove_dc_offset` (same: accepted, stored, read by nothing).
+  `SECURITY_CONFIG['audit_logging']` likewise claimed a switchable audit
+  log while events were logged unconditionally. A setting that cannot be
+  observed is a promise the config does not keep. The anti-fantasy suite
+  now also source-greps `use_gpu`/`enable_gpu`/`gpu_*` toggle names so
+  the dead dial cannot return outside a CLI flag.
 - **`make docs`** — the target ran `sphinx-build` on `docs/`, which holds only
   markdown and has no `conf.py`; it could never succeed. Every remaining
   target's tools exist in the `dev` extra.

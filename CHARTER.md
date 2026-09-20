@@ -1957,3 +1957,13 @@ wired into the normalize call, unknown option keys are rejected 422 at
 submit time, and the (0,1.0] range is validated there too. The rule for
 future fields: a request field without a consumer either gets wired or
 rejected — never stored-and-dropped.
+
+**Q: Do config schemas hold dead claims too (`use_gpu`, `audit_logging`)?**
+A (2026-09-19): Yes — `ProcessingConfig.use_gpu` existed with zero
+consumers (a §4 GPU claim inside the config schema, invisible to the CLI
+help-grep that caught the CLI-level offenders), `remove_dc_offset` was
+the same dead dial, and `SECURITY_CONFIG['audit_logging']` promised a
+switchable audit log while events logged unconditionally. All three
+removed; the fantasy-features test now source-greps GPU-toggle names so
+they cannot return on a non-CLI surface. Auditing rule extended: a claim
+is a claim whether it lives on a flag, a field, or a config key.
