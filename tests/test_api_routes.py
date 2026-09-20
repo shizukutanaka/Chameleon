@@ -455,3 +455,35 @@ def test_expired_session_is_rejected_and_removed(client, monkeypatch):
                    headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 401
     assert session_id not in api_server.api_state.active_sessions
+
+
+def test_audit_log_records_real_operations(client, monkeypatch, tmp_path):
+    """Every authenticated endpoint writes an audit event; /audit/log must
+    return the real trail (not a fixture) with the operation names."""
+    monkeypatch.setattr(api_server, "UPLOAD_DIRECTORY", tmp_path)
+    login = _login(client)
+    token = login.json()["token"]
+    auth = {"Authorization": f"Bearer {token}"}
+
+    import io, math, struct, wave
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(44100)
+        w.writeframes(struct.pack("<4410h",
+            *[int(0.3 * 32767 * math.sin(2 * math.pi * 220 * i / 44100))
+              for i in range(4410)]))
+    up = client.post("/audio/upload",
+                     files={"file": ("a.wav", buf.getvalue(), "audio/wav")},
+                     headers=auth)
+    assert up.status_code == 200
+
+    r = client.get("/audit/log", headers=auth)
+    assert r.status_code == 200
+    ops = {e["operation"] for e in r.json()["entries"]}
+    assert {"LOGIN", "UPLOAD"} <= ops, ops
+    # Entries carry real fields, not placeholders
+    entry = next(e for e in r.json()["entries"] if e["operation"] == "UPLOAD")
+    assert entry["result"] == "SUCCESS" and entry["user"] == DEV_USERNAME
+    # The read itself is logged too -- visible on the next fetch.
+    r2 = client.get("/audit/log", headers=auth)
+    assert "AUDIT_READ" in {e["operation"] for e in r2.json()["entries"]}
