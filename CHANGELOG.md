@@ -55,6 +55,18 @@
 
 ### Fixed
 
+- **`PersonalWorkflow.backup_workflow` "verified" the backup by
+  re-checking the sources** -- the manifest keys on absolute source
+  paths, so `verify_manifest()` re-inspected the originals and could
+  never fail on the copies; a corrupt, truncated, or missing backup
+  still printed "Backup verified successfully!" The step now
+  re-inspects each destination file and compares its checksum to the
+  recorded source value (verified: a deliberately corrupted copy is
+  reported as "checksum mismatch" while intact copies pass).
+- **Manifest writes are now atomic** -- `IntegrityVerifier.create_manifest`
+  truncated the target before writing, so a crash left corrupt JSON that
+  would fail every future verification for an invisible reason. Same
+  sibling-tmp + `os.replace` pattern as the rest of the state files.
 - **`spectral_editor` could not perform a single edit** -- five defects
   compounded on the only path that actually runs (the `[audio]` extra
   lacks matplotlib, so `import librosa.display` fails and the manual

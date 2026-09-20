@@ -372,3 +372,50 @@ def test_save_writes_atomically_no_partial_state(tmp_path):
     assert not (tmp_path / "personal_config.json.tmp").exists()
     # And a load of what was written must succeed.
     assert PersonalConfig.load(target).audio_library == cfg.audio_library
+
+
+# --- backup_workflow verifies the copies, not the sources ------------------
+
+def test_backup_workflow_reports_a_corrupted_copy(tmp_path, monkeypatch, capsys):
+    # The manifest keys on source paths, so re-verifying it could never fail
+    # on the backup itself -- the previous version always printed "verified".
+    from tests._helpers import write_sine_wave
+    import shutil
+    import personal_config as pc
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    library = tmp_path / "lib"
+    library.mkdir()
+    write_sine_wave(library / "a.wav", duration=0.05)
+    write_sine_wave(library / "b.wav", duration=0.05, frequency=880.0)
+    dest_dir = tmp_path / "dest"
+
+    real_copy2 = shutil.copy2
+
+    def corrupting_copy2(src, dst):
+        real_copy2(src, dst)
+        if Path(dst).name == "b.wav":
+            Path(dst).write_bytes(b"not the real thing")
+
+    monkeypatch.setattr(shutil, "copy2", corrupting_copy2)
+    pc.PersonalWorkflow.backup_workflow(library, dest_dir)
+
+    out = capsys.readouterr().out
+    assert "verified successfully" not in out
+    assert "b.wav" in out
+
+
+def test_backup_workflow_verifies_an_intact_copy(tmp_path, monkeypatch, capsys):
+    from tests._helpers import write_sine_wave
+    import personal_config as pc
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    library = tmp_path / "lib"
+    library.mkdir()
+    write_sine_wave(library / "a.wav", duration=0.05)
+    dest_dir = tmp_path / "dest"
+
+    pc.PersonalWorkflow.backup_workflow(library, dest_dir)
+
+    assert (dest_dir / "a.wav").exists()
+    assert "verified successfully" in capsys.readouterr().out

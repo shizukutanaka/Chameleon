@@ -2369,3 +2369,8 @@ any range assertion.
   matplotlib which [audio] does not install). An allowed orphan is a
   maintenance exemption, not a correctness exemption -- exercise the
   library paths or they rot invisibly.
+- A verification step that only re-checks its inputs can never fail on
+  its outputs: backup_workflow built a manifest of SOURCE paths, copied
+  the files, then "verified" by re-inspecting the sources -- any number
+  of corrupt or missing copies still reported success. Verify the thing
+  you produced, not the thing you copied.

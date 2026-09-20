@@ -407,11 +407,14 @@ class IntegrityVerifier:
                 "metadata": result.metadata
             }
 
-        # Save manifest
+        # Save manifest atomically: a torn write leaves a corrupt JSON that
+        # would fail every future verify for a reason the user cannot see.
         manifest_path = self.manifest_dir / f"{manifest_name}.json"
         import json
-        with open(manifest_path, 'w') as f:
+        tmp_path = manifest_path.with_suffix(manifest_path.suffix + ".tmp")
+        with open(tmp_path, 'w') as f:
             json.dump(manifest, f, indent=2)
+        os.replace(tmp_path, manifest_path)
 
         os.chmod(manifest_path, 0o600)
         logger.info(f"Manifest created: {manifest_path}")

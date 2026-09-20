@@ -456,7 +456,7 @@ class PersonalWorkflow:
         print("  [1/3] Creating integrity manifest...")
         verifier = IntegrityVerifier()
         files = list(library_path.rglob("*.wav"))
-        manifest = verifier.create_manifest(files, "backup_manifest")
+        manifest_path = verifier.create_manifest(files, "backup_manifest")
 
         # 2. Copy files
         print("  [2/3] Copying files...")
@@ -467,11 +467,29 @@ class PersonalWorkflow:
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(file, dest)
 
-        # 3. Verify
+        # 3. Verify -- the manifest keys on SOURCE paths, so
+        # verify_manifest() would re-check the originals and could never
+        # notice a corrupt or missing copy. Re-inspect each destination
+        # file and compare it against the recorded source checksum.
         print("  [3/3] Verifying backup...")
-        valid, issues = verifier.verify_manifest(manifest)
+        import json
+        from advanced_validation import DeepFileInspector
+        with open(manifest_path) as f:
+            expected = json.load(f)
+        inspector = DeepFileInspector()
+        issues = []
+        for file in files:
+            rel_path = file.relative_to(library_path)
+            dest = backup_path / rel_path
+            entry = expected.get(str(file))
+            if not dest.exists():
+                issues.append(f"missing copy: {rel_path}")
+            elif entry is None:
+                issues.append(f"no manifest entry: {rel_path}")
+            elif inspector.inspect_file(dest).checksum_sha256 != entry["checksum"]:
+                issues.append(f"checksum mismatch: {rel_path}")
 
-        if valid:
+        if not issues:
             print("  ✅ Backup verified successfully!")
         else:
             print(f"  ⚠️ Backup issues: {issues}")
