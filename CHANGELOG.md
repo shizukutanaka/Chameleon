@@ -55,6 +55,15 @@
 
 ### Fixed
 
+- **The in-memory audit log grew without bound** -- `api_state.audit_log`
+  was a plain list appended on every request while `job_history` and
+  `request_histogram` were already capped, so a long-running server
+  leaked one entry per event forever. It is now a `deque` bounded by
+  `SECURITY_CONFIG['max_audit_log_entries']` (default 10,000); durable
+  storage is unchanged since every event is also appended to the audit
+  file. (Still open: `uploaded_files` metadata and the upload directory
+  itself have no expiry -- bounding them needs an eviction policy that
+  cannot break download authorization for live files.)
 - **The API circuit breaker could never trip** --
   `_update_circuit_breaker` was defined, `process_batch_job` checked
   `circuit_breaker_open` and `/system/status` reported it, but nothing

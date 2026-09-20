@@ -2404,3 +2404,8 @@ any range assertion.
   breaker had a threshold, a window, a reset timer, a status field, and a
   gate in the job loop -- everything except the one call that records a
   failure. Audit the whole feedback loop, not just the read side.
+- Durable storage and the read cache are different resources: the audit
+  log persisted every event to disk yet the in-memory copy grew without
+  bound. Any unbounded in-process structure in a long-running server is
+  a leak -- bound it, and bound it where eviction cannot break a live
+  contract.

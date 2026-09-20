@@ -347,7 +347,13 @@ class APIState:
         self.token_index: Dict[str, str] = {}
         self.active_jobs: Dict[str, Dict[str, Any]] = {}
         self.job_queue: List[str] = []
-        self.audit_log: List[AuditLogEntry] = []
+        # Bounded in-memory audit buffer: every event is also appended
+        # to the audit file for durable storage, so the in-memory copy
+        # exists only to serve /audit/log reads and must not grow
+        # without limit on a long-running server.
+        self.audit_log: Deque[AuditLogEntry] = deque(
+            maxlen=SECURITY_CONFIG.get('max_audit_log_entries') or 10_000
+        )
         self.server_start_time = time.time()
         self.stats = {
             'completed_jobs': 0,
@@ -1527,7 +1533,7 @@ async def get_audit_log(
     user: dict = Depends(require_permission("audit"))
 ):
     """Get audit log entries"""
-    entries = api_state.audit_log[-limit:]
+    entries = list(api_state.audit_log)[-limit:]
 
     client_ip = _get_request_ip(http_request)
     log_audit_event(

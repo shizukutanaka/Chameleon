@@ -569,3 +569,16 @@ def test_circuit_breaker_actually_trips_on_job_failures(monkeypatch):
     asyncio.run(api_server.process_batch_job("j3"))
     assert api_server.api_state.active_jobs["j3"]["status"] == "failed"
     assert "Circuit breaker" in api_server.api_state.active_jobs["j3"]["error"]
+
+
+def test_audit_log_is_bounded():
+    # Every event is also appended to the durable audit file, so the
+    # in-memory buffer exists only to serve /audit/log reads -- it must
+    # not grow without limit on a long-running server.
+    from collections import deque
+    assert isinstance(api_server.api_state.audit_log, deque)
+    assert api_server.api_state.audit_log.maxlen is not None
+    cap = api_server.api_state.audit_log.maxlen
+    for i in range(cap + 50):
+        api_server.log_audit_event("u", "OP", "res", "SUCCESS", "", "ip", "")
+    assert len(api_server.api_state.audit_log) == cap
