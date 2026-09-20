@@ -1967,6 +1967,17 @@ input's duration — not approximately, exactly. All other istft paths
 input-validation and flag-consumer audits alike — it needed a
 measured output, not a code read.
 
+**Q (2026-09-19, cycle 59): Is saturation on write a warning-worthy
+event?**
+`save_audio` ran `np.clip(audio, -1, 1)` and said nothing — so an
+effects chain that overdrove the signal (+12 dB EQ on a 0.37-peak
+tone) produced measurably wrong output (+10 dB delivered) with a
+perfectly happy "Processed" line. Hard-clipping at the integer-PCM
+boundary is the correct *behavior*; hiding it is the defect. The
+writer now counts overrange samples and warns once per file with the
+count and the path. Audit rule: a lossy guard that fires is
+information the user needs — silent clamps protect nobody.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy

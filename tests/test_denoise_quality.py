@@ -173,3 +173,47 @@ def test_output_preserves_input_length():
     processed = _processor().remove_noise(signal.copy(), SAMPLE_RATE)
 
     assert processed.shape[-1] == signal.shape[-1]
+
+
+def _chameleon_messages():
+    # The 'chameleon' logger sets propagate=False, so caplog never sees its
+    # records; capture by attaching a collector directly.
+    import logging
+
+    records = []
+
+    class _Collector(logging.Handler):
+        def emit(self, record):
+            records.append(record.getMessage())
+
+    logger = logging.getLogger("chameleon")
+    handler = _Collector()
+    logger.addHandler(handler)
+    return records, logger, handler
+
+
+def test_save_audio_warns_when_samples_will_clip(tmp_path):
+    # save_audio hard-clips out-of-range floats on int PCM write. The clip
+    # is unavoidable, but silence about it let an overdriven effects chain
+    # (+12 dB EQ on a hot signal) distort invisibly. The count must surface.
+    proc = _processor()
+    hot = np.full(4096, 1.5, dtype=np.float32)
+    records, logger, handler = _chameleon_messages()
+    try:
+        proc.save_audio(hot, str(tmp_path / "hot.wav"), SAMPLE_RATE)
+    finally:
+        logger.removeHandler(handler)
+
+    assert any("hard-clip" in m for m in records)
+
+
+def test_save_audio_silent_when_in_range(tmp_path):
+    proc = _processor()
+    quiet = np.full(4096, 0.5, dtype=np.float32)
+    records, logger, handler = _chameleon_messages()
+    try:
+        proc.save_audio(quiet, str(tmp_path / "quiet.wav"), SAMPLE_RATE)
+    finally:
+        logger.removeHandler(handler)
+
+    assert not any("hard-clip" in m for m in records)

@@ -19,6 +19,11 @@
   files up to one hop longer (a 2-second file grew +888 samples =
   +20 ms of dead air, breaking sync against the original). The output
   is now trimmed to the input's exact sample count.
+- **Out-of-range audio clipped silently on write** -- `save_audio`
+  hard-clipped samples beyond [-1, 1] with no indication, so an
+  overdriven chain (e.g. +12 dB EQ on a hot signal) distorted
+  invisibly. The clipped-sample count now logs a warning naming the
+  output file.
 - **`stream` accepted negative device indices** -- `--input-device -1`
   parsed and reached the PyAudio backend where it fails opaquely (or
   with a bare RuntimeError when PyAudio is absent). Indices are now

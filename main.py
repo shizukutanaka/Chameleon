@@ -1804,7 +1804,15 @@ class AudioProcessor:
         if audio.dtype != np.float32:
             audio = audio.astype(np.float32)
 
-        # Ensure audio is in range [-1, 1]
+        # Values beyond [-1, 1] hard-clip on int PCM write -- report the
+        # count so an overdriven effects chain surfaces as a warning
+        # instead of silent distortion.
+        over = int(np.count_nonzero(np.abs(audio) > 1.0))
+        if over and self.logger:
+            self.logger.warning(
+                "%d samples exceed [-1, 1] and will hard-clip on write to %s",
+                over, file_path,
+            )
         audio = np.clip(audio, -1.0, 1.0)
 
         target_bit_depth = bit_depth if bit_depth in {16, 24, 32} else 16
