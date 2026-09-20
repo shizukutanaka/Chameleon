@@ -21,7 +21,7 @@ from typing import Dict, List, Optional, Any, Deque
 import uuid
 
 # Core frameworks
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Request, status
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Query, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
@@ -1523,7 +1523,7 @@ async def get_system_status(http_request: Request, user: dict = Depends(require_
 @app.get("/audit/log")
 async def get_audit_log(
     http_request: Request,
-    limit: int = 100,
+    limit: int = Query(100, ge=1),
     user: dict = Depends(require_permission("audit"))
 ):
     """Get audit log entries"""

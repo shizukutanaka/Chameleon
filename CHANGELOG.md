@@ -1037,3 +1037,6 @@ Initial public release of the Chameleon Audio Tool.
   artifact (`--normalize --denoise` -> two files, not a chain); only the
   --declip/--dehum restoration pair shares one `*_restored.wav` pipeline.
   "Operations combine" was ambiguous about which.
+- `/audit/log?limit=` now rejects non-positive values with 422 (was:
+  limit=0 returned the whole log via entries[-0:], negatives silently
+  truncated from the wrong end).
