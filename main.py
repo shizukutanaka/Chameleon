@@ -1949,7 +1949,7 @@ def create_cli():
     batch.add_argument("--output-dir", help="Output directory")
     batch.add_argument("--format", help="Output format")
     batch.add_argument("--quality", choices=["standard", "high", "low", "medium", "lossless"],
-                       default="high",
+                       default=None,
                        help="Normalize only: 'high' applies soft-clipping headroom, "
                             "'standard' does not. Legacy values low/medium/lossless are "
                             "accepted but equivalent to 'standard' -- they never had "
@@ -2214,6 +2214,24 @@ async def main():
             "dry_run": args.dry_run
         }
 
+        # Op-specific flags on a command that did not request the op are
+        # silently ignored otherwise -- the user reads a flag they typed as
+        # part of the operation's behavior, so reject rather than pretend.
+        if args.target_peak is not None and not args.normalize:
+            print("Error: --target-peak requires --normalize", file=sys.stderr)
+            return ExitCode.USAGE
+        if args.threshold is not None and not args.trim:
+            print("Error: --threshold requires --trim", file=sys.stderr)
+            return ExitCode.USAGE
+        convert_flags = {"--convert-format": args.convert_format,
+                         "--convert-sample-rate": args.convert_sample_rate,
+                         "--convert-bit-depth": args.convert_bit_depth}
+        if not args.convert:
+            used = [name for name, v in convert_flags.items() if v is not None]
+            if used:
+                print(f"Error: {used[0]} requires --convert", file=sys.stderr)
+                return ExitCode.USAGE
+
         if args.normalize:
             operations.append("normalize")
             if args.target_peak is not None:
@@ -2472,6 +2490,30 @@ async def main():
         if not directory.is_dir():
             print(f"Error: specified path is not a directory: {directory}", file=sys.stderr)
             return ExitCode.INPUT
+
+        # Flags scoped to an operation that was not requested would be
+        # silently ignored -- reject them instead of pretending they ran.
+        if args.operation != "convert":
+            for flag, value in (("--format", args.format),
+                                ("--sample-rate", args.sample_rate),
+                                ("--bit-depth", args.bit_depth)):
+                if value is not None:
+                    print(f"Error: {flag} only applies to the convert operation",
+                          file=sys.stderr)
+                    return ExitCode.USAGE
+        if args.operation != "normalize":
+            if args.target_peak is not None:
+                print("Error: --target-peak only applies to the normalize operation",
+                      file=sys.stderr)
+                return ExitCode.USAGE
+            if args.quality is not None:
+                print("Error: --quality only applies to the normalize operation",
+                      file=sys.stderr)
+                return ExitCode.USAGE
+        if args.operation != "effects" and args.effects:
+            print("Error: --effects only applies to the effects operation",
+                  file=sys.stderr)
+            return ExitCode.USAGE
 
         pattern = "**/*" if args.recursive else "*"
 

@@ -131,7 +131,7 @@ def test_batch_quality_flag_sets_processor_config(tmp_path, monkeypatch):
     monkeypatch.setattr(main.AudioProcessor, "__init__", spy_init)
     monkeypatch.setattr(
         sys, "argv",
-        ["main.py", "batch", str(tmp_path), "analyze", "--quality", "low"],
+        ["main.py", "batch", str(tmp_path), "normalize", "--quality", "low"],
     )
     monkeypatch.chdir(tmp_path)
 
@@ -239,3 +239,43 @@ def test_batch_dry_run_writes_nothing(tmp_path):
     assert not out.exists()
     assert list(tmp_path.glob("*_normalized.wav")) == []
     assert "Would process" in result.stdout
+
+
+# -- Op-scoped flags are rejected when their operation is absent ---------
+
+def test_process_rejects_threshold_without_trim(tmp_path):
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    result = _run("process", str(wav), "--normalize", "--threshold", "0.5",
+                  cwd=str(tmp_path))
+    # --threshold only feeds --trim; without it the flag was silently ignored.
+    assert result.returncode == 2  # USAGE
+
+
+def test_process_rejects_convert_flag_without_convert(tmp_path):
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    result = _run("process", str(wav), "--mono", "--convert-bit-depth", "24",
+                  cwd=str(tmp_path))
+    assert result.returncode == 2
+
+
+def test_batch_rejects_convert_flags_on_normalize(tmp_path):
+    write_sine_wave(tmp_path / "tone.wav")
+    result = _run("batch", str(tmp_path), "normalize", "--sample-rate", "22050",
+                  cwd=str(tmp_path))
+    assert result.returncode == 2
+
+
+def test_batch_rejects_quality_on_mono(tmp_path):
+    write_sine_wave(tmp_path / "tone.wav")
+    result = _run("batch", str(tmp_path), "mono", "--quality", "high",
+                  cwd=str(tmp_path))
+    assert result.returncode == 2
+
+
+def test_batch_rejects_effects_on_normalize(tmp_path):
+    write_sine_wave(tmp_path / "tone.wav")
+    fx = tmp_path / "fx.json"
+    fx.write_text('{"reverb": {"wet": 0.3}}')
+    result = _run("batch", str(tmp_path), "normalize", "--effects", str(fx),
+                  cwd=str(tmp_path))
+    assert result.returncode == 2

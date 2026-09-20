@@ -1878,6 +1878,19 @@ dispatch avoid both. Generalization: when docs and the parser disagree
 about where a flag goes, the flag's *advertised* position is a claim
 that must hold — verify the documented spelling actually parses.
 
+**Q (2026-09-19, cycle 44): What about flags accepted on the wrong
+operation?**
+`batch dir normalize --sample-rate 22050` used to parse fine and drop
+the value — the flag lived on the shared subparser, its consumer only
+ran for `convert`. The same shape in `process` (`--threshold` without
+`--trim`, `--convert-*` without `--convert`). An accepted flag that
+names a different operation is a claim, and a claim with no consumer is
+a lie. All such flags now reject with USAGE(2) and name the operation
+they belong to. Pattern for future flags: if a flag only feeds one
+operation, the dispatch must reject it everywhere else — argparse
+cannot express per-operation flags on a shared parser, so the
+validation lives in the dispatcher, next to the consumers.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy

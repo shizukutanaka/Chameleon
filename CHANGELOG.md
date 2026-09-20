@@ -4,6 +4,13 @@
 
 ### Fixed
 
+- **Operation-scoped flags were silently ignored on other operations** --
+  `batch dir normalize --sample-rate 22050` accepted the flag and did
+  nothing with it; same for `--format`/`--bit-depth` off `convert`,
+  `--target-peak`/`--quality` off `normalize`, `--effects` off `effects`,
+  and in `process`: `--target-peak` without `--normalize`, `--threshold`
+  without `--trim`, `--convert-*` without `--convert`. All are now
+  rejected with USAGE(2) and a message naming the required operation.
 - **`batch --dry-run` existed only in the docs and engine, not the
   parser** -- README/QUICKSTART promised `batch normalize --dry-run` and
   `BatchProcessor` already implemented `dry_run`, but the flag was never

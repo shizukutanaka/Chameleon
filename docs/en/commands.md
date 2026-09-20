@@ -154,7 +154,7 @@ Positional: `directory` then one of
 |------|---------|
 | `--recursive` | Process subdirectories too |
 | `--output-dir DIR` | Output directory |
-| `--format FMT` | Output format |
+| `--format FMT` | Output format for the `convert` operation |
 | `--quality {standard,high}` | `normalize` only: `high` applies a soft clipper for headroom, `standard` does not. `low`/`medium`/`lossless` are accepted for compatibility and behave as `standard` |
 | `--target-peak F` | Target peak for the `normalize` operation |
 | `--sample-rate N` | Target sample rate for `convert` |
