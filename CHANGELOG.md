@@ -14,6 +14,15 @@
 
 ### Fixed
 
+- **Out-of-range numeric flags crashed inside encoders instead of
+  answering as bad input** -- `midi generate --tempo 0` reached
+  `generate_midi_file` as a raw "float division by zero" (and `--tempo 2`
+  overflowed the 24-bit us-per-quarter field), `midi compose --length -5`
+  failed deep in the generator, and `server --port -1` leaked a uvicorn
+  OverflowError traceback. `--tempo` now requires a positive BPM that
+  encodes in the MIDI field (>= ~3.6), `--length` must be positive, and
+  `server` validates `--port` (1-65535) and `--workers` (>= 1) before
+  touching uvicorn -- all rejected as INPUT(3) with the flag named.
 - **`midi` silently ignored flags that belong to another operation** --
   `midi analyze --tempo 90` parsed fine and discarded the value; same for
   `--key`/`--mode`/`--output` off `compose`/`generate`/`extract`, `--input`

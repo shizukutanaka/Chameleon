@@ -1916,6 +1916,17 @@ rejection naming the owning operations) plus one new ingredient:
 to the consumers (`args.tempo or 120.0` at the call site) — a flag
 whose default you cannot see is a flag whose scope you cannot enforce.
 
+**Q (2026-09-19, cycle 52): Does a parsed number mean a valid number?**
+`--tempo 0` divided by zero inside `generate_midi_file`, `--tempo 2`
+overflowed the 24-bit us-per-quarter field, `--length -5` died in the
+generator, and `server --port -1` surfaced a uvicorn OverflowError
+traceback. argparse proves a flag *parsed*; nothing proves it *fits the
+domain it feeds*. The domain here is physical/binary — the MIDI tempo
+field is 24 bits, so BPM has a real floor (~3.6), and a socket port has
+a real ceiling (65535). Range checks belong next to the same dispatcher
+scope checks from cycles 44/51: the answer to "is this value usable" is
+INPUT(3), not a translated exception.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy

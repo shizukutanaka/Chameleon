@@ -2636,6 +2636,22 @@ async def main():
                 print(f"Error: {flag} only applies to midi {owners}", file=sys.stderr)
                 return ExitCode.USAGE
 
+        # Ranges for flags that feed binary encodings, checked where the
+        # flags are actually consumed: us-per-quarter-note is a 24-bit field
+        # (60e6/BPM <= 0xFFFFFF, i.e. tempo can't go below ~3.6 BPM), and a
+        # non-positive tempo/length used to reach the encoder as a raw
+        # ZeroDivisionError/OverflowError instead of a bad-input answer.
+        if args.tempo is not None:
+            if args.tempo <= 0 or 60_000_000 / args.tempo > 0xFFFFFF:
+                print("Error: --tempo must be a positive BPM encodable in "
+                      "the MIDI 24-bit us-per-quarter field (>= ~3.6)",
+                      file=sys.stderr)
+                return ExitCode.INPUT
+        if args.length is not None and args.length <= 0:
+            print(f"Error: --length must be positive, got {args.length}",
+                  file=sys.stderr)
+            return ExitCode.INPUT
+
         print(f"MIDI operation '{args.operation}'")
 
         if args.operation in ["extract", "analyze"] and not args.input:
@@ -2822,6 +2838,17 @@ async def main():
                 exit_code = ExitCode.ERROR
 
     elif args.command == "server":
+        # Port 0 is technically bindable (ephemeral) but the banner would
+        # advertise a port nobody is listening on; negative values crash
+        # inside uvicorn with an OverflowError traceback.
+        if not 1 <= args.port <= 65535:
+            print(f"Error: --port must be 1-65535, got {args.port}",
+                  file=sys.stderr)
+            return ExitCode.INPUT
+        if args.workers < 1:
+            print(f"Error: --workers must be >= 1, got {args.workers}",
+                  file=sys.stderr)
+            return ExitCode.INPUT
         print(f"Starting API server on {args.host}:{args.port}")
         try:
             import uvicorn  # type: ignore

@@ -334,3 +334,33 @@ def test_midi_generate_rejects_length(tmp_path):
                   "--length", "30", cwd=str(tmp_path))
     assert result.returncode == 2
     assert "--length" in result.stderr
+
+
+# -- numeric flag ranges: values that crash the encoder are bad input -------
+
+def test_midi_tempo_out_of_encodable_range_rejected(tmp_path):
+    """--tempo 0 used to surface as 'float division by zero' inside the file
+    writer, and --tempo 2 overflowed the 24-bit us-per-quarter field. Both
+    are input errors, not encoder crashes."""
+    for bad in ("0", "-120", "2"):
+        result = _run("midi", "generate",
+                      "--output", str(tmp_path / "x.mid"),
+                      "--tempo", bad, cwd=str(tmp_path))
+        assert result.returncode == 3, (bad, result.stdout + result.stderr)
+        assert "--tempo" in result.stderr
+        assert not (tmp_path / "x.mid").exists()
+
+
+def test_midi_compose_rejects_nonpositive_length(tmp_path):
+    result = _run("midi", "compose", "--length", "-5",
+                  "--output", str(tmp_path / "x.mid"), cwd=str(tmp_path))
+    assert result.returncode == 3
+    assert "--length" in result.stderr
+
+
+def test_server_rejects_out_of_range_port_and_workers(tmp_path):
+    """`server --port -1` used to die inside uvicorn with an OverflowError
+    traceback."""
+    for args in (("--port", "-1"), ("--port", "70000"), ("--workers", "0")):
+        result = _run("server", *args, cwd=str(tmp_path))
+        assert result.returncode == 3, (args, result.stdout + result.stderr)
