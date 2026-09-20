@@ -48,6 +48,13 @@
   `MIDINote`'s docstring pins start_time/duration to seconds so the
   unit ambiguity can't regrow. Verified: a 4-beat composition emits
   240-tick (eighth) note-offs at both 120 and 240 BPM.
+- **Missing-dependency operations exited INPUT(3)** -- `process --denoise`
+  (or any numpy-only op) on a bare install raised ValueError which
+  classified as an input problem; per the ExitCode table INPUT means a
+  supplied path failed validation, and nothing is wrong with the file.
+  New `UnsupportedOperationError(ValueError)` marks capability gaps as
+  internal -> ERROR(1). The subclass keeps `pytest.raises(ValueError)`
+  callers working.
 - **`plugins list --json` swallowed load failures** -- a directory of
   plugins that all failed (unsafe import, missing abstract method,
   non-semver version) produced `"plugins": {}` with exit 0, making a

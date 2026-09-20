@@ -97,8 +97,9 @@ def test_the_check_lives_where_the_requirement_is(blocker_dir, tone):
         env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(blocker_dir)},
     )
 
-    assert "ValueError" in result.stderr
-    assert "numpy" in result.stderr
+    # Contract: a clear, named error surfaces (a ValueError subclass so
+    # callers catching ValueError still work) with the install hint.
+    assert "requires numpy" in result.stderr
 
 
 # --- deliberate errors print, bugs still show their traceback -------------

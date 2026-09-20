@@ -123,6 +123,14 @@ def _assert_unique_paths(paths: List[str], field_name: str) -> None:
         raise ValueError(message) from exc
 
 
+class UnsupportedOperationError(ValueError):
+    """The operation exists, but this install cannot run it (a required
+    extra is missing). A ValueError subclass so existing callers/tests
+    still see a clear message, but classified apart from bad input:
+    INPUT(3) means a supplied path failed validation, and the input file
+    is not what is wrong here."""
+
+
 def _error_kind(exc: Exception) -> str:
     """Classify a per-file failure as an input problem or an internal one.
 
@@ -131,6 +139,8 @@ def _error_kind(exc: Exception) -> str:
     out-of-domain values) -- those belong to INPUT(3). Everything else
     (OSError on write, unexpected exceptions) is an internal failure.
     """
+    if isinstance(exc, UnsupportedOperationError):
+        return "internal"
     if isinstance(exc, (ValueError, FileNotFoundError)):
         return "input"
     return "internal"
@@ -574,7 +584,7 @@ class AudioProcessor:
         difference between removing an instance and removing the cause.
         """
         if not HAS_NUMPY:
-            raise ValueError(
+            raise UnsupportedOperationError(
                 "Reading audio into arrays requires numpy. "
                 "Install it with: pip install -e .[audio]"
             )
@@ -1565,7 +1575,7 @@ class AudioProcessor:
                 file_path, operation, start_time, dry_run=dry_run, **kwargs
             )
         if not HAS_NUMPY:
-            raise ValueError(
+            raise UnsupportedOperationError(
                 f"Operation '{operation}' requires numpy. Install it with: "
                 "pip install -e .[audio]"
             )

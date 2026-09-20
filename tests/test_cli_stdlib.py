@@ -67,3 +67,17 @@ def test_numpy_only_operation_raises_clear_error(tmp_path):
 
     with pytest.raises(ValueError, match="requires numpy"):
         _processor()._process_single_file(str(src), "denoise")
+
+
+def test_missing_dependency_op_is_internal_not_input(tmp_path):
+    """An operation that needs a missing extra used to surface as
+    ValueError -> kind "input" -> INPUT(3). Per the ExitCode table INPUT
+    means a supplied path failed validation; nothing is wrong with the
+    file -- the install lacks the capability. ERROR(1) is the honest
+    answer."""
+    src = write_sine_wave(tmp_path / "in.wav", duration=0.3)
+    try:
+        _processor()._process_single_file(str(src), "denoise")
+        pytest.skip("numpy present; the unsupported path does not trigger")
+    except main.UnsupportedOperationError as exc:
+        assert main._error_kind(exc) == "internal"
