@@ -25,6 +25,7 @@ from dataclasses import dataclass, asdict, is_dataclass
 from concurrent.futures import ThreadPoolExecutor
 import logging
 import warnings
+from collections import Counter
 from logging.handlers import RotatingFileHandler
 
 import core
@@ -2434,6 +2435,19 @@ async def main():
             print(f"Input validation error: {exc}", file=sys.stderr)
             return ExitCode.INPUT
 
+        if output_dir:
+            # Inputs sharing a stem all write the same output name
+            # (stem + op suffix) into --output-dir: the later result
+            # silently overwrites the earlier one. Warn now, while the
+            # user can still pick distinct names or a per-file run.
+            dupes = sorted(s for s, n in
+                           Counter(Path(f).stem for f in files).items()
+                           if n > 1)
+            if dupes:
+                print(f"Warning: inputs sharing the name(s) "
+                      f"{', '.join(dupes)} will overwrite each other's "
+                      f"output in {output_dir}", file=sys.stderr)
+
         kwargs: Dict[str, Any] = {
             "output_dir": output_dir,
             "dry_run": args.dry_run
@@ -2801,6 +2815,18 @@ async def main():
 
         file_list = [str(path) for path in resolved_files]
         print(f"Found {len(file_list)} audio files")
+
+        if output_dir:
+            # Recursive gathers can hold identically-named files from
+            # different subdirs; each op writes stem+suffix into
+            # --output-dir, so later results overwrite earlier ones.
+            dupes = sorted(s for s, n in
+                           Counter(Path(f).stem for f in file_list).items()
+                           if n > 1)
+            if dupes:
+                print(f"Warning: files sharing the name(s) "
+                      f"{', '.join(dupes)} will overwrite each other's "
+                      f"output in {output_dir}", file=sys.stderr)
 
         kwargs: Dict[str, Any] = {
             "output_dir": output_dir,

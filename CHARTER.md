@@ -2217,3 +2217,10 @@ The numpy path violated this both ways -- raw reduction tracebacks
 Same file, same answer across tiers is the standing rule. Buffer-level
 transforms still return identity on empty (a buffer isn't a file a
 user pointed at), so the dispatch guard carries the file-level refusal.
+
+**Q: Two inputs, one output path -- reject, rename, or warn?**
+A (2026-09-20): Warn. Rejecting breaks legitimate same-name workflows
+(cp and mv overwrite too); renaming changes a documented naming scheme
+scripts may parse. But "Processed x2, output x1" without a word is a
+silent clobber -- the guard that fires is information. Warning names the
+colliding stems and the directory so the user can act.

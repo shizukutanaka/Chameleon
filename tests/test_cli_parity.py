@@ -514,3 +514,27 @@ def test_zero_frame_wav_analyze_and_transforms_are_identity(tmp_path):
             capture_output=True, text=True, timeout=30)
         assert proc.returncode == 3, f"{op}: {proc.returncode} {proc.stderr}"
         assert "No audio" in proc.stderr
+
+
+def test_process_warns_when_inputs_collide_in_output_dir(tmp_path):
+    """Two inputs sharing a stem both write <stem>_normalized.wav into
+    --output-dir; the second silently clobbers the first. The user must
+    hear about it."""
+    import subprocess, sys
+    from pathlib import Path
+    main_py = str(Path(__file__).resolve().parent.parent / "main.py")
+    d1, d2, out = tmp_path/"d1", tmp_path/"d2", tmp_path/"out"
+    d1.mkdir(); d2.mkdir()
+    import wave
+    for d in (d1, d2):
+        with wave.open(str(d/"same.wav"), "wb") as w:
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(44100)
+            w.writeframes(b"\x01\x00" * 1000)
+    proc = subprocess.run(
+        [sys.executable, main_py, "process",
+         str(d1/"same.wav"), str(d2/"same.wav"),
+         "--normalize", "--output-dir", str(out)],
+        capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 0, proc.stderr
+    assert "overwrite" in proc.stderr
+    assert "same" in proc.stderr
