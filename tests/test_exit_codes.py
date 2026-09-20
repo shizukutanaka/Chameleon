@@ -203,6 +203,16 @@ def test_sigint_during_processing_exits_interrupted(tmp_path):
     assert rc == 130
 
 
+def test_nonpositive_max_workers_exits_input(tmp_path):
+    """--max-workers 0 used to be silently clamped to 1 by max(1, ...) -- a
+    meaningless value the user must fix, not a detail to absorb."""
+    wav = tmp_path / "a.wav"
+    write_sine_wave(str(wav))
+    proc = _run("--max-workers", "0", "process", str(wav), "--normalize")
+    assert proc.returncode == 3  # ExitCode.INPUT
+    assert "max-workers" in proc.stdout
+
+
 def test_float32_wav_on_stdlib_reports_capability_gap(tmp_path):
     """A float32 WAV (format tag 3) is a *valid* file the PCM-only stdlib
     core cannot decode. 'Invalid WAV file format' lied about the file; the

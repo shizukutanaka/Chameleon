@@ -532,8 +532,17 @@ class ProcessingConfig:
                 parsed = int(env_max_workers)
             except (TypeError, ValueError):
                 parsed = config.max_workers
+                warnings.warn(
+                    f"Ignoring non-numeric CHAMELEON_MAX_WORKERS="
+                    f"{env_max_workers!r}; using default {parsed}"
+                )
             else:
-                parsed = max(1, parsed)
+                if parsed <= 0:
+                    warnings.warn(
+                        f"Ignoring non-positive CHAMELEON_MAX_WORKERS="
+                        f"{parsed}; using default {config.max_workers}"
+                    )
+                    parsed = config.max_workers
             config.max_workers = parsed
 
         env_parallel = os.getenv("CHAMELEON_PARALLEL")
@@ -2264,7 +2273,11 @@ async def main():
     # Create processor
     config = ProcessingConfig.from_environment()
     if args.max_workers is not None:
-        config.max_workers = max(1, args.max_workers)
+        if args.max_workers <= 0:
+            print(f"Error: --max-workers must be positive, got "
+                  f"{args.max_workers}")
+            return ExitCode.INPUT
+        config.max_workers = args.max_workers
     if args.no_parallel:
         config.parallel = False
 

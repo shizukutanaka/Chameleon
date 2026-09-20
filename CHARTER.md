@@ -2254,3 +2254,12 @@ extra's pin (fastapi 0.99 needs pydantic<2). `pip check` after installing
 is the verification step that catches transitive dep conflicts; an extra
 that can't coexist with a sibling extra doesn't belong -- the Makefile's
 `|| true` already treats safety as best-effort.
+
+**Q: CLI flag vs env var -- same value, same strictness?**
+A (2026-09-20): No -- an explicit flag is a claim in an argv; an env var is
+ambient configuration. `--max-workers 0` gets a hard INPUT(3) rejection,
+matching --sample-rate. But `CHAMELEON_MAX_WORKERS=-3` gets a warning and
+the default: env vars feed a dataclass factory with no exit-code channel,
+and refusing to start over a stray shell variable is worse than warning.
+The shared rule: never let a bad value through *silently* -- the user must
+either be stopped (argv) or told (ambient config).
