@@ -1033,3 +1033,7 @@ Initial public release of the Chameleon Audio Tool.
   null: the API read a key the core never returned). All 12 API routes are
   now e2e-verified including `/auth/logout` (token revocation → 401) and
   `/system/status`.
+- Documented multi-op `process` semantics: each operation flag writes its own
+  artifact (`--normalize --denoise` -> two files, not a chain); only the
+  --declip/--dehum restoration pair shares one `*_restored.wav` pipeline.
+  "Operations combine" was ambiguous about which.

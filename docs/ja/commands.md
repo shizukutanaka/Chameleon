@@ -62,8 +62,12 @@ chameleon analyze input.wav --loudness
 
 ### `process`
 
-ファイルを処理します。複数の操作を組み合わせ可能で、出力は `--output-dir`
-（省略時は入力と同じ場所）に書き出されます。
+ファイルを処理します。出力は `--output-dir`
+（省略時は入力と同じ場所）に書き出されます。各操作フラグは独立した成果物を
+書き出します — `--normalize --denoise in.wav` は `in_normalized.wav` と
+`in_denoised.wav` の2ファイルを生成し、正規化→デノイズの連結処理ではありません。
+例外は復元系ペアで、`--declip` と `--dehum` は同一パイプラインを共有し
+`*_restored.wav` 1ファイルに出力します。
 
 > **依存ゼロの既定インストールで動くのは `--normalize` / `--mono` / `--trim` です。**
 > `--denoise` / `--convert` / `--master` / `--effects` は numpy が必要で、

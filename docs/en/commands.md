@@ -61,8 +61,12 @@ These are honest measurements, not a certified meter: see
 
 ### `process`
 
-Process one or more files. Operations combine; output goes to `--output-dir`
-(or alongside the input if omitted).
+Process one or more files. Output goes to `--output-dir`
+(or alongside the input if omitted). Each operation flag writes its own
+artifact — `--normalize --denoise in.wav` yields `in_normalized.wav` plus
+`in_denoised.wav`, not a normalized-then-denoised chain. The exception is the
+restoration pair: `--declip` and `--dehum` share one pipeline and write a
+single `*_restored.wav`.
 
 > **`--normalize`, `--mono` and `--trim` run on the default, dependency-free
 > install.** `--denoise`, `--convert`, `--master` and `--effects` require numpy
