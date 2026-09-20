@@ -54,7 +54,9 @@ class NoteClass(Enum):
 
 @dataclass
 class MIDINote:
-    """MIDI note representation"""
+    """MIDI note representation. start_time/duration are SECONDS -- the
+    file writer converts to ticks via the tempo it writes into the
+    header. Producers working in beats must convert first."""
     pitch: int
     velocity: int
     start_time: float

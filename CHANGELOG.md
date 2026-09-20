@@ -42,6 +42,12 @@
   0.5 s at the default tempo and changed length with `--tempo`. Ticks
   are now `seconds * tpq * bpm / 60`, making playback duration
   tempo-independent; verified at 60/120/240 BPM.
+- **`midi compose` wrote eighth notes as quarters** -- `generate_melody`
+  works in beats (0.5 = an eighth) while the writer consumes seconds;
+  the handler now rescales beat times by `60/tempo` before writing, and
+  `MIDINote`'s docstring pins start_time/duration to seconds so the
+  unit ambiguity can't regrow. Verified: a 4-beat composition emits
+  240-tick (eighth) note-offs at both 120 and 240 BPM.
 - **Unparseable/truncated WAVs returned ERROR(1) instead of INPUT(3)** --
   per-file failures carried only a message string, so "Could not parse
   WAV file" (the same class of problem as a missing file) exited with

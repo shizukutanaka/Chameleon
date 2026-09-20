@@ -2951,6 +2951,14 @@ async def main():
 
             melody = processor.compose_melody(basic_chords, key_info, length)
 
+            # generate_melody works in beats (note_duration=0.5 = an eighth
+            # note); the MIDI writer expects seconds, so rescale by the
+            # tempo that will be written into the file.
+            beats_to_seconds = 60.0 / tempo
+            for n in melody:
+                n.start_time *= beats_to_seconds
+                n.duration *= beats_to_seconds
+
             if melody:
                 print(f"Generated melody with {len(melody)} notes")
                 if output_path:
