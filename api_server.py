@@ -831,6 +831,20 @@ def _derive_session_secret(username: str, session_id: str) -> str:
     return hashlib.sha256(seed.encode('utf-8')).hexdigest()
 
 
+def _audit_denied(user: dict, operation: str, resource: str,
+                  exc: HTTPException, http_request: Request) -> None:
+    """Record refused requests. A log that only shows successes cannot
+    reveal filename probing or permission escalation attempts."""
+    try:
+        log_audit_event(
+            user.get('username', 'unknown'), operation, resource, "DENIED",
+            f"HTTP {exc.status_code}: {exc.detail}",
+            _get_request_ip(http_request), user.get('session_id', ''),
+        )
+    except Exception:
+        logging.debug("denied-request audit write failed", exc_info=True)
+
+
 def log_audit_event(user: str, operation: str, resource: str, result: str,
                    details: str, ip_address: str, session_id: str):
     """Log security audit event"""
@@ -1102,7 +1116,9 @@ async def login(request: AuthenticationRequest, http_request: Request):
             expires_at=expires_at
         )
 
-    except HTTPException:
+    except HTTPException as exc:
+        _audit_denied({'username': request.username, 'session_id': ''},
+                      "LOGIN", "API", exc, http_request)
         raise  # preserve 429 (rate limit) / 503 (capacity) status codes
     except Exception as e:
         logging.error(f"Login error: {e}")
@@ -1172,7 +1188,9 @@ async def upload_audio_file(
             "stored_name": unique_name,
             "size": total_bytes,
         }
-    except HTTPException:
+    except HTTPException as exc:
+        _audit_denied(user, "UPLOAD", sanitized_name if 'sanitized_name' in dir() else
+                      getattr(file, 'filename', '?'), exc, http_request)
         raise
     except Exception as exc:
         logging.error("Upload error: %s", exc)
@@ -1289,7 +1307,8 @@ async def normalize_audio(
                 error=result.get('error', 'Normalization failed')
             )
 
-    except HTTPException:
+    except HTTPException as exc:
+        _audit_denied(user, "NORMALIZE", payload.file_name, exc, http_request)
         raise  # preserve 400 (invalid destination) / 404 / 403 status codes
     except Exception as e:
         logging.error(f"Normalization error: {e}")
@@ -1321,7 +1340,8 @@ async def download_file(
             media_type='application/octet-stream'
         )
 
-    except HTTPException:
+    except HTTPException as exc:
+        _audit_denied(user, "DOWNLOAD", file_name, exc, http_request)
         raise  # preserve 404 (not found) / 403 (unauthorized path) status codes
     except Exception as e:
         logging.error(f"Download error: {e}")
@@ -1392,7 +1412,9 @@ async def submit_batch_job(
             estimated_duration=len(payload.files) * 5.0  # Estimate 5 seconds per file
         )
 
-    except HTTPException:
+    except HTTPException as exc:
+        _audit_denied(user, "BATCH_SUBMIT",
+                      f"{len(payload.files)} files", exc, http_request)
         raise  # preserve 404 (missing file) / 403 (unauthorized) / 503 (queue full)
     except Exception as e:
         logging.error(f"Batch job submission error: {e}")
@@ -1409,6 +1431,9 @@ async def get_batch_status(
 ):
     """Get batch job status"""
     if job_id not in api_state.active_jobs:
+        _audit_denied(user, "BATCH_STATUS", job_id,
+                      HTTPException(status.HTTP_404_NOT_FOUND, "Job not found"),
+                      http_request)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Job not found"
@@ -1419,6 +1444,9 @@ async def get_batch_status(
     # Check if user owns this job or has admin privileges
     if (job_data['user'] != user['username'] and
         user['clearance_level'] not in PRIVILEGED_CLEARANCE):
+        _audit_denied(user, "BATCH_STATUS", job_id,
+                      HTTPException(status.HTTP_403_FORBIDDEN, "Access denied"),
+                      http_request)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied"

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Security
+
+- **Denied API requests were never audited** -- every endpoint logged
+  only its SUCCESS path; a 403 on someone else's file, a 404 probing
+  filenames, or a 429 login throttle left no trail. DENIED entries now
+  record the attempted resource and status for login throttling,
+  upload/analyze/normalize/download, batch submit, and batch status
+  (LOGIN already logged FAILED; a log that only shows successes cannot
+  reveal probing).
+
 ### Fixed
 
 - **Operation-scoped flags were silently ignored on other operations** --

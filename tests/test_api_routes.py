@@ -482,8 +482,26 @@ def test_audit_log_records_real_operations(client, monkeypatch, tmp_path):
     ops = {e["operation"] for e in r.json()["entries"]}
     assert {"LOGIN", "UPLOAD"} <= ops, ops
     # Entries carry real fields, not placeholders
-    entry = next(e for e in r.json()["entries"] if e["operation"] == "UPLOAD")
+    entry = next(e for e in r.json()["entries"]
+                 if e["operation"] == "UPLOAD" and e["result"] == "SUCCESS")
     assert entry["result"] == "SUCCESS" and entry["user"] == DEV_USERNAME
     # The read itself is logged too -- visible on the next fetch.
     r2 = client.get("/audit/log", headers=auth)
     assert "AUDIT_READ" in {e["operation"] for e in r2.json()["entries"]}
+
+
+def test_denied_requests_are_audited(client):
+    """Refused requests must land in the audit log -- a log that only
+    records successes cannot reveal filename probing or escalation
+    attempts."""
+    login = _login(client)
+    auth = {"Authorization": f"Bearer {login.json()['token']}"}
+
+    r = client.get("/audio/download/does-not-exist.wav", headers=auth)
+    assert r.status_code == 404
+
+    log = client.get("/audit/log", headers=auth)
+    denied = [e for e in log.json()["entries"]
+              if e["operation"] == "DOWNLOAD" and e["result"] == "DENIED"]
+    assert denied, "denied download was not audited"
+    assert "404" in denied[-1]["details"]

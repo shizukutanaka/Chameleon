@@ -1891,6 +1891,17 @@ operation, the dispatch must reject it everywhere else — argparse
 cannot express per-operation flags on a shared parser, so the
 validation lives in the dispatcher, next to the consumers.
 
+**Q (2026-09-19, cycle 45): Is a success-only audit log an audit
+log?**
+Every API endpoint logged exactly once — on success. The 403 on
+someone else's file, the 404 while probing filenames, the 429 throttle
+on login: all invisible. An audit trail that records compliance and
+skips violations answers "who did what" but never "who tried what" —
+the second question is the one a security log exists for. DENIED
+entries now record the attempted resource and the refusing status for
+every guarded endpoint. LOGIN already logged FAILED; it was the model
+the rest of the file failed to follow.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy
