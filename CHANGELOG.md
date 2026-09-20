@@ -55,6 +55,13 @@
 
 ### Fixed
 
+- **`analyze --spectrum` listed quantisation noise as "Dominant
+  Frequencies"** -- a pure 16-bit sine reported five peaks, four of them
+  local maxima of the -96 dB quantisation floor, with no level shown to
+  tell them apart. `spectral_utils.analyze_spectrum` now drops peaks more
+  than 60 dB below the strongest (`min_relative_db`, default
+  `DEFAULT_PEAK_FLOOR_DB`), `SpectrumPeak.relative_db()` exposes the
+  level, and the CLI prints it per peak: `440.3Hz (+0.0 dB)`.
 - **`MIDIAnalyzer.analyze_harmony` reported the key as a raw pitch
   class** -- `"0 major"` for C major; the CLI mapped the same field
   through the note table but the library dict did not. The shared

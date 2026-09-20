@@ -2274,6 +2274,22 @@ json.loads accepts the literals NaN/Infinity by default, so a JSON config
 file can smuggle them into any "numeric" field. The check is
 isinstance(x, (int, float)) AND math.isfinite(x), in that order, before
 any range assertion.
+
+**Q: What does "dominant" mean if a component 96 dB down qualifies?**
+A (2026-09-20): Nothing. `analyze --spectrum` on a pure 16-bit sine printed
+`440.3Hz, 1320.8Hz, 2199.0Hz, 3079.5Hz, 3960.9Hz` -- five "dominant
+frequencies" of which four were local maxima of the quantisation floor
+(-96 to -103 dB, measured), listed on equal footing with the tone. The
+detector had a *count* cap (5) but no *level* floor, so it always filled
+the list. The requirement "report five peaks" was the error; the real
+requirement is "report the components that carry the signal". Peaks now
+need to be within 60 dB of the strongest (`DEFAULT_PEAK_FLOOR_DB`, ~35 dB
+above the 16-bit floor, comfortably below any audible harmonic), and each
+printed peak carries its level relative to the strongest so the reader can
+judge it rather than trust the adjective. The level is a bin-centre
+magnitude, so it is labeled accurate to the Hann scalloping loss (~1.4 dB),
+not sold as a precise ratio. Same lesson as `0.0-0.0Hz`: a list that is
+always full is not a measurement.
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented

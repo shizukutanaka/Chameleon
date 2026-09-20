@@ -78,6 +78,11 @@ def test_cli_analyze_spectrum_flag(tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Dominant Frequencies:" in result.stdout
     assert "880." in result.stdout
+    line = next(l for l in result.stdout.splitlines() if "Dominant Frequencies:" in l)
+    # A pure tone has one dominant component; its level is printed relative
+    # to itself so every entry carries a level the reader can judge.
+    assert line.count("Hz") == 1, line
+    assert "(+0.0 dB)" in line
 
 
 def test_cli_analyze_without_spectrum_flag_omits_spectrum_output(tmp_path):

@@ -24,6 +24,12 @@ except ImportError:  # pragma: no cover - minimal deployments
 
 logger = logging.getLogger(__name__)
 
+# Peaks this far below the strongest one are not reported as "dominant".
+# -60 dB keeps every harmonic a listener could plausibly hear against the
+# fundamental while sitting ~35 dB above the 16-bit quantisation floor, whose
+# local maxima (~-96 dB) the detector otherwise returns as frequency components.
+DEFAULT_PEAK_FLOOR_DB = -60.0
+
 
 @dataclass(frozen=True)
 class SpectrumPeak:
@@ -31,6 +37,16 @@ class SpectrumPeak:
 
     frequency_hz: float
     magnitude: float
+
+    def relative_db(self, reference: "SpectrumPeak") -> float:
+        """Level of this peak relative to ``reference``, in dB (0.0 for itself).
+
+        Magnitudes are bin-centre values, so the result is accurate to within
+        the Hann window's scalloping loss (about 1.4 dB), not a precise ratio.
+        """
+        if self.magnitude <= 0 or reference.magnitude <= 0:
+            return -math.inf
+        return 20.0 * math.log10(self.magnitude / reference.magnitude)
 
 
 @dataclass(frozen=True)
@@ -146,12 +162,21 @@ def _hann_window(length: int) -> List[float]:
     return [0.5 - 0.5 * math.cos(2.0 * math.pi * n / (length - 1)) for n in range(length)]
 
 
-def _detect_peaks(magnitudes: Sequence[float], sample_rate: int, max_peaks: int) -> List[SpectrumPeak]:
+def _detect_peaks(
+    magnitudes: Sequence[float],
+    sample_rate: int,
+    max_peaks: int,
+    min_relative_db: float = DEFAULT_PEAK_FLOOR_DB,
+) -> List[SpectrumPeak]:
     """Select dominant peaks by neighbourhood comparison with sub-bin refinement.
 
     Each local maximum is refined with parabolic (quadratic) interpolation over
     the three points around the peak, which recovers the true frequency to a
     fraction of a bin instead of snapping it to the nearest bin centre.
+
+    Peaks more than ``min_relative_db`` below the strongest one are discarded:
+    a local maximum in the 16-bit quantisation floor (~-96 dB) is not a
+    component of the signal, and calling it "dominant" would be false.
     """
 
     peaks: List[SpectrumPeak] = []
@@ -176,6 +201,9 @@ def _detect_peaks(magnitudes: Sequence[float], sample_rate: int, max_peaks: int)
             peaks.append(SpectrumPeak(frequency_hz=frequency, magnitude=centre))
 
     peaks.sort(key=lambda peak: peak.magnitude, reverse=True)
+    if peaks:
+        floor = peaks[0].magnitude * 10.0 ** (min_relative_db / 20.0)
+        peaks = [peak for peak in peaks if peak.magnitude >= floor]
     return peaks[:max_peaks]
 
 
@@ -184,8 +212,13 @@ def analyze_spectrum(
     sample_rate: int,
     *,
     max_peaks: int = 5,
+    min_relative_db: float = DEFAULT_PEAK_FLOOR_DB,
 ) -> SpectrumReport:
-    """Compute spectral statistics for a mono signal."""
+    """Compute spectral statistics for a mono signal.
+
+    ``dominant_peaks`` holds at most ``max_peaks`` local spectral maxima, all
+    within ``min_relative_db`` of the strongest, ordered by magnitude.
+    """
 
     if sample_rate <= 0:
         raise ValueError("sample_rate must be a positive integer")
@@ -212,7 +245,7 @@ def analyze_spectrum(
     rms = math.sqrt(sum(sample ** 2 for sample in buffer) / len(buffer))
     dc_offset = statistics.mean(buffer)
     bandwidth = _compute_bandwidth(magnitudes, sample_rate)
-    peaks = _detect_peaks(magnitudes, sample_rate, max_peaks)
+    peaks = _detect_peaks(magnitudes, sample_rate, max_peaks, min_relative_db)
 
     return SpectrumReport(
         sample_rate=sample_rate,
@@ -332,6 +365,7 @@ def sliding_window_rms(samples: Sequence[float], window_size: int) -> List[float
 
 
 __all__ = [
+    "DEFAULT_PEAK_FLOOR_DB",
     "SpectrumPeak",
     "SpectrumReport",
     "analyze_spectrum",

@@ -2419,8 +2419,10 @@ async def main():
                             )
                             print(f"  Spectrum RMS: {report.rms_level:.3f}")
                             print(f"  Spectrum Bandwidth: {report.bandwidth[0]:.1f}-{report.bandwidth[1]:.1f}Hz")
+                            strongest = report.dominant_peaks[0] if report.dominant_peaks else None
                             peaks = ", ".join(
-                                f"{peak.frequency_hz:.1f}Hz" for peak in report.dominant_peaks
+                                f"{peak.frequency_hz:.1f}Hz ({peak.relative_db(strongest):+.1f} dB)"
+                                for peak in report.dominant_peaks
                             )
                             print(f"  Dominant Frequencies: {peaks or 'none detected'}")
 
