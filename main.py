@@ -71,7 +71,16 @@ def _json_export_default(obj):
     """``--export`` JSON serializer: dataclasses become real objects,
     numpy scalars become plain numbers, everything else falls back to str."""
     if is_dataclass(obj) and not isinstance(obj, type):
-        return asdict(obj)
+        d = asdict(obj)
+        # Exported defaults read as measurements: [0.0, 0.0] Hz on an
+        # install that never computes frequency_range, or 0.0 BPM for
+        # "not estimable". The stdlib path already reports null for
+        # unmeasured fields -- make the numpy path say the same.
+        if d.get("frequency_range") == (0.0, 0.0):
+            d["frequency_range"] = None
+        if d.get("tempo") == 0.0:
+            d["tempo"] = None
+        return d
     item = getattr(obj, 'item', None)
     if callable(item):  # numpy scalar -> Python scalar
         return item()
@@ -1556,6 +1565,20 @@ class AudioProcessor:
         # Perform operation
         if operation == "analyze":
             result = self.analyze_audio(audio, sr)
+            # analyze_audio only sees the decoded array: its size_bytes is
+            # audio.nbytes, format "array", bit_depth a hardcoded 16 -- while
+            # the stdlib path reports the file's real values. Same key, same
+            # meaning: backfill from the source file so `analyze --export`
+            # doesn't describe a different object per install.
+            try:
+                result.size_bytes = os.path.getsize(file_path)
+                result.format = (Path(file_path).suffix.lstrip('.').lower()
+                                 or "wav")
+                import wave
+                with wave.open(file_path) as wf:
+                    result.bit_depth = wf.getsampwidth() * 8
+            except (OSError, wave.Error, EOFError):
+                pass  # non-WAV inputs keep the array-derived values
             return {
                 "file": file_path,
                 "metadata": result,

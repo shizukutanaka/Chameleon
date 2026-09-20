@@ -48,6 +48,13 @@
   `MIDINote`'s docstring pins start_time/duration to seconds so the
   unit ambiguity can't regrow. Verified: a 4-beat composition emits
   240-tick (eighth) note-offs at both 120 and 240 BPM.
+- **`analyze --export` described a different file per install** -- the
+  numpy path reported `size_bytes` as the decoded array's nbytes,
+  `format` as "array", `bit_depth` hardcoded 16, `frequency_range`
+  [0.0, 0.0] and `tempo` 0.0 where the stdlib path reported file size,
+  "wav", the real bit depth, and null. File-derived fields are now
+  backfilled from the source file, and unmeasured defaults serialize
+  as null instead of fake measurements in both configurations.
 - **Unparseable/truncated WAVs returned ERROR(1) instead of INPUT(3)** --
   per-file failures carried only a message string, so "Could not parse
   WAV file" (the same class of problem as a missing file) exited with

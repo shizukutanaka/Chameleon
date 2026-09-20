@@ -461,3 +461,20 @@ def test_stream_rejects_negative_device_index(tmp_path):
     result = _run("stream", "--input-device", "-1", cwd=str(tmp_path))
     assert result.returncode == 3
     assert "--input-device" in result.stderr
+
+
+def test_analyze_export_unmeasured_fields_are_null_not_defaults(tmp_path):
+    """frequency_range [0.0, 0.0] and tempo 0.0 in the export look like
+    measurements but were only dataclass defaults. Unmeasured must
+    serialize as null on every install configuration."""
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    out = tmp_path / "analysis.json"
+    result = _run("analyze", str(wav), "--export", str(out), cwd=str(tmp_path))
+    assert result.returncode == 0
+    meta = json.loads(out.read_text())[0]["metadata"]
+    assert meta["frequency_range"] != [0.0, 0.0] or meta["frequency_range"] is None
+    assert meta["tempo"] is None or meta["tempo"] > 0
+    # File-derived fields must describe the file, not the decoded array
+    assert meta["size_bytes"] == wav.stat().st_size
+    assert meta["format"] == "wav"
+    assert meta["bit_depth"] == 16

@@ -2037,6 +2037,19 @@ format's delta fields carry an implied unit (here, "beats", not
 the raw input's. A round-trip test that only parses bytes won't catch
 this -- it has to check the value *means* the right thing.
 
+**Q (2026-09-19, cycle 68): Same key, same meaning -- across install
+tiers?**
+`analyze --export` on the numpy path reported `size_bytes` =
+audio.nbytes (the decoded float array), `format` = "array", `bit_depth`
+hardcoded 16 -- while the stdlib path reported the real file's values
+for the same keys. Two configs, same JSON schema, different semantics;
+anyone diffing exports across installs would chase phantom changes.
+The fix is the rule: file-derived fields must come from the file
+(backfill after array analysis), and a field a tier doesn't measure
+serializes null -- never a default tuple or 0.0 that reads as data.
+Audit rule #10: when two code paths emit the same schema, diff the
+values on identical input, not just the keys.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy
