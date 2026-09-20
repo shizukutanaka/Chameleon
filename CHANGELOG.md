@@ -1029,3 +1029,7 @@ Initial public release of the Chameleon Audio Tool.
   verdict ("Unsafe import detected: os") instead of the generic "no valid
   plugin class" -- `load_plugin` swallowed every exception into None, so the
   security reason only reached stderr, never the structured output.
+- `/audio/normalize` now reports the measured `original_peak` (was always
+  null: the API read a key the core never returned). All 12 API routes are
+  now e2e-verified including `/auth/logout` (token revocation → 401) and
+  `/system/status`.

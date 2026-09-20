@@ -610,7 +610,8 @@ class WAVProcessor:
             return ProcessingResult(
                 True,
                 f"Normalized to {target_peak:.2f} peak in {duration_ms}ms",
-                {"gain_applied": gain, "target_peak": target_peak},
+                {"gain_applied": gain, "target_peak": target_peak,
+                 "original_peak": current_peak},
                 duration_ms
             )
 
