@@ -498,8 +498,11 @@ class SanitizationEngine:
                         outfile.write(b'\x00')
                         total_size += 1
                 else:
-                    # Skip metadata chunk
-                    infile.seek(chunk_size, 1)
+                    # Skip metadata chunk -- including its RIFF pad byte,
+                    # otherwise the next header is read one byte early and
+                    # the chunk walk desyncs (an odd-sized LIST once made
+                    # the data chunk vanish).
+                    infile.seek(chunk_size + (chunk_size % 2), 1)
                     logger.info(f"Removed chunk: {chunk_id.decode('latin1', errors='ignore')}")
 
             # Update file size

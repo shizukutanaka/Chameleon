@@ -55,6 +55,12 @@
 
 ### Fixed
 
+- **`SanitizationEngine.sanitize_wav_metadata` dropped the audio when
+  the WAV carried odd-sized metadata** -- skipping a chunk consumed its
+  bytes but not its RIFF pad, so the walk desynced one byte, read the
+  pad as the next header, and stripped the data chunk along with the
+  metadata (output had no data chunk at all; `wave` refused to open
+  it). Skipped chunks now consume the pad byte like kept ones.
 - **`MIDIAnalyzer.analyze_harmony` reported the key as a raw pitch
   class** -- `"0 major"` for C major; the CLI mapped the same field
   through the note table but the library dict did not. The shared

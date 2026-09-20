@@ -120,3 +120,25 @@ def test_validate_for_processing_skips_checksum(tmp_path):
     wav = write_sine_wave(tmp_path / "tone.wav")
     result = DeepFileInspector().validate_for_processing(wav)
     assert result.checksum_sha256 == ""
+
+
+def test_sanitize_preserves_data_after_odd_sized_metadata(tmp_path):
+    # Skipping an odd-sized metadata chunk must also consume its RIFF pad
+    # byte -- otherwise the next chunk header desyncs and the audio data
+    # chunk is stripped along with the metadata.
+    import struct as _st
+    from advanced_validation import SanitizationEngine
+
+    fmt = _st.pack("<HHIIHH", 1, 1, 44100, 88200, 2, 16)
+    payload = _st.pack("<4h", 100, 200, 300, 400)
+    odd_list = b"LIST" + _st.pack("<I", 5) + b"INFAx" + b"\x00"
+    body = (b"fmt " + _st.pack("<I", 16) + fmt + odd_list
+            + b"data" + _st.pack("<I", len(payload)) + payload)
+    src = tmp_path / "meta.wav"
+    src.write_bytes(b"RIFF" + _st.pack("<I", 4 + len(body)) + b"WAVE" + body)
+
+    dst = tmp_path / "clean.wav"
+    SanitizationEngine.sanitize_wav_metadata(src, dst)
+
+    with wave.open(str(dst)) as w:
+        assert w.readframes(4) == payload

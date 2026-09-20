@@ -2386,3 +2386,8 @@ any range assertion.
   library's analyze_harmony dict shipped the raw pitch-class integer
   ("0 major"). A value that has a human-facing name should never surface
   as its enum/int elsewhere.
+- RIFF pad rules apply to skipped chunks, not just copied ones: the
+  sanitizer consumed a chunk's bytes but not its pad when rejecting it,
+  desynced the walk, and stripped the data chunk. Any walker that treats
+  "keep" and "drop" differently must still honor the format's padding
+  on both paths.
