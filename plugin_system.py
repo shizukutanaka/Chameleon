@@ -490,7 +490,9 @@ class PluginLoader:
                             f"Unsafe call detected: {base}.{func.attr}() can bypass the import sandbox"
                         )
             elif isinstance(node, ast.Attribute) and node.attr in (
-                "__globals__", "__builtins__", "__subclasses__", "__mro__", "__bases__",
+                "__globals__", "__builtins__", "__subclasses__", "__mro__",
+                "__bases__", "__base__", "__dict__", "__class__",
+                "__code__", "__getattribute__", "__func__", "__self__",
             ):
                 raise SecurityError(
                     f"Unsafe attribute access detected: .{node.attr} can be used for sandbox escape"

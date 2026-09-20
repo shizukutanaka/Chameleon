@@ -318,6 +318,9 @@ def _sanitize_plugin_directory(directory: str) -> Path:
     if any(part in {"..", ""} for part in resolved.parts):
         raise ValueError(f"Plugin directory contains unsafe components: {directory}")
 
+    if resolved.exists() and not resolved.is_dir():
+        raise ValueError(f"Plugin directory is not a directory: {directory}")
+
     return resolved
 
 

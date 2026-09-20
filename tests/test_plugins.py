@@ -95,6 +95,19 @@ def test_check_module_safety_rejects_dunder_globals_access(tmp_path):
         loader._check_module_safety(Path(bad))
 
 
+@pytest.mark.parametrize(
+    "attr",
+    ["__dict__", "__class__", "__base__", "__code__", "__getattribute__", "__func__", "__self__"],
+)
+def test_check_module_safety_rejects_introspection_dunders(tmp_path, attr):
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / "bypass_introspect.py"
+    bad.write_text(f"x = (0).{attr}\n")
+
+    with pytest.raises(SecurityError, match="Unsafe attribute access"):
+        loader._check_module_safety(Path(bad))
+
+
 def test_check_module_safety_still_accepts_safe_plugin_after_hardening(tmp_path):
     """Regression guard: the new checks must not false-positive on ordinary
     code that merely calls unrelated functions or uses normal attributes."""

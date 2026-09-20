@@ -228,6 +228,15 @@ def test_plugins_directory_positions_merge(tmp_path):
     assert str(a) in dirs and str(b) in dirs, dirs
 
 
+def test_plugins_directory_that_is_a_file_exits_input(tmp_path):
+    not_a_dir = tmp_path / "a_file"
+    not_a_dir.write_text("x")
+    result = _run("plugins", "list", "--directory", str(not_a_dir),
+                  cwd=str(tmp_path))
+    assert result.returncode == 3  # INPUT
+    assert "not a directory" in result.stderr
+
+
 def test_batch_dry_run_writes_nothing(tmp_path):
     write_sine_wave(tmp_path / "tone.wav")
     out = tmp_path / "out"

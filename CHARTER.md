@@ -2288,3 +2288,11 @@ any range assertion.
   ambisonic material. The WAV dwChannelMask is the only honest source; when
   it's absent every channel stays at 1.0 and the label says "no surround
   weighting" rather than pretending. If you can't identify it, don't guess it.
+- A blocklist covers what it names, not the escape set: the plugin audit
+  blocked `__globals__`/`__subclasses__`/`__mro__` but left `__class__`,
+  `__dict__`, `__base__`, `__code__`, `__getattribute__`, `__func__` and
+  `__self__` -- the introspection dunders that make the dangerous ones
+  reachable. Add the whole sibling set, or a motivated reader just takes
+  the next step. And keep the docstring honest: this is static analysis
+  that raises the bar, never a runtime boundary -- `exec_module` still
+  runs with host builtins, so the prose says "audit", not "sandbox".

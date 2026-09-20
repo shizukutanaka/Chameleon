@@ -18,6 +18,15 @@
   upload/analyze/normalize/download, batch submit, and batch status
   (LOGIN already logged FAILED; a log that only shows successes cannot
   reveal probing).
+- **Plugin audit's attribute blocklist missed the introspection
+  dunders** -- `__globals__`/`__subclasses__`/`__mro__`/`__bases__` were
+  rejected but `().__class__.__dict__` passed audit untouched, opening
+  the attribute graph the blocked names protect. `__class__`,
+  `__dict__`, `__base__`, `__code__`, `__getattribute__`, `__func__`
+  and `__self__` are now rejected as attribute accesses (verified: the
+  probe plugin is refused at load with a `SecurityError` naming the
+  attribute). This is static analysis raising the bar, not a runtime
+  boundary -- the docstring continues to say exactly that.
 
 ### Added
 
@@ -30,6 +39,11 @@
 
 ### Fixed
 
+- **`plugins --directory` pointed at a file crashed with a traceback** --
+  the path passed sanitization and `PluginManager.initialize()` hit a raw
+  `FileExistsError` from `mkdir(exist_ok=True)`. A file is now refused at
+  sanitization with INPUT(3): a mistyped path is the caller's input error,
+  not an internal failure.
 - **Generated MIDI files were malformed for any real note duration** --
   `_write_variable_length` emitted varint delta-times LSB-group-first
   with the continuation bit on the wrong byte, so every delta >= 128
