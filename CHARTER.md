@@ -1936,3 +1936,14 @@ aliased with a note. The audit pattern that found them — "accepting an
 argument without a consumer is a claim, not a convenience" — is the same
 one that caught the eq-schema regression: verify a flag by tracing it to
 a consumer, not by reading the help text.
+
+**Q: `--target-peak 2.0` succeeds and writes a file — is that honest?**
+A (2026-09-19): No — closed by intake validation. The numpy normalize path
+applied the requested gain and let the soft clipper silently crush the
+overshoot, so a physically impossible target "succeeded" at peak 1.0 while
+the help text advertised "0.0-1.0". The stdlib `core.normalize` and the
+API (`Field(ge=0.1, le=1.0)`) already rejected the same input — the numpy
+CLI was the odd surface out. `process` and `batch` now reject out-of-range
+values as INPUT before any work starts. Same audit pattern as the
+--key/--mode and --quality findings: where the advertised contract and
+the code diverge, either enforce the contract or fix the text.

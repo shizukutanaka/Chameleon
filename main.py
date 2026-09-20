@@ -2193,6 +2193,13 @@ async def main():
         if args.normalize:
             operations.append("normalize")
             if args.target_peak is not None:
+                # Help advertises 0.0-1.0; enforce it. A target above 1.0
+                # cannot be reached without clipping, so silently clamping
+                # it would lie about what happened to the audio.
+                if not 0.0 < args.target_peak <= 1.0:
+                    print(f"Error: --target-peak must be within (0, 1.0], "
+                          f"got {args.target_peak}", file=sys.stderr)
+                    return ExitCode.INPUT
                 kwargs["target_peak"] = args.target_peak
         if args.mono:
             operations.append("mono")
@@ -2464,6 +2471,10 @@ async def main():
             kwargs["bit_depth"] = args.bit_depth or 16
 
         if args.operation == "normalize" and args.target_peak is not None:
+            if not 0.0 < args.target_peak <= 1.0:
+                print(f"Error: --target-peak must be within (0, 1.0], "
+                      f"got {args.target_peak}", file=sys.stderr)
+                return ExitCode.INPUT
             kwargs["target_peak"] = args.target_peak
 
         if args.operation == "effects":

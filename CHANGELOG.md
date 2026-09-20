@@ -4,6 +4,12 @@
 
 ### Fixed
 
+- **`--target-peak` above 1.0 (or at/below 0) silently clamped instead of
+  erroring** — the CLI advertised "0.0-1.0" but the numpy path applied
+  the gain and let the soft clipper crush the overshoot, reporting
+  success on an impossible target. Both `process` and `batch` now reject
+  out-of-range values as INPUT; the stdlib core and the API already
+  enforced the same range.
 - **`midi compose`/`generate` ignored `--key` and `--mode` entirely** —
   both documented flags were accepted but the progression and scale were
   hard-coded to C major, so `compose --key G --mode minor` silently

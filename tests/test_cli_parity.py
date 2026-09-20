@@ -186,3 +186,22 @@ def test_midi_generate_rejects_an_unknown_key(tmp_path):
     )
     assert result.returncode == 3  # INPUT -- a bad key is a bad argument
     assert not (tmp_path / "x.mid").exists()
+
+
+# -- --target-peak range: the documented (0, 1.0] contract is enforced ------
+
+def test_process_rejects_target_peak_above_one(tmp_path):
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    result = _run("process", str(wav), "--normalize", "--target-peak", "2.0",
+                  cwd=str(tmp_path))
+    assert result.returncode == 3  # INPUT
+    # Above-unity targets used to "succeed" while the soft clipper silently
+    # crushed the overshoot; nothing may be written on rejection.
+    assert not (tmp_path / "tone_normalized.wav").exists()
+
+
+def test_batch_rejects_target_peak_zero(tmp_path):
+    write_sine_wave(tmp_path / "tone.wav")
+    result = _run("batch", str(tmp_path), "normalize", "--target-peak", "0",
+                  cwd=str(tmp_path))
+    assert result.returncode == 3  # INPUT
