@@ -2400,3 +2400,7 @@ any range assertion.
   node count yet "x" * 500_000_000 -- three nodes -- allocated 500 MB.
   Any sandbox or safe-evaluator must bound the *materialised* value, and
   the check must precede the allocation, not just the return.
+- A safety mechanism is not real until its updater is wired: the circuit
+  breaker had a threshold, a window, a reset timer, a status field, and a
+  gate in the job loop -- everything except the one call that records a
+  failure. Audit the whole feedback loop, not just the read side.

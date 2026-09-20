@@ -55,6 +55,14 @@
 
 ### Fixed
 
+- **The API circuit breaker could never trip** --
+  `_update_circuit_breaker` was defined, `process_batch_job` checked
+  `circuit_breaker_open` and `/system/status` reported it, but nothing
+  ever called the updater, so jobs kept failing forever with the
+  breaker reporting "secure". Job outcomes (each file result and the
+  job-level exception path) now feed the breaker; after
+  `circuit_breaker_failure_threshold` failures in the window, new jobs
+  fail fast with "Circuit breaker open".
 - **Workflow template expressions could allocate unbounded memory** --
   `_LiteralExpressionEvaluator` capped AST complexity at 200 nodes, but
   `"x" * 500_000_000` is three nodes and materialised a 500 MB string

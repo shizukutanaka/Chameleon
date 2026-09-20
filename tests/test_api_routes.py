@@ -515,3 +515,57 @@ def test_denied_requests_are_audited(client):
               if e["operation"] == "DOWNLOAD" and e["result"] == "DENIED"]
     assert denied, "denied download was not audited"
     assert "404" in denied[-1]["details"]
+
+
+def test_circuit_breaker_actually_trips_on_job_failures(monkeypatch):
+    # _update_circuit_breaker was defined but never called, so
+    # circuit_breaker_open could never become True -- a decorative
+    # safety feature that /system/status still reported.
+    import asyncio
+    from datetime import datetime, timezone
+
+    monkeypatch.setattr(api_server, "CIRCUIT_BREAKER_THRESHOLD_FAILURES", 2)
+    api_server.api_state.job_failures_window.clear()
+    api_server.api_state.circuit_breaker_open = False
+    api_server.api_state.active_jobs.clear()
+    api_server.api_state.job_queue.clear()
+
+    monkeypatch.setattr(
+        api_server, "_resolve_uploaded_path", lambda name: api_server.Path(name)
+    )
+    monkeypatch.setattr(
+        api_server,
+        "analyze_audio_fast",
+        lambda path: asyncio.sleep(0, {"success": False, "error": "boom"}),
+    )
+
+    def make_job(job_id):
+        api_server.api_state.active_jobs[job_id] = {
+            "files": ["a.wav"],
+            "operation": "analyze",
+            "options": {},
+            "user": "tester",
+            "status": "queued",
+            "results": [],
+            "completed_files": 0,
+            "total_files": 1,
+            "progress": 0.0,
+            "current_file": None,
+            "updated_at": datetime.now(timezone.utc),
+            "owner_session_id": None,
+        }
+        api_server.api_state.job_queue.append(job_id)
+
+    make_job("j1")
+    asyncio.run(api_server.process_batch_job("j1"))
+    assert len(api_server.api_state.job_failures_window) == 1
+    assert api_server.api_state.circuit_breaker_open is False
+
+    make_job("j2")
+    asyncio.run(api_server.process_batch_job("j2"))
+    assert api_server.api_state.circuit_breaker_open is True
+
+    make_job("j3")
+    asyncio.run(api_server.process_batch_job("j3"))
+    assert api_server.api_state.active_jobs["j3"]["status"] == "failed"
+    assert "Circuit breaker" in api_server.api_state.active_jobs["j3"]["error"]

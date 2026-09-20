@@ -1604,6 +1604,7 @@ async def process_batch_job(job_id: str):
                     'file': file_name,
                     'result': result
                 })
+                _update_circuit_breaker(bool(result.get('success')))
 
                 job_data['completed_files'] = i + 1
                 job_data['progress'] = (i + 1) / job_data['total_files']
@@ -1631,6 +1632,7 @@ async def process_batch_job(job_id: str):
         api_state.stats['failed_jobs'] += 1
         if job_id in api_state.job_queue:
             api_state.job_queue.remove(job_id)
+        _update_circuit_breaker(False)
         _record_job_completion(job_id)
 
 # Startup event
