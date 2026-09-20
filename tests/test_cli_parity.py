@@ -364,3 +364,49 @@ def test_server_rejects_out_of_range_port_and_workers(tmp_path):
     for args in (("--port", "-1"), ("--port", "70000"), ("--workers", "0")):
         result = _run("server", *args, cwd=str(tmp_path))
         assert result.returncode == 3, (args, result.stdout + result.stderr)
+
+
+def test_process_rejects_out_of_range_threshold(tmp_path):
+    """--threshold is documented 0-1; an out-of-range value used to become
+    a per-file ERROR(1) deep in core instead of an upfront INPUT."""
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    result = _run("process", str(wav), "--trim", "--threshold", "5",
+                  cwd=str(tmp_path))
+    assert result.returncode == 3
+    assert "--threshold" in result.stderr
+
+
+# -- effects-file parameter domains: nonsense values are bad input ---------
+
+def _effects_file(tmp_path, payload: dict):
+    p = tmp_path / "fx.json"
+    p.write_text(json.dumps(payload))
+    return str(p)
+
+
+def test_effects_rejects_nonpositive_eq_frequency(tmp_path):
+    """A -100 Hz/+99 dB band used to be silently skipped by the DSP guard,
+    producing byte-identical output under 'Processed'."""
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    fx = _effects_file(tmp_path, {"eq": [{"frequency": -100, "gain": 99}]})
+    result = _run("process", str(wav), "--effects", fx, cwd=str(tmp_path))
+    assert result.returncode == 3
+    assert "frequency" in result.stderr
+
+
+def test_effects_rejects_sub_unity_compression_ratio(tmp_path):
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    fx = _effects_file(tmp_path, {"compression": {"ratio": -1}})
+    result = _run("process", str(wav), "--effects", fx, cwd=str(tmp_path))
+    assert result.returncode == 3
+    assert "ratio" in result.stderr
+
+
+def test_effects_warns_on_unknown_parameters(tmp_path):
+    """A typo like 'treshold' (or a documented-looking knob nothing reads,
+    e.g. reverb 'damping') used to be silently ignored. The warning fires at
+    load time, before any DSP dependency is needed."""
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    fx = _effects_file(tmp_path, {"compression": {"treshold": -10, "ratio": 2}})
+    result = _run("process", str(wav), "--effects", fx, cwd=str(tmp_path))
+    assert "unknown parameter 'treshold'" in result.stderr

@@ -1927,6 +1927,18 @@ a real ceiling (65535). Range checks belong next to the same dispatcher
 scope checks from cycles 44/51: the answer to "is this value usable" is
 INPUT(3), not a translated exception.
 
+**Q (2026-09-19, cycle 53): Are structured config inputs held to the
+same standard as flags?**
+The effects JSON file is a user-typed parameter surface just like
+argv — and it failed the same three ways: shape was validated but
+values weren't (-100 Hz eq band silently dropped, ratio -1 accepted),
+unknown keys died silently ("treshold", and a `damping` knob nothing
+reads), and the DSP's Nyquist guard skipped bands without a word.
+`_load_effects` now checks value domains per effect and warns on
+unconsumed keys. Rule of thumb for the next structured input: if a
+caller can type it, a validator must own it — and "validator" means
+values and names, not just JSON shape.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy

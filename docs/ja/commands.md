@@ -105,7 +105,7 @@ chameleon process input.wav --normalize --json
 | `--target-peak F` | 標準ライブラリ | `--normalize` の目標ピーク値 0.0〜1.0（既定 0.95） |
 | `--mono` | 標準ライブラリ | 1チャンネルへダウンミックス |
 | `--trim` | 標準ライブラリ | 前後の無音を除去 |
-| `--threshold F` | 標準ライブラリ | `--trim` の無音しきい値 0.0〜1.0（既定 0.01） |
+| `--threshold F` | 標準ライブラリ | `--trim` の無音しきい値（0.0 より大きく 1.0 未満、既定 0.01） |
 | `--denoise` | **numpy** | ノイズ除去 |
 | `--declip` | **numpy + scipy** | クリッピングで潰れたピークを復元 |
 | `--dehum` | **numpy + scipy** | 50/60 Hz の電源ハムと倍音を除去（検出された場合のみ） |

@@ -141,6 +141,17 @@ def _load_effects(effects_path: str) -> Dict[str, Any]:
         )
 
     known = set(AudioProcessor._EFFECT_REQUIREMENTS)
+
+    # Parameter keys apply_effects actually reads per effect. An unknown
+    # key (a typo like 'treshold', or 'damping' which nothing consumes)
+    # would otherwise be silently ignored.
+    known_params = {
+        "eq": {"frequency", "gain", "q"},
+        "reverb": {"room_size", "wet"},
+        "compression": {"threshold", "ratio", "attack", "release", "knee",
+                        "makeup_gain"},
+    }
+
     for name, params in effects.items():
         if name == "eq":
             # apply_effects iterates eq as a list of band dicts, each with a
@@ -159,10 +170,54 @@ def _load_effects(effects_path: str) -> Dict[str, Any]:
                         raise ValueError(
                             f"Effect 'eq' band #{i} needs a numeric '{key}'"
                         )
+                # A band at/below DC is meaningless; apply_effects used to
+                # skip it silently (a +99 dB boost at -100 Hz produced
+                # byte-identical output under "Processed").
+                if band["frequency"] <= 0:
+                    raise ValueError(
+                        f"Effect 'eq' band #{i} frequency must be positive, "
+                        f"got {band['frequency']}"
+                    )
+                if "q" in band and (not isinstance(band["q"], (int, float))
+                                    or band["q"] <= 0):
+                    raise ValueError(
+                        f"Effect 'eq' band #{i} 'q' must be a positive number"
+                    )
+                for key in band:
+                    if key not in known_params["eq"]:
+                        print(f"Warning: unknown eq parameter '{key}' in band "
+                              f"#{i} will be ignored", file=sys.stderr)
         elif not isinstance(params, dict):
             raise ValueError(
                 f"Effect '{name}' must map to a parameter object, got {type(params).__name__}"
             )
+        else:
+            for key in params:
+                if name in known_params and key not in known_params[name]:
+                    print(f"Warning: unknown parameter '{key}' for effect "
+                          f"'{name}' will be ignored", file=sys.stderr)
+            if name == "reverb":
+                if "room_size" in params and params["room_size"] <= 0:
+                    raise ValueError("Effect 'reverb' 'room_size' must be positive")
+                if "wet" in params and not 0.0 <= params["wet"] <= 1.0:
+                    raise ValueError(
+                        f"Effect 'reverb' 'wet' must be within [0, 1], got "
+                        f"{params['wet']}"
+                    )
+            elif name == "compression":
+                ratio = params.get("ratio")
+                if ratio is not None and (not isinstance(ratio, (int, float))
+                                          or ratio < 1):
+                    raise ValueError(
+                        f"Effect 'compression' 'ratio' must be >= 1 "
+                        f"(below 1 is expansion, not compression), got {ratio}"
+                    )
+                for key in ("attack", "release", "knee"):
+                    if key in params and params[key] < 0:
+                        raise ValueError(
+                            f"Effect 'compression' '{key}' must be >= 0, "
+                            f"got {params[key]}"
+                        )
         if name not in known:
             print(f"Warning: unknown effect '{name}' in effects file will be ignored "
                   f"(known effects: {', '.join(sorted(known))})", file=sys.stderr)
@@ -1008,6 +1063,11 @@ class AudioProcessor:
                     # Single forward pass: filtfilt would apply the response
                     # twice and double the requested dB gain.
                     processed = signal.lfilter(b, a, processed)
+                elif freq >= sr / 2:
+                    # A band above Nyquist cannot be represented; skipping it
+                    # silently would report "Processed" for a no-op band.
+                    print(f"Warning: eq band at {freq} Hz exceeds Nyquist "
+                          f"({sr / 2:.0f} Hz) -- skipped", file=sys.stderr)
 
         # Reverb (simple convolution)
         if "reverb" in effects and HAS_SCIPY:
@@ -2238,6 +2298,12 @@ async def main():
         if args.threshold is not None and not args.trim:
             print("Error: --threshold requires --trim", file=sys.stderr)
             return ExitCode.USAGE
+        if args.threshold is not None and not 0.0 < args.threshold < 1.0:
+            # trim_silence rejects the same range downstream; validating here
+            # answers INPUT instead of a per-file ERROR, and matches the docs.
+            print(f"Error: --threshold must be within (0.0, 1.0), got "
+                  f"{args.threshold}", file=sys.stderr)
+            return ExitCode.INPUT
         convert_flags = {"--convert-format": args.convert_format,
                          "--convert-sample-rate": args.convert_sample_rate,
                          "--convert-bit-depth": args.convert_bit_depth}

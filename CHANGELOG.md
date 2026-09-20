@@ -14,6 +14,19 @@
 
 ### Fixed
 
+- **Effects-file parameters were shape-checked but not value-checked,
+  and unknown keys were silently ignored** -- `{"eq":[{"frequency":-100,
+  "gain":99}]}` was quietly dropped by the DSP guard (byte-identical
+  output under "Processed"), `{"compression":{"ratio":-1}}` ran a
+  nonsensical ratio, and typos like `"treshold"` or the unconsumed
+  `damping` knob vanished without a word. `_load_effects` now rejects
+  eq `frequency <= 0` / `q <= 0`, reverb `room_size <= 0` / `wet`
+  outside [0,1], and compression `ratio < 1` / negative attack,
+  release, or knee; unknown parameter keys warn on stderr; and an eq
+  band above the file's Nyquist warns instead of silently skipping.
+  `--threshold` outside (0.0, 1.0) -- documented range -- is now an
+  upfront INPUT(3) instead of a per-file ERROR(1) from core, and the
+  docs now state the bounds are exclusive.
 - **Out-of-range numeric flags crashed inside encoders instead of
   answering as bad input** -- `midi generate --tempo 0` reached
   `generate_midi_file` as a raw "float division by zero" (and `--tempo 2`

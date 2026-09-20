@@ -105,7 +105,7 @@ chameleon process input.wav --normalize --json
 | `--target-peak F` | stdlib | Target peak for `--normalize`, 0.0–1.0 (default 0.95) |
 | `--mono` | stdlib | Downmix to a single channel |
 | `--trim` | stdlib | Trim leading and trailing silence |
-| `--threshold F` | stdlib | Silence threshold for `--trim`, 0.0–1.0 (default 0.01) |
+| `--threshold F` | stdlib | Silence threshold for `--trim`, strictly between 0.0 and 1.0 (default 0.01) |
 | `--denoise` | **numpy** | Remove noise |
 | `--declip` | **numpy + scipy** | Reconstruct peaks flattened by clipping |
 | `--dehum` | **numpy + scipy** | Remove 50/60 Hz mains hum and harmonics, if present |
