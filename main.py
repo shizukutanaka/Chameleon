@@ -2176,8 +2176,9 @@ def create_cli():
     analyze.add_argument("--loudness", action="store_true",
                          help="Also report integrated loudness (LUFS) via a pure "
                               "Python ITU-R BS.1770 K-weighted gated meter (stdlib-only). "
-                              "Sums per-channel energy correctly (mono/stereo), but omits "
-                              "surround-channel weighting and true-peak, and is bounded to "
+                              "Applies the standard surround weighting when the WAV "
+                              "carries a dwChannelMask (equal weights otherwise) and "
+                              "reports a 4x-oversampled true-peak estimate; bounded to "
                               "a prefix of the file -- not a certified full-track measurement.")
 
     # Process command

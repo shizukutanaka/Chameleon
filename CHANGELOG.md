@@ -55,6 +55,14 @@
 
 ### Fixed
 
+- **`--loudness`'s own help understated the feature it ships** -- the
+  argparse help still said "omits surround-channel weighting and
+  true-peak", both false since dwChannelMask-driven surround weighting
+  and the 4x-oversampled true-peak estimate landed (docs were updated;
+  the help string was not). Help now describes what the command
+  actually does: standard surround weighting when a mask is present,
+  equal weights otherwise, true-peak reported, bounded-prefix scope
+  unchanged and still stated.
 - **`server` claimed it was starting before checking it could** -- the
   "Starting API server on ..." banner printed unconditionally, so on a
   uvicorn-less install the user read a success claim immediately followed

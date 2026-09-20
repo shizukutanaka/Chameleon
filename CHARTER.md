@@ -2335,3 +2335,7 @@ any range assertion.
   not the key naming it -- but only where emptiness really is nothing:
   `{"compression": {}}` is still a request because it runs on documented
   defaults, while `{"eq": []}` has no defaults to run.
+- A feature's own help text can outlive the feature: --loudness shipped
+  surround weighting and true-peak, docs were updated, and its argparse
+  help still said "omits" both -- understating is the same drift class as
+  overstating. When a capability lands, its --help string is a doc too.
