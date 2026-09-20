@@ -4,6 +4,11 @@
 
 ### Fixed
 
+- **API batch `options` were accepted, stored, and dropped** — a
+  normalize job sent `{"options": {"target_peak": 0.5}}` ran at the
+  default 0.95 anyway. `options.target_peak` now reaches the normalize
+  call, unknown option keys are rejected at submit time (422) instead
+  of being silently ignored, and out-of-range values fail validation.
 - **`--target-peak` above 1.0 (or at/below 0) silently clamped instead of
   erroring** — the CLI advertised "0.0-1.0" but the numpy path applied
   the gain and let the soft clipper crush the overshoot, reporting

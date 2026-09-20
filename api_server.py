@@ -240,6 +240,34 @@ class BatchJobRequest(BaseModel):
     operation: str = Field(..., **{_PATTERN_KW: r'^(analyze|normalize)$'})
     options: Dict[str, Any] = Field(default_factory=dict)
 
+    @_pydantic.root_validator
+    def _options_reach_the_operation(cls, values):
+        """Reject option keys that no batch operation consumes.
+
+        ``options`` used to be stored and dropped: a normalize job sent
+        ``{"options": {"target_peak": 0.5}}`` silently ran at 0.95. An
+        accepted-but-ignored field is the same dishonesty class as a dead
+        CLI flag, so unknown keys (and normalize's out-of-range values)
+        are rejected here at submit time instead.
+        """
+        operation = values.get('operation')
+        options = values.get('options') or {}
+        allowed = {'normalize': {'target_peak'}, 'analyze': set()}.get(operation, set())
+        unknown = set(options) - allowed
+        if unknown:
+            raise ValueError(
+                f"operation '{operation}' does not accept option(s): "
+                f"{', '.join(sorted(unknown))}"
+            )
+        if 'target_peak' in options:
+            value = options['target_peak']
+            # bool is an int subclass -- exclude it, "target_peak: true"
+            # is a type error, not 1.0.
+            if not isinstance(value, (int, float)) or isinstance(value, bool) \
+                    or not 0.0 < value <= 1.0:
+                raise ValueError("options.target_peak must be a number in (0, 1.0]")
+        return values
+
 class BatchJobResponse(BaseModel):
     success: bool
     job_id: Optional[str] = None
@@ -1492,7 +1520,10 @@ async def process_batch_job(job_id: str):
                     except ChameleonSecurityError as exc:
                         result = {'success': False, 'error': str(exc)}
                     else:
-                        result = await normalize_audio_fast(file_path, output_path)
+                        result = await normalize_audio_fast(
+                            file_path, output_path,
+                            target_peak=job_data['options'].get('target_peak', 0.95),
+                        )
                         if result.get('success'):
                             try:
                                 output_size = output_path.stat().st_size

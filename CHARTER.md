@@ -1947,3 +1947,13 @@ CLI was the odd surface out. `process` and `batch` now reject out-of-range
 values as INPUT before any work starts. Same audit pattern as the
 --key/--mode and --quality findings: where the advertised contract and
 the code diverge, either enforce the contract or fix the text.
+
+**Q: The API accepts `options` on batch submit — does it reach anything?**
+A (2026-09-19): It did not — stored in job_data, never read. A normalize
+job sent `options.target_peak` and ran the default 0.95. Same defect
+class as the dead CLI flags found the same day: an accepted field with
+no consumer is a promise the API does not keep. `target_peak` is now
+wired into the normalize call, unknown option keys are rejected 422 at
+submit time, and the (0,1.0] range is validated there too. The rule for
+future fields: a request field without a consumer either gets wired or
+rejected — never stored-and-dropped.

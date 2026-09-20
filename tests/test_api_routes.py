@@ -329,3 +329,84 @@ def test_cross_owner_download_denied(client):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 403
+
+
+def test_batch_normalize_options_target_peak_reaches_the_output(client, tmp_path, monkeypatch):
+    """options.target_peak was stored in job_data and then dropped -- the
+    normalize call ran at the default 0.95 regardless. The option must
+    reach the DSP call and land on the written file."""
+    import io
+    import math
+    import struct
+    import time
+    import wave
+    monkeypatch.setattr(api_server, "UPLOAD_DIRECTORY", tmp_path)
+    login = _login(client)
+    token = login.json()["token"]
+    auth = {"Authorization": f"Bearer {token}"}
+
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(44100)
+        w.writeframes(struct.pack(
+            "<4410h",
+            *[int(0.3 * 32767 * math.sin(2 * math.pi * 220 * i / 44100)) for i in range(4410)],
+        ))
+
+    up = client.post(
+        "/audio/upload",
+        files={"file": ("peakme.wav", buf.getvalue(), "audio/wav")},
+        headers=auth,
+    )
+    assert up.status_code == 200
+    stored = up.json()["stored_name"]
+
+    sub = client.post(
+        "/batch/submit",
+        json={"files": [stored], "operation": "normalize",
+              "options": {"target_peak": 0.5}},
+        headers=auth,
+    )
+    assert sub.status_code == 200
+    job_id = sub.json()["job_id"]
+
+    status = None
+    for _ in range(60):
+        s = client.get(f"/batch/status/{job_id}", headers=auth)
+        if s.status_code == 429:
+            time.sleep(0.5)
+            continue
+        assert s.status_code == 200
+        status = s.json()
+        if status["status"] in ("completed", "failed"):
+            break
+        time.sleep(0.15)
+    assert status["status"] == "completed", status
+    result = status["results"][0]["result"]
+    assert result.get("success") is True
+    # The option reached core.normalize: it reports the applied target.
+    assert result.get("target_peak") == 0.5, result
+
+    out_path = tmp_path / result["output_file"]
+    with wave.open(str(out_path), "rb") as w:
+        import array
+        samples = array.array("h", w.readframes(w.getnframes()))
+    peak = max(abs(x) for x in samples) / 32768.0
+    assert abs(peak - 0.5) < 0.02  # 0.5, not the default 0.95
+
+
+def test_batch_submit_rejects_options_the_operation_cannot_use(client, monkeypatch):
+    """Unknown option keys used to be accepted, stored, and silently
+    dropped. They are rejected at submit time (422) now."""
+    login = _login(client)
+    token = login.json()["token"]
+    auth = {"Authorization": f"Bearer {token}"}
+    sub = client.post(
+        "/batch/submit",
+        json={"files": ["x.wav"], "operation": "analyze",
+              "options": {"speed": 2}},
+        headers=auth,
+    )
+    assert sub.status_code == 422
