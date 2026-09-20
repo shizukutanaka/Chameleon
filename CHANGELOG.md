@@ -14,6 +14,12 @@
 
 ### Fixed
 
+- **`analyze --export` leaked OSError tracebacks on unwritable
+  destinations** -- exporting to a directory or a missing directory
+  crashed with IsADirectoryError/NotADirectoryError/PermissionError
+  (only FileNotFoundError and ValueError reach cli()'s tidy handler).
+  The export path is now sanitized like every other CLI input and
+  write failures answer INPUT(3) with a clean message.
 - **Effects-file parameters were shape-checked but not value-checked,
   and unknown keys were silently ignored** -- `{"eq":[{"frequency":-100,
   "gain":99}]}` was quietly dropped by the DSP guard (byte-identical

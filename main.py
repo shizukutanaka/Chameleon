@@ -2266,9 +2266,18 @@ async def main():
                                           f"(EBU Tech 3342, P95-P10 of gated short-term{stability})")
 
         if args.export:
-            with open(args.export, 'w') as f:
-                json.dump(results, f, indent=2, default=_json_export_default)
-            print(f"\nAnalysis exported to {args.export}")
+            # The export destination is user input: an unwritable or
+            # nonsensical path is bad input, not a traceback. OSError covers
+            # the whole family (missing dir, directory-as-file, permissions).
+            try:
+                export_path = _sanitize_cli_input(args.export, "export path")
+                with open(export_path, 'w') as f:
+                    json.dump(results, f, indent=2, default=_json_export_default)
+            except (OSError, ValueError) as exc:
+                print(f"Error: cannot write analysis export: {exc}",
+                      file=sys.stderr)
+                return ExitCode.INPUT
+            print(f"\nAnalysis exported to {export_path}")
 
         if had_error:
             exit_code = ExitCode.ERROR

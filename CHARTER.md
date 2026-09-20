@@ -1939,6 +1939,18 @@ unconsumed keys. Rule of thumb for the next structured input: if a
 caller can type it, a validator must own it — and "validator" means
 values and names, not just JSON shape.
 
+**Q (2026-09-19, cycle 54): Does every user-supplied output path get an
+input-error answer?**
+`analyze --export /dev/null/x.json` used to end in a NotADirectoryError
+traceback — `cli()` catches ValueError and FileNotFoundError, but
+IsADirectoryError, NotADirectoryError and PermissionError are OSError
+siblings that sailed straight through. An output path the user types is
+the same kind of input as an input file; the write now validates it
+(`_sanitize_cli_input`) and maps every OSError to INPUT(3). Audit rule:
+wherever the CLI opens a path the user supplied, the failure answer is
+"Error: ..." + INPUT(3), never a traceback — and the exception class to
+catch is OSError, not whichever subclass happened to fire first.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy

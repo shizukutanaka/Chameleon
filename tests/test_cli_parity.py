@@ -410,3 +410,15 @@ def test_effects_warns_on_unknown_parameters(tmp_path):
     fx = _effects_file(tmp_path, {"compression": {"treshold": -10, "ratio": 2}})
     result = _run("process", str(wav), "--effects", fx, cwd=str(tmp_path))
     assert "unknown parameter 'treshold'" in result.stderr
+
+
+def test_analyze_export_unwritable_path_is_input_error(tmp_path):
+    """A directory or missing-dir export path used to leak an OSError
+    traceback (IsADirectoryError/NotADirectoryError/PermissionError are not
+    FileNotFoundError, so cli()'s tidy handler never saw them)."""
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    for bad in (str(tmp_path), str(tmp_path / "no-such-dir" / "x.json")):
+        result = _run("analyze", str(wav), "--export", bad,
+                      cwd=str(tmp_path))
+        assert result.returncode == 3, (bad, result.stdout + result.stderr)
+        assert "Traceback" not in result.stderr
