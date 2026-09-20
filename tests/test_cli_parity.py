@@ -279,3 +279,16 @@ def test_batch_rejects_effects_on_normalize(tmp_path):
     result = _run("batch", str(tmp_path), "normalize", "--effects", str(fx),
                   cwd=str(tmp_path))
     assert result.returncode == 2
+
+
+def test_analyze_export_metadata_is_structured(tmp_path):
+    """--export must emit JSON objects, not a repr string containing
+    np.float64(...) -- a JSON export consumers cannot index is broken."""
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    out = tmp_path / "analysis.json"
+    result = _run("analyze", str(wav), "--export", str(out), cwd=str(tmp_path))
+    assert result.returncode == 0
+    entry = json.loads(out.read_text())[0]
+    assert isinstance(entry["metadata"], dict)
+    assert isinstance(entry["metadata"]["duration"], float)
+    assert "np.float64" not in out.read_text()

@@ -36,6 +36,12 @@ def client(monkeypatch):
         api_server, "_DEV_PASSWORD_HASH",
         hashlib.sha256(DEV_PASSWORD.encode("utf-8")).hexdigest(),
     )
+    # The fixed-window rate limiter is keyed on the client IP; TestClient
+    # always presents the same address, and other test files share this
+    # module-level dict -- accumulated requests would 429 under a full-suite
+    # run. Each test gets a fresh window; tests that exercise the limiter
+    # set their own thresholds afterwards.
+    api_server.api_state._rate_limit_windows.clear()
     # TrustedHostMiddleware only allows localhost/127.0.0.1 by default;
     # TestClient's default Host is "testserver", which it correctly rejects.
     return TestClient(api_server.app, base_url="http://localhost")

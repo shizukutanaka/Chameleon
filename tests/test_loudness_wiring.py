@@ -80,9 +80,6 @@ def test_cli_analyze_loudness_flows_into_export_json(tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
     exported = json.loads(export_path.read_text())
     metadata_blob = exported[0]["metadata"]
-    # main.py's --export uses json.dump(..., default=str), which stringifies
-    # the AudioMetadata dataclass (a pre-existing behavior, out of scope
-    # here) -- so assert the field made it into that string representation
-    # rather than assuming structured JSON.
-    assert "loudness_lufs=" in metadata_blob
-    assert "loudness_lufs=None" not in metadata_blob
+    # --export now serializes dataclasses to real JSON objects, so the
+    # field is checked structurally rather than inside a repr string.
+    assert metadata_blob["loudness_lufs"] is not None

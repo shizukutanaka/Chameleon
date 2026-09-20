@@ -21,7 +21,7 @@ import multiprocessing as mp
 from enum import IntEnum
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple, TYPE_CHECKING
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, is_dataclass
 from concurrent.futures import ThreadPoolExecutor
 import logging
 import warnings
@@ -65,6 +65,17 @@ class ExitCode(IntEnum):
 
 _CONTROL_CHAR_PATTERN = re.compile(r"[\x00-\x1f\x7f]")
 _WILDCARD_PATTERN = re.compile(r"[\*\?]")
+
+
+def _json_export_default(obj):
+    """``--export`` JSON serializer: dataclasses become real objects,
+    numpy scalars become plain numbers, everything else falls back to str."""
+    if is_dataclass(obj) and not isinstance(obj, type):
+        return asdict(obj)
+    item = getattr(obj, 'item', None)
+    if callable(item):  # numpy scalar -> Python scalar
+        return item()
+    return str(obj)
 
 
 def _sanitize_cli_input(value: str, field_name: str) -> str:
@@ -2192,7 +2203,7 @@ async def main():
 
         if args.export:
             with open(args.export, 'w') as f:
-                json.dump(results, f, indent=2, default=str)
+                json.dump(results, f, indent=2, default=_json_export_default)
             print(f"\nAnalysis exported to {args.export}")
 
         if had_error:

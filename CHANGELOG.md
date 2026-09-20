@@ -14,6 +14,16 @@
 
 ### Fixed
 
+- **`analyze --export` wrote a dataclass repr inside JSON** -- `metadata`
+  was `str(AudioMetadata(...))`, leaking `np.float64(...)` and forcing
+  consumers to parse a repr. The export now serializes dataclasses to
+  real JSON objects and numpy scalars to plain numbers.
+- **API tests flaked to 429 under the full suite** -- the fixed-window
+  rate limiter keys on client IP, and every TestClient shares
+  "testclient"; once the file's request volume crossed 120/60s, later
+  tests failed intermittently. The client fixture now clears
+  `_rate_limit_windows` per test (tests that exercise the limiter set
+  their own thresholds).
 - **`midi analyze` reported "120.0 BPM" for audio with no detectable
   rhythm** -- a single sustained note (or onsets with no usable
   interval) returned the config default and the CLI printed it as an
