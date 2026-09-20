@@ -1506,6 +1506,9 @@ async def process_batch_job(job_id: str):
                                 operation='normalize',
                                 session_id=job_data.get('owner_session_id'),
                             )
+                            # Without this the output is registered for
+                            # download under a name the client never learns.
+                            result['output_file'] = sanitized_output
                 else:
                     result = {'success': False, 'error': 'Unknown operation'}
 
@@ -1517,8 +1520,11 @@ async def process_batch_job(job_id: str):
                 job_data['completed_files'] = i + 1
                 job_data['progress'] = (i + 1) / job_data['total_files']
 
-                # Small delay to prevent overwhelming system
-                await asyncio.sleep(0.1)
+                # Pace between files, not after the last one -- a trailing
+                # sleep delays the 'completed' write for no benefit (and
+                # under a request-driven loop may never resume at all).
+                if i + 1 < job_data['total_files']:
+                    await asyncio.sleep(0.1)
 
             job_data['status'] = 'completed'
             job_data['completed_at'] = datetime.now(timezone.utc)

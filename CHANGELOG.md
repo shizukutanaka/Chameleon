@@ -21,6 +21,13 @@
 
 ### Fixed
 
+- **Batch `normalize` jobs produced output that could never be
+  downloaded** — the generated file was registered under
+  `normalized_<uuid>_<name>` but the job result carried no output name
+  and no list-files endpoint exists, so the only link to the artifact
+  was lost. The result now includes `output_file`. Also: the per-file
+  pacing `sleep` ran after the *last* file too, leaving jobs visibly
+  'processing' at progress 1.0 — it now only paces between files.
 - **`--denoise` on input shorter than the STFT window crashed** —
   `signal.stft` silently shrinks `nperseg` to fit short input while
   `istft` kept a literal 2048, raising "operands could not be broadcast"

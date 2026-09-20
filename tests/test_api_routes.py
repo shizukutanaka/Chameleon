@@ -249,6 +249,69 @@ def test_download_unregistered_name_returns_404(client):
     assert response.status_code in (400, 404)
 
 
+def test_batch_normalize_job_produces_a_downloadable_output(client, tmp_path, monkeypatch):
+    """submit → status → download: the generated file's name must reach the
+    client in the job results, otherwise the output is registered for
+    download but can never be fetched."""
+    import io
+    import math
+    import struct
+    import time
+    import wave
+    monkeypatch.setattr(api_server, "UPLOAD_DIRECTORY", tmp_path)
+    login = _login(client)
+    token = login.json()["token"]
+    auth = {"Authorization": f"Bearer {token}"}
+
+    # Normalize refuses silence ("No audio signal found"), so this needs a
+    # real tone, not the silent _wav_bytes() fixture.
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(44100)
+        w.writeframes(struct.pack(
+            "<4410h",
+            *[int(0.3 * 32767 * math.sin(2 * math.pi * 220 * i / 44100)) for i in range(4410)],
+        ))
+
+    up = client.post(
+        "/audio/upload",
+        files={"file": ("batchme.wav", buf.getvalue(), "audio/wav")},
+        headers=auth,
+    )
+    assert up.status_code == 200
+    stored = up.json()["stored_name"]
+
+    sub = client.post(
+        "/batch/submit",
+        json={"files": [stored], "operation": "normalize"},
+        headers=auth,
+    )
+    assert sub.status_code == 200
+    job_id = sub.json()["job_id"]
+
+    status = None
+    for _ in range(60):
+        s = client.get(f"/batch/status/{job_id}", headers=auth)
+        if s.status_code == 429:  # rate limiter: keep polling, the job still runs
+            time.sleep(0.5)
+            continue
+        assert s.status_code == 200
+        status = s.json()
+        if status["status"] in ("completed", "failed"):
+            break
+        time.sleep(0.15)
+    assert status["status"] == "completed", status
+    assert status["results"][0]["result"].get("success") is True
+
+    output_name = status["results"][0]["result"].get("output_file")
+    assert output_name, f"job result names no output file: {status['results']}"
+    dl = client.get(f"/audio/download/{output_name}", headers=auth)
+    assert dl.status_code == 200
+    assert dl.content[:4] == b"RIFF"
+
+
 def test_cross_owner_download_denied(client):
     """Registry-based authorization: a file owned by another user is 403
     for a non-privileged session, even with a valid token."""
