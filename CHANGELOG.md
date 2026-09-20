@@ -55,6 +55,13 @@
 
 ### Fixed
 
+- **Harmonic enhancement in `spectral_editor` leaked outside the
+  selection** -- `harmonic_enhance_selection` multiplied entire
+  frequency rows (`magnitude[harmonic_idx] *= ...`) whenever ANY frame
+  of a source row was selected, so selecting a 0.1-second noise region
+  boosted harmonics across the whole file's duration. Boosts are now
+  applied per selected time column; verified that nothing outside the
+  selection changes.
 - **`server --workers N` defaulted to 4 and accepted any N, but the API
   cannot share state across workers** -- sessions, the token index, the
   job registry, the audit log and the circuit breaker all live in

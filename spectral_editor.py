@@ -454,16 +454,21 @@ class SpectralEditor:
 
             # Find fundamental frequencies and boost harmonics
             for freq_idx in range(len(self.freqs)):
-                if mask[freq_idx].any():
-                    fundamental_freq = self.freqs[freq_idx]
+                selected_times = np.where(mask[freq_idx])[0]
+                if selected_times.size == 0:
+                    continue
+                fundamental_freq = self.freqs[freq_idx]
 
-                    # Boost 2nd and 3rd harmonics if present
-                    for harmonic in [2, 3]:
-                        harmonic_freq = fundamental_freq * harmonic
-                        if harmonic_freq < self.freqs[-1]:
-                            harmonic_idx = np.searchsorted(self.freqs, harmonic_freq)
-                            if harmonic_idx < len(self.freqs):
-                                magnitude[harmonic_idx] *= (1 + harmonic_strength)
+                # Boost 2nd and 3rd harmonics at the selected times only --
+                # writing whole rows would modify audio outside the
+                # selection the user asked to enhance.
+                for harmonic in [2, 3]:
+                    harmonic_freq = fundamental_freq * harmonic
+                    if harmonic_freq < self.freqs[-1]:
+                        harmonic_idx = np.searchsorted(self.freqs, harmonic_freq)
+                        if harmonic_idx < len(self.freqs):
+                            magnitude[harmonic_idx, selected_times] *= (
+                                1 + harmonic_strength)
 
             # Reconstruct
             self.stft = magnitude * np.exp(1j * phase)

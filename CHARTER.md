@@ -2422,3 +2422,8 @@ any range assertion.
   spawned processes that cannot share sessions, so the default made the
   API forget logins 3 times out of 4. If a knob is only honest at one
   value, accept only that value and say why.
+- A selection-scoped operation that writes whole rows leaks beyond the
+  selection: harmonic_enhance_selection multiplied full frequency rows
+  when any frame of a row was selected. An operation named for a
+  selection must prove its writes stay inside the mask -- check
+  coordinates on both axes, not just membership.

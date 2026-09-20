@@ -90,3 +90,22 @@ def test_paste_of_empty_copy_refuses():
 
     assert not ed.paste_selection(
         np.zeros_like(ed.stft), ed.select_region(0.5, 0.6, 0, 22050))
+
+
+def test_harmonic_enhance_stays_inside_selection():
+    # Boosting harmonics must write only the selected time columns --
+    # the previous version multiplied whole frequency rows, changing
+    # audio far outside the user's selection.
+    ed = spectral_editor.SpectralEditor()
+    audio = np.sin(2 * np.pi * 220 * np.arange(SAMPLE_RATE) / SAMPLE_RATE) * 0.3
+    ed.load_audio(audio, SAMPLE_RATE)
+    before = np.abs(ed.stft).copy()
+
+    sel = ed.select_region(0.4, 0.5, 0, 100)
+    assert ed.harmonic_enhance_selection(sel, harmonic_strength=0.5)
+
+    after = np.abs(ed.stft)
+    changed = np.argwhere(after - before > 1e-9)
+    assert changed.size > 0
+    times = ed.times
+    assert all(0.4 <= times[c[1]] <= 0.5 for c in changed)
