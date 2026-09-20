@@ -99,3 +99,21 @@ def test_mastering_a_file_shorter_than_the_filter_padlen_fails_cleanly(tmp_path)
 
     assert "error" in results[0]
     assert "too short for mastering" in results[0]["error"]
+
+
+def test_mastering_rejects_multichannel_instead_of_dropping_channels():
+    # Every stage is mono/stereo-only: the stereo processors zero or
+    # truncate channels beyond the first two, so mastering a quad file
+    # must refuse loudly rather than write a file missing channels.
+    np = pytest.importorskip("numpy")
+    import mastering_chain
+
+    quad = np.stack(
+        [0.3 * np.sin(2 * np.pi * f * np.arange(4410) / 44100)
+         for f in (440, 550, 660, 770)]
+    )
+    chain = mastering_chain.MasteringChain(
+        mastering_chain.create_mastering_preset("default"), 44100
+    )
+    with pytest.raises(ValueError, match="mono or stereo"):
+        chain.process(quad)

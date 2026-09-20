@@ -55,6 +55,13 @@
 
 ### Fixed
 
+- **`--master` silently dropped channels on >2-channel input** -- the
+  compressor and limiter's stereo paths wrote only rows 0 and 1 (channels
+  3+ came back zeroed, verified on a quad file) and the stereo-width
+  stage truncated `audio[:2]`. `MasteringChain.process` now refuses
+  inputs above 2 channels with a `ValueError` naming the channel count
+  and pointing at the `mono` op; the CLI reports it as INPUT(3) with no
+  output file written.
 - **`BatchScheduler.schedule_workflow`/`start` silently no-oped when the
   `schedule` package was missing** -- a logger warning let the caller
   believe the workflow was queued, and the package is in no installable

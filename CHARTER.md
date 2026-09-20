@@ -2413,3 +2413,8 @@ any range assertion.
   scheduler guarded on a package present in no extra, then returned
   success through a log line. Unavailable means refuse loudly -- a
   warning is not a contract.
+- A "stereo" code path that accepts a multichannel array is a data-loss
+  bug, not a generalisation: the compressor and limiter wrote only rows
+  0-1 and returned a (4, N)-shaped array with two silent channels. Gate
+  arity at the entry point -- silence downstream is indistinguishable
+  from silence in the mix.

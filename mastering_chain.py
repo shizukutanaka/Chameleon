@@ -832,6 +832,16 @@ class MasteringChain:
                 "(needs more than 9 for the EQ filters)"
             )
 
+        if audio.ndim == 2 and audio.shape[0] > 2:
+            # Every stage below is written for mono/stereo: the stereo
+            # processors zero or truncate channels beyond the first two,
+            # so a surround/quad master would silently drop audio.
+            raise ValueError(
+                f"Mastering supports mono or stereo input; got "
+                f"{audio.shape[0]} channels. Downmix first (e.g. the "
+                "`mono` operation) or use stereo stems."
+            )
+
         # Initial analysis
         input_analysis = self.analyze(audio)
         processing_info = {"input_analysis": input_analysis}
