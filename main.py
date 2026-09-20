@@ -851,9 +851,21 @@ class AudioProcessor:
         if noise_profile is None:
             if magnitude.shape[1] > 0:
                 percentile_to_median = math.sqrt(2.0 * math.log(2.0)) / math.sqrt(-2.0 * math.log(0.9))
-                noise_profile = (
+                estimate = (
                     np.percentile(magnitude, 10, axis=1, keepdims=True) * percentile_to_median
                 )
+                # A bin that never goes quiet has no observable noise floor:
+                # its p10 is the steady content itself, so scaling it
+                # "estimates" more noise than 90% of the bin's own
+                # magnitudes, and subtraction guts a sustained tone to the
+                # -20 dB floor (measured: -21 dB on a 2-second steady note).
+                # Subtract only where the estimate sits below the bin's loud
+                # tail (p90), i.e. where quiet frames actually existed to be
+                # measured. Where they did not, the honest amount of noise
+                # reduction is none -- whatever noise sits under a steady
+                # tone is masked by it anyway.
+                loud_tail = np.percentile(magnitude, 90, axis=1, keepdims=True)
+                noise_profile = np.where(estimate < loud_tail, estimate, 0.0)
             else:
                 noise_profile = np.zeros((magnitude.shape[0], 1))
 

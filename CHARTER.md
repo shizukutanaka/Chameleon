@@ -1845,6 +1845,18 @@ declip test clipped *below* the rail, where the clamp never bites. The
 realistic case (rail clipping) is now pinned by
 `test_a_clip_at_the_file_rail_is_repaired_not_reclipped`.
 
+**Q: What does a noise estimate mean for a bin that never goes quiet?**
+A (2026-09): Nothing — there is no observation to estimate from.
+`remove_noise` derived each bin's noise floor from its p10 magnitude,
+which works while every bin is empty at some point and fails silently on
+a sustained tone: p10 is then the tone itself, and the scaled "noise"
+exceeds the bin's own p90, so subtraction drove a held note down ~21 dB.
+Bins whose estimate exceeds their p90 are now skipped entirely. Same
+lesson as the rail-clip fix above, one cycle later: every suite fixture
+used *changing* content, so the degenerate input — the one the feature
+exists for, in both cases — was untested. When a property is pinned,
+also pin the pathological input the property is supposed to survive.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy

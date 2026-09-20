@@ -107,6 +107,23 @@ def test_the_tone_survives_alongside_that_noise_reduction():
     assert change == pytest.approx(0.0, abs=1.5)
 
 
+def test_a_sustained_note_is_not_gutted():
+    # Every fixture above uses *changing* content, so each bin has quiet
+    # frames to estimate noise from. A note held for the whole file never
+    # empties its bin: the p10 is the note itself, and subtracting the
+    # scaled estimate used to take a steady tone down ~21 dB.
+    rng = np.random.default_rng(0)
+    t = np.arange(2 * SAMPLE_RATE) / SAMPLE_RATE
+    sustained = 0.3 * np.sin(2 * np.pi * 440.0 * t)
+    noisy = sustained + 0.02 * rng.standard_normal(len(t))
+
+    processed = _processor().remove_noise(noisy.copy(), SAMPLE_RATE)
+    region = slice(5000, 2 * SAMPLE_RATE - 5000)
+
+    change = _tone_db(processed[region], 440.0) - _tone_db(noisy[region], 440.0)
+    assert change == pytest.approx(0.0, abs=1.5), f"sustained tone lost {change:.1f} dB"
+
+
 def test_pure_noise_is_reduced():
     rng = np.random.default_rng(1)
     noise = 0.02 * rng.standard_normal(2 * SAMPLE_RATE)

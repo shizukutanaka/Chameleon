@@ -10,6 +10,12 @@
 
 ### Fixed
 
+- **`--denoise` gutted sustained tones by ~21 dB** — the per-bin noise
+  estimate (p10 × Rayleigh ratio) is only a floor when the bin actually
+  goes quiet; a note held for the whole file never empties its bin, so
+  the "estimate" was the tone itself and subtraction drove it to the
+  -20 dB floor. Bins whose estimate exceeds their own p90 (no observable
+  quiet tail) are now left untouched.
 - **`--declip` (and `repair_audio`) produced bit-identical output on audio
   clipped at the format rail** — declipping restores crests *above* ±1.0,
   and `save_audio`'s `np.clip(-1, 1)` guard flattened them back into the
