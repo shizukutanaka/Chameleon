@@ -171,7 +171,7 @@ chameleon midi compose --key C --mode major --tempo 120 --length 30 --output out
 chameleon midi generate --key G --mode minor --output out.mid
 ```
 
-位置引数: `{extract, analyze, compose, generate}` のいずれか。
+位置引数: `{extract, analyze, compose, generate}` のいずれか。`extract` は単音専用(YIN ピッチ追跡)。旋律向けであり、和音入力は偽のノートを生成します。
 
 | オプション | 意味 |
 |-----------|------|

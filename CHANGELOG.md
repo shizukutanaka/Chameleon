@@ -14,6 +14,11 @@
 
 ### Fixed
 
+- **`midi extract` silently emitted garbage on polyphonic input** --
+  YIN is monophonic; a C-major chord produced 159 spurious notes with
+  no hint that the input was outside scope. Extraction now warns on
+  implausibly dense output (>25 notes/sec), and MIDI_USAGE.md /
+  commands.md (en+ja) document the monophonic scope.
 - **`analyze --export` wrote a dataclass repr inside JSON** -- `metadata`
   was `str(AudioMetadata(...))`, leaking `np.float64(...)` and forcing
   consumers to parse a repr. The export now serializes dataclasses to

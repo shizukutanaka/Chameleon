@@ -2622,6 +2622,17 @@ async def main():
 
             if notes:
                 print(f"Extracted {len(notes)} MIDI notes:")
+                n_samples = (audio.shape[-1] if hasattr(audio, 'shape')
+                             else len(audio))
+                duration_s = n_samples / sr if sr else 0
+                # Extraction is monophonic (YIN): a plausible melody stays
+                # under ~20 notes/sec. Denser output means the input was
+                # probably polyphonic and most of these notes are spurious.
+                if duration_s > 0 and len(notes) / duration_s > 25:
+                    print("  Warning: note density is implausibly high for a "
+                          "monophonic source -- the input likely contains chords; "
+                          "this extractor tracks one pitch per frame.",
+                          file=sys.stderr)
                 for i, note in enumerate(notes[:10]):  # Show first 10
                     print(f"  {i+1}. {note.note_name} (vel: {note.velocity}, time: {note.start_time:.2f}s)")
                 if len(notes) > 10:

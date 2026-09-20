@@ -95,6 +95,10 @@ if success:
 ```bash
 python main.py midi extract --input audio.wav --output notes.mid
 ```
+Extraction is **monophonic**: pitch detection is YIN, which tracks a single
+fundamental per frame. Feed it melody lines (voice, solo instrument). On
+chords or polyphonic material it will emit many spurious notes — not an
+error in the file, just outside the extractor's scope.
 
 ### Analyze Musical Content
 ```bash

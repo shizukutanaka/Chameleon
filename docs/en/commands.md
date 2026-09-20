@@ -172,7 +172,9 @@ chameleon midi compose --key C --mode major --tempo 120 --length 30 --output out
 chameleon midi generate --key G --mode minor --output out.mid
 ```
 
-Positional: one of `{extract, analyze, compose, generate}`.
+Positional: one of `{extract, analyze, compose, generate}`. `extract` is
+monophonic (YIN pitch tracking): use it for melody lines; polyphonic input
+produces spurious notes.
 
 | Flag | Meaning |
 |------|---------|
