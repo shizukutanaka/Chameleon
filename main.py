@@ -1979,9 +1979,23 @@ def create_cli():
     if hasattr(plugin_subparsers, "required"):
         plugin_subparsers.required = True
 
-    plugin_subparsers.add_parser("list", help="List discovered plugins and metadata")
-    audit = plugin_subparsers.add_parser("audit", help="Audit plugin files for sandbox compliance")
+    # Shared flags are also accepted after the subcommand (`plugins list
+    # --json`), matching the documented form. A subparser flag cannot share
+    # the parent's dest: the subparser's default would clobber the parent's
+    # already-parsed value, and append would drop earlier --directory values.
+    # Distinct dests are merged onto args.directory/args.json at dispatch.
+    list_parser = plugin_subparsers.add_parser(
+        "list", help="List discovered plugins and metadata")
+    audit = plugin_subparsers.add_parser(
+        "audit", help="Audit plugin files for sandbox compliance")
     audit.add_argument("--fail-fast", action="store_true", help="Stop on first plugin failure")
+    for sub in (list_parser, audit):
+        sub.add_argument(
+            "--directory", action="append", dest="plugins_sub_directory", metavar="DIR",
+            help="Absolute plugin directory to inspect; may be specified multiple times")
+        sub.add_argument(
+            "--json", action="store_true", dest="plugins_sub_json",
+            help="Emit structured JSON output")
 
     # Server command
     server = subparsers.add_parser("server", help="Start API server")
@@ -2331,6 +2345,14 @@ async def main():
             exit_code = ExitCode.ERROR
 
     elif args.command == "plugins":
+        # --directory/--json are accepted both before and after the plugin
+        # subcommand; the subcommand positions use separate dests (see the
+        # parser) so merge them here.
+        sub_dirs = getattr(args, "plugins_sub_directory", None)
+        if sub_dirs:
+            args.directory = (args.directory or []) + sub_dirs
+        if getattr(args, "plugins_sub_json", False):
+            args.json = True
         try:
             directories = None
             if args.directory:

@@ -4,6 +4,13 @@
 
 ### Fixed
 
+- **`plugins list --json` / `plugins list --directory` (the documented
+  order) were rejected** -- `--directory`/`--json` lived only on the parent
+  `plugins` parser, so argparse demanded `plugins --json list` while the
+  docs showed `plugins list --json`. Both positions now work (the
+  subcommand positions use separate dests merged at dispatch, so
+  `--directory` values given in both positions accumulate instead of the
+  later position silently dropping earlier ones).
 - **`/system/status` reported `security_status: "secure"` unconditionally**
   — a constant label that stayed "secure" while the circuit breaker was
   open. It now derives from the breaker state ("degraded" when open).

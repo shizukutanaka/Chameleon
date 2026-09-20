@@ -1863,6 +1863,21 @@ used *changing* content, so the degenerate input — the one the feature
 exists for, in both cases — was untested. When a property is pinned,
 also pin the pathological input the property is supposed to survive.
 
+**Q (2026-09-19, cycle 42): Should a flag the docs place after a
+subcommand be rejected for being "in the wrong place"?**
+`docs/*/commands.md` showed `plugins list --json` but argparse put
+`--json`/`--directory` on the parent `plugins` parser, so the
+documented order errored with "unrecognized arguments". Two honest
+fixes existed: correct the docs, or accept both positions. We accepted
+both — the docs' order is the one users will type. Implementation
+detail worth recording: sharing the parent's `dest` on the subparser
+fails twice over — the subparser's default silently clobbers the
+already-parsed value, and `action="append"` then drops earlier
+`--directory` values. Separate dests (`plugins_sub_*`) merged at
+dispatch avoid both. Generalization: when docs and the parser disagree
+about where a flag goes, the flag's *advertised* position is a claim
+that must hold — verify the documented spelling actually parses.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy

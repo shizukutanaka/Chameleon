@@ -205,3 +205,24 @@ def test_batch_rejects_target_peak_zero(tmp_path):
     result = _run("batch", str(tmp_path), "normalize", "--target-peak", "0",
                   cwd=str(tmp_path))
     assert result.returncode == 3  # INPUT
+
+
+# -- plugins flags work in the documented post-subcommand position ----------
+
+def test_plugins_list_accepts_json_after_subcommand(tmp_path):
+    result = _run("plugins", "list", "--json", cwd=str(tmp_path))
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert "directories" in payload and "plugins" in payload
+
+
+def test_plugins_directory_positions_merge(tmp_path):
+    a = tmp_path / "dir_a"
+    b = tmp_path / "dir_b"
+    a.mkdir()
+    b.mkdir()
+    result = _run("plugins", "--directory", str(a), "list",
+                  "--directory", str(b), "--json", cwd=str(tmp_path))
+    assert result.returncode == 0
+    dirs = json.loads(result.stdout)["directories"]
+    assert str(a) in dirs and str(b) in dirs, dirs
