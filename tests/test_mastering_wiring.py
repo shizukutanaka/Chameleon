@@ -76,3 +76,26 @@ def test_master_preset_choices_all_produce_output(tmp_path):
         )
 
         assert "error" not in results[0], f"{preset}: {results[0]}"
+
+
+@requires_numpy
+def test_mastering_a_file_shorter_than_the_filter_padlen_fails_cleanly(tmp_path):
+    # filtfilt needs more than padlen (9) samples; a shorter file used to
+    # surface scipy's internals ("input vector x must be greater than
+    # padlen") instead of a readable reason.
+    import wave
+    import numpy as np
+    wav = tmp_path / "one.wav"
+    with wave.open(str(wav), "w") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(44100)
+        handle.writeframes(np.zeros(1, dtype=np.int16).tobytes())
+
+    processor = main.AudioProcessor()
+    results = processor.batch_process(
+        [str(wav)], "master", output_dir=str(tmp_path / "out"), master_preset="streaming"
+    )
+
+    assert "error" in results[0]
+    assert "too short for mastering" in results[0]["error"]

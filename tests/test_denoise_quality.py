@@ -151,3 +151,13 @@ def test_an_explicit_noise_profile_is_still_honoured():
 def test_silence_does_not_raise():
     processed = _processor().remove_noise(np.zeros(SAMPLE_RATE), SAMPLE_RATE)
     assert np.all(np.isfinite(processed))
+
+
+def test_input_shorter_than_the_stft_window_does_not_crash():
+    # stft shrinks nperseg to fit a short input; istft used to keep a
+    # literal 2048 and crashed broadcasting (500,) against (2048,).
+    t = np.arange(500) / SAMPLE_RATE
+    short = 0.3 * np.sin(2 * np.pi * 440.0 * t)
+
+    processed = _processor().remove_noise(short.copy(), SAMPLE_RATE)
+    assert np.all(np.isfinite(processed))

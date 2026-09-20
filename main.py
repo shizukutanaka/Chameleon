@@ -814,7 +814,10 @@ class AudioProcessor:
 
         # Convert to frequency domain. scipy's default hop is nperseg // 2,
         # so with nperseg=2048 each STFT column advances by 1024 samples.
-        nperseg = 2048
+        # For input shorter than the window, stft silently shrinks nperseg to
+        # the input length while a literal 2048 in istft then mismatches and
+        # crashes ("operands could not be broadcast (500,) (2048,)").
+        nperseg = min(2048, int(audio.shape[-1]))
         hop = nperseg // 2  # scipy default noverlap = nperseg // 2
         stft = signal.stft(audio, fs=sr, nperseg=nperseg)[2]
         magnitude = np.abs(stft)
@@ -877,7 +880,7 @@ class AudioProcessor:
 
         # Reconstruct signal
         cleaned_stft = cleaned_magnitude * np.exp(1j * phase)
-        _, cleaned_audio = signal.istft(cleaned_stft, fs=sr, nperseg=2048)
+        _, cleaned_audio = signal.istft(cleaned_stft, fs=sr, nperseg=nperseg)
 
         return cleaned_audio
 

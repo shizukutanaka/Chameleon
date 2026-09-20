@@ -822,6 +822,16 @@ class MasteringChain:
 
     def process(self, audio: np.ndarray) -> Tuple[np.ndarray, Dict[str, Any]]:
         """Process audio through complete mastering chain"""
+        # filtfilt needs input longer than its padlen (3*max(filter order)
+        # = 9 for the biquads/Butterworth-2 used here); anything shorter
+        # crashes inside scipy with "input vector x must be greater than
+        # padlen". State the limit plainly instead.
+        if audio.shape[-1] <= 9:
+            raise ValueError(
+                f"Input is too short for mastering: {audio.shape[-1]} samples "
+                "(needs more than 9 for the EQ filters)"
+            )
+
         # Initial analysis
         input_analysis = self.analyze(audio)
         processing_info = {"input_analysis": input_analysis}

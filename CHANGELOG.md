@@ -10,6 +10,14 @@
 
 ### Fixed
 
+- **`--denoise` on input shorter than the STFT window crashed** —
+  `signal.stft` silently shrinks `nperseg` to fit short input while
+  `istft` kept a literal 2048, raising "operands could not be broadcast"
+  on any file under 2048 samples. Both calls now use `min(2048, len)`.
+- **`--master` on input shorter than the filter padlen leaked scipy
+  internals** — filtfilt needs >9 samples (3× biquad order); a shorter
+  file surfaced "input vector x must be greater than padlen". The chain
+  now raises a plain "too short for mastering" error.
 - **`--denoise` gutted sustained tones by ~21 dB** — the per-bin noise
   estimate (p10 × Rayleigh ratio) is only a floor when the bin actually
   goes quiet; a note held for the whole file never empties its bin, so
