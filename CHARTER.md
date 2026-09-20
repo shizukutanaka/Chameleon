@@ -1830,6 +1830,21 @@ validated (`eq` = non-empty list of `{frequency, gain, [q]}` objects;
 `reverb`/`compression` = objects). Lesson recorded: validating shape without
 checking each effect's real schema swaps one lie for another.
 
+**Q: Declip restores crests above ±1.0 but the writer clamps to [-1, 1] —
+who wins?**
+A (2026-09): Attenuation, not re-clipping. `repair_audio` used to return
+peaks >1.0 into a `save_audio` that `np.clip`s, so a file clipped *at* the
+rail came back bit-identical — the repair ran and was then destroyed at
+write time. A repair whose result cannot be represented is a silent no-op,
+which is the same class of dishonesty §4 exists to prevent. Repaired audio
+with peak >0.999 is now scaled to fit; the shape is kept, the plateau is
+gone. The alternative — writing 32-bit float — would have preserved level
+but changed the output format for every caller; fitting the format the user
+asked for is the smaller surprise. Note the test gap that hid this: every
+declip test clipped *below* the rail, where the clamp never bites. The
+realistic case (rail clipping) is now pinned by
+`test_a_clip_at_the_file_rail_is_repaired_not_reclipped`.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy

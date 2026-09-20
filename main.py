@@ -921,10 +921,20 @@ class AudioProcessor:
             return channel
 
         if audio.ndim == 1:
-            return repair_channel(audio).astype(audio.dtype, copy=False)
-        repaired = np.stack([repair_channel(audio[index])
-                             for index in range(audio.shape[0])])
-        return repaired.astype(audio.dtype, copy=False)
+            repaired = repair_channel(audio).astype(audio.dtype, copy=False)
+        else:
+            repaired = np.stack([repair_channel(audio[index])
+                                 for index in range(audio.shape[0])])
+            repaired = repaired.astype(audio.dtype, copy=False)
+
+        # Declipping restores crests *above* the clip rail, i.e. peaks > 1.0,
+        # which save_audio's [-1, 1] clamp would flatten back into the very
+        # plateau that was just repaired — output bit-identical to the
+        # clipped input. Attenuate so the repaired peak fits the file format.
+        peak = float(np.max(np.abs(repaired)))
+        if peak > 0.999:
+            repaired = repaired * (0.999 / peak)
+        return repaired
 
     # Effects whose implementation needs a package the default install does
     # not have. Requesting one without the package used to produce an

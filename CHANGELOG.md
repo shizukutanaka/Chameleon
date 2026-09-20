@@ -10,6 +10,13 @@
 
 ### Fixed
 
+- **`--declip` (and `repair_audio`) produced bit-identical output on audio
+  clipped at the format rail** — declipping restores crests *above* ±1.0,
+  and `save_audio`'s `np.clip(-1, 1)` guard flattened them back into the
+  exact plateau that had just been repaired, so the written file equaled
+  the input. Repaired audio whose peak exceeds 0.999 is now attenuated to
+  fit instead of being re-clipped. Regression test clips a tone at full
+  scale and asserts the repair survives the writer.
 - **`reverb` effect on multi-channel audio** — `signal.convolve` was called
   on `(channels, samples)` audio with a 1-D impulse response, crashing with
   "volume and kernel should have the same dimensionality" on any stereo

@@ -150,6 +150,24 @@ def test_declipping_raises_the_peak_back_above_the_clip_level(tmp_path, damaged)
     assert np.abs(after).max() > np.abs(before).max() + 0.05
 
 
+def test_a_clip_at_the_file_rail_is_repaired_not_reclipped(tmp_path):
+    # Every other declip test clips *below* the format ceiling. Clipping at
+    # ±full scale is the realistic case, and the one where the repair can be
+    # destroyed: restored crests exceed 1.0, and a writer that clamps to
+    # [-1, 1] flattens them back into the same plateau.
+    source = tmp_path / "rail.wav"
+    _write_wav(source, np.clip(_tone(220, 1.4), -1.0, 1.0))
+
+    result = _run_cli("process", str(source), "--declip",
+                      "--output-dir", str(tmp_path))
+    assert result.returncode == 0, result.stderr
+
+    before, after = _read_wav(source), _read_wav(tmp_path / "rail_restored.wav")
+    assert not np.array_equal(before, after)
+    rail = np.abs(before).max()
+    assert np.sum(np.abs(after) >= rail * 0.9999) < np.sum(np.abs(before) >= rail * 0.9999)
+
+
 # --- ordering -------------------------------------------------------------
 
 def test_flag_order_does_not_change_the_result(tmp_path, damaged):
