@@ -118,6 +118,19 @@ setup(
             # tests/test_api_routes.py's TestClient needs the app= shortcut
             # that httpx dropped in 0.24.
             "httpx<0.24",
+            # The rest of the [dev] extra equips the Makefile targets
+            # (lint/format/security/build/publish) that `make develop` is
+            # expected to enable. `safety` is deliberately absent: every
+            # maintained release requires pydantic>=2.6, which is mutually
+            # exclusive with the [api] extra's pydantic<2 pin; `make
+            # security` already tolerates its absence via `|| true`.
+            "flake8>=7.0",
+            "mypy>=1.8",
+            "black>=24.0",
+            "isort>=5.13",
+            "bandit>=1.7",
+            "build>=1.0",
+            "twine>=4.0",
         ],
     },
     entry_points={

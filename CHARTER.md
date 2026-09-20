@@ -2246,3 +2246,11 @@ reason ("Unsupported WAV encoding (format tag N) ... install the audio
 extra") which flows through every caller, and the CLI maps it to
 "internal" kind: a capability gap is ERROR(1), not INPUT(3) -- the same
 rule as the missing-extra case.
+
+**Q: Should an extra include a tool that conflicts with another extra?**
+A (2026-09-20): No -- check the conflict before listing, not after. Adding
+`safety` to [dev] silently upgraded pydantic to v2 and broke the [api]
+extra's pin (fastapi 0.99 needs pydantic<2). `pip check` after installing
+is the verification step that catches transitive dep conflicts; an extra
+that can't coexist with a sibling extra doesn't belong -- the Makefile's
+`|| true` already treats safety as best-effort.
