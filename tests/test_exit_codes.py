@@ -96,3 +96,44 @@ def test_batch_missing_directory_is_input_error(tmp_path):
     missing_dir = tmp_path / "nope"
     result = _run("batch", str(missing_dir), "analyze", cwd=str(tmp_path))
     assert result.returncode == 3  # ExitCode.INPUT
+
+
+def _write_truncated_wav(path):
+    """A WAV whose header survives but whose data chunk is absent -- the
+    deep inspector's magic check passes, the parser then fails."""
+    valid = tmp_wav = path.parent / "_src.wav"
+    write_sine_wave(valid)
+    path.write_bytes(valid.read_bytes()[:32])
+    valid.unlink()
+
+
+def test_analyze_unparseable_wav_is_input_error(tmp_path):
+    """A file that fails WAV parsing mid-work is INPUT(3), not ERROR(1).
+
+    Until per-file failures carried an error kind, any parse failure —
+    the same class of problem as a missing file — returned the generic
+    internal-error code.
+    """
+    bad = tmp_path / "bad.wav"
+    _write_truncated_wav(bad)
+    result = _run("analyze", str(bad), cwd=str(tmp_path))
+    assert result.returncode == 3  # ExitCode.INPUT
+    assert "Traceback" not in result.stderr
+
+
+def test_process_unparseable_wav_is_input_error(tmp_path):
+    bad = tmp_path / "bad.wav"
+    _write_truncated_wav(bad)
+    result = _run("process", str(bad), "--normalize",
+                  "--output-dir", str(tmp_path / "out"), cwd=str(tmp_path))
+    assert result.returncode == 3  # ExitCode.INPUT
+
+
+def test_analyze_mixed_good_and_bad_is_input_error(tmp_path):
+    good = write_sine_wave(tmp_path / "good.wav")
+    bad = tmp_path / "bad.wav"
+    _write_truncated_wav(bad)
+    result = _run("analyze", str(good), str(bad), cwd=str(tmp_path))
+    # one success + one input failure -> INPUT, not the generic ERROR
+    assert result.returncode == 3
+    assert "good.wav" in result.stdout

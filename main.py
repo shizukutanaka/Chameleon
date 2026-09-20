@@ -114,6 +114,19 @@ def _assert_unique_paths(paths: List[str], field_name: str) -> None:
         raise ValueError(message) from exc
 
 
+def _error_kind(exc: Exception) -> str:
+    """Classify a per-file failure as an input problem or an internal one.
+
+    ValueError/FileNotFoundError are this codebase's convention for bad
+    user-supplied input ("Could not parse WAV file", unreadable headers,
+    out-of-domain values) -- those belong to INPUT(3). Everything else
+    (OSError on write, unexpected exceptions) is an internal failure.
+    """
+    if isinstance(exc, (ValueError, FileNotFoundError)):
+        return "input"
+    return "internal"
+
+
 def _load_effects(effects_path: str) -> Dict[str, Any]:
     """Load and validate an effects JSON file.
 
@@ -622,6 +635,8 @@ class AudioProcessor:
 
                 if chunk_id == b'fmt ':
                     fmt_data = f.read(chunk_size)
+                    if len(fmt_data) < 16:
+                        raise ValueError("Truncated fmt chunk")
                     audio_format, channels, sample_rate, byte_rate, block_align, bits_per_sample = \
                         struct.unpack('<HHIIHH', fmt_data[:16])
                     if audio_format == 0xFFFE:
@@ -639,6 +654,11 @@ class AudioProcessor:
                     if audio_format is None:
                         raise ValueError("WAV data chunk before fmt chunk")
                     audio_bytes = f.read(chunk_size)
+                    if len(audio_bytes) < chunk_size:
+                        self.logger.warning(
+                            "Data chunk truncated: declared %d bytes, %d present",
+                            chunk_size, len(audio_bytes),
+                        )
 
                     # Decode by (format tag, bit depth) — anything else is an
                     # explicit error rather than silent misdecoding.
@@ -1411,7 +1431,11 @@ class AudioProcessor:
                         results.append(future.result())
                     except Exception as exc:
                         self.logger.error(f"Failed to process {file_path}: {exc}")
-                        results.append({"error": str(exc), "file": file_path})
+                        results.append({
+                            "error": str(exc),
+                            "file": file_path,
+                            "kind": _error_kind(exc),
+                        })
                     if progress is not None:
                         progress.update()
         else:
@@ -1427,7 +1451,11 @@ class AudioProcessor:
                     )
                 except Exception as exc:
                     self.logger.error(f"Failed to process {file_path}: {exc}")
-                    results.append({"error": str(exc), "file": file_path})
+                    results.append({
+                        "error": str(exc),
+                        "file": file_path,
+                        "kind": _error_kind(exc),
+                    })
                 if progress is not None:
                     progress.update()
 
@@ -1751,6 +1779,7 @@ class AudioProcessor:
             result = core.analyze(file_path)
             if not result.success:
                 return {"file": file_path, "error": result.message,
+                        "kind": "input",
                         "time": time.time() - start_time, "dry_run": dry_run}
             info = result.data
             metadata = AudioMetadata(
@@ -1789,6 +1818,7 @@ class AudioProcessor:
         result = run(file_path, str(output_path), kwargs)
         if not result.success:
             return {"file": file_path, "error": result.message,
+                    "kind": "input",
                     "time": time.time() - start_time, "dry_run": False}
         return {"file": file_path, "output": str(output_path),
                 "time": time.time() - start_time, "dry_run": False}
@@ -2297,6 +2327,13 @@ async def main():
 
         if had_error:
             exit_code = ExitCode.ERROR
+            # Unparseable/corrupt files are input problems, not internal
+            # failures -- a file that "could not parse" belongs in
+            # INPUT(3) the same way a missing file does. Internal errors
+            # still win over input errors when both appear.
+            kinds = {r.get("kind") for r in results if "error" in r}
+            if kinds and kinds <= {"input"}:
+                exit_code = ExitCode.INPUT
 
     elif args.command == "process":
         operations: List[str] = []
@@ -2451,6 +2488,12 @@ async def main():
 
             if had_error:
                 exit_code = ExitCode.ERROR
+                # Same classification as analyze: when every failure is an
+                # input problem (unparseable file, bad header), INPUT(3) is
+                # the honest answer; internal failures keep ERROR(1).
+                kinds = {r.get("kind") for r in results if "error" in r}
+                if kinds and kinds <= {"input"}:
+                    exit_code = ExitCode.INPUT
 
     elif args.command == "stream":
         # Device indices are non-negative PyAudio indexes; a negative one
@@ -2718,6 +2761,9 @@ async def main():
 
         if successful != len(results):
             exit_code = ExitCode.ERROR
+            kinds = {r.get("kind") for r in results if "error" in r}
+            if kinds and kinds <= {"input"}:
+                exit_code = ExitCode.INPUT
 
     elif args.command == "midi":
         # Each operation consumes a different flag subset; a flag outside that

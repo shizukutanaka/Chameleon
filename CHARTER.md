@@ -1993,6 +1993,22 @@ and the error spectrum stays almost flat (measured HF/LF 1.6 vs 26.0
 after the fix). Error feedback is inherently serial — the loop is
 scalar Python, acceptable on an opt-in mastering path.
 
+**Q (2026-09-19, cycle 63): Is a mid-pipeline parse failure an input
+error or an internal one?**
+The deep inspector checks the magic number, so a file with a valid
+RIFF header but a truncated fmt chunk sailed through pre-flight and
+then died mid-parse — as ERROR(1), the internal-failure code, or
+worse, as a raw `struct.error` ("unpack requires a buffer of 16
+bytes"). Exit-code semantics are part of the API contract: INPUT means
+"fix your input", ERROR means "we broke". A corrupt WAV is never "we
+broke". The fix tags each per-file failure with a kind at the catch
+site (ValueError/FileNotFoundError = input, the rest = internal) and
+downgrades the exit code to INPUT(3) only when every failure was an
+input failure — mixed internal+input still answers ERROR. One related
+honesty fix in the same pass: a data chunk shorter than its declared
+size used to be analyzed silently; it now logs a truncation warning,
+because a shorter-than-declared file is a fact about the input.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy

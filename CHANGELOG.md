@@ -30,6 +30,16 @@
 
 ### Fixed
 
+- **Unparseable/truncated WAVs returned ERROR(1) instead of INPUT(3)** --
+  per-file failures carried only a message string, so "Could not parse
+  WAV file" (the same class of problem as a missing file) exited with
+  the generic internal-error code, and one path leaked a raw
+  `struct.error` ("unpack requires a buffer") on a 32-byte truncated
+  fmt chunk. Failures are now classified input-vs-internal at the
+  catch site: all-input failures exit INPUT(3) on analyze/process/
+  batch, internal failures keep ERROR(1), the fmt chunk length is
+  validated before unpacking, and a short data chunk logs a
+  truncation warning instead of silently analyzing partial audio.
 - **`--denoise` output was longer than its input** -- scipy's `istft`
   emits frame-aligned output, so its boundary padding left denoised
   files up to one hop longer (a 2-second file grew +888 samples =
