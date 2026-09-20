@@ -138,6 +138,8 @@ def _preflight_output_dir(output_dir: Optional[str]) -> Optional[str]:
             break
     if probe.exists() and not probe.is_dir():
         raise ValueError(f"output_dir is not a directory: {output_dir}")
+    if probe.exists() and not os.access(probe, os.W_OK | os.X_OK):
+        raise ValueError(f"output_dir is not writable: {output_dir}")
     return output_dir
 
 
@@ -159,7 +161,10 @@ def _error_kind(exc: Exception) -> str:
     """
     if isinstance(exc, UnsupportedOperationError):
         return "internal"
-    if isinstance(exc, (ValueError, FileNotFoundError)):
+    # PermissionError on a user-supplied output path is an input problem
+    # (the destination can't be written); other OSErrors like ENOSPC are
+    # genuinely environmental and stay internal.
+    if isinstance(exc, (ValueError, FileNotFoundError, PermissionError)):
         return "input"
     return "internal"
 

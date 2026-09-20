@@ -169,6 +169,24 @@ def test_output_dir_that_is_a_file_exits_input(tmp_path):
     assert "not a directory" in proc.stderr
 
 
+def test_output_dir_that_is_unwritable_exits_input(tmp_path):
+    """A chmod-555 output dir used to run the whole pipeline and surface
+    PermissionError deep in the write as ERROR(1). The path is user input:
+    refuse it as INPUT(3) before any work starts."""
+    wav = tmp_path / "a.wav"
+    write_sine_wave(str(wav))
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    locked.chmod(0o555)
+    try:
+        proc = _run("process", str(wav), "--normalize",
+                    "--output-dir", str(locked))
+    finally:
+        locked.chmod(0o755)
+    assert proc.returncode == 3  # ExitCode.INPUT
+    assert "not writable" in proc.stderr
+
+
 def test_sigint_during_processing_exits_interrupted(tmp_path):
     """asyncio.Runner converts SIGINT into a main-task cancellation that can
     only be delivered at await points -- the whole process pipeline is
