@@ -8,6 +8,17 @@
   markdown and has no `conf.py`; it could never succeed. Every remaining
   target's tools exist in the `dev` extra.
 
+### Security
+
+- **Plugin AST audit closed three verified bypass classes** —
+  `getattr(__builtins__, "ev" + "al")` and aliases like `e = eval`
+  audit-PASSED because only *calls* of dangerous names were checked, not
+  references; `globals()`/`locals()`/`vars()` reached the namespace dict
+  without any checked attribute access. Name references to dangerous
+  builtins, namespace-dict calls, and `getattr` with a computed or
+  dangerous literal attribute are now rejected. Still static analysis,
+  not a runtime boundary — the documented residual stands.
+
 ### Fixed
 
 - **`--denoise` on input shorter than the STFT window crashed** —

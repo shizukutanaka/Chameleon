@@ -405,6 +405,16 @@ class PluginLoader:
     # previously passed this check and ran unrestricted at module-exec time.
     _DANGEROUS_CALL_NAMES = frozenset({
         "__import__", "eval", "exec", "compile", "execfile",
+        # globals()/locals()/vars() hand back a live namespace dict, from
+        # which __builtins__ is reachable without any attribute access the
+        # walk below can see.
+        "globals", "locals", "vars",
+    })
+    _DANGEROUS_REF_NAMES = _DANGEROUS_CALL_NAMES | frozenset({
+        # Referenced-but-not-called is the aliasing bypass: `e = eval` or
+        # `getattr(__builtins__, "ev" + "al")` never puts the name in Call
+        # position, so a Call-only check misses it entirely.
+        "__builtins__",
     })
     _DANGEROUS_ATTR_CALLS = frozenset({
         ("importlib", "import_module"),
@@ -448,6 +458,22 @@ class PluginLoader:
                     raise SecurityError(
                         f"Unsafe call detected: {func.id}() can bypass the import sandbox"
                     )
+                if isinstance(func, ast.Name) and func.id == "getattr":
+                    # getattr(x, <literal dangerous attr>) is the attribute
+                    # check below with extra steps; getattr(x, <computed>)
+                    # evades it entirely -- the audit cannot verify a name
+                    # it cannot read, so computed names are rejected rather
+                    # than trusted.
+                    if len(node.args) >= 2 and (
+                        not isinstance(node.args[1], ast.Constant)
+                        or node.args[1].value in (
+                            "__globals__", "__builtins__", "__subclasses__",
+                            "__mro__", "__bases__", "__class__",
+                        )
+                    ):
+                        raise SecurityError(
+                            "Unsafe getattr() detected: dynamic or dangerous attribute name"
+                        )
                 if isinstance(func, ast.Attribute):
                     base = self._dotted_name(func.value)
                     if base and (base, func.attr) in self._DANGEROUS_ATTR_CALLS:
@@ -459,6 +485,10 @@ class PluginLoader:
             ):
                 raise SecurityError(
                     f"Unsafe attribute access detected: .{node.attr} can be used for sandbox escape"
+                )
+            elif isinstance(node, ast.Name) and node.id in self._DANGEROUS_REF_NAMES:
+                raise SecurityError(
+                    f"Unsafe reference detected: {node.id} can be used to bypass the import sandbox"
                 )
 
     @staticmethod

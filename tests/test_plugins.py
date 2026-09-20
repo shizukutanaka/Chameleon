@@ -105,3 +105,46 @@ def test_check_module_safety_still_accepts_safe_plugin_after_hardening(tmp_path)
     )
 
     loader._check_module_safety(Path(good))  # must not raise
+
+
+def test_check_module_safety_rejects_aliased_eval(tmp_path):
+    # `e = eval; e("...")` never puts `eval` in Call position, so a
+    # Call-only check misses it. Verified: this shape passed the audit.
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / "alias.py"
+    bad.write_text('_e = eval\n_e("import os")\n')
+
+    with pytest.raises(SecurityError, match="Unsafe reference detected: eval"):
+        loader._check_module_safety(Path(bad))
+
+
+def test_check_module_safety_rejects_getattr_on_builtins_name(tmp_path):
+    # getattr(__builtins__, "ev" + "al") was verified to load and audit-PASS
+    # before dynamic/computed getattr names were rejected.
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / "getattr_concat.py"
+    bad.write_text('f = getattr(__builtins__, "ev" + "al")\nf("1")\n')
+
+    with pytest.raises(SecurityError):
+        loader._check_module_safety(Path(bad))
+
+
+def test_check_module_safety_rejects_getattr_with_literal_dunder(tmp_path):
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / "getattr_dunder.py"
+    bad.write_text('f = getattr(object(), "__subclasses__")\n')
+
+    with pytest.raises(SecurityError, match="Unsafe getattr"):
+        loader._check_module_safety(Path(bad))
+
+
+@pytest.mark.parametrize("call", ["globals()", "locals()", "vars()"])
+def test_check_module_safety_rejects_namespace_dict_calls(tmp_path, call):
+    # globals()/locals()/vars() return a live namespace dict, reaching
+    # __builtins__ with no attribute access the walk can see.
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / "nsdict.py"
+    bad.write_text(f"ns = {call}\n")
+
+    with pytest.raises(SecurityError, match="Unsafe call detected"):
+        loader._check_module_safety(Path(bad))

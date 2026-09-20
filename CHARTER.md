@@ -492,9 +492,15 @@ runtime sandbox** — `exec_module()` still runs plugins with normal,
 unrestricted Python builtins; the fix closes the specific known bypasses,
 not arbitrarily obfuscated equivalents. Documented that limitation directly
 in the method's docstring rather than implying a stronger guarantee than
-exists. A true runtime sandbox (restricted globals/builtins during
-`exec_module`) would close the remaining gap but is a larger architectural
-change, not attempted here.
+exists. Amended 2026-09: adversarial probing found three more bypass
+classes that audit-PASSED — Name *references* to dangerous builtins
+(`e = eval` never appears in Call position), `globals()`/`locals()`/
+`vars()` reaching the namespace dict, and `getattr` with a computed or
+dangerous literal attribute (`getattr(__builtins__, "ev"+"al")`). All now
+rejected; the residual gap is genuinely dynamic code (bytecode payloads),
+which no static pass can close — that is what the P4 runtime sandbox item
+exists for: restricted globals/builtins during `exec_module`, a larger
+architectural change not attempted here.
 
 While investigating this, found two more pre-existing, unrelated bugs:
 `plugin_system.py` called `importlib.util.spec_from_file_location` while
