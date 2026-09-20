@@ -267,6 +267,12 @@ bugs to fix but problems without a known-good answer in this codebase.
   (ordering, circuit breaker, semaphore cross-loop binding); most likely an
   executor starvation stall specific to the 600+-test run. If it recurs,
   instrument `process_batch_job` around the `normalize_audio_fast` await.
+  Also timing-flaky: `test_sigint_during_processing_exits_interrupted`
+  intermittently sees the child die by the signal itself (rc=-2) instead of
+  exiting 130 -- the poll loop fires SIGINT whenever the first output file
+  appears, which is a race against the child's handler installation.
+  Observed ~1-in-4 both at HEAD and after the atomic-output change; if it
+  recurs, poll for a sentinel the child writes after handlers are armed.
 - **Loudness scope, honestly bounded:** BS.1770-4 channel weighting applies
   when a file carries dwChannelMask (surrounds +1.5 dB, LFE excluded);
   plain-PCM WAVs have no layout to apply, so their channels weight equally.
@@ -347,6 +353,7 @@ here because they need a user decision first.
 | ~~P2~~ | ~~`CHAMELEON_TIMEOUT` documented but unread by the CLI batch path; default 30 s cap silently truncated batches~~ | Med | S | Low | **DONE 2026-09-20** — default is now 0 (no cap); both sequential and parallel `batch_process` honor it, leftover files are marked `kind="timeout"` and the CLI warns on stderr (`tests/test_batch_timeout.py`) |
 | ~~P3~~ | ~~`spectral_editor` selection-scope leak + dead numpy-only interpolate fallback~~ | Med | S | Low | **DONE 2026-09-20** — `noise_reduce_selection` now writes only masked cells; the scipy-absent interpolate path is a real 4-neighbour mean instead of `magnitude[mask] = magnitude[mask]` returning True |
 | ~~P4~~ | ~~Eager `~/.chameleon_state` mkdir on `import core`; per-call RLIMIT_AS warning spam~~ | Low | XS | Low | **DONE 2026-09-20** — state dir created lazily on first `record_state()`; the sandbox warns once per process (macOS cannot lower RLIMIT_AS — verified) |
+| ~~P1~~ | ~~Non-atomic output writes: a mid-write failure left a truncated-but-parseable file at the destination name~~ | High | S | Low | **DONE 2026-09-20** — all producers (`_apply_gain_safe`, `_convert_to_mono`, `_extract_audio_range`, mono copyfile, `save_audio`/`_save_wav_basic`, `generate_midi_file`, `sanitize_wav_metadata`, `--export` JSON, `record_state`) now write sibling `.part-<pid>-<n>` temps renamed via `os.replace` only on success; failure preserves the old destination and removes the temp (`tests/test_atomic_writes.py`) |
 | P4 | Plugin sandbox runtime boundary (restricted builtins for `exec_module`) | High (security) | L | High | Architectural; leaky if done partially — design first |
 | P4 | Surround-channel loudness weighting | Low | M | Low | Only if a real multichannel use case appears |
 
