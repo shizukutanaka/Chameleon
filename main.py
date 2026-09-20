@@ -211,7 +211,7 @@ def _load_effects(effects_path: str) -> Dict[str, Any]:
         if name == "eq":
             # apply_effects iterates eq as a list of band dicts, each with a
             # numeric 'frequency' and 'gain' (optional 'q').
-            if not isinstance(params, list) or not params:
+            if not isinstance(params, list):
                 raise ValueError(
                     f"Effect 'eq' must map to a list of band objects, got {type(params).__name__}"
                 )
@@ -1159,7 +1159,11 @@ class AudioProcessor:
         unavailable = [
             f"{name} (needs {package})"
             for name, (package, available) in self._EFFECT_REQUIREMENTS.items()
-            if name in effects and not available()
+            # An empty eq band list ({"eq": []}) asks for nothing -- there
+            # is no band to compute, so the DSP requirement does not apply.
+            # Dict effects still count as a request even when empty:
+            # {"compression": {}} applies the documented defaults.
+            if name in effects and (name != "eq" or effects[name]) and not available()
         ]
         if unavailable:
             raise ValueError(

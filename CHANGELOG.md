@@ -55,6 +55,15 @@
 
 ### Fixed
 
+- **`{"eq": []}` was rejected by validation and demanded scipy for a
+  no-op** -- `_load_effects` refused the empty band list with a
+  "must map to a list, got list" message that both misdescribed the
+  input and disagreed with `{}`'s acceptance, and `apply_effects`
+  flagged the (nonexistent) bands as needing scipy even on a numpy-only
+  install. An empty band list is now validated as the pass-through it
+  is and exempted from the scipy requirement -- zero bands compute
+  nothing. Empty *dict* effects (`{"compression": {}}`) still count as
+  requests, since they apply the documented defaults.
 - **State files could be truncated by a mid-write crash** -- `open('w')`
   truncates first, so a kill during save left `personal_config.json` /
   `library.json` half-written, and the next load blamed *the user* for

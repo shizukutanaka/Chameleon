@@ -61,7 +61,7 @@ def test_the_error_names_the_extra_that_fixes_it(processor, monkeypatch):
     monkeypatch.setattr(main, "HAS_SCIPY", False)
 
     with pytest.raises(ValueError, match=r"\[audio\]"):
-        processor.apply_effects(_tone(), 44100, {"eq": []})
+        processor.apply_effects(_tone(), 44100, {"eq": [{"frequency": 1000, "gain": 3.0}]})
 
 
 def test_effects_needing_nothing_optional_still_work(processor, monkeypatch):

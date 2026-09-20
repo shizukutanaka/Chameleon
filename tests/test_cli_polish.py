@@ -254,3 +254,17 @@ def test_invalid_parallel_env_warns_not_silently_coerced(monkeypatch):
         cfg = main.ProcessingConfig.from_environment()
     assert cfg.parallel is True  # the default, not a coercion of "banana"
     assert any("CHAMELEON_PARALLEL" in str(w.message) for w in seen)
+
+
+def test_eq_effect_with_empty_band_list_is_a_noop(tmp_path):
+    pytest.importorskip("numpy")
+    # {} is already accepted as pass-through; {"eq": []} is the same
+    # claim spelled differently -- zero bands, nothing to apply. It was
+    # rejected with "must map to a list of band objects, got list",
+    # which both misdescribed the input and disagreed with {}'s
+    # acceptance.
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    fx = _write_effects(tmp_path, '{"eq": []}')
+    result = _run("process", str(wav), "--effects", str(fx), cwd=str(tmp_path))
+    assert result.returncode == 0
+    assert "Processed" in result.stdout

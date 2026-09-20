@@ -2326,3 +2326,9 @@ any range assertion.
   state write (config, library db, generated scripts) goes through a
   sibling temp file + os.replace now: readers see the old file or the
   new one, never a partial write.
+- A requirement check keys on presence, not on work: `apply_effects` flagged
+  `{"eq": []}` as needing scipy because the *key* was present, though zero
+  bands compute nothing. Requirements should attach to the work requested,
+  not the key naming it -- but only where emptiness really is nothing:
+  `{"compression": {}}` is still a request because it runs on documented
+  defaults, while `{"eq": []}` has no defaults to run.
