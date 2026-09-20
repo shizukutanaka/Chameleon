@@ -2207,3 +2207,13 @@ file type" + ERROR(1) left the user guessing which part was wrong and
 mis-claimed an internal failure. Pattern: when a command's name invites an
 input its implementation can't take, the refusal must name the trap, not
 the type. Now INPUT(3) with "this command analyzes audio".
+
+**Q: What should a 0-frame WAV do -- crash, empty output, or rejection?**
+A (2026-09-20): Follow the stdlib path's existing convention: transforms
+whose purpose needs content answer INPUT(3) "No audio signal found"
+(normalize, trim, master already did); analyze reports all-zero stats.
+The numpy path violated this both ways -- raw reduction tracebacks
+(declip/dehum/denoise) and silent empty writes (normalize/convert).
+Same file, same answer across tiers is the standing rule. Buffer-level
+transforms still return identity on empty (a buffer isn't a file a
+user pointed at), so the dispatch guard carries the file-level refusal.

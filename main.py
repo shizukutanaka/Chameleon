@@ -728,11 +728,11 @@ class AudioProcessor:
             format="array"
         )
 
-        # Basic statistics
-        if audio.ndim == 1:
-            metadata.peak_level = float(np.abs(audio).max())
-            metadata.rms_level = float(np.sqrt(np.mean(audio**2)))
-        else:
+        # Basic statistics -- an empty (0-frame) file has no peak/RMS to
+        # measure; leave them at 0.0 rather than letting np.max() raise on
+        # an identity-less reduction. The stdlib path already reports all
+        # zeros for this input.
+        if audio.size:
             metadata.peak_level = float(np.abs(audio).max())
             metadata.rms_level = float(np.sqrt(np.mean(audio**2)))
 
@@ -741,7 +741,7 @@ class AudioProcessor:
             metadata.dynamic_range = 20 * np.log10(metadata.peak_level / metadata.rms_level)
 
         # Advanced features with librosa
-        if HAS_LIBROSA:
+        if HAS_LIBROSA and audio.size:
             try:
                 # Convert to mono for analysis
                 audio_mono = librosa.to_mono(audio) if audio.ndim > 1 else audio
@@ -914,6 +914,10 @@ class AudioProcessor:
         """Advanced noise reduction using spectral subtraction"""
         if not HAS_SCIPY:
             return audio
+        if audio.size == 0:
+            # Empty input: an identity return (like normalize/mono) -- the
+            # spectral machinery crashes on 0 samples.
+            return audio
 
         # Convert to frequency domain. scipy's default hop is nperseg // 2,
         # so with nperseg=2048 each STFT column advances by 1024 samples.
@@ -1027,6 +1031,10 @@ class AudioProcessor:
         unknown = [name for name in repairs if name not in self.RESTORATION_REPAIRS]
         if unknown:
             raise ValueError(f"Unknown repair(s): {', '.join(unknown)}")
+        if audio.size == 0:
+            # Nothing to repair: identity, consistent with normalize/mono
+            # on a 0-frame file.
+            return audio
 
         processors = {
             "declip": lambda channel: audio_restoration.DeclippingProcessor()
@@ -1086,6 +1094,11 @@ class AudioProcessor:
                 "Cannot apply " + ", ".join(unavailable) +
                 ". Install the optional audio extra: pip install -e .[audio]"
             )
+
+        if audio.size == 0:
+            # Validation above still ran (a bad effects spec on an empty file
+            # is still a bad spec); the DSP itself is identity on empty.
+            return audio.copy()
 
         processed = audio.copy()
 
@@ -1195,8 +1208,13 @@ class AudioProcessor:
                 raise ValueError("Target sample rate must be positive.")
 
             if parsed_sr != sr:
-                converted = self._resample_audio(audio, sr, parsed_sr)
-                new_sr = parsed_sr
+                if converted.size == 0:
+                    # Resampling silence-to-nothing is still a rate change in
+                    # name only; report the target rate on the empty result.
+                    new_sr = parsed_sr
+                else:
+                    converted = self._resample_audio(audio, sr, parsed_sr)
+                    new_sr = parsed_sr
 
         if converted.dtype != np.float32:
             converted = converted.astype(np.float32)
@@ -1582,6 +1600,13 @@ class AudioProcessor:
 
         # Load audio
         audio, sr = self.load_audio(file_path)
+
+        # The stdlib path (and mono/trim, which always route there) rejects a
+        # 0-frame file as INPUT with "No audio signal found". Match that on
+        # the numpy path: transforms that have nothing to measure must not
+        # crash on empty reductions or write an empty "Processed" output.
+        if audio.size == 0 and operation != "analyze":
+            raise ValueError("No audio signal found")
 
         # Perform operation
         if operation == "analyze":

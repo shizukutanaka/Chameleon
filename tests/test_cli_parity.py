@@ -478,3 +478,39 @@ def test_analyze_export_unmeasured_fields_are_null_not_defaults(tmp_path):
     assert meta["size_bytes"] == wav.stat().st_size
     assert meta["format"] == "wav"
     assert meta["bit_depth"] == 16
+
+
+def test_zero_frame_wav_analyze_and_transforms_are_identity(tmp_path):
+    """A valid 0-frame WAV must not crash the numpy path: analyze reports
+    all-zero stats (matching the stdlib path) and transforms write an
+    empty file, the same way normalize/mono already did."""
+    import subprocess, sys, wave
+    from pathlib import Path
+    main_py = str(Path(__file__).resolve().parent.parent / "main.py")
+    wav = tmp_path / "zero.wav"
+    with wave.open(str(wav), "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(44100)
+        w.writeframes(b"")
+
+    proc = subprocess.run(
+        [sys.executable, main_py, "analyze", str(wav)],
+        capture_output=True, text=True, timeout=30)
+    assert proc.returncode == 0, proc.stderr
+    assert "Peak Level: 0.000" in proc.stdout
+
+    # Transforms on a file with no signal are INPUT rejections in both
+    # tiers (the stdlib path's own convention: "No audio signal found");
+    # --mono is the exception that writes an empty identity output.
+    import importlib.util
+    try:
+        has_numpy = importlib.util.find_spec("numpy") is not None
+    except ModuleNotFoundError:
+        # The stdlib-gate sitecustomize raises from find_spec itself.
+        has_numpy = False
+    ops = (["--declip"], ["--dehum"], ["--denoise"], ["--convert"]) if has_numpy else ()
+    for op in (*ops, ["--normalize"], ["--trim"]):
+        proc = subprocess.run(
+            [sys.executable, main_py, "process", str(wav)] + op,
+            capture_output=True, text=True, timeout=30)
+        assert proc.returncode == 3, f"{op}: {proc.returncode} {proc.stderr}"
+        assert "No audio" in proc.stderr
