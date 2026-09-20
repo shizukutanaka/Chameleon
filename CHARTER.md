@@ -2391,3 +2391,8 @@ any range assertion.
   desynced the walk, and stripped the data chunk. Any walker that treats
   "keep" and "drop" differently must still honor the format's padding
   on both paths.
+- A "lightweight fallback" that silently shrinks its input domain is a
+  data-loss bug: the stdlib DFT transformed the first 4096 samples while
+  the caller asked about all of them, and the equaliser zeroed the tail.
+  Fallbacks must degrade fidelity, not coverage -- and a gain stage that
+  re-normalises to full scale is an attenuator that lies.

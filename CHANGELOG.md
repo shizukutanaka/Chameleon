@@ -55,6 +55,16 @@
 
 ### Fixed
 
+- **`spectral_utils.apply_spectral_mask` silently discarded input past
+  sample 4096 and re-normalised every output to full scale** -- the
+  pure-Python DFT fallback transforms at most 4096 samples, so a longer
+  buffer came back with a zeroed tail (verified: an input ending in a
+  904-sample pulse returned all zeros there). The stdlib path now
+  processes 4096-sample blocks. The function also unconditionally
+  rescaled output to peak 1.0, turning a uniform `gain=0.5` request
+  into a boost and making boost gains near-no-ops where the boosted
+  band dominated the peak; the equaliser now returns the filtered
+  signal at the requested gain.
 - **`SanitizationEngine.sanitize_wav_metadata` dropped the audio when
   the WAV carried odd-sized metadata** -- skipping a chunk consumed its
   bytes but not its RIFF pad, so the walk desynced one byte, read the

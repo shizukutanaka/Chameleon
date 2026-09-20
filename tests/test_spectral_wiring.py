@@ -11,6 +11,7 @@ _normalize_amplitude discards sign, which is fine for peak/RMS but wrong for
 spectral analysis) and a new `analyze --spectrum` CLI flag.
 """
 
+import math
 import subprocess
 import sys
 from pathlib import Path
@@ -87,3 +88,25 @@ def test_cli_analyze_without_spectrum_flag_omits_spectrum_output(tmp_path):
 
     assert result.returncode == 0
     assert "Dominant Frequencies" not in result.stdout
+
+
+def test_apply_spectral_mask_preserves_tail_in_stdlib_fallback(monkeypatch):
+    # The pure-Python DFT transforms at most 4096 samples per call; the
+    # equaliser must process longer input in blocks rather than dropping
+    # the tail.
+    monkeypatch.setattr(spectral_utils, "HAS_NUMPY", False)
+    src = [0.0] * 4096 + [1.0] * 904
+    out = spectral_utils.apply_spectral_mask(src, 44100)
+    assert len(out) == len(src)
+    assert out[4500] != 0.0
+
+
+def test_apply_spectral_mask_does_not_renormalize():
+    # A uniform 0.5 gain must halve the signal -- the previous version
+    # re-normalised every output to full scale, turning an attenuation
+    # request into a boost.
+    src = [0.5 * math.sin(2 * math.pi * 440 * i / 44100) for i in range(4000)]
+    out = spectral_utils.apply_spectral_mask(
+        src, 44100, low_gain=0.5, mid_gain=0.5, high_gain=0.5
+    )
+    assert max(abs(x) for x in out) < 0.3

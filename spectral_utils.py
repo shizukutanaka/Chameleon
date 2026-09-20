@@ -273,6 +273,27 @@ def linear_resample(samples: Sequence[float], source_rate: int, target_rate: int
     return resampled
 
 
+def _apply_band_gains(
+    spectrum: Sequence[complex],
+    sample_rate: int,
+    low_gain: float,
+    mid_gain: float,
+    high_gain: float,
+) -> List[complex]:
+    bin_width = sample_rate / (2 * max(len(spectrum) - 1, 1))
+    adjusted: List[complex] = []
+    for index, value in enumerate(spectrum):
+        frequency = index * bin_width
+        if frequency < 200.0:
+            gain = low_gain
+        elif frequency < 2000.0:
+            gain = mid_gain
+        else:
+            gain = high_gain
+        adjusted.append(value * gain)
+    return adjusted
+
+
 def apply_spectral_mask(
     samples: Sequence[float],
     sample_rate: int,
@@ -290,23 +311,16 @@ def apply_spectral_mask(
     if not buffer:
         return []
 
-    spectrum = _discrete_fourier_transform(buffer)
-    bin_width = sample_rate / (2 * max(len(spectrum) - 1, 1))
-
-    adjusted: List[complex] = []
-    for index, value in enumerate(spectrum):
-        frequency = index * bin_width
-        if frequency < 200.0:
-            gain = low_gain
-        elif frequency < 2000.0:
-            gain = mid_gain
-        else:
-            gain = high_gain
-        adjusted.append(value * gain)
-
-    processed = _inverse_real_transform(adjusted, len(buffer))
-    peak = max(abs(sample) for sample in processed) or 1.0
-    return [sample / peak for sample in processed]
+    # The pure-Python DFT only transforms 4096 samples per call; without
+    # NumPy, process in blocks so input past that point is not dropped.
+    step = len(buffer) if HAS_NUMPY else 4096
+    processed: List[float] = []
+    for start in range(0, len(buffer), step):
+        block = buffer[start:start + step]
+        spectrum = _discrete_fourier_transform(block)
+        adjusted = _apply_band_gains(spectrum, sample_rate, low_gain, mid_gain, high_gain)
+        processed.extend(_inverse_real_transform(adjusted, len(block)))
+    return processed
 
 
 def sliding_window_rms(samples: Sequence[float], window_size: int) -> List[float]:
