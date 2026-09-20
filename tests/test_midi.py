@@ -191,3 +191,24 @@ def test_midi_analyze_on_mid_file_explains_the_trap(tmp_path):
         capture_output=True, text=True, timeout=30)
     assert proc.returncode == 3  # INPUT
     assert "audio file" in proc.stderr
+
+
+def test_midi_compose_rejects_nonfinite_tempo_and_length(tmp_path):
+    """`--tempo nan` used to pass `<= 0` (NaN comparisons are False), reach
+    the encoder as int(nan), and report ERROR(1). `--length inf` looped
+    forever generating notes. Both are INPUT(3): a parsed float isn't a
+    valid float until it's finite."""
+    import subprocess
+    import sys
+    from pathlib import Path
+    main_py = str(Path(__file__).resolve().parent.parent / "main.py")
+    out = tmp_path / "m.mid"
+    for extra in [["--tempo", "nan"], ["--tempo", "inf"],
+                  ["--length", "nan"], ["--length", "inf"]]:
+        proc = subprocess.run(
+            [sys.executable, main_py, "midi", "compose",
+             *extra, "--output", str(out)],
+            capture_output=True, text=True, timeout=30)
+        assert proc.returncode == 3, (extra, proc.stderr)
+        assert "finite" in proc.stderr.lower()
+        assert not out.exists()

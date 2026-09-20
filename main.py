@@ -2985,14 +2985,19 @@ async def main():
         # non-positive tempo/length used to reach the encoder as a raw
         # ZeroDivisionError/OverflowError instead of a bad-input answer.
         if args.tempo is not None:
-            if args.tempo <= 0 or 60_000_000 / args.tempo > 0xFFFFFF:
-                print("Error: --tempo must be a positive BPM encodable in "
-                      "the MIDI 24-bit us-per-quarter field (>= ~3.6)",
+            # isfinite first: NaN defeats `<= 0` (it's False) and inf makes
+            # us-per-quarter 0 -- both reached the encoder as int(nan) errors.
+            if not math.isfinite(args.tempo) \
+                    or args.tempo <= 0 or 60_000_000 / args.tempo > 0xFFFFFF:
+                print("Error: --tempo must be a finite positive BPM encodable "
+                      "in the MIDI 24-bit us-per-quarter field (>= ~3.6)",
                       file=sys.stderr)
                 return ExitCode.INPUT
-        if args.length is not None and args.length <= 0:
-            print(f"Error: --length must be positive, got {args.length}",
-                  file=sys.stderr)
+        if (args.length is not None
+                and (not math.isfinite(args.length) or args.length <= 0)):
+            # inf would loop forever generating notes; NaN defeats <= 0.
+            print(f"Error: --length must be a positive finite duration, got "
+                  f"{args.length}", file=sys.stderr)
             return ExitCode.INPUT
 
         # The MIDI writer builds the file in memory and opens once at the
