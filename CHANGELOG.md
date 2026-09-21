@@ -487,6 +487,12 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`AudioRestorer.restore` accepted restoration "modes" that selected
+  nothing** — the docstring advertised `mode="digital"`, `"voice"` and
+  `"music"` alongside `"auto"` and `"vinyl"`, but every non-vinyl name
+  ran the identical config-driven pipeline while `info["mode"]` echoed
+  the label back as if it had chosen behavior. Unknown modes now raise
+  `ValueError`; the docstring documents the two real ones.
 
 ### Changed
 

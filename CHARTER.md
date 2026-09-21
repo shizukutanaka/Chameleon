@@ -3252,3 +3252,19 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** `AudioRestorer.restore(mode=)` documents
+five modes -- "auto", "vinyl", "digital", "voice", "music". Do the last
+three select anything?
+**A:** No. Every mode other than "vinyl" fell through to the same
+config-driven pipeline, and `info["mode"]` echoed the caller's label back
+as though it had chosen distinct behavior -- the same defect class as the
+`--quality` tiers that did nothing. Unknown modes now raise ValueError
+and the docstring names the two real ones. Same cycle verified honest:
+all seven `batch` operations run end-to-end on real files
+(analyze/normalize/mono/trim on the stdlib path, denoise/restore/convert
+on numpy), a bare-stdlib install refuses the numpy-only ops with
+per-file "requires numpy" errors rather than faking output, declipping
+measurably reconstructs clipped peaks (0.86 vs clipped 0.5, residual RMS
+0.228->0.044), and the denoiser honestly reports skipping when it finds
+no quiet section to profile.
