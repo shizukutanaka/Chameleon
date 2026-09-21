@@ -46,6 +46,14 @@
 
 ### Added
 
+- **Characterization tests for honest behaviors the audit re-verified**
+  (2026-09-21): `analyze --detailed` adds real computed fields and, on
+  installs without librosa, prints "Frequency Range: not measured (use
+  --spectrum)" rather than fabricating `0.0-0.0Hz`; `midi extract` writes
+  a 440 Hz input as A4 (MIDI note 69) in the .mid file's note-on bytes;
+  `process --declip` collapses a clipped sine's flat sample runs
+  (30 samples at the clip level → no runs of 5+) and reconstructs the
+  crest above the clip level.
 - **Noise-shaped (`"shaped"`) dither** in `mastering_chain` -- the
   advertised-but-unimplemented `dither_type` now works via a
   first-order error-feedback quantizer on the 16-bit grid (quantization

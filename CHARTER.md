@@ -2274,6 +2274,22 @@ json.loads accepts the literals NaN/Infinity by default, so a JSON config
 file can smuggle them into any "numeric" field. The check is
 isinstance(x, (int, float)) AND math.isfinite(x), in that order, before
 any range assertion.
+**Q: Is a printed field a measurement or a dataclass default?**
+A (2026-09-21): A field that only exists when one optional backend is
+installed must not print its zero-default elsewhere. `--detailed`'s
+Frequency Range read `0.0-0.0Hz` on every non-librosa install until the
+print was gated on the value being populated and the honest fallback
+"(use --spectrum)" points at the pure-Python path that *can* measure it.
+When a display gate and a measurement gate share one condition, a test
+must exist on both sides of it -- the bare install verifying the honest
+label, the full install verifying the number.
+**Q: The probe found nothing broken -- is the cycle wasted?**
+A (2026-09-21): No. The audit's job is to separate "correct" from
+"correct and protected". This cycle re-verified docs↔parser parity
+mechanically, declip's clip reconstruction, pitch extraction accuracy,
+and per-install honest labeling -- then pinned the ones that had no
+regression test. A truth without a test is a claim a future refactor
+can silently retract.
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
