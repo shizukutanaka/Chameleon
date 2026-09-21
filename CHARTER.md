@@ -2471,3 +2471,21 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21):** `spectral_utils` validates its scalar knobs with `x <= 0` /
+`x < 0` comparisons. Does a NaN argument trip any of them -- or does it
+sail through and poison the result?
+**A:** None of them. NaN comparisons are always False, so
+`normalize_peak(target_peak=nan)` returned an all-NaN signal presented as
+normalized, `analyze_spectrum(sample_rate=nan)` returned a SpectrumReport
+whose bandwidth and every peak frequency were NaN, `apply_spectral_mask(
+sample_rate=nan)` mapped every bin into the high band and applied
+`high_gain` to the whole spectrum (measured: output ~ input, silently),
+`apply_spectral_mask(low_gain=nan)` multiplied the low band by NaN, and
+`linear_resample(source_rate=nan)` / `sliding_window_rms(window_size=2.5)`
+died on raw internals errors (ValueError from `int(round(nan))`, TypeError
+from `range`) instead of naming the bad knob. Every scalar parameter now
+goes through an isinstance + isfinite + range check before use, so a
+non-finite or wrong-typed argument gets a ValueError naming the parameter.
+This is the same defect class as the `midi compose --tempo nan` fix --
+comparison guards alone cannot see NaN.

@@ -16,6 +16,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 import core
 import spectral_utils
 from tests._helpers import write_sine_wave
@@ -110,3 +112,46 @@ def test_apply_spectral_mask_does_not_renormalize():
         src, 44100, low_gain=0.5, mid_gain=0.5, high_gain=0.5
     )
     assert max(abs(x) for x in out) < 0.3
+
+
+def test_normalize_peak_rejects_nonfinite_target_peak():
+    # `target_peak <= 0` alone passes NaN (NaN comparisons are False) and inf,
+    # which scaled the output to NaN/inf.
+    for bad in (float("nan"), float("inf"), -float("inf")):
+        with pytest.raises(ValueError, match="target_peak"):
+            spectral_utils.normalize_peak([0.5, -0.3], bad)
+
+
+def test_analyze_spectrum_rejects_nonfinite_sample_rate_and_bad_max_peaks():
+    samples = [0.5 * math.sin(2 * math.pi * 440 * i / 44100) for i in range(4000)]
+    for bad_rate in (float("nan"), float("inf"), "44100"):
+        with pytest.raises(ValueError, match="sample_rate"):
+            spectral_utils.analyze_spectrum(samples, bad_rate)
+    for bad_peaks in (-1, 2.5, float("nan"), "5"):
+        with pytest.raises(ValueError, match="max_peaks"):
+            spectral_utils.analyze_spectrum(samples, 44100, max_peaks=bad_peaks)
+
+
+def test_apply_spectral_mask_rejects_nonfinite_scalars():
+    samples = [0.5] * 64
+    with pytest.raises(ValueError, match="sample_rate"):
+        spectral_utils.apply_spectral_mask(samples, float("nan"))
+    for name in ("low_gain", "mid_gain", "high_gain"):
+        for bad in (float("nan"), float("inf"), -0.5):
+            with pytest.raises(ValueError, match=name):
+                spectral_utils.apply_spectral_mask(samples, 44100, **{name: bad})
+
+
+def test_linear_resample_rejects_nonfinite_rates():
+    for name, kwargs in (
+        ("source_rate", {"source_rate": float("nan"), "target_rate": 22050}),
+        ("target_rate", {"source_rate": 44100, "target_rate": float("inf")}),
+    ):
+        with pytest.raises(ValueError, match=name):
+            spectral_utils.linear_resample([0.5] * 100, **kwargs)
+
+
+def test_sliding_window_rms_rejects_noninteger_window():
+    for bad in (2.5, float("nan"), "3"):
+        with pytest.raises(ValueError, match="window_size"):
+            spectral_utils.sliding_window_rms([1.0] * 10, bad)

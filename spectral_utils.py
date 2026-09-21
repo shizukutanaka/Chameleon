@@ -187,8 +187,11 @@ def analyze_spectrum(
 ) -> SpectrumReport:
     """Compute spectral statistics for a mono signal."""
 
-    if sample_rate <= 0:
-        raise ValueError("sample_rate must be a positive integer")
+    if (not isinstance(sample_rate, (int, float))
+            or not math.isfinite(sample_rate) or sample_rate <= 0):
+        raise ValueError("sample_rate must be a positive finite number")
+    if not isinstance(max_peaks, int) or max_peaks < 0:
+        raise ValueError("max_peaks must be a non-negative integer")
 
     buffer = _to_float_sequence(samples)
     if not buffer:
@@ -226,8 +229,11 @@ def analyze_spectrum(
 def normalize_peak(samples: Sequence[float], target_peak: float = 0.95) -> List[float]:
     """Scale a signal to the requested peak value."""
 
-    if target_peak <= 0:
-        raise ValueError("target_peak must be positive")
+    # `target_peak <= 0` alone lets NaN through (NaN comparisons are False)
+    # and leaves inf able to produce inf-valued output.
+    if (not isinstance(target_peak, (int, float))
+            or not math.isfinite(target_peak) or target_peak <= 0):
+        raise ValueError("target_peak must be a positive finite number")
 
     buffer = _to_float_sequence(samples)
     if not buffer:
@@ -251,8 +257,9 @@ def linear_resample(samples: Sequence[float], source_rate: int, target_rate: int
     use scipy/librosa (the ``[audio]`` extra) for band-limited resampling.
     """
 
-    if source_rate <= 0 or target_rate <= 0:
-        raise ValueError("sample rates must be positive integers")
+    for name, rate in (("source_rate", source_rate), ("target_rate", target_rate)):
+        if not isinstance(rate, (int, float)) or not math.isfinite(rate) or rate <= 0:
+            raise ValueError(f"{name} must be a positive finite number")
 
     buffer = _to_float_sequence(samples)
     if not buffer or source_rate == target_rate:
@@ -304,8 +311,12 @@ def apply_spectral_mask(
 ) -> List[float]:
     """Apply a lightweight three-band equaliser."""
 
-    if any(gain < 0 for gain in (low_gain, mid_gain, high_gain)):
-        raise ValueError("gain factors must be non-negative")
+    if (not isinstance(sample_rate, (int, float))
+            or not math.isfinite(sample_rate) or sample_rate <= 0):
+        raise ValueError("sample_rate must be a positive finite number")
+    for name, gain in (("low_gain", low_gain), ("mid_gain", mid_gain), ("high_gain", high_gain)):
+        if not isinstance(gain, (int, float)) or not math.isfinite(gain) or gain < 0:
+            raise ValueError(f"{name} must be a non-negative finite number")
 
     buffer = _to_float_sequence(samples)
     if not buffer:
@@ -326,8 +337,8 @@ def apply_spectral_mask(
 def sliding_window_rms(samples: Sequence[float], window_size: int) -> List[float]:
     """Compute RMS levels over a sliding window."""
 
-    if window_size <= 0:
-        raise ValueError("window_size must be positive")
+    if not isinstance(window_size, int) or window_size <= 0:
+        raise ValueError("window_size must be a positive integer")
 
     buffer = _to_float_sequence(samples)
     if window_size > len(buffer):
