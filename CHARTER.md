@@ -3252,3 +3252,16 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** `IntegrityVerifier.verify_manifest`
+promises (bool, issues). What happens when the manifest itself is
+corrupt or missing?
+**A:** The open+json.load was unguarded -- a truncated manifest raised
+a raw JSONDecodeError and a missing one FileNotFoundError, crashing the
+verifier instead of reporting "cannot prove integrity" through its own
+contract. Both now return (False, "Manifest unreadable: ...").
+Verified honest this cycle: `midi generate` rejects malformed keys
+(garbage/H/C#10 -> INPUT exit 3) and writes a real MThd file for valid
+ones; upload persistence enforces the cap mid-stream and unlinks
+partials; `_sanitize_uploaded_name` rejects separators AND requires the
+sanitized name to equal the input verbatim (no laundering).

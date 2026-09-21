@@ -258,3 +258,19 @@ def test_sanitize_to_same_path_refuses_and_preserves_input(tmp_path):
     with _pt.raises(ValueError, match="same file"):
         SanitizationEngine.sanitize_wav_metadata(src, src)
     assert src.read_bytes() == before
+
+
+def test_verify_manifest_reports_unreadable_manifest_instead_of_crashing(tmp_path):
+    # json.load was unguarded: a truncated or missing manifest crashed the
+    # verifier instead of reporting (False, issue) through its own contract.
+    from advanced_validation import IntegrityVerifier
+
+    verifier = IntegrityVerifier(manifest_dir=tmp_path)
+
+    truncated = tmp_path / "truncated.json"
+    truncated.write_text('{"x": {"checksum": "ab", "size": 5, "file_')
+    valid, issues = verifier.verify_manifest(truncated)
+    assert valid is False and "unreadable" in issues[0].lower()
+
+    valid, issues = verifier.verify_manifest(tmp_path / "missing.json")
+    assert valid is False and "unreadable" in issues[0].lower()
