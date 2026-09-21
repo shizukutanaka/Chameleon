@@ -2678,6 +2678,26 @@ limit to int before passing it to the enforcer is itself a limit —
 `alarm(int(x))` turned "0.5 s" into "no limit"; and a timeout on a
 thread joins the *caller* out of the wait — it never stops the work.
 
+**Q: The inspector is the security gate — but is the gate itself
+bounded?**
+A (2026-09-20): It wasn't. `DeepFileInspector._validate_wav_structure`
+walked chunks `while True` and appended every header to `chunks_found`;
+core's own walker stops at `_MAX_WAV_CHUNKS = 256`, so the gate was the
+one reader of the format with no bound. A crafted file of zero-size
+chunks grew that list (and the mmap `_non_audio_regions` list) without
+limit — the tool meant to vet the file became the memory sink, and a
+multi-million-chunk input scanned the whole file. The walk now stops at
+a shared-class `_MAX_SCAN_CHUNKS = 256`, marks
+`metadata["chunks_truncated"]` and reports "Too many chunks — likely
+crafted" as a structure error. Beside it, `IntegrityVerifier.__init__`
+created `~/.chameleon/manifests` at construction — the same
+import-time side-effect class as `~/.chameleon_state` and the
+PluginManager mkdir; the directory is now created in `create_manifest`,
+the first operation that needs it
+(`tests/test_inspector_bounds.py`). General lesson: bound the gate,
+not just the gated — a security check that reads attacker-controlled
+structure is itself an attack surface.
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
