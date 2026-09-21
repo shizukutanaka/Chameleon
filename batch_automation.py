@@ -667,6 +667,12 @@ class WorkflowEngine:
 
     def _execute_dag(self, workflow: Workflow) -> Dict[str, TaskResult]:
         """Execute DAG workflow"""
+        # Fresh graph/queue per run: both are cumulative structures, and
+        # `completed` ids or in-degrees left over from a previous workflow
+        # silently drop tasks whose ids collide.
+        self.dep_graph = DependencyGraph()
+        self.task_queue = TaskQueue()
+
         # Build dependency graph
         for task in workflow.tasks:
             self.dep_graph.add_task(task)
@@ -676,10 +682,34 @@ class WorkflowEngine:
         results = {}
         running_tasks = {}
 
+        def _release_or_fail(ready_ids):
+            """Enqueue ready tasks, except those whose dependency failed --
+            'B depends on A' means B runs *because A succeeded*. A failed
+            dependency records the dependent FAILED (so the caller can see
+            it never ran) and cascades to *its* dependents."""
+            pending = list(ready_ids)
+            while pending:
+                rid = pending.pop()
+                # Not in task_map: a phantom dependency node (a task
+                # depending on an id that isn't a task) -- skip, the
+                # post-loop sweep marks the dependent unreachable.
+                if rid not in task_map or rid in results:
+                    continue
+                failed_deps = [
+                    d for d in task_map[rid].dependencies
+                    if d in results and results[d].status == TaskStatus.FAILED
+                ]
+                if failed_deps:
+                    results[rid] = TaskResult(
+                        task_id=rid, status=TaskStatus.FAILED, output=None,
+                        error=f"Skipped: dependency '{failed_deps[0]}' failed",
+                        start_time=datetime.now(), end_time=datetime.now())
+                    pending.extend(self.dep_graph.mark_completed(rid))
+                else:
+                    self.task_queue.add_task(task_map[rid])
+
         # Get initial ready tasks
-        ready_tasks = self.dep_graph.get_ready_tasks()
-        for task_id in ready_tasks:
-            self.task_queue.add_task(task_map[task_id])
+        _release_or_fail(self.dep_graph.get_ready_tasks())
 
         # Execute tasks
         while not self.task_queue.is_empty() or running_tasks:
@@ -702,10 +732,7 @@ class WorkflowEngine:
                     completed_tasks.append(task_id)
 
                     # Mark as completed and get newly ready tasks
-                    newly_ready = self.dep_graph.mark_completed(task_id)
-                    for ready_id in newly_ready:
-                        if ready_id in task_map:
-                            self.task_queue.add_task(task_map[ready_id])
+                    _release_or_fail(self.dep_graph.mark_completed(task_id))
 
             # Remove completed tasks
             for task_id in completed_tasks:
@@ -715,6 +742,17 @@ class WorkflowEngine:
             if running_tasks:
                 import time
                 time.sleep(0.1)
+
+        # Anything never scheduled is unreachable: a dependency cycle or a
+        # dependency on a task that doesn't exist. Returning a result set
+        # silently missing those tasks reports success the workflow never
+        # earned -- mark each FAILED with the reason.
+        for task in workflow.tasks:
+            if task.id not in results:
+                results[task.id] = TaskResult(
+                    task_id=task.id, status=TaskStatus.FAILED, output=None,
+                    error="Unreachable: dependency cycle or missing dependency",
+                    start_time=datetime.now(), end_time=datetime.now())
 
         return results
 
