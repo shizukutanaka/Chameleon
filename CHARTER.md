@@ -3252,3 +3252,14 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** `remove_noise` accepts a caller-supplied
+`noise_profile`. What stops that profile from *adding* energy or emitting
+non-finite output?
+**A:** Nothing, until now: the profile went straight into
+`magnitude - noise_profile`. A profile of -0.5 amplified a 0.5-peak tone
+to 608 (a "denoiser" that boosts the signal), NaN produced NaN output,
+and a mismatched shape died on numpy's raw broadcast ValueError. A noise
+floor is per-frequency-bin magnitude data — it is now required to be
+finite, non-negative, and broadcastable against the file's STFT grid,
+with a ValueError naming the violated property.
