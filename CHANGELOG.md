@@ -487,6 +487,15 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **LOOP and CONDITIONAL workflows no longer fake success on
+  unsatisfiable input** — `WorkflowType.LOOP` accepted
+  `metadata['iterations']` unchecked: `0`/`-2`/`True` silently returned
+  `{}` (a "completed" workflow that ran nothing) and `'3'` crashed with
+  `TypeError`; it now requires a positive `int` (`ValueError` naming the
+  value). `_execute_conditional`'s `simple` condition returned `True`
+  when its `task_id` had no result — a guard on a nonexistent or skipped
+  task was treated as satisfied; it is now `False` unless the task ran
+  and completed.
 
 ### Changed
 

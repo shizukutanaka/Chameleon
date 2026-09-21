@@ -2471,3 +2471,18 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, audit 35): Do LOOP and CONDITIONAL workflows honor the
+honest-failure rule the DAG fix applied?**
+**A:** Two defects of the same class. _execute_loop read
+metadata['iterations'] unchecked: 0, -2, and True silently produced {}
+(a workflow reporting success having run nothing), and '3' crashed with
+TypeError. It now requires a positive int and raises ValueError naming
+the bad value. _execute_conditional's 'simple' condition returned True
+when its task_id had no result -- a guard on a nonexistent or unreached
+task was treated as satisfied. It now returns False unless the task ran
+and completed; conditions can only look backward. Verified honest:
+IntegrityVerifier verify_manifest catches intact/tampered/missing
+correctly (note create_manifest always appends .json -- 'x.json' yields
+'x.json.json'), --master validates its preset via argparse choices,
+verify_manifest round-trips sha256+size.

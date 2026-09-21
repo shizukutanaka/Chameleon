@@ -739,6 +739,14 @@ class WorkflowEngine:
         """Execute loop workflow"""
         results = {}
         iterations = workflow.metadata.get('iterations', 1)
+        if not isinstance(iterations, int) or isinstance(iterations, bool) \
+                or iterations < 1:
+            # A loop asked to run zero/negative/garbage times must not
+            # silently "succeed" having run nothing.
+            raise ValueError(
+                f"Loop workflow {workflow.id!r} requires 'iterations' to be "
+                f"a positive integer in metadata, got {iterations!r}"
+            )
 
         for i in range(iterations):
             for task in workflow.tasks:
@@ -769,10 +777,13 @@ class WorkflowEngine:
         condition_type = condition.get('type', 'simple')
 
         if condition_type == 'simple':
-            # Check if previous task succeeded
+            # Check if a previous task succeeded. A condition naming a task
+            # with no result -- skipped by its own condition, never reached,
+            # or nonexistent -- is unsatisfiable; running anyway would
+            # pretend the guard was met.
             task_id = condition.get('task_id')
-            if task_id in results:
-                return results[task_id].status == TaskStatus.COMPLETED
+            return (task_id in results
+                    and results[task_id].status == TaskStatus.COMPLETED)
 
         elif condition_type == 'expression':
             # Evaluate expression

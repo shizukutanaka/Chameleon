@@ -93,3 +93,73 @@ def test_scheduler_fails_loudly_without_schedule_package():
     scheduler = BatchScheduler()
     with pytest.raises(ImportError):
         scheduler.start()
+
+
+class TestLoopAndConditionalWorkflows:
+    """The remaining workflow-type surfaces: a LOOP must not silently
+    run nothing, and a CONDITIONAL guard must not be treated as met when
+    its referenced task never produced a result."""
+
+    def _engine(self):
+        return ba.WorkflowEngine()
+
+    def _task(self, task_id, fn=None):
+        return ba.BatchTask(id=task_id, name=task_id,
+                            function=fn or (lambda: task_id), inputs={})
+
+    @pytest.mark.parametrize("bad", [0, -2, "3", True, 2.5])
+    def test_loop_rejects_nonpositive_or_noint_iterations(self, bad):
+        workflow = ba.Workflow(
+            id="l", name="loop", type=ba.WorkflowType.LOOP,
+            tasks=[self._task("x")], metadata={"iterations": bad})
+        with pytest.raises(ValueError, match="iterations"):
+            self._engine().execute_workflow(workflow)
+
+    def test_loop_runs_each_task_per_iteration(self):
+        workflow = ba.Workflow(
+            id="l", name="loop", type=ba.WorkflowType.LOOP,
+            tasks=[self._task("x")], metadata={"iterations": 3})
+        results = self._engine().execute_workflow(workflow)
+        assert set(results) == {"x_iter_0", "x_iter_1", "x_iter_2"}
+
+    def test_conditional_on_nonexistent_task_skips(self):
+        # "run b only if ghost succeeded" -- ghost can never succeed, so
+        # b must be skipped, not run as though the guard were satisfied.
+        ran = []
+        workflow = ba.Workflow(
+            id="c", name="cond", type=ba.WorkflowType.CONDITIONAL,
+            tasks=[ba.BatchTask(id="a", name="a",
+                                function=lambda: ran.append("a"), inputs={}),
+                   ba.BatchTask(id="b", name="b",
+                                function=lambda: ran.append("b"), inputs={})],
+            conditions={"b": {"type": "simple", "task_id": "ghost"}})
+        results = self._engine().execute_workflow(workflow)
+        assert ran == ["a"]
+        assert "b" not in results
+
+    def test_conditional_on_failed_task_skips(self):
+        def boom():
+            raise RuntimeError("nope")
+        ran = []
+        workflow = ba.Workflow(
+            id="c", name="cond", type=ba.WorkflowType.CONDITIONAL,
+            tasks=[self._task("f", boom),
+                   ba.BatchTask(id="g", name="g",
+                                function=lambda: ran.append("g"), inputs={})],
+            conditions={"g": {"type": "simple", "task_id": "f"}})
+        results = self._engine().execute_workflow(workflow)
+        assert results["f"].status == ba.TaskStatus.FAILED
+        assert ran == []
+        assert "g" not in results
+
+    def test_conditional_on_completed_task_runs(self):
+        ran = []
+        workflow = ba.Workflow(
+            id="c", name="cond", type=ba.WorkflowType.CONDITIONAL,
+            tasks=[ba.BatchTask(id="a", name="a",
+                                function=lambda: ran.append("a"), inputs={}),
+                   ba.BatchTask(id="b", name="b",
+                                function=lambda: ran.append("b"), inputs={})],
+            conditions={"b": {"type": "simple", "task_id": "a"}})
+        self._engine().execute_workflow(workflow)
+        assert ran == ["a", "b"]
