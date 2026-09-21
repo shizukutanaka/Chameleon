@@ -3252,3 +3252,15 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** `CHAMELEON_DEV_PASSWORD_HASH` -- can an
+operator produce a value that works?
+**A:** Not from anything the code offered. Login compared a bare
+`sha256(password)` hex, while the module's only helper `hash_password`
+returns salted PBKDF2 bytes that can never match -- and no doc told the
+operator which form was required. An operator following the obvious
+helper gets a deployment where login always fails. `verify_dev_password`
+now accepts the legacy sha256 hex AND a versioned salted
+`pbkdf2$sha256$<iters>$<salt>$<hash>` form produced by the new
+`hash_password_for_env`; the accepted formats are documented in
+api_documentation.md.
