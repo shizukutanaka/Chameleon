@@ -3,12 +3,9 @@
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
 **Version:** 1.1.0 · **Tests:** re-run 2026-09-20 on Python 3.12, green in
 all three configurations — **531 passed** on a bare install (stdlib only,
-41 skipped), **623** with numpy (scipy/librosa/soundfile blocked, 36
-skipped), **732** with numpy + scipy + librosa + soundfile + fastapi
-(5 skipped; on this run `test_batch_normalize_job_produces_a_downloadable_output`
-flaked twice under suite load — job stuck at `processing`/`progress 0.0`
-for the full 60s poll — then passed in isolation in 0.26s; recorded flake,
-not yet diagnosed). Skip totals follow which extras are installed — e.g. the two
+42 skipped), **626** with numpy (scipy/librosa/soundfile blocked, 36
+skipped), **735** with numpy + scipy + librosa + soundfile + fastapi
+(5 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
 configurations do not cover the `[audio]` extra's librosa path; installing
@@ -373,6 +370,7 @@ here because they need a user decision first.
 | ~~P3~~ | ~~NaN slips past `x <= 0 or x > 1` guards — `normalize(nan)` crashed mid-transform, `trim_silence(nan)` reported a misleading 'no audio' failure~~ | Med | XS | Med | **DONE 2026-09-20** — `math.isfinite` added to both core guards (`tests/test_nan_param_validation.py`) |
 | ~~P3~~ | ~~`plugins list`/`audit` mkdir'd the inspected directories — a read command writing, and crashing with an OSError traceback on unwritable parents~~ | Med | XS | Med | **DONE 2026-09-20** — mkdir removed from `initialize`/`_resolve_directory`; chmod kept for existing dirs (`tests/test_plugins_no_mkdir.py`) |
 | ~~P2~~ | ~~`midi compose --length N` looped forever once past the last chord — every iteration emitted nothing, and the "melody length" exceeded the notes produced~~ | Med | XS | Med | **DONE 2026-09-20** — `generate_melody` stops at `min(length, last_chord_end)`; the CLI warns when `--length` exceeds the progression's span (`tests/test_compose_length_bound.py`) |
+| ~~P1~~ | ~~A cancelled or hung batch job sat at `processing` forever — CancelledError fell outside `except Exception`, and no timeout bounded a stuck per-file op~~ | High | S | High | **DONE 2026-09-20** — CancelledError now records 'failed'/'job cancelled'; `CHAMELEON_FILE_TIMEOUT` (default 300s) bounds each per-file await. Root-caused the recorded ~1-in-4 api_routes flake: bare `TestClient` gets a fresh event loop per request and cancels `create_task` jobs at response end — fixture now uses `with` (`tests/test_batch_job_timeout.py`) |
 | P4 | Plugin sandbox runtime boundary (restricted builtins for `exec_module`) | High (security) | L | High | Architectural; leaky if done partially — design first |
 | P4 | Surround-channel loudness weighting | Low | M | Low | Only if a real multichannel use case appears |
 

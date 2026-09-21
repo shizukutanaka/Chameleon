@@ -2536,6 +2536,29 @@ whose body can emit nothing must prove termination by something other
 than "the counter increments" — bound it by the data it consumes
 (the chord list), not by the user's requested duration.
 
+**Q: Why did batch jobs sometimes sit at 'processing' for the whole
+60s test poll?**
+A (2026-09-20): Two layered defects, one product, one harness. Product:
+`process_batch_job` caught `Exception` but `asyncio.CancelledError` is
+BaseException — a task cancelled while running (server shutdown, or the
+TestClient portal teardown described below) left the job at
+'processing' forever, indistinguishable from real work. It now records
+'failed'/'job cancelled' before re-raising. Also, nothing bounded how
+long a single file's operation could hang: a wedged executor call held
+a worker permit and the job slot indefinitely. `CHAMELEON_FILE_TIMEOUT`
+(default 300s, 0 disables — same convention as CHAMELEON_TIMEOUT) wraps
+each per-file await in `asyncio.wait_for`; a timed-out file becomes a
+normal failure result and the job completes.
+Harness: the `client` fixture returned a bare `TestClient`, and
+starlette spins up a *fresh* blocking portal (event loop) per request
+when no `with` wraps the client — so `asyncio.create_task` inside
+`/batch/submit` scheduled the job on a loop that was cancelled the
+moment the submit response returned. Whether the job finished depended
+on whether its few loop ticks beat the teardown — the recorded ~1-in-4
+flake. The fixture now yields a `with TestClient(...)` portal that lives
+for the whole test, matching production where uvicorn's loop persists
+(`tests/test_batch_job_timeout.py`, `tests/test_api_routes.py` fixture).
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
