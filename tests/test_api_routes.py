@@ -582,3 +582,62 @@ def test_audit_log_is_bounded():
     for i in range(cap + 50):
         api_server.log_audit_event("u", "OP", "res", "SUCCESS", "", "ip", "")
     assert len(api_server.api_state.audit_log) == cap
+
+
+def test_circuit_breaker_recovers_via_half_open_trial(client, tmp_path, monkeypatch):
+    """A tripped breaker used to be terminal: the only code path that
+    closes it (_update_circuit_breaker's success branch) is skipped while
+    the breaker is open, so a transient burst of failures rejected every
+    batch job until the process restarted. After the quiet window the
+    next job must run as a trial whose success closes the breaker."""
+    import time
+    monkeypatch.setattr(api_server, "UPLOAD_DIRECTORY", tmp_path)
+    auth = {"Authorization": f"Bearer {_login(client).json()['token']}"}
+
+    wav = tmp_path / "trial.wav"
+    wav.write_bytes(_wav_bytes())
+    api_server.api_state.register_uploaded_file(
+        "trial.wav", owner=DEV_USERNAME, size=wav.stat().st_size,
+        original_name="trial.wav", session_id="s-trial",
+    )
+
+    for _ in range(api_server.CIRCUIT_BREAKER_THRESHOLD_FAILURES):
+        api_server._update_circuit_breaker(False)
+    assert api_server.api_state.circuit_breaker_open
+    try:
+        def _run_job():
+            sub = client.post(
+                "/batch/submit",
+                json={"files": ["trial.wav"], "operation": "analyze"},
+                headers=auth,
+            )
+            assert sub.status_code == 200, sub.text
+            job_id = sub.json()["job_id"]
+            deadline = time.time() + 60
+            while time.time() < deadline:
+                s = client.get(f"/batch/status/{job_id}", headers=auth)
+                if s.status_code == 429:
+                    time.sleep(0.5)
+                    continue
+                assert s.status_code == 200
+                st = s.json()
+                if st["status"] in ("completed", "failed"):
+                    return st
+                time.sleep(0.15)
+            raise AssertionError("job never settled")
+
+        # Inside the quiet window the job still fails fast.
+        st = _run_job()
+        assert st["status"] == "failed"
+        assert "Circuit breaker" in (st.get("error") or "")
+
+        # Quiet window elapsed -> the next submission is a trial; its
+        # success must close the breaker.
+        monkeypatch.setattr(api_server, "CIRCUIT_BREAKER_RESET_SECONDS", 0)
+        st = _run_job()
+        assert st["status"] == "completed", st
+        assert st["results"][0]["result"].get("success") is True
+        assert api_server.api_state.circuit_breaker_open is False
+    finally:
+        api_server.api_state.circuit_breaker_open = False
+        api_server.api_state.job_failures_window.clear()

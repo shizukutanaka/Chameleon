@@ -2432,3 +2432,21 @@ any range assertion.
   the artifact was rejected by the dependency-free parser it ships with.
   Verify writer output against the first-party reader, not just the
   library's subtype list.
+
+**Q (2026-09-21, continued):** `CIRCUIT_BREAKER_RESET_SECONDS` exists, so
+the design clearly intends the API's batch circuit breaker to recover.
+What closes `circuit_breaker_open` after a trip?
+**A:** Nothing. The only statement clearing the flag sits inside
+`_update_circuit_breaker`'s success branch, which is reachable only from
+the per-file loop in `process_batch_job` -- and `process_batch_job`
+returns early whenever the flag is set, so the closer can never be
+reached once tripped. Five failed files inside a minute permanently
+rejected every batch submission until process restart: a resilience
+feature whose failure mode is less available than no breaker at all.
+Fixed with half-open semantics: `_circuit_breaker_blocks()` admits a
+trial job once the newest failure ages past the reset window; a success
+closes via the existing reset check, a failure keeps it open for another
+quiet window. The failure fast-path still does not touch the window, so
+rejections don't extend their own quarantine. The regression test trips
+the breaker, observes a fail-fast, ages the window, and watches a trial
+job's success close it.

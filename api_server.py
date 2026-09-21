@@ -905,6 +905,25 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content=payload)
 
 
+def _circuit_breaker_blocks() -> bool:
+    """True while a tripped breaker is still inside its quiet window.
+
+    Once the newest recorded failure is older than
+    CIRCUIT_BREAKER_RESET_SECONDS the breaker admits a trial job: a
+    success closes it (the reset check inside _update_circuit_breaker)
+    and a failure leaves it open for the next quiet window. Without a
+    gate here the open state was terminal -- the only function that can
+    clear it is skipped while the breaker is open, so a transient burst
+    of failures permanently rejected every batch job until restart.
+    """
+    if not api_state.circuit_breaker_open:
+        return False
+    window = api_state.job_failures_window
+    if not window:
+        return False
+    return (time.time() - window[-1]) <= CIRCUIT_BREAKER_RESET_SECONDS
+
+
 def _update_circuit_breaker(success: bool) -> None:
     """Update circuit breaker state based on job outcomes."""
     now = time.time()
@@ -1552,7 +1571,7 @@ async def process_batch_job(job_id: str):
     try:
         job_data = api_state.active_jobs[job_id]
 
-        if api_state.circuit_breaker_open:
+        if _circuit_breaker_blocks():
             job_data['status'] = 'failed'
             job_data['error'] = 'Circuit breaker open due to recent failures'
             job_data['completed_at'] = datetime.now(timezone.utc)
