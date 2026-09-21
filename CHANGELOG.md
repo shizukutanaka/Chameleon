@@ -487,6 +487,12 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`MemoryManager.get_file_data` accepted negative offsets/sizes and its
+  vectorized cache was dead** — `offset=-5` leaked a raw OSError EINVAL,
+  `size=-1` silently returned empty bytes, and `_prepare_vectorized_data`
+  referenced an undefined `HAS_LIBROSA` so `get_vectorized_audio` could
+  never return data. Bounds are validated, the vectorized cache works,
+  and it is now evicted/cleared alongside the entry it shadows.
 
 ### Changed
 

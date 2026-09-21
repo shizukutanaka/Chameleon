@@ -3252,3 +3252,16 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21):** MemoryManager ships on every WAVProcessor. Do its
+bounds and caches actually work -- and does "clear" clear?
+**A:** Three cracks. `get_file_data(offset=-5)` leaked a raw OSError
+EINVAL and `size=-1` silently returned empty bytes as if the read
+succeeded; both are rejected with ValueError now. `_prepare_vectorized_data`
+referenced HAS_LIBROSA -- a name core.py never defines -- and the
+surrounding except swallowed the NameError, so get_vectorized_audio
+could never return data; the body only needs numpy, which is what it
+imports now. And the vectorized cache was immortal: _remove_from_cache
+and clear_cache never touched it, so entries would have outlived the
+file data they shadow. It is evicted and cleared in step with the main
+cache.
