@@ -2453,3 +2453,21 @@ inside the scanned tree feeds last run's outputs back as inputs on every
 re-run; the scan happens upfront so the current run is correct, but the
 CLI now warns at submission time -- refusal would break the legitimate
 "normalize a directory in place with a suffix" use.
+
+**Q (2026-09-21, continued):** `advanced_validation.py` also has a
+__main__ self-test. Same question as personal_config -- does asking it
+anything (or just running it) leave traces or destroy data?
+**A:** Running it wrote `test_manifest.json` into ~/.chameleon/manifests
+permanently and wrote `test_validation.wav`/`test_sanitized.wav` into the
+CWD -- overwriting a same-named user file before deleting the evidence.
+The manifest dir default (Path.home()/".chameleon"/manifests) is the
+IntegrityVerifier's documented state location; the demo was leaking into
+it. The self-test now runs entirely inside a TemporaryDirectory -- same
+coverage (inspect, create+verify manifest, sanitize), zero persistence.
+Also audited this cycle and found honest: `midi generate` writes the
+requested key/mode/tempo byte-exactly (G natural minor at 90 BPM ->
+pitches 67,69,70,72,74,75,77,79 and us-per-quarter 666667); the CLI's
+env-tunable 500MB cap and the API's fixed 100MB upload cap are both
+enforced and the README already documents the divergence; `analyze
+--loudness` reports "below measurement gate" for too-short material
+rather than fabricating LUFS.

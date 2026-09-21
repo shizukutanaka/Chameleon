@@ -142,3 +142,26 @@ def test_sanitize_preserves_data_after_odd_sized_metadata(tmp_path):
 
     with wave.open(str(dst)) as w:
         assert w.readframes(4) == payload
+
+
+def test_main_block_self_test_writes_no_state_into_the_real_home(tmp_path):
+    """`python advanced_validation.py` used to leave a test_manifest.json
+    inside ~/.chameleon/manifests permanently -- the self-test deleted its
+    WAV fixtures but not the manifest it created in the user's state dir."""
+    import os
+    import subprocess
+    import sys
+
+    repo_root = Path(__file__).resolve().parent.parent
+    home = tmp_path / "home"
+    home.mkdir()
+
+    result = subprocess.run(
+        [sys.executable, "advanced_validation.py"],
+        capture_output=True, text=True, cwd=str(repo_root),
+        env={**os.environ, "HOME": str(home)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Verification: True" in result.stdout
+    assert not (home / ".chameleon").exists()

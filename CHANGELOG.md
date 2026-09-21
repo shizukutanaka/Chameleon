@@ -480,6 +480,13 @@
   (`a_normalized_normalized.wav`). The CLI now warns when the resolved
   output directory is inside the scan root, while it is still possible
   to pick a directory outside it.
+- **`python advanced_validation.py` left a manifest in the user's state
+  directory and could clobber a CWD file** — the module self-test ran its
+  manifest demo through `IntegrityVerifier()`'s default dir
+  (`~/.chameleon/manifests`, created + left `test_manifest.json`), and
+  wrote `test_validation.wav`/`test_sanitized.wav` into the current
+  directory, overwriting any same-named user file before deleting them.
+  The self-test now runs entirely inside a TemporaryDirectory.
 
 ### Changed
 
