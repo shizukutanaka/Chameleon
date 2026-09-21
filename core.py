@@ -137,7 +137,7 @@ def open_secure(path: Union[str, Path], mode: str = "wb", *, encoding: Optional[
     if hasattr(os, "O_BINARY"):
         flags |= os.O_BINARY
 
-    fd = os.open(os.fspath(path), flags, 0o600)
+    fd = os.open(os.fspath(Path(path).expanduser()), flags, 0o600)
     return os.fdopen(fd, mode, encoding=encoding)
 
 
@@ -154,7 +154,7 @@ def atomic_output(path: Union[str, Path], mode: str = "wb", *, encoding: Optiona
     Readers only see the destination under its final name once the write is
     complete -- a crash or exception mid-write leaves a hidden
     ``.part-<pid>`` file, never a truncated file that still parses."""
-    dest = Path(path)
+    dest = Path(path).expanduser()
     tmp = dest.parent / f".{dest.name}.part-{os.getpid()}-{next(_TMP_COUNTER)}"
     try:
         with open_secure(tmp, mode, encoding=encoding) as handle:
@@ -172,7 +172,7 @@ def staged_output_path(path: Union[str, Path]) -> Iterator[Path]:
     For writers that take a filename rather than an open handle (e.g.
     ``soundfile.write``, which infers the container from the suffix, and
     ``shutil.copyfile``). The result gets open_secure's 0o600 permissions."""
-    dest = Path(path)
+    dest = Path(path).expanduser()
     tmp_name = f".{dest.stem}.part-{os.getpid()}-{next(_TMP_COUNTER)}{dest.suffix}"
     tmp = dest.parent / tmp_name
     try:
@@ -641,7 +641,7 @@ class WAVProcessor:
             if not security_validator.validate_file_size(input_path):
                 return ProcessingResult(False, "Input file too large or empty")
 
-            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+            Path(output_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
 
             # Read WAV file
             info = self._read_wav_header(input_path)
@@ -738,7 +738,7 @@ class WAVProcessor:
             return ProcessingResult(False, "Input file too large or empty")
 
         try:
-            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+            Path(output_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
 
             info = self._read_wav_header(input_path)
             if not info:
@@ -1543,7 +1543,7 @@ class StateRecoveryManager:
     def __init__(self, state_dir: Optional[Union[str, Path]] = None, max_backups: int = 10) -> None:
         candidate = state_dir or os.getenv("CHAMELEON_STATE_DIR")
         if candidate:
-            self.state_dir = Path(candidate)
+            self.state_dir = Path(candidate).expanduser()
         else:
             self.state_dir = Path.home() / ".chameleon_state"
 
@@ -1642,7 +1642,7 @@ class BatchProcessor:
         if output_dir:
             if not SecurityValidator.validate_directory(output_dir):
                 return [ProcessingResult(False, "Invalid output directory provided")]
-            target_dir = Path(output_dir)
+            target_dir = Path(output_dir).expanduser()
             parent = target_dir.resolve().parent
             if not parent.exists() or not parent.is_dir():
                 return [ProcessingResult(False, "Parent directory for output is invalid")]
@@ -1953,7 +1953,7 @@ class BatchProcessor:
 
             output_root = options.get("output_dir")
             if output_root:
-                output_path = Path(output_root)
+                output_path = Path(output_root).expanduser()
                 output_path.mkdir(parents=True, exist_ok=True)
             else:
                 output_path = file_path.parent

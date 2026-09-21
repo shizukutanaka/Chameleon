@@ -131,7 +131,7 @@ def _preflight_output_dir(output_dir: Optional[str]) -> Optional[str]:
     classified ERROR(1). The path is user input: refuse it as INPUT(3)."""
     if output_dir is None:
         return None
-    probe = Path(output_dir)
+    probe = Path(output_dir).expanduser()
     while not probe.exists():
         probe = probe.parent
         if str(probe) == probe.anchor:
@@ -614,7 +614,7 @@ class AudioProcessor:
 
     def setup_logging(self):
         """Configure logging with rotation and secure storage"""
-        log_dir = Path(os.getenv("CHAMELEON_LOG_DIR", Path.home() / ".chameleon" / "logs"))
+        log_dir = Path(os.getenv("CHAMELEON_LOG_DIR", Path.home() / ".chameleon" / "logs")).expanduser()
         try:
             log_dir.mkdir(parents=True, exist_ok=True)
             if os.name != "nt":
@@ -2103,12 +2103,12 @@ class AudioProcessor:
         if explicit_path:
             if not SecurityValidator.validate_path(explicit_path):
                 raise ValueError(f"Unsafe explicit output path: {explicit_path}")
-            destination = Path(explicit_path)
+            destination = Path(explicit_path).expanduser()
         else:
             if output_dir:
                 if not SecurityValidator.validate_directory(output_dir):
                     raise ValueError(f"Unsafe output directory: {output_dir}")
-                destination_dir = Path(output_dir)
+                destination_dir = Path(output_dir).expanduser()
                 if create_dirs:
                     destination_dir.mkdir(parents=True, exist_ok=True)
             else:
@@ -2596,7 +2596,8 @@ async def main():
             # silently overwrites the earlier one. Warn now, while the
             # user can still pick distinct names or a per-file run.
             dupes = sorted(s for s, n in
-                           Counter(Path(f).stem for f in files).items()
+                           Counter(SecurityValidator.sanitize_filename(Path(f).stem)
+                                   for f in files).items()
                            if n > 1)
             if dupes:
                 print(f"Warning: inputs sharing the name(s) "
@@ -2980,7 +2981,8 @@ async def main():
             # different subdirs; each op writes stem+suffix into
             # --output-dir, so later results overwrite earlier ones.
             dupes = sorted(s for s, n in
-                           Counter(Path(f).stem for f in file_list).items()
+                           Counter(SecurityValidator.sanitize_filename(Path(f).stem)
+                                   for f in file_list).items()
                            if n > 1)
             if dupes:
                 print(f"Warning: files sharing the name(s) "

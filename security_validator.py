@@ -172,7 +172,7 @@ class SecurityValidator:
     def validate_path(self, file_path) -> bool:
         """Return True if *file_path* is safe to access under this policy."""
         try:
-            resolved = Path(file_path).resolve()
+            resolved = Path(file_path).expanduser().resolve()
         except (OSError, ValueError, RuntimeError):
             return False
         if not self._is_path_shape_safe(str(resolved)):
@@ -193,7 +193,7 @@ class SecurityValidator:
     def validate_file_size(self, file_path) -> bool:
         """Return True if the file exists and is within the size limit."""
         try:
-            size = Path(file_path).stat().st_size
+            size = Path(file_path).expanduser().stat().st_size
         except OSError:
             return False
         return size <= self.config.max_file_size
@@ -266,7 +266,7 @@ class SecurityValidator:
         if not self.validate_path(file_path):
             return None
         try:
-            return open(file_path, mode)
+            return open(Path(file_path).expanduser(), mode)
         except OSError:
             return None
 
@@ -275,7 +275,7 @@ class SecurityValidator:
         """Lightweight content check: accept recognised audio headers and reject
         files whose header looks like an embedded script/markup payload."""
         try:
-            with open(file_path, "rb") as fh:
+            with open(Path(file_path).expanduser(), "rb") as fh:
                 header = fh.read(12)
         except OSError:
             return False
