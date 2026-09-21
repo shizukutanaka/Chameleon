@@ -3252,3 +3252,17 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** Two contract questions for
+spectral_editor: what do impossible `SpectrogramConfig` values do, and
+what do operations before `load_audio()` do?
+**A:** Both leaked implementation noise. `win_length > n_fft` crashed
+on a numpy broadcast error, `hop_length=0` on ZeroDivisionError, and
+`hop_length=-5` silently produced a 1-frame "spectrogram". Config
+geometry is now validated in `__post_init__` (n_fft>0, hop_length>0,
+0<win_length<=n_fft), covering manual and librosa paths alike. And the
+methods without try/except -- `select_region`, `copy_selection`,
+`get_spectrogram_data`, `export_current_audio`, `reset_to_original` --
+leaked bare AttributeError before load_audio; they now raise a clear
+RuntimeError via `_require_loaded` (the bool-returning ops already
+failed closed).

@@ -487,6 +487,16 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`SpectrogramConfig` accepted impossible geometry** —
+  `win_length > n_fft` crashed on a numpy broadcast error,
+  `hop_length=0` on `ZeroDivisionError`, and `hop_length<0` silently
+  produced a 1-frame spectrogram. `n_fft`/`hop_length`/`win_length` are
+  now validated at construction for both librosa and manual paths.
+- **`SpectralEditor` methods leaked `AttributeError` before
+  `load_audio()`** — `select_region`, `copy_selection`,
+  `get_spectrogram_data`, `export_current_audio`, and
+  `reset_to_original` now raise a clear `RuntimeError` ("call
+  load_audio() first").
 
 ### Changed
 

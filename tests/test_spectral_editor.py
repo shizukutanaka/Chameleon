@@ -181,3 +181,34 @@ def test_harmonic_enhance_refuses_empty_selection():
     assert not ed.harmonic_enhance_selection(empty)
     assert len(ed.undo_stack) == undo_depth
     assert np.array_equal(ed.current_audio, before_audio)
+
+
+def test_impossible_spectrogram_geometry_rejected_at_construction():
+    # win_length>n_fft crashed on a broadcast error, hop_length=0 on a
+    # ZeroDivisionError, and hop_length<0 silently produced a 1-frame
+    # "spectrogram". Impossible geometry is rejected at construction.
+    for kwargs in (dict(n_fft=0), dict(hop_length=0), dict(hop_length=-5),
+                   dict(n_fft=2048, win_length=4096)):
+        with pytest.raises(ValueError):
+            spectral_editor.SpectrogramConfig(**kwargs)
+
+
+def test_operations_before_load_audio_fail_clearly():
+    # Public methods used to leak AttributeError('stft'/'times'/...)
+    # when called before load_audio; they now raise a RuntimeError that
+    # says what to do.
+    ed = spectral_editor.SpectralEditor()
+    sel = spectral_editor.SpectralSelection(0, 1, 0, 100)
+
+    for call in (ed.get_spectrogram_data, ed.export_current_audio,
+                 ed.reset_to_original):
+        with pytest.raises(RuntimeError, match="load_audio"):
+            call()
+    with pytest.raises(RuntimeError, match="load_audio"):
+        ed.select_region(0, 1, 0, 100)
+    with pytest.raises(RuntimeError, match="load_audio"):
+        ed.copy_selection(sel)
+
+    # Ops that report success/failure via bool still fail closed.
+    assert ed.delete_selection(sel) is False
+    assert ed.undo() is False
