@@ -437,3 +437,13 @@ def test_sanitize_filename_keeps_names_with_real_characters():
     assert SecurityValidator.sanitize_filename("a..b") == "a..b"
     assert SecurityValidator.sanitize_filename("___...") == "___..."
     assert SecurityValidator.sanitize_filename("x") == "x"
+
+
+def test_validate_file_path_overlong_name_raises_security_error_not_oserror():
+    # A filename under MAX_PATH_LENGTH but over the filesystem's per-
+    # component limit made exists() raise OSError -- the validator's
+    # "raises SecurityError on rejection" contract leaked through.
+    from security_validator import SecurityError
+    validator = SecurityValidator()
+    with pytest.raises(SecurityError, match="Cannot stat"):
+        validator.validate_file_path("a" * 1000 + ".wav")

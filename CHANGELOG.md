@@ -487,6 +487,18 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`validate_file_path` leaked `OSError` on overlong names** — a
+  filename under `MAX_PATH_LENGTH` (4096) but over the filesystem's
+  per-component limit raised a raw `OSError(ENAMETOOLONG)` from
+  `exists()`, outside the `SecurityError` contract. The existence check
+  is now wrapped like the size check.
+- **`validation_test.py` never exercised Chameleon** — every test
+  re-parsed its own fixture bytes or re-implemented the checks it
+  claimed to verify, so the gate could print "the core Chameleon system
+  is ready for use" on a machine where `core.py` was broken. A new
+  `test_real_product_code_paths` runs `analyze()`/`normalize()` through
+  the shipped parser and asserts the real `SecurityValidator` rejects
+  traversal/NUL paths.
 
 ### Changed
 
