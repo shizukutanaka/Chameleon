@@ -3252,3 +3252,15 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** Does `SpectralEditConfig.preserve_phase`
+do anything?
+**A:** No -- `noise_reduce_selection` honored it as
+`np.exp(1j * np.angle(self.stft))`, but `self.stft` is unmodified at
+that point, so `np.angle(self.stft)` IS the `phase` captured two lines
+earlier: both branches produced bit-identical output (verified). The
+knob selected nothing -- same phantom-knob class as audits 52/53.
+False now reconstructs with zero phase, a real and defensible
+difference. `precision` and `quality` fields are likewise read by no
+operation; rather than delete config surface without confirmation they
+are now honestly labeled "reserved -- not read yet".

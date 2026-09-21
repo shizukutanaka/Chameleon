@@ -487,6 +487,12 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`SpectralEditConfig.preserve_phase` selected nothing** —
+  `noise_reduce_selection`'s `False` branch recomputed
+  `np.angle(self.stft)` on the unmodified STFT, producing bit-identical
+  output to `True`. `False` now reconstructs with zero phase.
+  `precision`/`quality` config fields are read by no operation; they
+  are now labeled reserved rather than silently inert.
 
 ### Changed
 
