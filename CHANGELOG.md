@@ -487,6 +487,17 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`spectral_utils` scalar knobs defeated by NaN/inf** — every entry
+  point guarded with `x <= 0` / `x < 0` comparisons, which NaN always
+  passes: `normalize_peak(target_peak=nan)` returned an all-NaN signal
+  reported as normalized, `analyze_spectrum(sample_rate=nan)` emitted a
+  report whose bandwidth and peak frequencies were all NaN,
+  `apply_spectral_mask` with a NaN rate mapped every bin into the high
+  band, a NaN gain multiplied that band by NaN, and
+  `linear_resample(source_rate=nan)` / `sliding_window_rms(
+  window_size=2.5)` died on internals errors instead of naming the bad
+  argument. All scalar parameters now get an isinstance + isfinite +
+  range check and a ValueError naming the parameter.
 
 ### Changed
 

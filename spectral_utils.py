@@ -347,8 +347,8 @@ def apply_spectral_mask(
 def sliding_window_rms(samples: Sequence[float], window_size: int) -> List[float]:
     """Compute RMS levels over a sliding window."""
 
-    if window_size <= 0:
-        raise ValueError("window_size must be positive")
+    if not isinstance(window_size, int) or window_size <= 0:
+        raise ValueError("window_size must be a positive integer")
 
     buffer = _to_float_sequence(samples)
     if not buffer:
