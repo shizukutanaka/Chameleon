@@ -219,24 +219,32 @@ class PersonalSetup:
         # the new shell) a literal `python` does not resolve and every alias
         # fails with "command not found". sys.executable is also venv-aware,
         # so the aliases keep working without `chameleon-activate` first.
+        #
+        # Every path is shlex.quote'd before embedding: a literal path with
+        # an apostrophe ("/Users/o'brien/music") terminates the single-quoted
+        # alias body early, so the file fails `bash -n` with an unterminated
+        # quote -- and anything after the apostrophe runs as shell when the
+        # user sources it. Setup used to report success on exactly that file.
+        import shlex
+        q = shlex.quote
         aliases = f"""#!/bin/bash
 # Chameleon Audio - Personal Quick Commands
 
 # Activate virtual environment
-alias chameleon-activate='source {Path.cwd()}/.venv/bin/activate'
+alias chameleon-activate='source {q(str(Path.cwd() / ".venv" / "bin" / "activate"))}'
 
 # Quick operations
-alias audio-analyze='"{sys.executable}" "{Path.cwd()}/main.py" analyze'
-alias audio-normalize='"{sys.executable}" "{Path.cwd()}/main.py" process --normalize'
-alias audio-denoise='"{sys.executable}" "{Path.cwd()}/main.py" process --denoise'
-alias audio-batch='"{sys.executable}" "{Path.cwd()}/main.py" batch "{config.audio_library}"'
+alias audio-analyze={q(f'"{sys.executable}" "{Path.cwd()}/main.py" analyze')}
+alias audio-normalize={q(f'"{sys.executable}" "{Path.cwd()}/main.py" process --normalize')}
+alias audio-denoise={q(f'"{sys.executable}" "{Path.cwd()}/main.py" process --denoise')}
+alias audio-batch={q(f'"{sys.executable}" "{Path.cwd()}/main.py" batch "{config.audio_library}"')}
 
 # Personal library management
-alias audio-lib='cd {config.audio_library}'
-alias audio-processed='cd {config.output_directory}'
+alias audio-lib={q(f"cd {config.audio_library}")}
+alias audio-processed={q(f"cd {config.output_directory}")}
 
 # Server
-alias audio-server='"{sys.executable}" "{Path.cwd()}/main.py" server --host 127.0.0.1 --port 8080'
+alias audio-server={q(f'"{sys.executable}" "{Path.cwd()}/main.py" server --host 127.0.0.1 --port 8080')}
 """
 
         _atomic_write_text(aliases_file, aliases)
@@ -246,38 +254,43 @@ alias audio-server='"{sys.executable}" "{Path.cwd()}/main.py" server --host 127.
 
         # Raw f-string: the Windows paths inside are written with literal
         # backslashes (\m, \S, ...), which CPython 3.12+ reports as invalid
-        # escape sequences.
+        # escape sequences. Paths are escaped for PowerShell's double-quoted
+        # strings (` -> ``, " -> `", $ -> `$) so a quote or dollar sign in a
+        # directory name can't break or alter the generated commands.
+        def _ps(s):
+            return s.replace("`", "``").replace('"', '`"').replace("$", "`$")
+
         ps_script = rf"""# Chameleon Audio - Personal Quick Commands
 
 # Activate virtual environment
 function Chameleon-Activate {{
-    & "{Path.cwd()}\.venv\Scripts\Activate.ps1"
+    & "{_ps(str(Path.cwd()))}\.venv\Scripts\Activate.ps1"
 }}
 
 # Quick operations
 function Audio-Analyze {{
-    & "{sys.executable}" "{Path.cwd()}\main.py" analyze $args
+    & "{_ps(sys.executable)}" "{_ps(str(Path.cwd()))}\main.py" analyze $args
 }}
 
 function Audio-Normalize {{
-    & "{sys.executable}" "{Path.cwd()}\main.py" process --normalize $args
+    & "{_ps(sys.executable)}" "{_ps(str(Path.cwd()))}\main.py" process --normalize $args
 }}
 
 function Audio-Denoise {{
-    & "{sys.executable}" "{Path.cwd()}\main.py" process --denoise $args
+    & "{_ps(sys.executable)}" "{_ps(str(Path.cwd()))}\main.py" process --denoise $args
 }}
 
 function Audio-Batch {{
-    & "{sys.executable}" "{Path.cwd()}\main.py" batch "{config.audio_library}" $args
+    & "{_ps(sys.executable)}" "{_ps(str(Path.cwd()))}\main.py" batch "{_ps(config.audio_library)}" $args
 }}
 
 # Directory shortcuts
 function Audio-Lib {{
-    Set-Location "{config.audio_library}"
+    Set-Location "{_ps(config.audio_library)}"
 }}
 
 function Audio-Processed {{
-    Set-Location "{config.output_directory}"
+    Set-Location "{_ps(config.output_directory)}"
 }}
 """
 

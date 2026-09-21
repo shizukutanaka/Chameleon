@@ -419,3 +419,47 @@ def test_backup_workflow_verifies_an_intact_copy(tmp_path, monkeypatch, capsys):
 
     assert (dest_dir / "a.wav").exists()
     assert "verified successfully" in capsys.readouterr().out
+
+
+def test_generated_aliases_survive_an_apostrophe_in_the_library_path(home):
+    # A path like /Users/o'brien/music ended up bare inside a single-quoted
+    # alias body: the quote terminated early, bash -n rejected the file, and
+    # anything after the apostrophe would have executed as shell on source.
+    # Paths are now shlex.quote'd (and backtick-escaped in the .ps1).
+    import shlex
+    import subprocess
+
+    cfg = personal_config.PersonalConfig()
+    cfg.audio_library = "/Users/o'brien/music with spaces"
+    cfg.output_directory = str(home / "out")
+    cfg.temp_directory = str(home / "tmp")
+    personal_config.PersonalSetup.create_quick_commands(cfg)
+
+    aliases = (home / ".chameleon" / "aliases.sh").read_text()
+    # The file parses as bash, and sourcing it produces an alias whose
+    # expanded command still contains the path verbatim.
+    subprocess.run(["bash", "-n", "-"], input=aliases, text=True, check=True)
+    probe = subprocess.run(
+        ["bash", "-c",
+         "source \"$1\"; echo \"${BASH_ALIASES[audio-lib]}\"",
+         "_", str(home / ".chameleon" / "aliases.sh")],
+        capture_output=True, text=True)
+    assert probe.returncode == 0, probe.stderr
+    # BASH_ALIASES gives the expansion verbatim (no display quoting).
+    assert f"cd {cfg.audio_library}" in probe.stdout
+
+    ps1 = (home / ".chameleon" / "aliases.ps1").read_text()
+    # An apostrophe needs no escaping in a PowerShell double-quoted string.
+    assert cfg.audio_library in ps1
+
+
+def test_generated_ps1_escapes_quotes_in_the_library_path(home):
+    cfg = personal_config.PersonalConfig()
+    cfg.audio_library = 'C:\\Users\\we"ird$lib'
+    cfg.output_directory = str(home / "out")
+    cfg.temp_directory = str(home / "tmp")
+    personal_config.PersonalSetup.create_quick_commands(cfg)
+
+    ps1 = (home / ".chameleon" / "aliases.ps1").read_text()
+    assert 'we`"ird`$lib' in ps1  # " and $ backtick-escaped
+    assert 'we"ird$lib' not in ps1

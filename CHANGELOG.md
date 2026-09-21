@@ -487,6 +487,12 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`personal_config` setup wrote shell aliases with unquoted user
+  paths** — an apostrophe in `audio_library` (`/Users/o'brien/music`)
+  terminated the single-quoted alias body early: `bash -n` rejected the
+  whole file, and anything after the apostrophe would have run as shell
+  on `source`. All embedded paths are now `shlex.quote`d for bash and
+  backtick-escaped in the generated PowerShell.
 
 ### Changed
 

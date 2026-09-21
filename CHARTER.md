@@ -2471,3 +2471,16 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** `create_quick_commands` embeds user-supplied
+paths (`audio_library`, `output_directory`) inside single-quoted alias
+bodies in `~/.chameleon/aliases.sh` — a file the user is then told to
+`source`. What does a path containing an apostrophe do to that file?
+**A:** It broke it. `/Users/o'brien/music` terminated the quoted body
+early: `bash -n` rejected the whole file with an unterminated quote, and
+anything after the apostrophe would have executed as shell on `source` —
+setup reported "Quick commands created" on a file that was at best dead
+and at worst executing the rest of the path as commands. Every embedded
+path is now `shlex.quote`d for bash and backtick-escaped (`` ` ``,
+`"`, `$`) in the generated PowerShell, so the file that setup claims to
+have written is the file that actually parses.
