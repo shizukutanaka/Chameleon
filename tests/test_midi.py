@@ -1,6 +1,7 @@
 """Tests for MIDI musical analysis (chord and key detection)."""
 
-from midi_analysis import MIDIAnalyzer, MIDINote
+from midi_analysis import (MIDIAnalyzer, MIDIComposer, MIDINote, MusicalKey,
+                           Chord)
 
 
 def _c_major_progression():
@@ -247,3 +248,36 @@ def test_analyze_harmony_names_the_key_not_a_pitch_class():
     harmony = analyzer.analyze_harmony(chords, key)
 
     assert harmony["key"] == "C major"
+
+
+def test_suggest_next_chord_uses_the_keys_own_scale_degrees():
+    # The transition table used to be keyed on absolute semitones with a
+    # major-scale numeral spelling, so a diatonic III in a minor key
+    # (C major in A minor) matched no row and fell back to a bare "I",
+    # while the suggestions it did emit pointed at roots chromatic to the
+    # minor key spelled as if they were diatonic.
+    composer = MIDIComposer()
+    a_minor = MusicalKey(tonic=9, mode="minor", confidence=1.0)
+
+    iii_in_minor = Chord(root=0, chord_type="major", notes=[0, 4, 7],
+                         start_time=0.0, duration=1.0, confidence=1.0)
+    suggestions = composer.suggest_next_chord([iii_in_minor], a_minor)
+    assert suggestions != [("I", 1.0)]
+    # diatonic continuation in A minor: III -> VI, iv, VII
+    assert suggestions[0][0] == "VI"
+
+    i_in_minor = Chord(root=9, chord_type="minor", notes=[9, 0, 4],
+                       start_time=0.0, duration=1.0, confidence=1.0)
+    suggestions = composer.suggest_next_chord([i_in_minor], a_minor)
+    assert suggestions[0][0] == "IV"
+
+    c_major = MusicalKey(tonic=0, mode="major", confidence=1.0)
+    v_in_major = Chord(root=7, chord_type="major", notes=[7, 11, 2],
+                       start_time=0.0, duration=1.0, confidence=1.0)
+    assert composer.suggest_next_chord([v_in_major], c_major)[0][0] == "I"
+
+    # a root chromatic to the key is not silently re-spelled as a scale
+    # degree -- it just gets the tonic fallback
+    chromatic = Chord(root=1, chord_type="major", notes=[1, 5, 8],
+                      start_time=0.0, duration=1.0, confidence=1.0)
+    assert composer.suggest_next_chord([chromatic], a_minor) == [("I", 1.0)]

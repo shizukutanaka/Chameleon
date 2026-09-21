@@ -734,21 +734,50 @@ class MIDIComposer:
             return [("I", 1.0)]
 
         last_chord = current_progression[-1]
-        last_degree = (last_chord.root - key.tonic) % 12
 
-        # Simple Markov chain based on common progressions
-        transition_probabilities = {
-            0: [(4, 0.4), (7, 0.3), (9, 0.2), (5, 0.1)],  # I -> V, IV, vi, etc.
-            4: [(0, 0.5), (7, 0.3), (2, 0.2)],  # V -> I, ii, etc.
-            7: [(0, 0.4), (4, 0.3), (9, 0.3)],  # V -> I, V, vi
-            9: [(4, 0.4), (0, 0.3), (5, 0.3)]   # vi -> V, I, IV
-        }
+        # Locate the last chord's root inside the key's own scale. The table
+        # is indexed by scale degree (0-6), not by absolute semitone -- the
+        # previous semitone table assumed a major scale, so a chord like C
+        # major in A minor (degree III, semitone +3) matched nothing and the
+        # suggested roots (semitone +4 etc.) were chromatic in minor keys
+        # while still being spelled as plain diatonic numerals.
+        last_pc = last_chord.root % 12
+        degree_index = next(
+            (i for i, pc in enumerate(key.scale_notes) if pc == last_pc), None)
+        if degree_index is None:
+            return [("I", 1.0)]
 
-        suggestions = []
-        if last_degree in transition_probabilities:
-            for next_degree, prob in transition_probabilities[last_degree]:
-                roman_numerals = ["I", "♭II", "II", "♭III", "III", "IV", "♭V", "V", "♭VI", "VI", "♭VII", "VII"]
-                suggestions.append((roman_numerals[next_degree], prob))
+        # Common-practice transitions, keyed on scale-degree index. Minor
+        # (and dorian, which shares the minor third) uses the minor-mode
+        # table; major/mixolydian the major table.
+        minor_third_modes = {"minor", "aeolian", "dorian", "phrygian"}
+        if key.mode in minor_third_modes:
+            transition_probabilities = {
+                0: [(3, 0.35), (4, 0.3), (5, 0.2), (6, 0.15)],  # i -> iv, v, VI, VII
+                1: [(4, 0.5), (0, 0.5)],                        # ii° -> v, i
+                2: [(5, 0.4), (3, 0.3), (6, 0.3)],              # III -> VI, iv, VII
+                3: [(4, 0.5), (0, 0.5)],                        # iv -> v, i
+                4: [(0, 0.6), (5, 0.4)],                        # v -> i, VI
+                5: [(6, 0.5), (0, 0.5)],                        # VI -> VII, i
+                6: [(0, 0.6), (2, 0.4)],                        # VII -> i, III
+            }
+        else:
+            transition_probabilities = {
+                0: [(3, 0.35), (4, 0.3), (5, 0.2), (1, 0.15)],  # I -> IV, V, vi, ii
+                1: [(4, 0.5), (6, 0.3), (0, 0.2)],              # ii -> V, vii°, I
+                2: [(5, 0.5), (3, 0.5)],                        # iii -> vi, IV
+                3: [(4, 0.4), (0, 0.3), (1, 0.3)],              # IV -> V, I, ii
+                4: [(0, 0.5), (5, 0.3), (1, 0.2)],              # V -> I, vi, ii
+                5: [(3, 0.4), (4, 0.3), (1, 0.3)],              # vi -> IV, V, ii
+                6: [(0, 0.7), (2, 0.3)],                        # vii° -> I, iii
+            }
+
+        roman_numerals = ["I", "II", "III", "IV", "V", "VI", "VII"]
+        suggestions = [
+            (roman_numerals[next_degree], prob)
+            for next_degree, prob in transition_probabilities.get(
+                degree_index, [])
+        ]
 
         return suggestions or [("I", 1.0)]
 

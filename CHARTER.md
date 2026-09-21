@@ -2471,3 +2471,19 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+### 2026-09-21 (audit 127) — chord suggestions ignored the key's mode
+
+**Q:** `MIDIComposer.suggest_next_chord` keyed its Markov transitions on
+`(chord.root - key.tonic) % 12` — an absolute semitone — with one fixed
+major-scale numeral table. Does the suggestion hold for a minor key?
+
+**A:** **No.** In A minor the diatonic mediant C (semitone +3) matched no
+table row and fell back to a bare `("I", 1.0)`, and the emitted suggestions
+for the tonic pointed at semitone +4 — C#, *chromatic* in A minor — spelled
+"III" as if diatonic. Transitions are now keyed on the scale-degree index
+inside `key.scale_notes`, with separate common-practice tables for
+minor-third modes (minor/aeolian/dorian/phrygian) and major-quality modes,
+spelled I..VII by degree. A root chromatic to the key gets the tonic
+fallback rather than a mislabeled degree. Verified: C in A minor → VI/iv/VII;
+G in C major → I; C# in A minor → tonic fallback.
