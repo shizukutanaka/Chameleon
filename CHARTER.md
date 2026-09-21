@@ -3252,3 +3252,14 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q: Can a product have two version numbers?**
+
+A (2026-09-21): No. `pyproject.toml` declares `main.VERSION` the single
+source of truth and `--version` printed 1.1.0, while `api_server.py`
+carried its own literal `API_VERSION = "1.0.0"` — the API reported a
+different release than the product serving it on `/` and
+`/system/status`. A second literal will always drift; `API_VERSION` now
+imports `main.VERSION`, and a test asserts the two can never disagree.
+The doc-fix that prevented a repeat of *this* class is not "update both"
+— it is "have only one".
