@@ -2471,3 +2471,15 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** `spectral_editor.select_region` clamps
+each bound independently -- what happens on an inverted range?
+**A:** An "edit" that reports success while changing nothing.
+`select_region(0.6, 0.4, ...)` produced an empty mask;
+`delete_selection` then returned True, consumed an undo state, and
+logged a delete that never happened -- the same no-work-success class
+as audits 34/35. Empty selections now raise ValueError naming both
+axes. Also verified honest: `analyze --export` writes real JSON,
+`CHAMELEON_TIMEOUT` (documented name) bounds batch duration,
+`midi extract` is fully wired with honest empty/polyphonic handling,
+and dwChannelMask reaches the multichannel loudness call.

@@ -276,6 +276,15 @@ class SpectralEditor:
             freq_end=min(self.freqs[-1], freq_end)
         )
 
+        # An empty selection is not a selection: ops on it report success
+        # while changing nothing and still consume an undo state.
+        if selection.time_end <= selection.time_start or \
+                selection.freq_end <= selection.freq_start:
+            raise ValueError(
+                f"Empty spectral selection: time {selection.time_start:.3f}-"
+                f"{selection.time_end:.3f}s, freq {selection.freq_start:.0f}-"
+                f"{selection.freq_end:.0f}Hz select no bins")
+
         return selection
 
     def get_selection_mask(self, selection: SpectralSelection) -> np.ndarray:
