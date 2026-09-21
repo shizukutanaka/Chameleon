@@ -487,6 +487,13 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- `validation_test.py` validated only its own helpers — its own WAV
+  writer, its own inline path-blocklist — and imported zero Chameleon
+  modules while claiming "The core Chameleon system is ready for use."
+  It now exercises the real product: `WAVProcessor.analyze`,
+  `BatchProcessor.process_directory`, `SecurityValidator` containment
+  contracts, and genuine imports of `main`/`core`/`security_validator`/
+  `advanced_validation`.
 
 ### Changed
 

@@ -2471,3 +2471,15 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**2026-09-21 (Socratic audit 122, external-source pass):** validation_test.py --
+the script the gate itself trusts -- validated only its *own* helpers: its own
+WAV writer (circular), its own inline path-blocklist (never touching
+SecurityValidator), and a "core modules" test that imported only stdlib + pip
+packages, never `main`/`core`/`security_validator`. "The core Chameleon system
+is ready for use" was therefore unfounded -- the file imported zero Chameleon
+code. Rewritten to exercise the real product: WAVProcessor.analyze on its
+fixtures, BatchProcessor.process_directory, SecurityValidator containment +
+null-byte + missing-file contracts, and real module imports. Verified in both
+full and bare stdlib-only interpreters -- 6/6 pass where it genuinely means
+something now.

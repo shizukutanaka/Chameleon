@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
-Basic validation test without external dependencies
-Tests core functionality that doesn't require numpy/scipy
+Basic validation test without external dependencies.
+Exercises the real Chameleon stdlib core -- imports `main`, `core`,
+`security_validator`, `advanced_validation` and runs `WAVProcessor` /
+`BatchProcessor` against files this script writes. A self-test that only
+validates its own helpers proves nothing about the product.
 """
 
 import os
@@ -11,253 +14,179 @@ import struct
 import tempfile
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+
 def create_test_wav(filename: str, frequency: float = 440.0, duration: float = 1.0,
                    sample_rate: int = 44100, amplitude: float = 0.5):
-    """Create a simple test WAV file without numpy"""
+    """Fixture: write a spec-valid 16-bit PCM WAV without third-party libs."""
     samples = int(duration * sample_rate)
 
-    # Generate sine wave samples
     audio_data = []
     for i in range(samples):
         t = i / sample_rate
         sample = int(amplitude * 32767 * __import__('math').sin(2 * __import__('math').pi * frequency * t))
         audio_data.append(sample)
 
-    # Write WAV file
     with open(filename, 'wb') as f:
-        # RIFF header
         f.write(b'RIFF')
         f.write(struct.pack('<I', 36 + samples * 2))
         f.write(b'WAVE')
-
-        # fmt chunk
         f.write(b'fmt ')
-        f.write(struct.pack('<I', 16))  # Chunk size
-        f.write(struct.pack('<H', 1))   # Audio format (PCM)
-        f.write(struct.pack('<H', 1))   # Channels
+        f.write(struct.pack('<I', 16))
+        f.write(struct.pack('<H', 1))   # PCM
+        f.write(struct.pack('<H', 1))   # mono
         f.write(struct.pack('<I', sample_rate))
-        f.write(struct.pack('<I', sample_rate * 2))  # Byte rate
-        f.write(struct.pack('<H', 2))   # Block align
-        f.write(struct.pack('<H', 16))  # Bits per sample
-
-        # data chunk
+        f.write(struct.pack('<I', sample_rate * 2))
+        f.write(struct.pack('<H', 2))
+        f.write(struct.pack('<H', 16))
         f.write(b'data')
         f.write(struct.pack('<I', samples * 2))
-
-        # Write audio samples
         for sample in audio_data:
             f.write(struct.pack('<h', sample))
 
+
 def test_wav_file_creation():
-    """Test WAV file creation and validation"""
+    """A fixture WAV must satisfy Chameleon's own reader."""
     print("Testing WAV file creation...")
+
+    from core import WAVProcessor
 
     with tempfile.TemporaryDirectory() as tmpdir:
         test_file = os.path.join(tmpdir, "test.wav")
-
-        # Create test file
         create_test_wav(test_file, 440.0, 1.0, 44100, 0.5)
 
-        # Validate file exists and has reasonable size
-        assert os.path.exists(test_file), "Test file was not created"
-        file_size = os.path.getsize(test_file)
-        assert file_size > 100, f"File too small: {file_size} bytes"
-
-        # Validate WAV header
-        with open(test_file, 'rb') as f:
-            header = f.read(12)
-            assert header[:4] == b'RIFF', "Missing RIFF header"
-            assert header[8:12] == b'WAVE', "Missing WAVE header"
+        result = WAVProcessor().analyze(test_file)
+        assert result.success, f"Chameleon rejected its fixture WAV: {result.message}"
+        info = result.data
+        assert info.format_tag == 1, f"Expected PCM, got format_tag={info.format_tag}"
+        assert abs(info.duration - 1.0) < 0.01
 
         print("✓ WAV file creation test passed")
 
+
 def test_basic_audio_analysis():
-    """Test basic audio analysis without external libraries"""
+    """WAVProcessor.analyze reports real header/audio facts."""
     print("Testing basic audio analysis...")
+
+    from core import WAVProcessor
 
     with tempfile.TemporaryDirectory() as tmpdir:
         test_file = os.path.join(tmpdir, "test.wav")
         create_test_wav(test_file, 440.0, 2.0, 44100, 0.7)
 
-        # Read WAV file header
-        with open(test_file, 'rb') as f:
-            # Skip RIFF header
-            f.seek(12)
-
-            # Read fmt chunk
-            chunk_id = f.read(4)
-            assert chunk_id == b'fmt ', f"Expected fmt chunk, got {chunk_id}"
-
-            chunk_size = struct.unpack('<I', f.read(4))[0]
-            format_tag = struct.unpack('<H', f.read(2))[0]
-            channels = struct.unpack('<H', f.read(2))[0]
-            sample_rate = struct.unpack('<I', f.read(4))[0]
-            byte_rate = struct.unpack('<I', f.read(4))[0]
-            block_align = struct.unpack('<H', f.read(2))[0]
-            bits_per_sample = struct.unpack('<H', f.read(2))[0]
-
-            # Validate format
-            assert format_tag == 1, f"Expected PCM format, got {format_tag}"
-            assert channels == 1, f"Expected mono, got {channels} channels"
-            assert sample_rate == 44100, f"Expected 44100Hz, got {sample_rate}Hz"
-            assert bits_per_sample == 16, f"Expected 16-bit, got {bits_per_sample}-bit"
-
-            # Find data chunk
-            while True:
-                chunk_header = f.read(8)
-                if len(chunk_header) != 8:
-                    break
-
-                chunk_id = chunk_header[:4]
-                chunk_size = struct.unpack('<I', chunk_header[4:8])[0]
-
-                if chunk_id == b'data':
-                    # Calculate duration
-                    duration = chunk_size / (sample_rate * channels * (bits_per_sample // 8))
-                    assert abs(duration - 2.0) < 0.1, f"Expected 2s duration, got {duration}s"
-                    break
-                else:
-                    f.seek(chunk_size, 1)
+        result = WAVProcessor().analyze(test_file)
+        assert result.success, result.message
+        info = result.data
+        assert info.channels == 1
+        assert info.sample_rate == 44100
+        assert info.bit_depth == 16
+        assert abs(info.duration - 2.0) < 0.1, f"Expected 2s, got {info.duration}s"
+        assert info.peak_level > 0.5, "peak level not measured"
 
         print("✓ Basic audio analysis test passed")
 
+
 def test_file_operations():
-    """Test file I/O operations"""
+    """BatchProcessor processes a directory of real WAVs."""
     print("Testing file operations...")
 
+    from core import BatchProcessor
+
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Test directory operations
         test_dir = Path(tmpdir)
-        assert test_dir.exists(), "Temp directory not accessible"
-        assert test_dir.is_dir(), "Path is not a directory"
-
-        # Test file creation
-        test_files = []
         for i in range(3):
-            filename = f"test_{i}.wav"
-            filepath = test_dir / filename
-            create_test_wav(str(filepath), 440.0 + i * 100, 0.5, 44100, 0.3)
-            test_files.append(filepath)
+            create_test_wav(str(test_dir / f"test_{i}.wav"), 440.0 + i * 100, 0.5, 44100, 0.3)
 
-        # Test file listing
-        wav_files = list(test_dir.glob("*.wav"))
-        assert len(wav_files) == 3, f"Expected 3 WAV files, found {len(wav_files)}"
-
-        # Test file sizes
-        for filepath in test_files:
-            size = filepath.stat().st_size
-            assert size > 100, f"File {filepath.name} too small: {size} bytes"
+        results = BatchProcessor().process_directory(str(test_dir), "analyze")
+        file_results = [r for r in results if r.data is not None or r.success]
+        successes = [r for r in results if r.success]
+        assert len(successes) >= 3, f"Expected 3 analyzed files, got {len(successes)}: {[r.message for r in results]}"
 
         print("✓ File operations test passed")
 
+
 def test_performance_basic():
-    """Test basic performance without heavy computations"""
+    """The real analyze path stays fast on small files."""
     print("Testing basic performance...")
 
-    # Test file creation speed
-    start_time = time.time()
+    from core import WAVProcessor
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        for i in range(10):
-            test_file = os.path.join(tmpdir, f"perf_test_{i}.wav")
-            create_test_wav(test_file, 440.0, 0.1, 44100, 0.5)  # 0.1s files
+        test_file = os.path.join(tmpdir, "perf.wav")
+        create_test_wav(test_file, 440.0, 5.0, 44100, 0.5)
 
-    creation_time = time.time() - start_time
-
-    # Should create 10 small files quickly
-    assert creation_time < 5.0, f"File creation too slow: {creation_time:.2f}s"
-
-    print(f"✓ Created 10 files in {creation_time:.3f}s")
-
-    # Test file reading speed
-    start_time = time.time()
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        test_file = os.path.join(tmpdir, "read_test.wav")
-        create_test_wav(test_file, 440.0, 5.0, 44100, 0.5)  # 5s file
-
-        # Read file multiple times
+        start = time.time()
         for _ in range(5):
-            with open(test_file, 'rb') as f:
-                data = f.read()
-                assert len(data) > 1000, "File data too small"
+            result = WAVProcessor().analyze(test_file)
+            assert result.success, result.message
+        elapsed = time.time() - start
 
-    read_time = time.time() - start_time
+        assert elapsed < 5.0, f"5 analyses took {elapsed:.2f}s"
+        print(f"✓ 5 analyses of a 5s file in {elapsed:.3f}s")
+        print("✓ Performance test passed")
 
-    print(f"✓ Read 5s file 5 times in {read_time:.3f}s")
-    print("✓ Performance test passed")
 
 def test_security_validation():
-    """Test basic security validation"""
+    """Chameleon's own SecurityValidator enforces its contract."""
     print("Testing security validation...")
 
-    # Test path validation
-    dangerous_paths = [
-        "../../../etc/passwd",
-        "..\\..\\windows\\system32",
-        "/etc/passwd",
-        "C:\\Windows\\System32\\config",
-        "test\x00.wav",
-        "a" * 1000 + ".wav"  # Very long filename
-    ]
+    from security_validator import SecurityValidator, SecurityConfig, SecurityError
 
-    blocked_patterns = ['../', '..\\', '\x00', '/etc/', '/proc/', '/sys/']
+    with tempfile.TemporaryDirectory() as tmpdir:
+        good = os.path.join(tmpdir, "a.wav")
+        create_test_wav(good)
 
-    for path in dangerous_paths:
-        is_dangerous = any(pattern in path.lower() for pattern in blocked_patterns)
-        is_dangerous = is_dangerous or len(path) > 500
+        # Null bytes are rejected syntactically.
+        validator = SecurityValidator(SecurityConfig())
+        assert not validator.validate_path("test\x00.wav"), "null-byte path accepted"
+        try:
+            validator.validate_file_path("test\x00.wav")
+            raise AssertionError("null-byte path passed validate_file_path")
+        except SecurityError:
+            pass
 
-        if is_dangerous:
-            print(f"✓ Correctly blocked dangerous path: {path[:50]}...")
-        else:
-            print(f"⚠ Path might need additional validation: {path}")
+        # Reads of nonexistent files are rejected, not silently allowed.
+        try:
+            validator.validate_file_path(os.path.join(tmpdir, "missing.wav"), "read")
+            raise AssertionError("missing file accepted for read")
+        except SecurityError:
+            pass
 
-    # Test file size limits
-    max_size = 500 * 1024 * 1024  # 500MB
-    test_sizes = [0, 1000, 1024*1024, max_size - 1, max_size + 1]
+        # Containment: with trusted roots set, files outside are rejected.
+        scoped = SecurityValidator(SecurityConfig(trusted_roots={tmpdir}))
+        assert scoped.validate_file_path(good, "read"), "file inside trusted root rejected"
+        try:
+            scoped.validate_file_path("/etc/hostname", "read")
+            raise AssertionError("file outside trusted roots accepted")
+        except SecurityError:
+            pass
 
-    for size in test_sizes:
-        is_valid = 0 < size <= max_size
-        print(f"✓ Size {size:,} bytes: {'valid' if is_valid else 'invalid'}")
+        print("✓ Security validation test passed")
 
-    print("✓ Security validation test passed")
 
 def test_core_modules():
-    """Test that core modules can be imported"""
+    """The real Chameleon modules must import with no third-party deps."""
     print("Testing core module imports...")
 
-    # Test basic Python modules
-    try:
-        import os
-        import sys
-        import time
-        import json
-        import struct
-        import hashlib
-        import tempfile
-        import threading
-        import argparse
-        from pathlib import Path
-        from typing import Dict, List, Optional, Any, Tuple, Union
-        from dataclasses import dataclass
-        from functools import lru_cache
-        import logging
-        print("✓ All required standard library modules available")
-    except ImportError as e:
-        print(f"✗ Missing standard library module: {e}")
-        return False
+    import importlib
+    for module_name in ("main", "core", "security_validator", "advanced_validation"):
+        try:
+            importlib.import_module(module_name)
+            print(f"✓ {module_name} imported")
+        except Exception as e:
+            print(f"✗ {module_name} failed to import: {e}")
+            return False
 
-    # Test optional modules (warning if missing)
-    optional_modules = [
+    # Optional modules: informational only -- the stdlib core must not need them.
+    for module, description in [
         ("numpy", "Advanced numerical processing"),
         ("scipy", "Advanced signal processing"),
         ("librosa", "Audio analysis features"),
         ("pyaudio", "Real-time audio processing"),
-        ("rich", "Enhanced CLI interface"),
-        ("click", "Advanced CLI features")
-    ]
-
-    for module, description in optional_modules:
+    ]:
         try:
             __import__(module)
             print(f"✓ Optional module {module} available: {description}")
@@ -266,8 +195,8 @@ def test_core_modules():
 
     print("✓ Core module test completed")
 
+
 def run_all_tests():
-    """Run all validation tests"""
     print("=" * 60)
     print("Chameleon Audio System - Basic Validation Tests")
     print("=" * 60)
@@ -278,7 +207,7 @@ def run_all_tests():
         test_basic_audio_analysis,
         test_file_operations,
         test_performance_basic,
-        test_security_validation
+        test_security_validation,
     ]
 
     passed = 0
@@ -288,8 +217,11 @@ def run_all_tests():
     for test_func in tests:
         try:
             print(f"\n--- {test_func.__name__} ---")
-            test_func()
-            passed += 1
+            result = test_func()
+            if result is False:
+                failed += 1
+            else:
+                passed += 1
         except Exception as e:
             print(f"✗ Test failed: {e}")
             failed += 1
@@ -305,11 +237,12 @@ def run_all_tests():
         print("🎉 All basic validation tests passed!")
         print("The core Chameleon system is ready for use.")
         print("\nTo install optional dependencies for advanced features:")
-        print("  pip install numpy scipy librosa pyaudio rich click")
+        print("  pip install -e .[audio]")
     else:
         print("❌ Some tests failed. Please check the implementation.")
 
     return failed == 0
+
 
 if __name__ == "__main__":
     success = run_all_tests()
