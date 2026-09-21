@@ -627,3 +627,25 @@ def test_direct_api_normalize_rejects_out_of_range_target_peak(tmp_path):
         output_dir=str(out_dir), target_peak=0.5)
     assert "error" not in results[0], results
     assert 0.49 < _peak(out_file) < 0.51
+
+
+def test_batch_processing_doc_lists_only_real_flags():
+    """docs/en/batch_processing.md once advertised --skip-errors, --output and
+    --max-files and claimed batch was "single-threaded" -- a phantom interface
+    for a different command. Every --flag the doc names must appear in the
+    real `batch --help` (or the global --help for the two global flags)."""
+    import re, subprocess, sys
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    doc_flags = set(re.findall(r"--[a-z][a-z-]+",
+                               (root / "docs/en/batch_processing.md").read_text()))
+    batch_help = subprocess.run(
+        [sys.executable, str(root / "main.py"), "batch", "--help"],
+        capture_output=True, text=True, timeout=30).stdout
+    global_help = subprocess.run(
+        [sys.executable, str(root / "main.py"), "--help"],
+        capture_output=True, text=True, timeout=30).stdout
+    real = set(re.findall(r"--[a-z][a-z-]+", batch_help + global_help))
+    assert doc_flags <= real, (
+        f"doc flags not in parser: {sorted(doc_flags - real)}")
+    assert doc_flags - {"--help"}, "doc lists no flags to check"

@@ -3252,3 +3252,21 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, audit 32): Does docs/en/batch_processing.md describe the
+`batch` command that exists?**
+**A:** No -- it documented a different program: flags `--skip-errors`,
+`--output`, `--max-files`, `--format json|csv` (none exist; `--format`
+takes only `{wav}` and means the audio container for `convert`, not a
+report format), "runs analyze" (batch requires an operation argument:
+analyze/normalize/mono/trim/denoise/restore/convert/effects), "walks
+recursively" (opt-in via --recursive), and "single-threaded, no worker
+pool" (false -- ThreadPoolExecutor with --max-workers /
+CHAMELEON_MAX_WORKERS / --no-parallel). The page was rewritten against
+the actual parser and handler: real flags with their operation scoping,
+non-recursive default, <stem>_<op>.<ext> naming, the same-dir warning,
+per-file success/failure lines, and the 0/INPUT/SECURITY/ERROR exit
+mapping verified in the handler. tests/test_cli_parity.py now asserts
+every --flag the doc names appears in `batch --help` or global `--help`.
+Env-var sweep clean this cycle (the two flagged names are client-side
+conventions documented as such or pending on an open PR).
