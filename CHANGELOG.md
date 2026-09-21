@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Tests
+
+- Pinned three verified-honest behaviors that were unprotected:
+  `midi extract --tempo` reaching the file's tempo meta-event,
+  `batch/submit` 404ing unregistered file names at submit time, and
+  `process` refusing duplicate input files before any work.
+
 ### Security
 
 - **Plugin sandbox escaped via builtins needing no import** -- the AST
