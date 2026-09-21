@@ -123,3 +123,23 @@ def test_real_imports_are_not_flagged():
     for module in ("core", "main", "bs1770_loudness", "security_validator"):
         assert (PROJECT_ROOT / f"{module}.py").is_file()
     assert "numpy" in EXTERNAL and "pytest" in EXTERNAL
+
+
+def test_quick_install_scripts_actually_install_and_fail_loud():
+    sh = (PROJECT_ROOT / "quick_install.sh").read_text()
+    ps1 = (PROJECT_ROOT / "quick_install.ps1").read_text()
+    # Both previously pip-installed only the comments-only requirements.txt
+    # (the `chameleon` command never landed) and printed "Installation
+    # complete!" unconditionally -- a failed venv/pip step still ended in
+    # the success banner, and Python 3.7 proceeded past the "3.8+ required"
+    # message because nothing enforced it.
+    assert "set -e" in sh
+    assert 'install -e .' in sh and 'install -e .' in ps1
+    # the declared >=3.9 floor (is_relative_to / builtin generics) is
+    # enforced, not just printed
+    assert "(3, 9)" in sh and "(3, 9)" in ps1
+    # the venv's own interpreter drives pip -- no reliance on `activate`
+    assert '.venv/bin/python' in sh and '.venv\\Scripts\\python.exe' in ps1
+    # native-command exit codes checked (PowerShell $ErrorActionPreference
+    # does not cover them)
+    assert "$LASTEXITCODE" in ps1

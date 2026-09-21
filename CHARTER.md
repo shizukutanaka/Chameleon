@@ -2471,3 +2471,15 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**2026-09-21 (Socratic audit 121, external-source pass):** Exercised the
+onboarding scripts instead of trusting them. quick_install.sh/.ps1 pip-installed
+only `requirements.txt` -- a comments-only file -- so the `chameleon` command
+never landed and "Installation complete!" printed unconditionally. No `set -e`,
+no version enforcement (3.7 sailed past the "3.8+ required" message), and ps1's
+`Activate.ps1` can be ExecutionPolicy-blocked while pip then installs into the
+*system* site-packages. Both scripts now enforce >=3.9 (the real floor), drive
+the venv's own interpreter, run `pip install -e .` (the install that actually
+provides `chameleon`), and stop loudly -- `set -euo pipefail` + explicit
+`$LASTEXITCODE` checks. Verified end-to-end: fresh run installs and
+`chameleon 1.1.0` executes.

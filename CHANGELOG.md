@@ -487,6 +487,12 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- `quick_install.sh`/`.ps1` pip-installed only the comments-only
+  `requirements.txt` — the `chameleon` command never landed — and printed
+  "Installation complete!" unconditionally (no `set -e`, no version
+  enforcement, venv `activate` could fail while pip hit the system
+  site-packages). Both scripts now enforce Python >=3.9, install with
+  `pip install -e .` via the venv's own interpreter, and stop on failure.
 
 ### Changed
 
