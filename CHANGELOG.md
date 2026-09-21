@@ -487,6 +487,12 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`SpectralEditor.interpolate_selection` was a no-op without scipy** —
+  the fallback branch contained a dead `if HAS_SCIPY` guard, so masked
+  bins were assigned their own values: `True` returned, undo state
+  consumed, zero bins changed. The no-scipy path now uses a real
+  4-neighbor mean fill (shared with the `linear` mode), and `cubic`
+  still uses `scipy.griddata`.
 
 ### Changed
 

@@ -3252,3 +3252,15 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** `interpolate_selection` falls back to
+neighbor averaging without scipy -- does it?
+**A:** No -- it was a self-assignment. The `else` (no-scipy) branch
+contained a dead `if HAS_SCIPY` guard, so `smoothed = magnitude` and
+`magnitude[mask] = smoothed[mask]` wrote each bin onto itself:
+`interpolate_selection` returned True, consumed an undo state, logged
+history -- and changed 0 bins (verified live). The scipy "linear"
+path's neighbor-mean loop never needed scipy, so it is now the shared
+fallback (`_neighbor_mean_fill`); "cubic" still uses griddata, and any
+non-cubic config value gets the honest neighbor fill instead of a
+silent no-op.

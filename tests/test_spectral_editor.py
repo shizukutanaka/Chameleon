@@ -181,3 +181,20 @@ def test_harmonic_enhance_refuses_empty_selection():
     assert not ed.harmonic_enhance_selection(empty)
     assert len(ed.undo_stack) == undo_depth
     assert np.array_equal(ed.current_audio, before_audio)
+
+
+def test_interpolate_actually_fills_without_scipy(monkeypatch):
+    # The no-scipy fallback had a dead `if HAS_SCIPY` inside the else
+    # branch, so `smoothed = magnitude` made `magnitude[mask] = ...` a
+    # self-assignment: interpolate returned True while changing 0 bins.
+    monkeypatch.setattr(spectral_editor, "HAS_SCIPY", False)
+    ed = spectral_editor.SpectralEditor()
+    audio = np.sin(2 * np.pi * 220 * np.arange(SAMPLE_RATE) / SAMPLE_RATE) * 0.3
+    ed.load_audio(audio, SAMPLE_RATE)
+    sel = ed.select_region(0.4, 0.6, 300, 3000)
+
+    before = np.abs(ed.stft).copy()
+    assert ed.interpolate_selection(sel)
+
+    changed = np.argwhere(np.abs(ed.stft) - before > 1e-9)
+    assert changed.size > 0
