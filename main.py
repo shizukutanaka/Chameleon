@@ -1899,10 +1899,16 @@ class AudioProcessor:
             if resolved_bit_depth not in {16, 24, 32}:
                 resolved_bit_depth = 16
 
+            # save_audio writes the requested bit depth only through
+            # soundfile; without it the fallback writes 16-bit PCM, and a
+            # name like `x_converted_24bit.wav` would claim a depth the
+            # bytes don't have.
+            written_bit_depth = resolved_bit_depth if HAS_SOUNDFILE else 16
+
             if planned_sr != sr:
                 suffix_components.append(f"{planned_sr}Hz")
-            if resolved_bit_depth:
-                suffix_components.append(f"{resolved_bit_depth}bit")
+            if written_bit_depth:
+                suffix_components.append(f"{written_bit_depth}bit")
             suffix = "_" + "_".join(suffix_components) + ".wav"
 
             output_path = self._resolve_output_path(
@@ -1919,7 +1925,7 @@ class AudioProcessor:
                     "planned_output": str(output_path),
                     "time": time.time() - start_time,
                     "sample_rate": planned_sr,
-                    "bit_depth": resolved_bit_depth,
+                    "bit_depth": written_bit_depth,
                     "dry_run": True
                 }
 

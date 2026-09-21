@@ -2471,3 +2471,18 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**2026-09-21 (Socratic audit 117, external-source pass):** Cross-checked the
+bit-depth conversion against the output contract. `save_audio` reports the
+depth actually written (16 when soundfile is absent and the fallback PCM
+writer runs) -- but the convert output FILENAME was minted before the write
+from the *requested* depth, so a numpy-only install produced
+`x_converted_24bit.wav` files containing 16-bit PCM (verified on-device:
+sampwidth=2 under the `numpy_only` config). The filename now uses the depth
+`save_audio` will actually write (`resolved_bit_depth if HAS_SOUNDFILE else
+16`), and dry-run's `bit_depth` field reports that same planned actual depth
+rather than the request. Verified honest: the collision-warning and
+re-ingestion warnings on batch `--output-dir`, the BS.1770 module (K-weighting
+biquads, two-stage gating, 20-LU LRA gate, Annex-2 oversampled true peak --
+all cross-checked and honestly labeled "estimate" where coefficients are
+generated), and batch `--dry-run` (returns planned outputs, writes nothing).
