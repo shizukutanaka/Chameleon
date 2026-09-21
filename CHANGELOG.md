@@ -487,6 +487,14 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`TableFormatter.format_table` hid or lost cells when the inputs'
+  shapes disagreed** — a short `align` list made `zip()` drop entire
+  columns from the rendered table (`align=['right']` on two columns
+  printed only the first), and a row wider than the headers escaped the
+  zip and died on a raw `IndexError`. `align` is now padded with `'left'`
+  (the declared default), short rows are padded with `''`, and wide rows
+  are rejected with a `ValueError` naming the mismatch — no caller-supplied
+  cell is silently discarded.
 
 ### Changed
 

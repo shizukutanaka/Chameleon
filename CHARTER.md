@@ -3252,3 +3252,15 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** `TableFormatter.format_table` normalises via
+`zip`. What happens when `align` is shorter than `headers`, or a row is
+wider than the header list?
+**A:** zip truncates at the shorter side on both counts: `align=['right']`
+on a two-column table emitted only the first column -- the 'b' header and
+every '2' cell vanished from the output, a table that silently hides data.
+And a row wider than the headers escaped the zip -- it hit `widths[i]` and
+crashed with a raw IndexError. align is now padded with 'left' (the
+declared default) up to the header width; short rows are padded with ''
+and wide rows rejected with a named ValueError instead of dropping cells
+the caller passed.
