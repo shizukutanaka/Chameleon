@@ -488,7 +488,6 @@ class SanitizationEngine:
             # A nonexistent output can never be the input's file.
             pass
 
-        with open(file_path, 'rb') as infile, open(output_path, 'wb') as outfile:
         # Lazy import: core.py imports this module for DeepFileInspector at
         # module level, so a top-level core import here would be circular.
         from core import atomic_output
