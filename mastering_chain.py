@@ -849,15 +849,25 @@ class MasteringChain:
         processed = audio.copy()
 
         # Auto-adjust if enabled
+        adjusted_config = None
         if self.config.auto_gain:
             adjusted_config = self.auto_adjust(audio)
             # Apply adjusted settings
             if adjusted_config.compressor_enabled:
                 self.compressor.config = adjusted_config.compressor
 
-        # 1. EQ
+        # 1. EQ. When auto_gain generated bands for an empty eq_bands list,
+        # self.eq was built from that empty list in __init__ -- use a
+        # processor built from the adjusted bands instead of silently
+        # discarding the generated bands.
         if self.config.eq_enabled and hasattr(self, 'eq'):
-            processed = self.eq.process(processed)
+            eq = self.eq
+            if (adjusted_config is not None and adjusted_config.eq_bands
+                    and not self.config.eq_bands):
+                eq = ParametricEQ(self.sample_rate)
+                for band in adjusted_config.eq_bands:
+                    eq.add_band(band)
+            processed = eq.process(processed)
             self.logger.debug("Applied EQ")
 
         # 2. Compression

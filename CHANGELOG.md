@@ -487,6 +487,14 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **auto_gain's generated EQ bands were never applied** — `auto_adjust()`
+  computed bands into the deep-copied `adjusted_config`, but `process()`
+  ran `self.eq`, built in `__init__` from the original (empty)
+  `eq_bands`. The compressor half of the same block did apply its
+  adjusted config, making the asymmetry invisible: a 50 Hz tone through
+  the auto-generated 80 Hz high-pass measured RMS 0.212 -> 0.212.
+  `process()` now builds the EQ stage from the adjusted bands when
+  auto_gain produced them; the same tone measures 0.212 -> 0.029.
 
 ### Changed
 
