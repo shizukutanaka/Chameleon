@@ -168,7 +168,9 @@ chameleon batch ./audio denoise --recursive --output-dir out/
 
 ### `midi`
 
-MIDI 解析・作曲（純粋な標準ライブラリ実装）。
+MIDI 解析・作曲。`compose`/`generate` は標準ライブラリのみで動作します。
+`extract`/`analyze` は音声を配列に読み込むため numpy が必要です
+（`[audio]` extra をインストール。未導入ではヒント付きで拒否します）。
 
 ```bash
 chameleon midi extract --input song.wav --output song.mid

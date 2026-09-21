@@ -257,7 +257,8 @@ Supported operations are `analyze`, `normalize`, `mono` and `trim`. An
   loudness range)
 - **spectral_utils.py** - Deterministic stdlib DFT, windowing, peak interpolation
 - **mastering_chain.py** - Mastering chain (requires numpy; scipy recommended)
-- **midi_analysis.py** - YIN pitch detection and MIDI extraction (stdlib)
+- **midi_analysis.py** - YIN pitch detection and MIDI extraction (module
+  imports on stdlib; `extract`/`analyze` need numpy to decode the audio)
 
 ### Support Modules
 - **ux_improvements.py** - Progress bars, colors, formatting
