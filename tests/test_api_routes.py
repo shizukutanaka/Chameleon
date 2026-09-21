@@ -582,3 +582,17 @@ def test_audit_log_is_bounded():
     for i in range(cap + 50):
         api_server.log_audit_event("u", "OP", "res", "SUCCESS", "", "ip", "")
     assert len(api_server.api_state.audit_log) == cap
+
+
+def test_system_status_reports_null_metrics_when_psutil_absent(client, monkeypatch):
+    # With psutil uninstalled the fields used to report 0.0 -- a measured
+    # "0 MB / 0% CPU" that never happened. They now report null, matching
+    # how last_job_error/p95 handle "not measured".
+    login = _login(client)
+    auth = {"Authorization": f"Bearer {login.json()['token']}"}
+    monkeypatch.setattr(api_server, "HAS_PSUTIL", False)
+
+    r = client.get("/system/status", headers=auth)
+    assert r.status_code == 200
+    assert r.json()["memory_usage"] is None
+    assert r.json()["cpu_usage"] is None

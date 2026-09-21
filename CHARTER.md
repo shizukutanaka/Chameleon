@@ -2471,3 +2471,16 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** `/system/status` reports
+memory_usage/cpu_usage. When psutil is absent, what do they say?
+**A:** They said 0.0 -- a measured "0 MB / 0% CPU" that never happened,
+the same zeros-as-measurements defect class fixed earlier for loudness
+and analysis fields. The endpoint now reports null through Optional
+fields, matching how last_job_error and p95 latency already admit
+"not measured". Docs updated to say so. Verified honest this cycle:
+the WAV parser handles WAVE_FORMAT_EXTENSIBLE (0xFFFE) via subformat
+GUIDs, 8-bit PCM is correctly unsigned-decoded (byte-128), 24-bit is
+sign-extended; max_workers clamps to [1, cpu_count] for both the flag
+and the env var; require_permission honestly documents there is no
+per-permission authorization; `midi generate` rejects malformed keys.

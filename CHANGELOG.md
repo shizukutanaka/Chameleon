@@ -487,6 +487,10 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`/system/status` reported `0.0` for unmeasured metrics** — without
+  `psutil` installed, `memory_usage`/`cpu_usage` returned literal zeros
+  (a measured "0 MB / 0% CPU" that never happened). They are now
+  `Optional` and report `null`, matching `last_job_error`/`p95`.
 
 ### Changed
 

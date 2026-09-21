@@ -317,8 +317,8 @@ class SystemStatusResponse(BaseModel):
     queued_jobs: int
     completed_jobs: int
     error_rate: float
-    memory_usage: float
-    cpu_usage: float
+    memory_usage: Optional[float]
+    cpu_usage: Optional[float]
     security_status: str
     version: str
     active_sessions: int
@@ -1477,13 +1477,16 @@ async def get_system_status(http_request: Request, user: dict = Depends(require_
     """Get system status and metrics"""
     uptime = time.time() - api_state.server_start_time
 
-    memory_usage = 0.0
-    cpu_usage = 0.0
+    memory_usage = None
+    cpu_usage = None
     if HAS_PSUTIL:
         process = psutil.Process(os.getpid())
         with process.oneshot():
             memory_usage = process.memory_info().rss / (1024 * 1024)
             cpu_usage = process.cpu_percent(interval=0.1)
+    # else: report null rather than 0.0 -- a zero is a measurement claim
+    # (0 MB / 0% CPU), not an admission the meter is missing. The schema
+    # fields are Optional, same as last_job_error.
 
     histogram = api_state.stats['request_histogram_ms']
     p95_latency = None
