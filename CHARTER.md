@@ -3252,3 +3252,12 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** `WorkflowBuilder.from_yaml`/`from_json` on
+a document that parses but is not a mapping -- clean error?
+**A:** No. An empty YAML file (loads as None), a scalar string, or a JSON
+list/null all reached `config.get('tasks')` and died on bare
+`AttributeError`. `from_dict` now rejects non-mapping input with
+ValueError naming the actual type. (The missing-*field* checks are a
+separate concern handled in the audit-69 PR; this guard covers the
+shape of the whole document.)

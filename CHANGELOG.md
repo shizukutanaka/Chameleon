@@ -487,6 +487,10 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **Workflow loaders crashed on non-mapping configs** — an empty YAML
+  file, a scalar string, or a JSON list/null passed `config.get('tasks')`
+  on a non-dict and died on bare `AttributeError`. `from_dict` now
+  raises `ValueError` naming the actual type.
 
 ### Changed
 
