@@ -2471,3 +2471,16 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, audit 49): Is the audit log's promised size management
+real?**
+**A:** No -- one defect fixed. docs/api_documentation.md states the audit
+log's rotation is managed by SecurityValidator, and _AUDIT_VALIDATOR
+carries max_file_size=10MB -- but validate_file_path checks size only
+for *reads*, so the cap was decorative and the log grew forever. Writes
+now rotate single-generation: past the cap the file moves to
+api-audit.log.1 (bounded ~2x cap total) before the append. In-memory
+deque stays capped at max_audit_log_entries. Endpoint flow re-verified
+honest meanwhile: normalize registers generated outputs under
+server-minted names, download authorization re-checks owner/privilege,
+analyze rejects remote URLs before path resolution.

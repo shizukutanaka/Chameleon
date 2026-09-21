@@ -582,3 +582,22 @@ def test_audit_log_is_bounded():
     for i in range(cap + 50):
         api_server.log_audit_event("u", "OP", "res", "SUCCESS", "", "ip", "")
     assert len(api_server.api_state.audit_log) == cap
+
+
+def test_audit_log_rotates_at_configured_cap(tmp_path, monkeypatch):
+    # docs/api_documentation.md promises the audit log is size-managed,
+    # and _AUDIT_VALIDATOR carries a 10 MB cap -- but nothing ever checked
+    # it for writes, so the file grew forever. Rotation is now real.
+    log_file = tmp_path / "api-audit.log"
+    monkeypatch.setattr(api_server, "_resolve_audit_log_path", lambda: log_file)
+    monkeypatch.setattr(api_server._AUDIT_VALIDATOR.config, "max_file_size", 500)
+
+    for i in range(4):
+        api_server.log_audit_event("u", "OP", "res", "SUCCESS", "d" * 200, "1.2.3.4", "s")
+
+    rotated = tmp_path / "api-audit.log.1"
+    assert rotated.exists()
+    assert rotated.stat().st_size > 0
+    # Rotation fired at least once: the live file was reset and now
+    # holds fewer entries than were written.
+    assert len(log_file.read_text().strip().splitlines()) < 4

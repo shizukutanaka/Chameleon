@@ -876,6 +876,13 @@ def log_audit_event(user: str, operation: str, resource: str, result: str,
     # Also log to file for persistent storage
     try:
         log_file = _resolve_audit_log_path()
+        try:
+            if log_file.stat().st_size > _AUDIT_VALIDATOR.config.max_file_size:
+                # Single-generation rotation: keeps total on-disk audit
+                # data within ~2x the configured cap.
+                os.replace(log_file, log_file.parent / (log_file.name + '.1'))
+        except OSError:
+            pass
         with _AUDIT_FILES.secure_open(log_file, 'a', encoding='utf-8') as f:
             f.write(f"{_model_to_json(entry)}\n")
     except Exception as e:
