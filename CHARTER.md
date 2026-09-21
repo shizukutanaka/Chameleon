@@ -3252,3 +3252,20 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, audit 36): Do TaskExecutor's retry knobs and the
+queue/engine primitives actually work?**
+**A:** Four defects. (1) BatchTask.retry_count defaulted to 3 and
+TaskStatus.RETRYING existed, but execute() never retried -- one failure
+was final. execute() now retries up to retry_count times (uniformly for
+exceptions and timeouts) and reports attempts in result.metadata.
+(2) TaskQueue.remove_task deleted only the bookkeeping map; the task
+stayed in the PriorityQueue and the next get_task crashed KeyError.
+get_task now skips entries no longer in the map (the queue has no
+delete). (3) WorkflowEngine.dep_graph/task_queue persisted across
+execute_workflow calls, so a second DAG run reusing a task id found it
+'completed' and scheduled nothing ({}). Both are reset per run.
+(4) execute_async dispatched to the loop's default executor (None),
+bypassing the max_workers bound; it now uses self.thread_pool. Note:
+TaskExecutor.process_pool is still never submitted to (dead field, kept
+pending deletion approval).

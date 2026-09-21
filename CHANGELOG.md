@@ -487,6 +487,17 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **The batch-automation executor honored none of its own contracts** —
+  `BatchTask.retry_count` (default 3) was never retried (one failure was
+  final despite the `RETRYING` status); `execute()` now retries and
+  reports `attempts`. `TaskQueue.remove_task` deleted only the
+  bookkeeping map — the task still ran, and the next `get_task` crashed
+  `KeyError`; `get_task` now skips entries removed while queued.
+  `WorkflowEngine.dep_graph`/`task_queue` persisted across
+  `execute_workflow` calls, so a second DAG run reusing a task id found
+  it already "completed" and silently scheduled nothing — both are reset
+  per run. `execute_async` dispatched to the loop's default executor,
+  bypassing `max_workers`; it now uses the bounded `thread_pool`.
 
 ### Changed
 
