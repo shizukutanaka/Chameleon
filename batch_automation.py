@@ -468,6 +468,9 @@ class TaskQueue:
     def __init__(self):
         self.queue = queue.PriorityQueue()
         self.task_map = {}
+        # Ids removed while still queued -- a PriorityQueue cannot delete
+        # arbitrary entries, so removal is a tombstone honoured at pop.
+        self._cancelled = set()
         self.lock = threading.Lock()
 
     def add_task(self, task: BatchTask) -> None:
@@ -479,19 +482,26 @@ class TaskQueue:
 
     def get_task(self) -> Optional[BatchTask]:
         """Get next task from queue"""
-        try:
-            _, _, task = self.queue.get_nowait()
+        while True:
+            try:
+                _, _, task = self.queue.get_nowait()
+            except queue.Empty:
+                return None
             with self.lock:
+                if task.id in self._cancelled:
+                    # Removed while queued: discard, don't run it -- and
+                    # don't crash on the missing map entry.
+                    self._cancelled.discard(task.id)
+                    continue
                 del self.task_map[task.id]
             return task
-        except queue.Empty:
-            return None
 
     def remove_task(self, task_id: str) -> bool:
         """Remove task from queue"""
         with self.lock:
             if task_id in self.task_map:
                 del self.task_map[task_id]
+                self._cancelled.add(task_id)
                 return True
         return False
 
