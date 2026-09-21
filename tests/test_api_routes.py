@@ -582,3 +582,62 @@ def test_audit_log_is_bounded():
     for i in range(cap + 50):
         api_server.log_audit_event("u", "OP", "res", "SUCCESS", "", "ip", "")
     assert len(api_server.api_state.audit_log) == cap
+
+
+def test_normalize_accepts_the_engines_real_target_domain(client):
+    """The request model used ge=0.1 -- a target like 0.05 that CLI/batch/
+    core all accept got a 422 here for no stated reason. Domain is (0, 1]."""
+    import io
+    import math
+    import struct
+    import wave
+
+    token = _login(client).json()["token"]
+    auth = {"Authorization": f"Bearer {token}"}
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(44100)
+        w.writeframes(struct.pack(
+            "<4410h",
+            *[int(0.3 * 32767 * math.sin(2 * math.pi * 440 * i / 44100))
+              for i in range(4410)],
+        ))
+    up = client.post(
+        "/audio/upload",
+        files={"file": ("n.wav", buf.getvalue(), "audio/wav")},
+        headers=auth,
+    )
+    stored = up.json()["stored_name"]
+
+    ok = client.post("/audio/normalize", json={
+        "file_name": stored, "target_peak": 0.05, "output_format": "wav"},
+        headers=auth)
+    assert ok.status_code == 200, ok.json()
+    assert ok.json()["success"] is True
+    assert ok.json()["target_peak"] == 0.05
+
+    for bad in (0.0, 1.5):
+        resp = client.post("/audio/normalize", json={
+            "file_name": stored, "target_peak": bad, "output_format": "wav"},
+            headers=auth)
+        assert resp.status_code == 422, bad
+
+
+def test_system_status_null_metrics_when_unmeasured(client):
+    """Without psutil, memory/cpu must be null (honest absence), not 0.0 --
+    a zero on a status endpoint reads as a measurement."""
+    token = _login(client).json()["token"]
+    response = client.get("/system/status",
+                          headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 200
+    body = response.json()
+    if api_server.HAS_PSUTIL:
+        assert body["memory_usage"] is not None
+        assert body["cpu_usage"] is not None
+    else:
+        assert body["memory_usage"] is None
+        assert body["cpu_usage"] is None
+    # uptime must always be a real number regardless
+    assert body["uptime"] > 0

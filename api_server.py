@@ -242,7 +242,9 @@ class AudioAnalysisResponse(BaseModel):
 
 class AudioNormalizationRequest(BaseModel):
     file_name: str
-    target_peak: float = Field(0.95, ge=0.1, le=1.0)
+    # (0, 1.0] -- the same domain the CLI and core accept; ge=0.1 forbade
+    # targets (e.g. 0.05) the engine fully supports, for no stated reason.
+    target_peak: float = Field(0.95, gt=0.0, le=1.0)
     # WAV only: normalize_audio_fast writes through the stdlib core, which has
     # no FLAC encoder. Previously accepted "flac" here produced a file with a
     # .flac extension containing raw WAV bytes — an unbacked capability claim.
@@ -317,8 +319,8 @@ class SystemStatusResponse(BaseModel):
     queued_jobs: int
     completed_jobs: int
     error_rate: float
-    memory_usage: float
-    cpu_usage: float
+    memory_usage: Optional[float]
+    cpu_usage: Optional[float]
     security_status: str
     version: str
     active_sessions: int
@@ -1477,8 +1479,10 @@ async def get_system_status(http_request: Request, user: dict = Depends(require_
     """Get system status and metrics"""
     uptime = time.time() - api_state.server_start_time
 
-    memory_usage = 0.0
-    cpu_usage = 0.0
+    # Unmeasured must not read as measured: without psutil these stay None
+    # (honest absence), not 0.0 (a claim the process uses no memory).
+    memory_usage = None
+    cpu_usage = None
     if HAS_PSUTIL:
         process = psutil.Process(os.getpid())
         with process.oneshot():

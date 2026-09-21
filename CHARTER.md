@@ -2274,6 +2274,19 @@ json.loads accepts the literals NaN/Infinity by default, so a JSON config
 file can smuggle them into any "numeric" field. The check is
 isinstance(x, (int, float)) AND math.isfinite(x), in that order, before
 any range assertion.
+**Q: When one surface of the same operation tightens a bound, is that a
+choice or a leak?**
+A (2026-09-21): A leak until documented. `/audio/normalize` bound
+target_peak at ge=0.1 while the engine, both CLIs, and the batch API all
+accept (0,1] -- callers saw a 422 for a value that is not wrong. Bounds
+that differ across surfaces of the same operation are defects unless a
+named reason exists (and then they belong in docs, not just pydantic).
+**Q: Is 0.0 an acceptable stand-in for "not measured"?**
+A (2026-09-21): No. `/system/status` reported memory_usage=0.0,
+cpu_usage=0.0 when psutil wasn't installed -- a monitoring system reads
+0.0 MB RSS as a fact, not a missing measurement. Absence of data must be
+representable as absence (null), the same rule analyze already uses for
+fields it cannot compute.
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
