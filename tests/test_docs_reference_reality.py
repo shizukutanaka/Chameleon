@@ -123,3 +123,37 @@ def test_real_imports_are_not_flagged():
     for module in ("core", "main", "bs1770_loudness", "security_validator"):
         assert (PROJECT_ROOT / f"{module}.py").is_file()
     assert "numpy" in EXTERNAL and "pytest" in EXTERNAL
+
+
+# Methods/attributes docs once taught that never existed on the named object.
+# `SecurityValidator.audit_log()` and a bare `validate_url()` were written into
+# the error-recovery playbook as if they were real: the first is a deque on
+# api_server's state object, not a validator method; the second does not exist
+# anywhere -- the CLI makes no outbound requests to validate.
+PHANTOM_APIS = {
+    "SecurityValidator.audit_log(": None,
+    "validator.audit_log(": None,
+    "validate_url(": None,
+}
+
+_DOC_FILES = [p for p in PROJECT_ROOT.glob("**/*.md")
+              if ".venv" not in p.parts and "node_modules" not in p.parts
+              # CHARTER.md is the decision record: it names dead APIs to say
+              # why they were removed, which is not teaching them.
+              and p.name != "CHARTER.md"]
+
+
+@pytest.mark.parametrize("phantom", sorted(PHANTOM_APIS))
+def test_docs_never_reference_the_named_phantom_api(phantom):
+    offenders = [f"{_relative(p)}" for p in _DOC_FILES
+                 if phantom in p.read_text(errors="replace")]
+    assert not offenders, (
+        f"documentation still teaches the phantom API {phantom!r} in: "
+        + ", ".join(offenders))
+
+
+def _relative(path: Path) -> str:
+    try:
+        return str(path.relative_to(PROJECT_ROOT))
+    except ValueError:  # pragma: no cover
+        return str(path)

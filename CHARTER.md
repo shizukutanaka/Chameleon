@@ -2471,3 +2471,29 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, audit 30): Does the error-recovery playbook's example
+code work against the APIs it names?**
+**A:** No -- `docs/en/error_recovery.md` told operators to call
+`SecurityValidator.audit_log()` and blamed URL rejections on a
+`validate_url()`. Neither has ever existed: `audit_log` is a deque on
+api_server's state object (an internal structure, not a validator
+method), and the CLI makes no outbound requests so there is nothing to
+validate a URL against. The playbook example would have raised
+AttributeError on the first retry. `docs/api_documentation.md` carried
+the same phantom: it claimed an unregistered `file_name` (a URL or any
+string) was rejected by `SecurityValidator.validate_url()`; the real
+path is `_get_authorized_file_path` -> 404 "File not registered". Both
+docs now describe the surfaces that exist (the logging framework ->
+$CHAMELEON_LOG_DIR/chameleon.log; CHAMELEON_ALLOWED_ORIGINS is the API's
+CORS allowlist, not an outbound URL gate; 404 on unregistered names), and
+tests/test_docs_reference_reality.py pins the phantom names so they
+cannot be re-taught. Also verified honest this cycle: the brick-wall
+limiter holds its ceiling exactly (-1.0 dBFS output under a -0.18 dBFS
+sine and under a worst-case unit impulse); `execute_with_limits`
+SIGALRM-enforces max_execution_time in 1.0s with the memory limit
+degrading to a logged warning on macOS; session capacity returns 503 at
+max_active_sessions; `process --effects` rejects missing/non-object JSON
+files with INPUT(3); core normalize/trim/convert genuinely stream in
+CHUNK_SIZE chunks (the performance doc's claim is true for the stdlib
+path).
