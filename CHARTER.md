@@ -3252,3 +3252,10 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**2026-09-21 (Socratic audit 125, external-source pass):** `create_manifest`
+interpolated `manifest_name` straight into `manifest_dir / "{name}.json"` --
+`"../escape"` and absolute names wrote the manifest outside the configured
+directory (verified on-device). The name is now required to be a plain
+filename (`Path(name).name` round-trip, no leading dot, non-empty).
+Regression test pins the rejection set.
