@@ -110,3 +110,26 @@ def test_apply_spectral_mask_does_not_renormalize():
         src, 44100, low_gain=0.5, mid_gain=0.5, high_gain=0.5
     )
     assert max(abs(x) for x in out) < 0.3
+
+
+def test_apply_spectral_mask_rejects_nonpositive_sample_rate():
+    # apply_spectral_mask accepted sample_rate <= 0, which mis-mapped every
+    # bin to the low band (negative/zero bin_width) instead of failing.
+    for bad in (0, -44100):
+        try:
+            spectral_utils.apply_spectral_mask([0.1] * 64, bad)
+        except ValueError:
+            continue
+        raise AssertionError(f"sample_rate={bad} was silently accepted")
+
+
+def test_analyze_spectrum_rejects_negative_max_peaks():
+    # peaks[:max_peaks] with a negative count sliced from the end instead of
+    # being rejected -- max_peaks=-1 silently meant "all but the last peak".
+    src = [0.5 * math.sin(2 * math.pi * 440 * i / 44100) for i in range(2000)]
+    try:
+        spectral_utils.analyze_spectrum(src, 44100, max_peaks=-1)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("max_peaks=-1 was silently accepted")

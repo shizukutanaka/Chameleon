@@ -189,6 +189,8 @@ def analyze_spectrum(
 
     if sample_rate <= 0:
         raise ValueError("sample_rate must be a positive integer")
+    if max_peaks < 0:
+        raise ValueError("max_peaks must be non-negative")
 
     buffer = _to_float_sequence(samples)
     if not buffer:
@@ -304,6 +306,8 @@ def apply_spectral_mask(
 ) -> List[float]:
     """Apply a lightweight three-band equaliser."""
 
+    if sample_rate <= 0:
+        raise ValueError("sample_rate must be a positive integer")
     if any(gain < 0 for gain in (low_gain, mid_gain, high_gain)):
         raise ValueError("gain factors must be non-negative")
 

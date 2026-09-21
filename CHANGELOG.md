@@ -487,6 +487,12 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`analyze_spectrum`/`apply_spectral_mask` accepted nonsense scalars
+  silently** — `apply_spectral_mask(sample_rate<=0)` divided the bin
+  spacing by a non-positive rate, mapping every bin to the low band;
+  `analyze_spectrum(max_peaks=-1)` sliced `peaks[:-1]`, silently meaning
+  "all but the last peak". Both now raise `ValueError`, matching the
+  validation their sibling entry points already enforced.
 
 ### Changed
 
