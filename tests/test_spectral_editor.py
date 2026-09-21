@@ -109,3 +109,20 @@ def test_harmonic_enhance_stays_inside_selection():
     assert changed.size > 0
     times = ed.times
     assert all(0.4 <= times[c[1]] <= 0.5 for c in changed)
+
+
+def test_preserve_phase_false_actually_changes_phase():
+    # preserve_phase=False recomputed np.angle(self.stft) on the
+    # unmodified stft -- bit-identical to preserve_phase=True. The knob
+    # selected nothing. False now reconstructs with zero phase.
+    audio = np.sin(2 * np.pi * 220 * np.arange(SAMPLE_RATE) / SAMPLE_RATE) * 0.3
+    outputs = {}
+    for preserve in (True, False):
+        ed = spectral_editor.SpectralEditor(
+            spectral_editor.SpectralEditConfig(preserve_phase=preserve))
+        ed.load_audio(audio, SAMPLE_RATE)
+        sel = ed.select_region(0.4, 0.6, 300, 3000)
+        assert ed.noise_reduce_selection(sel)
+        outputs[preserve] = ed.current_audio.copy()
+
+    assert not np.array_equal(outputs[True], outputs[False])

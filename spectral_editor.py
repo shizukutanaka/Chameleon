@@ -76,11 +76,11 @@ class SpectrogramConfig:
 @dataclass
 class SpectralEditConfig:
     """Configuration for spectral editing operations"""
-    precision: str = "high"  # low, medium, high
-    interpolation: str = "cubic"  # linear, cubic, spectral
+    precision: str = "high"  # reserved: low, medium, high -- not read yet
+    interpolation: str = "cubic"  # linear, cubic
     edge_smoothing: bool = True
     preserve_phase: bool = True
-    quality: str = "high"
+    quality: str = "high"    # reserved -- not read by any operation yet
 
 class SpectrogramProcessor:
     """High-quality spectrogram computation and manipulation"""
@@ -422,11 +422,14 @@ class SpectralEditor:
             reduced_magnitude = magnitude - strength * noise_magnitude
             reduced_magnitude = np.maximum(reduced_magnitude, 0.1 * magnitude)
 
-            # Reconstruct complex STFT
+            # Reconstruct complex STFT. preserve_phase=False means the
+            # phase is genuinely not preserved: reconstruct with zero
+            # phase rather than re-reading np.angle of the unmodified
+            # stft, which produced an identical result.
             if self.config.preserve_phase:
                 self.stft = reduced_magnitude * np.exp(1j * phase)
             else:
-                self.stft = reduced_magnitude * np.exp(1j * np.angle(self.stft))
+                self.stft = reduced_magnitude * np.ones_like(phase, dtype=complex)
 
             # Reconstruct audio
             self.current_audio = self.spectrogram_processor.compute_istft(

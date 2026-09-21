@@ -2471,3 +2471,15 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** Does `SpectralEditConfig.preserve_phase`
+do anything?
+**A:** No -- `noise_reduce_selection` honored it as
+`np.exp(1j * np.angle(self.stft))`, but `self.stft` is unmodified at
+that point, so `np.angle(self.stft)` IS the `phase` captured two lines
+earlier: both branches produced bit-identical output (verified). The
+knob selected nothing -- same phantom-knob class as audits 52/53.
+False now reconstructs with zero phase, a real and defensible
+difference. `precision` and `quality` fields are likewise read by no
+operation; rather than delete config surface without confirmation they
+are now honestly labeled "reserved -- not read yet".
