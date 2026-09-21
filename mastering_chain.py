@@ -489,6 +489,23 @@ class Compressor:
     """Professional audio compressor with advanced features"""
 
     def __init__(self, config: CompressorConfig, sample_rate: int = 44100):
+        # Naked-comparison guards let NaN through and ratio <= 0 either
+        # crashes (1/ratio) or turns "compression" into expansion.
+        for name, value, ok in (
+            ("threshold", config.threshold, math.isfinite(config.threshold)),
+            ("ratio", config.ratio,
+             math.isfinite(config.ratio) and config.ratio >= 1.0),
+            ("attack", config.attack,
+             math.isfinite(config.attack) and config.attack >= 0),
+            ("release", config.release,
+             math.isfinite(config.release) and config.release >= 0),
+            ("knee", config.knee,
+             math.isfinite(config.knee) and config.knee >= 0),
+            ("makeup_gain", config.makeup_gain,
+             math.isfinite(config.makeup_gain)),
+        ):
+            if not ok:
+                raise ValueError(f"invalid compressor {name}: {value}")
         self.config = config
         self.sample_rate = sample_rate
 
@@ -501,7 +518,14 @@ class Compressor:
         self.gain_reduction = 0.0
 
     def process(self, audio: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        """Process audio through compressor, return (audio, gain_reduction)"""
+        """Process audio through compressor, return (audio, gain_reduction)
+
+        One call is one complete buffer: the envelope and gain-reduction
+        state reset so the tail of a previous buffer does not shape the
+        head of this one.
+        """
+        self.envelope = 0.0
+        self.gain_reduction = 0.0
         if audio.ndim == 1:
             return self._process_mono(audio)
         else:
@@ -611,18 +635,32 @@ class Limiter:
     """Professional brick-wall limiter"""
 
     def __init__(self, config: LimiterConfig, sample_rate: int = 44100):
+        for name, value, ok in (
+            ("threshold", config.threshold, math.isfinite(config.threshold)),
+            ("lookahead", config.lookahead,
+             math.isfinite(config.lookahead) and config.lookahead >= 0),
+            ("release", config.release,
+             math.isfinite(config.release) and config.release >= 0),
+        ):
+            if not ok:
+                raise ValueError(f"invalid limiter {name}: {value}")
         self.config = config
         self.sample_rate = sample_rate
 
-        self.lookahead_samples = int(config.lookahead * sample_rate / 1000)
-        self.release_samples = int(config.release * sample_rate / 1000)
+        self.lookahead_samples = max(0, int(config.lookahead * sample_rate / 1000))
+        # max(1, ...): a sub-millisecond release rounding to 0 samples
+        # otherwise divides by zero on the release path.
+        self.release_samples = max(1, int(config.release * sample_rate / 1000))
 
-        # Delay buffer for lookahead
-        self.delay_buffer = np.zeros(self.lookahead_samples)
         self.gain_reduction = 1.0
 
     def process(self, audio: np.ndarray) -> np.ndarray:
-        """Process audio through limiter"""
+        """Process audio through limiter
+
+        One call is one complete buffer: gain state resets so the tail
+        of a previous buffer does not shape the head of this one.
+        """
+        self.gain_reduction = 1.0
         if audio.ndim == 1:
             return self._process_mono(audio)
         else:
@@ -633,14 +671,21 @@ class Limiter:
         output = np.zeros_like(audio)
         threshold_linear = 10**(self.config.threshold / 20)
 
-        # Extend audio with delay buffer
-        extended_audio = np.concatenate([self.delay_buffer, audio])
+        # Pad at the END so the lookahead window exists for the last
+        # samples. The previous version prepended a delay buffer and
+        # emitted extended_audio[i]: every call output its first
+        # lookahead_samples as zeros, dropped the same number of tail
+        # samples, and -- because the delay buffer persisted -- emitted
+        # the previous buffer's tail as this buffer's head. Emitting
+        # audio[i] with a forward window keeps the same gain schedule
+        # with no shift and no dropped tail.
+        extended_audio = np.concatenate(
+            [audio, np.zeros(self.lookahead_samples, dtype=audio.dtype)])
 
         for i in range(len(audio)):
             # Look ahead to find peak
-            lookahead_start = i
-            lookahead_end = i + self.lookahead_samples
-            lookahead_peak = np.abs(extended_audio[lookahead_start:lookahead_end]).max()
+            lookahead_peak = np.abs(
+                extended_audio[i:i + self.lookahead_samples]).max()
 
             # Calculate required gain reduction
             if lookahead_peak > threshold_linear:
@@ -656,11 +701,7 @@ class Limiter:
                 # Release
                 self.gain_reduction += (required_gain - self.gain_reduction) / self.release_samples
 
-            # Apply gain to delayed signal
-            output[i] = extended_audio[i] * self.gain_reduction
-
-        # Update delay buffer
-        self.delay_buffer = audio[-self.lookahead_samples:] if len(audio) >= self.lookahead_samples else audio
+            output[i] = audio[i] * self.gain_reduction
 
         return output
 
@@ -669,18 +710,19 @@ class Limiter:
         output = np.zeros_like(audio)
         threshold_linear = 10**(self.config.threshold / 20)
 
-        # Extend with delay buffer
-        if hasattr(self, 'delay_buffer_stereo'):
-            extended_audio = np.concatenate([self.delay_buffer_stereo, audio], axis=1)
-        else:
-            self.delay_buffer_stereo = np.zeros((audio.shape[0], self.lookahead_samples))
-            extended_audio = np.concatenate([self.delay_buffer_stereo, audio], axis=1)
+        # Zero-pad at the end: lookahead reads ahead of the emitted
+        # sample (same schedule as the mono path) without a delay-line
+        # shift, a zero prefix, or a dropped tail.
+        extended_audio = np.concatenate(
+            [audio,
+             np.zeros((audio.shape[0], self.lookahead_samples),
+                      dtype=audio.dtype)],
+            axis=1)
 
         for i in range(audio.shape[1]):
             # Look ahead - use maximum of both channels
-            lookahead_start = i
-            lookahead_end = i + self.lookahead_samples
-            lookahead_peak = np.abs(extended_audio[:, lookahead_start:lookahead_end]).max()
+            lookahead_peak = np.abs(
+                extended_audio[:, i:i + self.lookahead_samples]).max()
 
             # Calculate gain reduction
             if lookahead_peak > threshold_linear:
@@ -695,12 +737,8 @@ class Limiter:
                 self.gain_reduction += (required_gain - self.gain_reduction) / self.release_samples
 
             # Apply to both channels
-            output[0, i] = extended_audio[0, i] * self.gain_reduction
-            output[1, i] = extended_audio[1, i] * self.gain_reduction
-
-        # Update delay buffer
-        if audio.shape[1] >= self.lookahead_samples:
-            self.delay_buffer_stereo = audio[:, -self.lookahead_samples:]
+            output[0, i] = audio[0, i] * self.gain_reduction
+            output[1, i] = audio[1, i] * self.gain_reduction
 
         return output
 
