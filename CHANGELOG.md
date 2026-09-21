@@ -487,6 +487,15 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`plugins audit` aborted on the first unreadable plugin file** —
+  `_check_module_safety` converted only `SyntaxError` to `SecurityError`,
+  so a non-UTF-8 `.py` (`UnicodeDecodeError`) or a source with embedded
+  NUL bytes (`ast.parse`'s `ValueError`) propagated out of the per-file
+  audit loop: the whole run ended with a bare `Error:` and exit 1, and
+  `--json` printed nothing. Read and parse failures are now converted to
+  `SecurityError`, so the audit records the file `FAILED`, continues to
+  the remaining plugins, emits structured results, and exits
+  `SECURITY(4)`. `load_plugin` reports the same reason for such files.
 
 ### Changed
 

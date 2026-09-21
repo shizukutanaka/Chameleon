@@ -2471,3 +2471,18 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** `plugins audit` promises a per-file
+passed/errors verdict. A `.py` plugin that is not UTF-8, or contains a
+NUL byte, is neither valid syntax nor parseable -- what does the audit
+do with it?
+**A:** Before this fix: crashed the whole run. `_check_module_safety`
+only converted `SyntaxError` to `SecurityError`; `UnicodeDecodeError`
+(non-UTF-8 source) and `ValueError` (ast.parse's "source code string
+cannot contain null bytes") propagated out of the per-file loop, so one
+unreadable plugin aborted the audit with a bare "Error:" -- `plugins
+audit --json` emitted no JSON at all and exited 1 (generic ERROR, not
+SECURITY). Verified live. Read and parse failures are now both converted
+to `SecurityError`, so the audit records the file FAILED, keeps going,
+reports structured results, and exits SECURITY(4). The same conversion
+fixes `load_plugin`'s failure reason for such files.

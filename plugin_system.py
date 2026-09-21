@@ -502,8 +502,13 @@ class PluginLoader:
         try:
             with open(plugin_path, 'r', encoding='utf-8') as f:
                 source = f.read()
-                parsed = ast.parse(source, filename=str(plugin_path))
-        except SyntaxError as exc:
+        except (OSError, UnicodeDecodeError) as exc:
+            raise SecurityError(f"Plugin unreadable: {exc}") from exc
+        try:
+            parsed = ast.parse(source, filename=str(plugin_path))
+        except (SyntaxError, ValueError) as exc:
+            # ValueError covers embedded NUL bytes, which ast.parse reports
+            # as "source code string cannot contain null bytes".
             raise SecurityError(f"Plugin contains invalid syntax: {exc}") from exc
 
         for node in ast.walk(parsed):

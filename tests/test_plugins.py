@@ -304,3 +304,53 @@ def test_load_plugin_limits_all_plugin_code_sites(tmp_path, hang_site):
     with pytest.raises(TimeoutError, match="timed out"):
         loader.load_plugin(plugin)
     assert time.monotonic() - t0 < 10
+
+
+def test_check_module_safety_rejects_unreadable_plugin(tmp_path):
+    """A non-UTF-8 .py file used to escape the audit contract: only
+    SyntaxError was converted to SecurityError, so UnicodeDecodeError
+    propagated past `plugins audit`'s per-file record and aborted the
+    whole audit with a bare traceback (verified: one bad file ended the
+    run with exit 1 and no JSON)."""
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / "binary.py"
+    bad.write_bytes(b"\xff\xfe\x00binary")
+
+    with pytest.raises(SecurityError, match="unreadable"):
+        loader._check_module_safety(bad)
+
+
+def test_check_module_safety_rejects_nul_byte_plugin(tmp_path):
+    """ast.parse reports embedded NULs as ValueError, not SyntaxError --
+    same escape hatch as the encoding case."""
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / "nul.py"
+    bad.write_bytes(b"x = 1\n\x00evil")
+
+    with pytest.raises(SecurityError, match="invalid syntax"):
+        loader._check_module_safety(bad)
+
+
+def test_plugins_audit_continues_past_unreadable_file(tmp_path):
+    """The audit's contract is a per-file passed/errors record. A file it
+    cannot read must be recorded FAILED and auditing must continue to the
+    remaining files, exiting SECURITY -- verified: pre-fix the run died
+    on the first unreadable file and audited nothing after it."""
+    import json
+    import subprocess
+    import sys
+    main_py = str(Path(__file__).resolve().parent.parent / "main.py")
+
+    (tmp_path / "ok.py").write_text("x = 1\n")
+    (tmp_path / "binary.py").write_bytes(b"\xff\xfebinary")
+
+    out = subprocess.run(
+        [sys.executable, main_py, "plugins", "audit",
+         "--directory", str(tmp_path), "--json"],
+        capture_output=True, text=True, timeout=30)
+    assert out.returncode == 4  # ExitCode.SECURITY
+    payload = json.loads(out.stdout[out.stdout.index("{"):])
+    results = {r["path"].rsplit("/", 1)[-1]: r for r in payload["results"]}
+    assert results["ok.py"]["passed"] is True
+    assert results["binary.py"]["passed"] is False
+    assert "unreadable" in results["binary.py"]["errors"][0]
