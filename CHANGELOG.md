@@ -487,6 +487,12 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **Pinned the stdlib-only signal paths in `spectral_utils`** —
+  `linear_resample` preserves frequency (440 Hz tone measures 439 Hz
+  after both 2x up- and down-sampling) and peak; `apply_spectral_mask`'s
+  three-band EQ measurably removes the targeted band and rejects
+  negative gains. These are the documented fallback when numpy/scipy are
+  absent — the block-wise DFT does not drop the tail.
 
 ### Changed
 

@@ -2471,3 +2471,17 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, audit 38): Do the stdlib fallback signal paths in
+spectral_utils actually work?**
+**A:** Yes -- verified and pinned. linear_resample preserves frequency
+(440 Hz tone measured 439 Hz after 2x up and 2x down) and peak; the
+three-band apply_spectral_mask measurably removes the targeted band
+(high_gain=0 -> output rms equals the low component within 0.05) and
+rejects negative gains. The block-wise DFT path (4096-sample blocks
+without numpy) does not drop the tail. Also verified honest this cycle:
+ClickRemover detects and attenuates clicks (approximate repair, as
+labeled); repair_audio wires only declip/dehum, gates deps, orders
+canonically, and rescales restored crests so the format clamp does not
+re-clip them; /audit/log limit has a lower bound and the deque itself
+caps at 10k entries; no MIDI-file reader is claimed or present.
