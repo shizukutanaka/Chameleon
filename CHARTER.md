@@ -2471,3 +2471,19 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+
+**Q (2026-09-21, audit 50): Does secure_open's mode parsing actually
+route every write-capable mode through the hardened path?**
+**A:** No -- one defect fixed. `writing = "w" in mode or "a" in mode`
+missed every other write-capable mode: 'r+' opened read-write through
+the *read* path (no O_NOFOLLOW, no 0o600), 'x' created files via plain
+open() unvalidated, and 'w+' opened O_WRONLY so the read-back it
+promises raised UnsupportedOperation. Modes are now mapped properly:
+'+' -> O_RDWR (not O_WRONLY), 'r+' keeps no O_CREAT, w/a/x map to
+TRUNC/APPEND/EXCL. Regression tests pin r+ in-place writes, 'x'
+creating 0o600 files, w+ read-back, and symlink refusal under r+.
+validate_audio_content was probed alongside: it is honestly
+*lightweight* by docstring -- unknown bytes pass and the WAV parser is
+the real gate; no claim exceeded.
+ (Socratic audit 50: write-capable open modes bypassed secure_open hardening)

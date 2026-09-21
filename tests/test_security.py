@@ -330,3 +330,65 @@ class TestSecurityConfigFromEnvironment:
         with pytest.warns(UserWarning, match="does not exist"):
             cfg = SecurityConfig.from_environment()
         assert str(tmp_path / "ghost") in cfg.trusted_roots
+
+
+class TestSecureOpenModes:
+    """secure_open's mode parsing: '+'/'x'/'w+' must take the write path."""
+
+    def test_rplus_uses_write_path_and_stays_writable(self, tmp_path):
+        from security_validator import SecureFileOperations
+        trusted = tmp_path / "trusted"
+        trusted.mkdir()
+        target = trusted / "data.txt"
+        target.write_text("original")
+        ops = SecureFileOperations(SecurityValidator(
+            SecurityConfig(trusted_roots={str(trusted)})))
+
+        with ops.secure_open(target, "r+") as f:
+            f.write("CHANGED")  # r+ overwrites in place, no truncate
+            f.truncate()
+            f.seek(0)
+            assert f.read() == "CHANGED"
+
+    def test_x_exclusive_create_with_restrictive_perms(self, tmp_path):
+        from security_validator import SecureFileOperations
+        trusted = tmp_path / "trusted"
+        trusted.mkdir()
+        target = trusted / "new.txt"
+        ops = SecureFileOperations(SecurityValidator(
+            SecurityConfig(trusted_roots={str(trusted)})))
+
+        with ops.secure_open(target, "x") as f:
+            f.write("fresh")
+        assert target.exists()
+        assert (target.stat().st_mode & 0o777) == 0o600
+
+    def test_wplus_can_read_back_what_it_wrote(self, tmp_path):
+        # Previously 'w+' took O_WRONLY, so the read-back this mode
+        # promises raised io.UnsupportedOperation.
+        from security_validator import SecureFileOperations
+        trusted = tmp_path / "trusted"
+        trusted.mkdir()
+        target = trusted / "rw.txt"
+        ops = SecureFileOperations(SecurityValidator(
+            SecurityConfig(trusted_roots={str(trusted)})))
+
+        with ops.secure_open(target, "w+") as f:
+            f.write("abc")
+            f.seek(0)
+            assert f.read() == "abc"
+
+    def test_rplus_on_symlink_refused(self, tmp_path):
+        from security_validator import SecureFileOperations
+        trusted = tmp_path / "trusted"
+        trusted.mkdir()
+        real = trusted / "real.txt"
+        real.write_text("x")
+        link = trusted / "link.txt"
+        link.symlink_to(real)
+        ops = SecureFileOperations(SecurityValidator(
+            SecurityConfig(trusted_roots={str(trusted)})))
+
+        with pytest.raises(OSError):
+            with ops.secure_open(link, "r+"):
+                pass

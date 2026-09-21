@@ -332,13 +332,22 @@ class SecureFileOperations:
         Write/append modes create the file with restrictive 0o600 permissions and
         refuse to follow symlinks (mirrors ``core.open_secure``).
         """
-        writing = "w" in mode or "a" in mode
+        writing = "w" in mode or "a" in mode or "x" in mode or "+" in mode
         operation = "write" if writing else "read"
         self.validator.validate_file_path(path, operation=operation)
 
         if writing:
-            flags = os.O_WRONLY
-            flags |= os.O_CREAT | (os.O_APPEND if "a" in mode else os.O_TRUNC)
+            # '+' turns any mode into read-write; without O_RDWR here an
+            # 'r+'/'w+'/'a+' open would bypass the write hardening below.
+            flags = os.O_RDWR if "+" in mode else os.O_WRONLY
+            if "r" not in mode:
+                flags |= os.O_CREAT
+                if "a" in mode:
+                    flags |= os.O_APPEND
+                elif "w" in mode:
+                    flags |= os.O_TRUNC
+                elif "x" in mode:
+                    flags |= os.O_EXCL
             if hasattr(os, "O_NOFOLLOW"):
                 flags |= os.O_NOFOLLOW
             if hasattr(os, "O_BINARY"):
