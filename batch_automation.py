@@ -166,7 +166,10 @@ def _configure_logging() -> None:
     _LOGGING_CONFIGURED = True
 
 
-_configure_logging()
+# Deferred to first use: configuring logging here created
+# ~/.chameleon/logs/batch_automation.log at *import* time -- a filesystem
+# write as a side effect of importing the module (same class of defect
+# fixed in core.py's eager BatchProcessor singleton).
 
 
 class ResultProxy:
@@ -545,6 +548,7 @@ class TaskExecutor:
     """Execute individual tasks"""
 
     def __init__(self, max_workers: int = 4):
+        _configure_logging()
         self.max_workers = max_workers
         self.thread_pool = ThreadPoolExecutor(max_workers=max_workers)
         self.process_pool = ProcessPoolExecutor(max_workers=max_workers)
@@ -615,6 +619,7 @@ class WorkflowEngine:
 
     def __init__(self, max_parallel: int = 4):
         self.max_parallel = max_parallel
+        _configure_logging()
         self.executor = TaskExecutor(max_parallel)
         self.task_queue = TaskQueue()
         self.dep_graph = DependencyGraph()
@@ -789,6 +794,7 @@ class BatchScheduler:
     """Schedule batch jobs"""
 
     def __init__(self):
+        _configure_logging()
         self.scheduled_jobs = {}
         self.running = False
         self.thread = None

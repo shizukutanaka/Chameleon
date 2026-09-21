@@ -2471,3 +2471,20 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, audit 29):** Any other shipped module writing to the
+user's HOME at *import* time? (`import core` did until audit 22.)
+**A:** Yes -- `import batch_automation` ran `_configure_logging()` at
+module level, creating ~/.chameleon/logs + a RotatingFileHandler before
+anyone ran a workflow. The classes that actually log
+(WorkflowEngine/TaskExecutor/BatchScheduler, sharing the
+"batch_automation" logger via getLogger(__name__)) now trigger the
+configuration in their __init__s -- importing is pure, first use still
+gets the rotating file. Verified live under an isolated HOME: import
+leaves it empty, construction materializes the log dir. API claims
+verified honest this cycle: X-Request-ID is generated when absent and
+echoed when sent; X-Content-Type-Options/X-Frame-Options/
+Referrer-Policy/Cache-Control present on every response; HSTS correctly
+withheld on plain HTTP. `process --output` rejects a non-directory;
+plugins CLI honestly offers only list/audit (execute_plugin stays a
+library surface).
