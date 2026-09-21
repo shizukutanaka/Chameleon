@@ -2471,3 +2471,29 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21):** `SpectralEditor` and the `audio_restoration` component
+classes are public and callable without their wrapper -- what happens
+when they're used in orders and inputs the wrapper never produces?
+**A:** Two failure shapes, both dishonest. (1) Every `SpectralEditor`
+method assumed `load_audio` had run: `export_current_audio`,
+`reset_to_original`, `get_spectrogram_data`, `select_region`,
+`copy_selection`, `get_selection_mask` all died on AttributeError
+('SpectralEditor' object has no attribute 'stft') -- the object's own
+state leaking as an exception. A `_require_loaded` guard now names the
+contract ("call load_audio() before editing"); bool-returning ops
+(paste/interpolate) keep returning False with the reason logged, matching
+undo's existing contract. `load_audio` itself also accepted empty audio
+and returned a fabricated (1025, 1) spectrogram with duration 0, and a
+non-positive sample_rate produced NaN time axes -- both now rejected at
+the door. (2) The restoration components disagreed about empty input:
+ClickRemover returned the empty array while HumRemover died inside
+np.fft.rfft, DeclippingProcessor inside np.max, CrackleRemover emitted a
+RuntimeWarning that the -W error DSP gate turns into a failure, and
+AdaptiveDenoiser's profile estimator died inside librosa. All now handle
+empty input the way the sibling removers do (return it unchanged) or name
+it, and remove_hum rejects sample_rate <= 0 before it can divide by it.
+Also: `remove_clicks` detected clicks at the file edges and then silently
+skipped them (it required >20 samples of context on both sides) -- the
+spike survived at full amplitude. Edge clicks now get a one-sided fill,
+the same convention repair_gaps adopted for boundary gaps.
