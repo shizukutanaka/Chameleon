@@ -3252,3 +3252,17 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, audit 44): Does the chunk-walking WAV parser survive
+adversarial byte streams, and is the degradation machinery honest?**
+**A:** Zero new defects. Probed and verified: truncated RIFF, non-RIFF
+magic, chunk_size > file_size, fmt-only, odd-chunk pad bytes,
+data-before-fmt ordering, and float files (rejected with an honest
+PCM-only reason) are all handled; _MAX_WAV_CHUNKS bounds the walk.
+ServiceDegradationManager's level transitions behave as documented
+(clean -> stabilised/full, >=50% failure -> minimal, timeout -> basic)
+and ErrorAnalyzer maps OSError classes to severities with recovery
+hints. get_samples_for_analysis bounds per-frame and decodes
+interleaved channels exactly (separate_channels verified at sample
+precision). New regression tests pin the oversized-chunk rejection,
+data-before-fmt ordering, and exact channel separation.

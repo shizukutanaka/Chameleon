@@ -487,6 +487,10 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **Pinned WAV parser adversarial edges** — regression tests now cover
+  `chunk_size > file_size` rejection, `data`-before-`fmt` ordering, and
+  exact per-channel interleave splitting in `get_samples_for_analysis`
+  (`separate_channels=True`).
 
 ### Changed
 
