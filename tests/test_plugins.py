@@ -53,6 +53,44 @@ def test_check_module_safety_rejects_frame_reaching_attrs(tmp_path, attr):
         loader._check_module_safety(Path(bad))
 
 
+@pytest.mark.parametrize(
+    "template",
+    ["{0.__class__}", "{0.__class__.__mro__}", "{x.f_globals}",
+     "{0.__globals__[__builtins__]}", "{0.tb_frame}"],
+)
+def test_check_module_safety_rejects_format_field_escape(tmp_path, template):
+    """str.format field specs perform attribute access at call time with
+    no ast.Attribute node: "{0.__class__}".format(x) reached __mro__ and
+    f_globals while passing the audit."""
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / "bypass_format.py"
+    bad.write_text(f"def f(x):\n    return \"{template}\".format(x)\n")
+
+    with pytest.raises(SecurityError, match="Unsafe format field"):
+        loader._check_module_safety(Path(bad))
+
+
+def test_check_module_safety_accepts_plain_format(tmp_path):
+    """Ordinary format fields (no attribute traversal) stay legal."""
+    loader = PluginLoader(PluginConfig())
+    good = tmp_path / "good_format.py"
+    good.write_text(
+        "def f(name, count):\n"
+        "    return \"{name}: {count} done\".format(name=name, count=count)\n")
+
+    loader._check_module_safety(Path(good))
+
+
+def test_check_module_safety_rejects_format_map_escape(tmp_path):
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / "bypass_format_map.py"
+    bad.write_text(
+        "def f(ns):\n    return \"{k.__class__}\".format_map(ns)\n")
+
+    with pytest.raises(SecurityError, match="Unsafe format field"):
+        loader._check_module_safety(Path(bad))
+
+
 def test_check_module_safety_rejects_unsafe_plugin(tmp_path):
     loader = PluginLoader(PluginConfig())
     bad = tmp_path / "bad_plugin.py"
