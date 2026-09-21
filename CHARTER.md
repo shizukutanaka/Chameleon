@@ -3252,3 +3252,26 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**2026-09-21 (Socratic audit 109):** Probed the distribution layer
+(`setup.py` vs `pyproject.toml`) and the last unchecked validation surface:
+
+- `SanitizationEngine.sanitize_wav_metadata` never checked the container
+  magic -- its contract is a valid metadata-stripped WAV, yet a PNG came out
+  "sanitized" as a 12-byte file starting with `\x89PNG`, and a 5-byte input
+  produced 7 bytes of garbage (verified on-device). The header is now
+  validated before the output file is opened, so a refused call also leaves
+  no zero-byte artifact at `output_path`. The chunk-size misaccounting on
+  truncated declarations is a separate defect already fixed on an open PR --
+  not re-fixed here.
+- Verified honest: `setup.py` is a true mirror of `pyproject.toml`
+  (`[project.scripts] chameleon = "main:cli"` resolves and prints 1.1.0,
+  extras match the README, `install_requires` is empty), and
+  `batch_automation`'s condition-expression evaluator is a real
+  whitelist-AST sandbox -- `generic_visit` denies every unlisted node type,
+  attribute access is limited to `ResultProxy.{status,success,error}`,
+  subscripts are string-keyed on `results` only, chained comparisons keep
+  Python semantics, boolean ops short-circuit, and a 200-node cap bounds
+  complexity. `api_server`'s audit log is a bounded deque (10k) and
+  `/batch/status`'s `BatchJobStatus(**job_data)` fields all exist at job
+  creation.

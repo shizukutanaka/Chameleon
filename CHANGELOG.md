@@ -487,6 +487,10 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- `SanitizationEngine.sanitize_wav_metadata` never checked the container
+  magic: a PNG came out "sanitized" as a file starting with `\x89PNG`, and
+  truncated inputs produced garbage outputs. The header is now validated
+  before the output file is opened — refused input leaves no artifact.
 
 ### Changed
 
