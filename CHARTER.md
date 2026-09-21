@@ -2610,6 +2610,20 @@ disables) rejects oversized submissions with 413 at submit time
 body too — a cap on a referenced resource does not cap the reference
 list.
 
+**Q: The chunk walker is hardened — does the *sanitizer* trust the same
+declared sizes?**
+A (2026-09-20): It did. `SanitizationEngine.sanitize_wav_metadata` read
+`infile.read(chunk_size)` straight from the file's own header: a
+crafted header declaring a huge chunk drove an attacker-sized
+allocation, and on a truncated file `read()` returned fewer bytes than
+declared while `total_size` advanced by the *declared* length — the
+rewritten RIFF header claimed bytes that were never copied. The walker
+now rejects any declared chunk exceeding the remaining file bytes
+before reading, so a malformed input fails closed instead of producing
+a lying output (`tests/test_sanitize_chunk_bounds.py`). General lesson:
+every *second* reader of a length-prefixed format re-earns the
+validation — the inspector's checks do not transfer to the sanitizer.
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
