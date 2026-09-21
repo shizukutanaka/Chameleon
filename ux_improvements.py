@@ -4,6 +4,7 @@ UX Improvements Module for Chameleon Audio System
 Provides progress indicators, better error messages, and user-friendly output
 """
 
+import math
 import sys
 import time
 import shutil
@@ -212,9 +213,18 @@ class TableFormatter:
 
         align = align or ['left'] * len(headers)
 
+        # Normalize ragged rows: a cell beyond the header count used to
+        # crash the width loop with IndexError, and a missing cell left
+        # the row silently short. Extra cells are dropped, missing ones
+        # render empty -- a display helper should degrade, not die.
+        normalized = [
+            list(row)[:len(headers)] + [""] * max(0, len(headers) - len(row))
+            for row in rows
+        ]
+
         # Calculate column widths
-        widths = [len(h) for h in headers]
-        for row in rows:
+        widths = [len(str(h)) for h in headers]
+        for row in normalized:
             for i, cell in enumerate(row):
                 widths[i] = max(widths[i], len(str(cell)))
 
@@ -238,7 +248,7 @@ class TableFormatter:
         lines.append("-" * len(header_line))
 
         # Format rows
-        for row in rows:
+        for row in normalized:
             row_line = " | ".join(
                 fmt.format(str(cell))
                 for fmt, cell in zip(formats, row)
@@ -309,6 +319,8 @@ class ColorText:
 
 def format_file_size(bytes: int) -> str:
     """Format bytes as human-readable size"""
+    if not isinstance(bytes, (int, float)) or not math.isfinite(bytes) or bytes < 0:
+        return "unknown"
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
         if bytes < 1024:
             return f"{bytes:.1f} {unit}"
@@ -318,6 +330,8 @@ def format_file_size(bytes: int) -> str:
 
 def format_duration(seconds: float) -> str:
     """Format seconds as human-readable duration"""
+    if not math.isfinite(seconds) or seconds < 0:
+        return "unknown"
     if seconds < 1:
         return f"{seconds*1000:.0f}ms"
     elif seconds < 60:
