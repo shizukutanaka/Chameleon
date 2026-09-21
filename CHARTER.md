@@ -3252,3 +3252,16 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** `create_quick_commands` embeds user-supplied
+paths (`audio_library`, `output_directory`) inside single-quoted alias
+bodies in `~/.chameleon/aliases.sh` — a file the user is then told to
+`source`. What does a path containing an apostrophe do to that file?
+**A:** It broke it. `/Users/o'brien/music` terminated the quoted body
+early: `bash -n` rejected the whole file with an unterminated quote, and
+anything after the apostrophe would have executed as shell on `source` —
+setup reported "Quick commands created" on a file that was at best dead
+and at worst executing the rest of the path as commands. Every embedded
+path is now `shlex.quote`d for bash and backtick-escaped (`` ` ``,
+`"`, `$`) in the generated PowerShell, so the file that setup claims to
+have written is the file that actually parses.
