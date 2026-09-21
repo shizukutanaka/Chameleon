@@ -170,7 +170,10 @@ Positional: `directory` then one of
 
 ### `midi`
 
-MIDI analysis and composition (pure standard library).
+MIDI analysis and composition. `compose`/`generate` are pure standard
+library; `extract`/`analyze` read audio into arrays and require numpy
+(install the `[audio]` extra) — they refuse with a hint on a bare
+install.
 
 ```bash
 chameleon midi extract --input song.wav --output song.mid

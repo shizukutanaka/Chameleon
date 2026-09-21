@@ -2274,6 +2274,14 @@ json.loads accepts the literals NaN/Infinity by default, so a JSON config
 file can smuggle them into any "numeric" field. The check is
 isinstance(x, (int, float)) AND math.isfinite(x), in that order, before
 any range assertion.
+**Q: Is "pure standard library" a property of the module or the
+operation?**
+A (2026-09-21): The operation. `midi_analysis` imports cleanly on a bare
+install -- compose and generate run -- but extract/analyze fail the
+moment a WAV must become an array, because decode needs numpy. A
+module-level claim ("pure stdlib") hid an operation-level split. Label
+the granularity the user experiences, not the import graph: the same
+module can be stdlib to import and extras-gated to use.
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented

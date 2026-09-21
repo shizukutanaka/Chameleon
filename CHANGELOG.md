@@ -55,6 +55,12 @@
 
 ### Fixed
 
+- **Docs claimed `midi` is "pure standard library"** -- `extract` and
+  `analyze` read audio into arrays and require numpy (they refuse with
+  an `[audio]` hint on a bare install). `compose`/`generate` genuinely
+  are stdlib-only. The en/ja command docs and the README module list now
+  state the split, and two stdlib-blocked subprocess tests pin both
+  sides of it.
 - **`--convert-bit-depth 32` wrote an IEEE-float WAV that Chameleon
   itself cannot read** -- `save_audio` mapped bit depth 32 to
   soundfile's `FLOAT` subtype (format tag 3), so the converted artifact

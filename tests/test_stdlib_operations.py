@@ -229,3 +229,30 @@ def test_a_batch_of_mixed_channel_counts_all_succeeds(blocker_dir, tmp_path):
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "2/2" in result.stdout
+
+
+def test_midi_compose_runs_without_numpy(blocker_dir, tmp_path):
+    """compose/generate are pure-stdlib claims; pin that they still work
+    when numpy is unimportable."""
+    out = tmp_path / "c.mid"
+    result = _run_cli(blocker_dir, "midi", "compose", "--output", str(out))
+    assert result.returncode == 0, result.stderr
+    assert out.read_bytes()[:4] == b"MThd"
+
+
+def test_midi_extract_and_analyze_refuse_cleanly_without_numpy(
+        blocker_dir, tmp_path):
+    """The doc split: extract/analyze need numpy for audio->array. They must
+    refuse with the [audio] hint, not crash."""
+    source = tmp_path / "in.wav"
+    _write_stereo_wav(source)
+
+    for op in ("extract", "analyze"):
+        args = ["midi", op, "--input", str(source)]
+        if op == "extract":
+            args += ["--output", str(tmp_path / "o.mid")]
+        result = _run_cli(blocker_dir, *args)
+        combined = result.stdout + result.stderr
+        assert result.returncode == 1, (op, combined)
+        assert "numpy" in combined.lower()
+        assert "[audio]" in combined
