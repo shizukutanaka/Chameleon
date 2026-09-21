@@ -598,3 +598,30 @@ def test_convert_bit_depth_32_writes_pcm_not_float(tmp_path):
     assert fmt_off > 0
     format_tag = int.from_bytes(body[fmt_off + 8:fmt_off + 10], "little")
     assert format_tag == 1  # PCM, not IEEE float (3)
+
+
+def test_midi_extract_tempo_reaches_the_file(tmp_path):
+    """extract accepts --tempo (the op-scoped gate names compose/extract/
+    generate) and the value must actually land in the written file's FF 51
+    03 event -- an accepted-but-ignored flag is a defect."""
+    pytest.importorskip("numpy")  # extract decodes audio into arrays
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    out = tmp_path / "e.mid"
+    result = _run("midi", "extract", "--input", str(wav), "--tempo", "140",
+                  "--output", str(out), cwd=str(tmp_path))
+    assert result.returncode == 0, result.stderr
+    data = out.read_bytes()
+    i = data.find(b"\xff\x51\x03")
+    assert i >= 0, "no tempo meta-event in extracted file"
+    uspq = int.from_bytes(data[i+3:i+6], "big")
+    assert uspq == 428_571  # 140 BPM
+
+
+def test_process_rejects_duplicate_input_upfront(tmp_path):
+    """`process` refuses the same file twice: the second run would either
+    overwrite its sibling or silently skip it -- both are dishonest."""
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    result = _run("process", str(wav), str(wav), "--mono",
+                  cwd=str(tmp_path))
+    assert result.returncode == 3  # ExitCode.INPUT
+    assert "Duplicate" in result.stderr

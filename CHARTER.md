@@ -2432,3 +2432,17 @@ any range assertion.
   the artifact was rejected by the dependency-free parser it ships with.
   Verify writer output against the first-party reader, not just the
   library's subtype list.
+
+**Q: When a sweep finds nothing, what is left to fix?**
+
+A (2026-09-21): The verified-but-unpinned. This cycle probed the midi
+flag matrix, duplicate CLI inputs, ghost names in batch submits, the
+dev-credential path, hidden files, and six-channel PCM — all honest. The
+remaining risk is drift: a behavior verified today and refactored away
+tomorrow fails no one until a user notices. So the cycle pinned what it
+proved: `midi extract --tempo` genuinely reaches the file's FF 51 03
+event (an accepted-but-ignored flag is the same defect class as an
+unknown one — the gate message names extract because extract consumes
+it), `batch/submit` 404s an unregistered name at submit time, and
+`process` refuses duplicate inputs before any work. Zero new defects is
+the converged state; the tests make it stay converged.

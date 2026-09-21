@@ -582,3 +582,17 @@ def test_audit_log_is_bounded():
     for i in range(cap + 50):
         api_server.log_audit_event("u", "OP", "res", "SUCCESS", "", "ip", "")
     assert len(api_server.api_state.audit_log) == cap
+
+
+def test_batch_submit_rejects_unregistered_file_names(client):
+    """A job listing names that were never uploaded must be refused at
+    submit time (404), not queued to fail per-file."""
+    token = _login(client).json()["token"]
+    response = client.post(
+        "/batch/submit",
+        json={"files": ["ghost_that_was_never_uploaded.wav"],
+              "operation": "analyze"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 404
+    assert "not registered" in response.json()["detail"].lower()
