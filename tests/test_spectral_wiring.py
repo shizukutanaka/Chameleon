@@ -16,6 +16,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 import core
 import spectral_utils
 from tests._helpers import write_sine_wave
@@ -110,3 +112,16 @@ def test_apply_spectral_mask_does_not_renormalize():
         src, 44100, low_gain=0.5, mid_gain=0.5, high_gain=0.5
     )
     assert max(abs(x) for x in out) < 0.3
+
+
+def test_sliding_window_rms_returns_empty_for_empty_input():
+    # window_size collapsed to len(buffer)=0 and the loop divided by it --
+    # a statistics helper raising ZeroDivisionError on the empty case.
+    assert spectral_utils.sliding_window_rms([], 4) == []
+    assert spectral_utils.sliding_window_rms([], 1) == []
+
+
+def test_analyze_spectrum_finds_a_known_tone():
+    sig = [0.5 * math.sin(2 * math.pi * 440 * i / 44100) for i in range(8192)]
+    report = spectral_utils.analyze_spectrum(sig, 44100)
+    assert report.dominant_peaks[0].frequency_hz == pytest.approx(440, abs=2)

@@ -2471,3 +2471,14 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** `spectral_utils.sliding_window_rms` is a
+statistics helper -- what does it do with an empty input?
+**A:** `window_size` collapsed to `len(buffer)` = 0 and the first window
+step divided by it -- ZeroDivisionError from a helper whose only other
+failure mode is a clean ValueError for `window_size <= 0`. Empty input
+now returns [] before the window collapses. Also verified honest:
+`analyze_spectrum` finds a 440 Hz tone within a bin (parabolic
+refinement: 440.3 Hz), reports real RMS/DC, and empty samples raise a
+clean ValueError; `normalize_peak` on empty/all-zero input returns the
+input unchanged rather than inventing a peak.
