@@ -459,3 +459,20 @@ def test_generate_melody_still_generates_for_valid_length():
     chord = Chord(root=0, chord_type="major", notes=[0, 4, 7],
                   start_time=0.0, duration=8.0)
     assert len(composer.generate_melody([chord], key, length=8.0)) == 16
+
+
+def test_generate_midi_file_rejects_out_of_range_pitch_and_velocity(tmp_path):
+    # Pitch and velocity are 7-bit fields. pitch=128 emits byte 0x80 -- a
+    # note-off STATUS byte -- inside an event, corrupting the stream for
+    # every parser that reads the file.
+    analyzer = MIDIAnalyzer()
+    out = tmp_path / "bad.mid"
+    assert analyzer.generate_midi_file(
+        [MIDINote(128, 80, 0.0, 0.5)], str(out)) is False
+    assert not out.exists()
+    assert analyzer.generate_midi_file(
+        [MIDINote(60, 200, 0.0, 0.5)], str(out)) is False
+    assert not out.exists()
+    # Boundary values still write.
+    assert analyzer.generate_midi_file(
+        [MIDINote(127, 127, 0.0, 0.5)], str(out)) is True
