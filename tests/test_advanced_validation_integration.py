@@ -165,3 +165,17 @@ def test_main_block_self_test_writes_no_state_into_the_real_home(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "Verification: True" in result.stdout
     assert not (home / ".chameleon").exists()
+
+
+def test_inspect_file_rejects_wav_header_with_no_chunks(tmp_path):
+    """The deep inspector's verdict must reflect the structure it
+    detected: a RIFF/WAVE stub with no fmt or data chunk is not a
+    playable WAV, and _validate_wav_structure already writes the
+    "Missing data chunk" error into metadata -- but inspect_file used to
+    leave that in metadata while reporting is_valid=True."""
+    stub = tmp_path / "header_only.wav"
+    stub.write_bytes(b"RIFF" + struct.pack("<I", 4) + b"WAVE")
+
+    result = DeepFileInspector().inspect_file(stub)
+    assert result.is_valid is False
+    assert any("data" in e or "fmt" in e for e in result.errors)

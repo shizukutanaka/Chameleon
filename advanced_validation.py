@@ -99,6 +99,12 @@ class DeepFileInspector:
             if file_type.startswith('WAV'):
                 wav_validation = self._validate_wav_structure(file_path)
                 metadata.update(wav_validation)
+                # A structural error (missing fmt/data chunk, truncated
+                # header) means this is not a playable WAV: it must fail
+                # the verdict, not ride along as metadata while
+                # is_valid reports True.
+                if "error" in wav_validation:
+                    errors.append(wav_validation["error"])
 
             # Check file permissions
             if stats.st_mode & 0o111:  # Executable bit set
