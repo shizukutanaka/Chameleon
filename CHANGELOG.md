@@ -55,6 +55,10 @@
 
 ### Fixed
 
+- **`POST /batch/submit` accepted `files: []`** -- an empty job queued,
+  "processed", and reported `completed` -- a success that never
+  happened, inconsistent with the CLI's "No valid audio files" refusal.
+  The schema now requires `min_items=1` (422 at submit time).
 - **`--convert-bit-depth 32` wrote an IEEE-float WAV that Chameleon
   itself cannot read** -- `save_audio` mapped bit depth 32 to
   soundfile's `FLOAT` subtype (format tag 3), so the converted artifact
