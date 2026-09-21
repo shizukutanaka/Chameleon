@@ -2274,6 +2274,19 @@ json.loads accepts the literals NaN/Infinity by default, so a JSON config
 file can smuggle them into any "numeric" field. The check is
 isinstance(x, (int, float)) AND math.isfinite(x), in that order, before
 any range assertion.
+**Q: When a gate validates for an operation downstream, whose domain does
+the gate check?**
+A (2026-09-21): The operation's -- not the type's. BatchProcessor's
+option gate read `0.0 <= x <= 1.0` for target_peak and threshold because
+those are float-domain bounds; the ops they feed accept (0,1] and (0,1)
+respectively. A gate that admits what the operation rejects converts one
+fast refusal into N per-file failures. State the open/closed shape
+truthfully in the message, not a vague "between 0.0 and 1.0".
+**Q: Does `--json` contract end where the failures begin?**
+A (2026-09-21): No -- failures are the part a machine consumer needs
+most. `process --json` printed records only for successes; total failure
+yielded empty stdout. Error results and the pre-flight sentinel now
+serialize as the same record shape.
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented

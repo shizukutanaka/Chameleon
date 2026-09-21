@@ -627,3 +627,38 @@ def test_direct_api_normalize_rejects_out_of_range_target_peak(tmp_path):
         output_dir=str(out_dir), target_peak=0.5)
     assert "error" not in results[0], results
     assert 0.49 < _peak(out_file) < 0.51
+
+
+# -- process --json describes failures, not just successes -------------------
+
+def test_process_json_emits_error_record_when_every_file_fails(tmp_path):
+    """`--json` promises structured output; a total failure used to print
+    nothing to stdout -- a consumer can't tell 'nothing ran' from 'all
+    failed'. Now failures are JSON records too."""
+    bad = tmp_path / "bad.wav"
+    bad.write_bytes(b"not a wav file")
+    result = _run("process", str(bad), "--normalize", "--json",
+                  cwd=str(tmp_path))
+    assert result.returncode == 3  # INPUT
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    assert payload["operation"] == "normalize"
+    assert "error" in payload["result"]
+    # The pre-flight sentinel carries the classified exit code the process
+    # will exit with -- INPUT(3) for input-validation rejections.
+    assert payload["result"]["exit_code"] == 3
+
+
+def test_process_json_mixed_batch_reports_each_outcome(tmp_path):
+    """Partial failure must not silently drop the failures: stdout carries
+    one JSON record per file, successes and errors alike."""
+    write_sine_wave(tmp_path / "good.wav")
+    bad = tmp_path / "bad.wav"
+    bad.write_bytes(b"not a wav file")
+    result = _run("process", str(tmp_path / "good.wav"), str(bad),
+                  "--normalize", "--json",
+                  "--output-dir", str(tmp_path / "out"), cwd=str(tmp_path))
+    assert result.returncode == 3
+    records = [json.loads(line) for line in result.stdout.strip().splitlines()]
+    assert len(records) == 2
+    statuses = sorted("error" in r["result"] for r in records)
+    assert statuses == [False, True]

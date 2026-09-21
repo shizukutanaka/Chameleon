@@ -2704,6 +2704,14 @@ async def main():
             results = processor.batch_process(files, operation, **kwargs)
 
             if len(results) == 1 and "exit_code" in results[0]:
+                # --json must describe failures too: a machine consumer that
+                # sees only successes (or silence) on stdout cannot tell
+                # "nothing ran" from "everything failed".
+                if args.json:
+                    print(json.dumps({
+                        "operation": operation,
+                        "result": _serialize_result(results[0]),
+                    }, default=str))
                 print(f"Error: {results[0]['error']}", file=sys.stderr)
                 return results[0]["exit_code"]
 
@@ -2712,6 +2720,11 @@ async def main():
                 if "error" in result:
                     had_error = True
                     print(f"Error: {result['error']}", file=sys.stderr)
+                    if args.json:
+                        print(json.dumps({
+                            "operation": operation,
+                            "result": _serialize_result(result),
+                        }, default=str))
                     continue
 
                 converted_details = []

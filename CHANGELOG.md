@@ -55,6 +55,17 @@
 
 ### Fixed
 
+- **`process --json` emitted no record for failures** -- error results
+  went to stderr as text while stdout stayed silent; a total failure
+  produced zero JSON. Every result now prints as a JSON record
+  (`{"operation", "result": {error, file, kind}}`), and the pre-flight
+  sentinel carries its classified `exit_code` -- a consumer can tell
+  "nothing ran" from "everything failed".
+- **`BatchProcessor.process_directory` option bounds lied at the gate** --
+  `0.0 <= target_peak <= 1.0` and `0.0 <= threshold <= 1.0` admitted
+  boundary values every downstream op rejects (normalize wants
+  `(0, 1]`, trim wants `(0, 1)`), so a batch discovered the rejection
+  one failed file at a time. The gates now state the real domains.
 - **`--convert-bit-depth 32` wrote an IEEE-float WAV that Chameleon
   itself cannot read** -- `save_audio` mapped bit depth 32 to
   soundfile's `FLOAT` subtype (format tag 3), so the converted artifact
