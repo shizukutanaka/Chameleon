@@ -175,8 +175,14 @@ class MIDIAnalyzer:
                     # Estimate fundamental frequency using autocorrelation
                     pitch_hz = self._estimate_pitch(frame, sample_rate)
 
-                    if pitch_hz is not None:
+                    if pitch_hz is not None and pitch_hz > 0:
                         midi_pitch = self._hz_to_midi(pitch_hz)
+                        # A pitch outside 0..127 is not representable in a
+                        # .mid event -- emit nothing rather than write a
+                        # clamped note that lies about the detected pitch
+                        # (or crash the write and lose every other note).
+                        if not 0 <= midi_pitch <= 127:
+                            continue
                         velocity = min(127, int(energy * 1000))
 
                         notes.append(MIDINote(
@@ -578,6 +584,26 @@ class MIDIAnalyzer:
 
             # Track chunk
             track_data = bytearray()
+
+            # Every field lands in a byte-sized event slot; validate before
+            # writing so a bad note fails the call instead of writing a
+            # track that parses but plays wrong -- a negative duration puts
+            # note_off before note_on (the delta clamp then lies about the
+            # order), and an out-of-range pitch/velocity either crashes
+            # bytearray.extend or silently wraps.
+            if not math.isfinite(tempo_bpm) or tempo_bpm <= 0 \
+                    or 60_000_000 / tempo_bpm > 0xFFFFFF:
+                print(f"Error generating MIDI file: invalid tempo {tempo_bpm}")
+                return False
+            for note in notes:
+                if not (0 <= note.pitch <= 127 and 0 <= note.velocity <= 127
+                        and math.isfinite(note.start_time) and note.start_time >= 0
+                        and math.isfinite(note.duration) and note.duration > 0):
+                    print(
+                        "Error generating MIDI file: invalid note "
+                        f"(pitch={note.pitch} velocity={note.velocity} "
+                        f"start={note.start_time} duration={note.duration})")
+                    return False
 
             # Tempo meta event at tick 0 so the requested BPM reaches the
             # file instead of dying in the caller.
