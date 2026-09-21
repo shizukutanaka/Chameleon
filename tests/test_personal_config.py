@@ -355,7 +355,9 @@ def test_generated_quick_commands_invoke_the_running_interpreter(home):
 
     sh = (home / ".chameleon" / "aliases.sh").read_text()
     ps1 = (home / ".chameleon" / "aliases.ps1").read_text()
-    assert f'"{sys.executable}"' in sh
+    # Quoting style changed when paths gained shlex.quote (audit 45):
+    # assert the interpreter path itself is present, not its quotes.
+    assert sys.executable in sh
     assert f'"{sys.executable}"' in ps1
 
 
@@ -565,3 +567,23 @@ def test_setup_reports_an_unusable_library_path_cleanly(tmp_path):
     assert "Setup failed" in result.stderr
     assert not (tmp_path / "home" / ".chameleon"
                 / "personal_config.json").exists()
+
+
+def test_aliases_quote_shell_hostile_paths(tmp_path, monkeypatch):
+    # audio_library/output_directory flow into generated bash aliases.
+    # An apostrophe or $(...) in the path used to break the file's syntax
+    # or execute as shell on source.
+    import shlex, subprocess
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("USERPROFILE", raising=False)
+    from personal_config import PersonalConfig, PersonalSetup
+    cfg = PersonalConfig(audio_library="/tmp/it's $(evil)/lib",
+                         output_directory="/tmp/out dir")
+    PersonalSetup.create_quick_commands(cfg)
+    p = tmp_path / ".chameleon" / "aliases.sh"
+    assert p.exists()
+    proc = subprocess.run(["bash", "-n", str(p)], capture_output=True)
+    assert proc.returncode == 0, proc.stderr
+    # and the dangerous path must be quoted, never bare
+    assert "cd '/tmp/it" not in p.read_text()  # no bare quote-in-quote
+    assert "$(evil)" in p.read_text()  # present but inside quoting

@@ -487,6 +487,13 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **Generated shell aliases broke on hostile paths** — `quick_setup`
+  interpolated `audio_library`/`output_directory`/`Path.cwd()`/
+  `sys.executable` into bash aliases inside single quotes; a path with
+  an apostrophe or `$(...)` broke the file's syntax or executed as
+  shell on `source`. All interpolated paths now go through
+  `shlex.quote` and each alias body is quoted once; the PowerShell
+  `Set-Location` lines escape `'` by doubling.
 
 ### Changed
 
