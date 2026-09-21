@@ -11,6 +11,7 @@ from __future__ import annotations
 import cmath
 import logging
 import math
+import operator
 import statistics
 from dataclasses import dataclass
 from typing import List, Sequence, Tuple
@@ -347,6 +348,10 @@ def apply_spectral_mask(
 def sliding_window_rms(samples: Sequence[float], window_size: int) -> List[float]:
     """Compute RMS levels over a sliding window."""
 
+    try:
+        window_size = operator.index(window_size)
+    except TypeError:
+        raise ValueError("window_size must be a positive integer")
     if window_size <= 0:
         raise ValueError("window_size must be positive")
 
