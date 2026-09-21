@@ -3252,3 +3252,16 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, audit 39): Do the analysis functions survive an empty
+note list?**
+**A:** One crash: detect_chords([]) raised ValueError (max() of empty)
+while its siblings already answered honestly -- detect_key returns
+confidence 0.0, analyze_rhythm returns empty patterns, analyze_harmony
+returns "No chords found". Empty input is legitimate (audio with no
+detectable notes yields []); detect_chords now returns [] like the
+rest. Verified honest: bs1770 loudness gates every field through
+math.isfinite (silent input -> "below measurement gate", JSON export
+emits null not NaN), LRA labels itself unsettled below 60s per Tech
+3342, chord detection correctly names C major / A minor / G7 triads,
+and the 50%-overlap chord windows only report >=3-note sonorities.

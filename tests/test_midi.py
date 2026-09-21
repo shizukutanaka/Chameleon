@@ -459,3 +459,32 @@ def test_generate_melody_still_generates_for_valid_length():
     chord = Chord(root=0, chord_type="major", notes=[0, 4, 7],
                   start_time=0.0, duration=8.0)
     assert len(composer.generate_melody([chord], key, length=8.0)) == 16
+
+
+class TestChordDetectionEdges:
+    """detect_chords crashed on an empty note list (max() of empty) while
+    its siblings already return honest empty/zero results."""
+
+    def test_empty_notes_returns_empty_not_crash(self):
+        analyzer = MIDIAnalyzer()
+        assert analyzer.detect_chords([]) == []
+
+    def test_known_triads_identified(self):
+        analyzer = MIDIAnalyzer()
+        triad = lambda pcs: [MIDINote(pitch=p, velocity=100,
+                                      start_time=0.0, duration=1.0)
+                             for p in pcs]
+        names = [c.name for c in analyzer.detect_chords(triad([60, 64, 67]))]
+        assert names == ["Cmajor"]
+        names = [c.name for c in analyzer.detect_chords(triad([45, 48, 52]))]
+        assert names == ["Aminor"]
+        names = [c.name for c in analyzer.detect_chords(triad([55, 59, 62, 65]))]
+        assert names == ["Gdom7"]
+
+    def test_siblings_handle_empty_honestly(self):
+        analyzer = MIDIAnalyzer()
+        assert analyzer.detect_key([]).confidence == 0.0
+        assert analyzer.analyze_rhythm([]) == {
+            'tempo': 0, 'time_signature': (4, 4), 'patterns': []}
+        assert analyzer.analyze_harmony([], None) == {
+            'progression': [], 'analysis': 'No chords found'}
