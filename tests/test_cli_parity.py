@@ -598,3 +598,18 @@ def test_convert_bit_depth_32_writes_pcm_not_float(tmp_path):
     assert fmt_off > 0
     format_tag = int.from_bytes(body[fmt_off + 8:fmt_off + 10], "little")
     assert format_tag == 1  # PCM, not IEEE float (3)
+
+
+def test_master_output_is_byte_identical_across_runs(tmp_path):
+    # CHARTER §1 sells deterministic output, but MasteringConfig's dither
+    # defaulted on AND drew from the unseeded global RNG, so two --master
+    # runs of the same input wrote different bytes. The fixed dither_seed
+    # keeps the noise and restores the guarantee.
+    pytest.importorskip("numpy")
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    for name in ("a", "b"):
+        result = _run("process", str(wav), "--master", "default",
+                      "--output-dir", str(tmp_path / name))
+        assert result.returncode == 0, result.stderr
+    assert (tmp_path / "a" / "tone_mastered.wav").read_bytes() == \
+        (tmp_path / "b" / "tone_mastered.wav").read_bytes()

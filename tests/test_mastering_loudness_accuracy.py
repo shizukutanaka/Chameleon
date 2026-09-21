@@ -331,3 +331,19 @@ def test_analyze_exposes_true_peak_db():
     analysis = chain.analyze(audio)
     assert 'true_peak_db' in analysis
     assert analysis['true_peak_db'] >= analysis['peak_db'] - 1e-6
+
+
+# --- dither seed: deterministic by default, entropy on request ------------
+
+def test_dither_seed_makes_runs_identical_and_none_opts_out():
+    config = mastering_chain.MasteringConfig()
+    audio = np.linspace(-0.5, 0.5, 4000)
+
+    a = mastering_chain.MasteringChain(config, 48000)._apply_dither(audio.copy(), "tpdf")
+    b = mastering_chain.MasteringChain(config, 48000)._apply_dither(audio.copy(), "tpdf")
+    assert np.array_equal(a, b)
+
+    unseeded = mastering_chain.MasteringConfig(dither_seed=None)
+    c = mastering_chain.MasteringChain(unseeded, 48000)._apply_dither(audio.copy(), "tpdf")
+    d = mastering_chain.MasteringChain(unseeded, 48000)._apply_dither(audio.copy(), "tpdf")
+    assert not np.array_equal(c, d)

@@ -12,7 +12,7 @@ scipy is optional within individual stages.
 import copy
 import math
 import numpy as np
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any, Tuple, Optional
 from dataclasses import dataclass, field
 import logging
 
@@ -112,6 +112,11 @@ class MasteringConfig:
     # Dithering
     dither_enabled: bool = True
     dither_type: str = "tpdf"  # tpdf, rpdf, shaped (first-order error feedback)
+    # Seed for the dither RNG. Default 0 keeps mastering output byte-identical
+    # across runs -- CHARTER §1 sells deterministic, reproducible output, and an
+    # unseeded np.random source silently broke that guarantee for --master.
+    # None opts into entropy (different bytes every run).
+    dither_seed: Optional[int] = 0
 
 class LoudnessMeter:
     """Integrated loudness (LUFS) and loudness range (LRA) measurement.
@@ -924,13 +929,14 @@ class MasteringChain:
             )
             dither_type = "tpdf"
 
+        rng = np.random.default_rng(self.config.dither_seed)
         if dither_type == "tpdf":
             # Triangular PDF dither
-            dither = np.random.uniform(-1, 1, audio.shape) + np.random.uniform(-1, 1, audio.shape)
+            dither = rng.uniform(-1, 1, audio.shape) + rng.uniform(-1, 1, audio.shape)
             dither = dither / 65536  # For 16-bit
         elif dither_type == "rpdf":
             # Rectangular PDF dither
-            dither = np.random.uniform(-1, 1, audio.shape) / 65536
+            dither = rng.uniform(-1, 1, audio.shape) / 65536
         else:
             return self._apply_shaped_dither(audio)
 
@@ -958,7 +964,7 @@ class MasteringChain:
         flat = np.asarray(audio, dtype=np.float64).reshape(-1)
         out = np.empty_like(flat)
         err = 0.0
-        rand = np.random.uniform
+        rand = np.random.default_rng(self.config.dither_seed).uniform
         for i in range(flat.size):
             d = (rand(-1, 1) + rand(-1, 1)) / 65536
             # v carries the previous quantization error but NOT the dither:
