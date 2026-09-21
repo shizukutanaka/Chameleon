@@ -163,6 +163,15 @@ def _env_int(name: str, default: int) -> int:
 SECURITY_CONFIG['file_timeout_seconds'] = _env_int(
     'CHAMELEON_FILE_TIMEOUT', 300)
 
+# Every bounded structure above caps *one* resource; nothing capped the
+# aggregate upload store, so a long-running server accumulated
+# UPLOAD_DIRECTORY files + registry entries without limit even though
+# each file was individually size-checked. max_uploaded_files bounds the
+# tracked set; overflow evicts least-recently-touched files (and their
+# disk copies). CHAMELEON_MAX_UPLOADED_FILES=0 disables the cap.
+SECURITY_CONFIG['max_uploaded_files'] = _env_int(
+    'CHAMELEON_MAX_UPLOADED_FILES', 1000)
+
 PRIVILEGED_CLEARANCE = {"SECRET", "TOP_SECRET"}
 
 # Clearance order for capping a self-declared login clearance. The request
@@ -439,6 +448,40 @@ class APIState:
             'operation': 'upload',
             'source_files': [],
         }
+        self._enforce_upload_cap()
+
+    def _enforce_upload_cap(self) -> None:
+        """Evict least-recently-touched files beyond max_uploaded_files.
+
+        Drops both the registry entry and the on-disk copy so the
+        aggregate upload store stays bounded; cap of 0 means unbounded.
+        """
+        cap = SECURITY_CONFIG.get('max_uploaded_files')
+        while cap and len(self.uploaded_files) > cap:
+            name, meta = min(
+                self.uploaded_files.items(),
+                key=lambda kv: kv[1].get('last_modified') or '',
+            )
+            self.uploaded_files.pop(name, None)
+            try:
+                path = (UPLOAD_DIRECTORY / name).resolve()
+                path.relative_to(UPLOAD_DIRECTORY.resolve())
+            except (ValueError, OSError):
+                logging.warning(
+                    "Evicted %s from upload registry; skipping unlink "
+                    "(path escaped upload root)", name)
+            else:
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    logging.warning(
+                        "Evicted %s from upload registry; disk unlink "
+                        "failed", name)
+            log_audit_event(
+                meta.get('owner', ''), "FILE_EVICTED", name, "SUCCESS",
+                "Evicted by upload cap (LRU)", "",
+                meta.get('session_id') or "",
+            )
 
     def register_generated_file(
         self,
@@ -462,6 +505,7 @@ class APIState:
             'operation': operation,
             'source_files': source_files,
         }
+        self._enforce_upload_cap()
 
     def touch_file_metadata(self, file_name: str) -> None:
         """Update last access timestamp for tracked files."""
