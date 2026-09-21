@@ -487,6 +487,13 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`MIDIAnalyzer.detect_chords([])` crashed on empty input** — a silent or
+  unpitched file produces zero MIDI notes, and the chord detector walked
+  `max(... for n in notes)` over the empty sequence, leaking
+  `ValueError: max() iterable argument is empty`. Its siblings already
+  answer empty input honestly (`detect_key` returns confidence 0,
+  `analyze_rhythm` returns tempo 0, `analyze_harmony` reports "No chords
+  found"); `detect_chords` now returns `[]` to match.
 
 ### Changed
 

@@ -459,3 +459,13 @@ def test_generate_melody_still_generates_for_valid_length():
     chord = Chord(root=0, chord_type="major", notes=[0, 4, 7],
                   start_time=0.0, duration=8.0)
     assert len(composer.generate_melody([chord], key, length=8.0)) == 16
+
+
+def test_detect_chords_on_empty_notes_returns_empty_list():
+    # Silence/unpitched audio produces no MIDI notes; detect_key and
+    # analyze_rhythm already answer honestly (confidence 0, tempo 0).
+    # detect_chords used to leak `ValueError: max() iterable argument is
+    # empty` from its window loop instead.
+    analyzer = MIDIAnalyzer()
+
+    assert analyzer.detect_chords([]) == []
