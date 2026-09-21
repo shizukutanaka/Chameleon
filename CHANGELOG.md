@@ -55,6 +55,14 @@
 
 ### Fixed
 
+- **`/audio/normalize` rejected targets the engine accepts** -- the
+  request model bound `target_peak` at `ge=0.1`, so a legitimate 0.05
+  got 422 while CLI/batch/core all accept `(0, 1]`. Bound is now
+  `gt=0, le=1.0`.
+- **`/system/status` reported fake-zero metrics without psutil** --
+  `memory_usage: 0.0`/`cpu_usage: 0.0` are claims of measurement; with
+  psutil absent they're now `null` (honest absence), matching how
+  `max_short_term_lufs` already reports unmeasurable fields.
 - **`--convert-bit-depth 32` wrote an IEEE-float WAV that Chameleon
   itself cannot read** -- `save_audio` mapped bit depth 32 to
   soundfile's `FLOAT` subtype (format tag 3), so the converted artifact
