@@ -2471,3 +2471,14 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+---
+**2026-09-21 — Q: Can the API accept a batch job that provably contains no work?**
+*Probe:* POST `/batch/submit` with `files: []`.
+**A:** It could. `BatchJobRequest.files` was a bare `List[str]` with no
+minimum length — an empty submission created a queued job, the worker
+looped over zero files, and the job reported `completed` with
+`total_files: 0`. This is the same "success reported for work that never
+ran" class fixed for the CLI batch path in audit 9; the API surface had
+the same hole. `files` now requires `min_items=1` (v1) / `min_length=1`
+(v2) at the pydantic layer — a 422 before a job is ever created.

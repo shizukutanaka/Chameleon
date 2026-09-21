@@ -37,6 +37,9 @@ import pydantic as _pydantic
 
 _PATTERN_KW = "pattern" if _pydantic.VERSION.startswith("2") else "regex"
 _PYDANTIC_V2 = _pydantic.VERSION.startswith("2")
+# List minimum-length keyword renamed alongside `regex`->`pattern`:
+# v1 `min_items`, v2 `min_length`.
+_MIN_LEN_KW = "min_length" if _PYDANTIC_V2 else "min_items"
 
 
 def _model_to_dict(model):
@@ -258,7 +261,9 @@ class AudioNormalizationResponse(BaseModel):
     error: Optional[str] = None
 
 class BatchJobRequest(BaseModel):
-    files: List[str]
+    # Empty file list submitted a job that did nothing but report
+    # "completed" -- the audit-51 class on the API surface.
+    files: List[str] = Field(..., **{_MIN_LEN_KW: 1})
     operation: str = Field(..., **{_PATTERN_KW: r'^(analyze|normalize)$'})
     options: Dict[str, Any] = Field(default_factory=dict)
 

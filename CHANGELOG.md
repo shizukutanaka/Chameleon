@@ -487,6 +487,11 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`POST /batch/submit` accepted `files: []` and reported the job
+  "completed"** — `BatchJobRequest.files` had no minimum length, so an
+  empty submission queued a job that processed nothing yet reported
+  success. The field now requires at least one file at validation (422
+  before any job is created), matching the CLI batch path's rejection.
 
 ### Changed
 

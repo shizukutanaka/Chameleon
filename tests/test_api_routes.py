@@ -582,3 +582,17 @@ def test_audit_log_is_bounded():
     for i in range(cap + 50):
         api_server.log_audit_event("u", "OP", "res", "SUCCESS", "", "ip", "")
     assert len(api_server.api_state.audit_log) == cap
+
+
+def test_batch_submit_empty_files_is_rejected_at_validation(client):
+    """Regression: /batch/submit accepted files=[] -- the job ran zero files
+    and reported 'completed' (the audit-51 class on the API surface)."""
+    login = _login(client)
+    token = login.json()["token"]
+
+    response = client.post(
+        "/batch/submit",
+        json={"files": [], "operation": "analyze", "options": {}},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 422
