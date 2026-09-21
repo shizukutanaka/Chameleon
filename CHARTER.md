@@ -3252,3 +3252,30 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**2026-09-21 (Socratic audit 108):** Probed `PluginManager.execute_plugin` and
+`PluginLoader.load_plugin` registration — the remaining plugin execution
+contract — on-device:
+
+- `execute_plugin` resolved operations with bare `hasattr`, which accepts ANY
+  attribute: `execute_plugin(p, "cleanup")` ran the plugin's lifecycle teardown
+  as an "operation" and silently destroyed its state (verified), `metadata` /
+  `__dict__` fetched non-callables that died inside the sandbox on 'not
+  callable' TypeErrors, and `_private` names were reachable. Operations are now
+  restricted to public callables that are not lifecycle hooks
+  (`initialize`/`cleanup`/`get_metadata`/`get_parameters`/`validate_input`);
+  everything else is a named ValueError/AttributeError.
+- `load_plugin` registered `self.plugins[metadata.name] = instance`
+  unconditionally — a second plugin claiming an already-loaded name silently
+  displaced the first: evicted from the registry with no `cleanup()` while
+  still holding its resources (verified). Duplicate names are now refused with
+  a pointer to `reload_plugin`, and the rejected instance gets a best-effort
+  cleanup.
+- Verified honest: `execute_with_limits` — the thread path re-raises plugin
+  exceptions, raises TimeoutError on expiry, and names "completed without
+  returning a result" instead of guessing; the SIGALRM sub-second truncation
+  is already covered by an open PR; `is_safe_import` is deny-by-default;
+  `unload_plugin` returns False when cleanup fails rather than pretending the
+  unload happened; `_validate_plugin` checks all required fields, category,
+  semver and HTTPS website; on macOS the RLIMIT_AS memory cap cannot be applied
+  and a warning is logged on every sandbox call rather than claimed silently.
