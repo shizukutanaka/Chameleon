@@ -2638,6 +2638,26 @@ coefficients are only registered if every one is finite
 validation — NaN defeats every bare comparison; use
 `math.isfinite(...) and bound < x < bound`.
 
+**Q: The attribute blacklist covers every escape the audit names — but
+are attribute reads possible without an `ast.Attribute` node?**
+A (2026-09-20): Yes — `"{0.__class__.__mro__}".format(x)`. A format
+string's field spec resolves `.attr` segments at call time, so the whole
+chain lives inside an `ast.Constant` and the Attribute walk never runs
+on it. A probe plugin could reach `__globals__`, `f_globals` and
+`__builtins__` through `"{0.__globals__[__builtins__]}".format(f)` while
+passing every check. The audit now extracts `.attr` names from literal
+`str.format`/`str.format_map` templates via `string.Formatter().parse`
+and applies the same `_DANGEROUS_ATTR_NAMES` set — the dangerous names
+live in one frozenset shared by both the Attribute walk and the
+format-field scan, so the two lists cannot drift apart
+(`tests/test_plugins.py::test_check_module_safety_rejects_format_field_escape`,
+`..._rejects_format_map_escape`; plain `{name}: {count}` fields stay
+legal). General lesson: an AST audit only sees what becomes a node —
+string-interpreted languages inside the language (format specs, and
+already-blocked `getattr`/regex/exec payloads) carry their own attribute
+syntax; every such mini-language needs its own check against the shared
+deny set, not just the node walk.
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
