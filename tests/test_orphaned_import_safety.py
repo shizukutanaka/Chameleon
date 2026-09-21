@@ -61,3 +61,32 @@ def test_modules_import_cleanly_in_this_environment():
     # A plain import must succeed here too (deps present or not).
     import audio_restoration  # noqa: F401
     import spectral_editor  # noqa: F401
+
+
+def test_batch_automation_import_writes_nothing_to_home(tmp_path):
+    """`import batch_automation` used to call _configure_logging() at module
+    level, which creates ~/.chameleon/logs/batch_automation.log -- a
+    filesystem write as an import side effect. Logging must be deferred to
+    first use (BatchAutomation/TaskExecutor/... construction)."""
+    code = textwrap.dedent(
+        f"""
+        import os, sys
+        os.environ['HOME'] = {str(tmp_path)!r}
+        sys.path.insert(0, {str(REPO_ROOT)!r})
+
+        import batch_automation
+        assert os.listdir({str(tmp_path)!r}) == [], \\
+            'import alone created files in HOME'
+
+        batch_automation.BatchAutomation()
+        assert os.path.isdir(os.path.join({str(tmp_path)!r},
+                                         '.chameleon', 'logs')), \\
+            'first use should still configure file logging'
+        print('OK')
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True,
+        cwd=str(REPO_ROOT)
+    )
+    assert result.returncode == 0 and "OK" in result.stdout, result.stderr

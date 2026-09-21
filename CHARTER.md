@@ -3252,3 +3252,20 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, audit 29):** Any other shipped module writing to the
+user's HOME at *import* time? (`import core` did until audit 22.)
+**A:** Yes -- `import batch_automation` ran `_configure_logging()` at
+module level, creating ~/.chameleon/logs + a RotatingFileHandler before
+anyone ran a workflow. The classes that actually log
+(WorkflowEngine/TaskExecutor/BatchScheduler, sharing the
+"batch_automation" logger via getLogger(__name__)) now trigger the
+configuration in their __init__s -- importing is pure, first use still
+gets the rotating file. Verified live under an isolated HOME: import
+leaves it empty, construction materializes the log dir. API claims
+verified honest this cycle: X-Request-ID is generated when absent and
+echoed when sent; X-Content-Type-Options/X-Frame-Options/
+Referrer-Policy/Cache-Control present on every response; HSTS correctly
+withheld on plain HTTP. `process --output` rejects a non-directory;
+plugins CLI honestly offers only list/audit (execute_plugin stays a
+library surface).

@@ -487,6 +487,12 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`import batch_automation` wrote to the user's home directory** —
+  `_configure_logging()` ran at module level, creating
+  `~/.chameleon/logs/batch_automation.log` before any workflow existed.
+  The same defect class as the eager `BatchProcessor` singleton; logging
+  is now configured lazily in the `__init__` of each class that emits
+  (WorkflowEngine/TaskExecutor/BatchScheduler).
 
 ### Changed
 
