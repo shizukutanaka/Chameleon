@@ -55,6 +55,16 @@
 
 ### Fixed
 
+- **README's `/audit/log` example showed auth that doesn't exist** --
+  `curl -H "X-API-Key: $CHAMELEON_API_KEY" ...` alone returns 403. The
+  API key layers on top of a session token; it is not a standalone
+  credential. The example now shows the login -> Bearer (+ X-API-Key)
+  flow, and a test pins that key-only and token-only are both refused.
+- **`stream` without PyAudio hinted the wrong PyPI package** --
+  `pip install 'chameleon[audio]'` names a package this project is not
+  (it's `chameleon-audio`, and `chameleon` on PyPI is someone else's).
+  The hint now uses the same `pip install -e .[audio]` form as every
+  other refusal message.
 - **`--convert-bit-depth 32` wrote an IEEE-float WAV that Chameleon
   itself cannot read** -- `save_audio` mapped bit depth 32 to
   soundfile's `FLOAT` subtype (format tag 3), so the converted artifact

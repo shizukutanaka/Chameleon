@@ -229,3 +229,15 @@ def test_a_batch_of_mixed_channel_counts_all_succeeds(blocker_dir, tmp_path):
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "2/2" in result.stdout
+
+
+def test_stream_refusal_names_the_real_extra(blocker_dir):
+    """The PyAudio-absent message used to say `pip install 'chameleon[audio]'`
+    -- the PyPI name is `chameleon-audio` (and `chameleon` is somebody else's
+    package). Pin the hint to the project's own install form."""
+    result = _run_cli(blocker_dir, "stream")
+    combined = result.stdout + result.stderr
+    assert result.returncode == 1
+    assert "PyAudio" in combined
+    assert "chameleon[audio]" not in combined
+    assert ".[audio]" in combined

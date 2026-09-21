@@ -582,3 +582,27 @@ def test_audit_log_is_bounded():
     for i in range(cap + 50):
         api_server.log_audit_event("u", "OP", "res", "SUCCESS", "", "ip", "")
     assert len(api_server.api_state.audit_log) == cap
+
+
+def test_api_key_layers_over_session_auth(client, monkeypatch):
+    """README once showed `curl -H "X-API-Key: ..." /audit/log` -- implying the
+    key alone authenticates. It doesn't: with CHAMELEON_API_KEY set, the key
+    is an extra check on TOP of the session token, and either alone is 403."""
+    monkeypatch.setenv("CHAMELEON_API_KEY", "testkey-123")
+    api_server.api_state._rate_limit_windows.clear()
+    token = _login(client).json()["token"]
+
+    key_only = client.get("/audit/log", headers={"X-API-Key": "testkey-123"})
+    assert key_only.status_code == 403
+
+    token_only = client.get(
+        "/audit/log", headers={"Authorization": f"Bearer {token}"})
+    assert token_only.status_code == 403
+
+    both = client.get("/audit/log", headers={
+        "Authorization": f"Bearer {token}", "X-API-Key": "testkey-123"})
+    assert both.status_code == 200
+
+    wrong_key = client.get("/audit/log", headers={
+        "Authorization": f"Bearer {token}", "X-API-Key": "nope"})
+    assert wrong_key.status_code == 403

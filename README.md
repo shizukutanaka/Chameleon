@@ -336,10 +336,18 @@ curl http://localhost:8000/health
 
 The API server keeps an in-memory audit log (login, upload, analyze, normalize,
 download, batch-submit events) for the life of the process — it is not
-written to disk. Retrieve it while the server is running:
+written to disk. Retrieve it while the server is running. Audit reads need a
+session token (log in first); when `CHAMELEON_API_KEY` is also set, every
+authenticated call must carry it too — the key layers on top of the session,
+it does not replace it:
 
 ```bash
-curl -H "X-API-Key: $CHAMELEON_API_KEY" http://localhost:8000/audit/log
+TOKEN=$(curl -s -X POST http://localhost:8000/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username": "dev", "password": "...", "clearance_level": "UNCLASSIFIED"}' \
+  | python -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+curl -H "Authorization: Bearer $TOKEN" \
+     -H "X-API-Key: $CHAMELEON_API_KEY" http://localhost:8000/audit/log
 ```
 
 ## Contributing

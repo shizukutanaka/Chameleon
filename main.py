@@ -1325,7 +1325,7 @@ class AudioProcessor:
         if not HAS_PYAUDIO:
             raise RuntimeError(
                 "PyAudio not installed. Real-time streaming requires the "
-                "optional [audio] extra (pip install 'chameleon[audio]')."
+                "optional [audio] extra (pip install -e .[audio])."
             )
 
         p = pyaudio.PyAudio()
