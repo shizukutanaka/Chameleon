@@ -2624,6 +2624,20 @@ a lying output (`tests/test_sanitize_chunk_bounds.py`). General lesson:
 every *second* reader of a length-prefixed format re-earns the
 validation — the inspector's checks do not transfer to the sanitizer.
 
+**Q: Bounds-check every user-facing parameter — what about the EQ band
+builder?**
+A (2026-09-20): `ParametricEQ.add_band` guarded only `freq_norm >= 1.0`.
+NaN slips every comparison guard (NaN >= x is False), so a NaN or
+negative frequency designed an all-NaN RBJ biquad and `process` turned
+the entire signal NaN; `gain=inf` produced non-finite coefficients the
+same way; `sample_rate<=0` divided by zero. The band is now skipped when
+the normalized frequency is not finite and inside (0, Nyquist), when the
+gain is not finite, when sample_rate is non-positive — and designed
+coefficients are only registered if every one is finite
+(`tests/test_eq_nan_band.py`). General lesson: a `>=` guard is not a
+validation — NaN defeats every bare comparison; use
+`math.isfinite(...) and bound < x < bound`.
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
