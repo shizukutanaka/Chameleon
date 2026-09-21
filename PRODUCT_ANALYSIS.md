@@ -1,10 +1,10 @@
 # Chameleon — Product Analysis (Strengths, Weaknesses, Improvement Backlog)
 
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
-**Version:** 1.1.0 · **Tests:** re-run 2026-09-20 on Python 3.12, green in
+**Version:** 1.1.0 · **Tests:** re-run 2026-09-21 on Python 3.12, green in
 all three configurations — **475 passed** on a bare install (stdlib only,
-32 skipped), **555** with numpy (scipy/librosa/soundfile blocked, 32
-skipped), **660** with numpy + scipy + librosa + soundfile + fastapi
+34 skipped), **556** with numpy (scipy/librosa/soundfile blocked, 33
+skipped), **661** with numpy + scipy + librosa + soundfile + fastapi
 (5 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three

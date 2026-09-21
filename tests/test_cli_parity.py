@@ -598,3 +598,46 @@ def test_convert_bit_depth_32_writes_pcm_not_float(tmp_path):
     assert fmt_off > 0
     format_tag = int.from_bytes(body[fmt_off + 8:fmt_off + 10], "little")
     assert format_tag == 1  # PCM, not IEEE float (3)
+
+
+import importlib.util as _ilu
+
+
+@pytest.mark.skipif(_ilu.find_spec("uvicorn") is None,
+                    reason="the server command needs the [api] extra")
+def test_server_command_boots_and_serves_health():
+    """`main.py server` used to crash instantly: it called uvicorn.run(),
+    which calls asyncio.run() -- illegal inside the already-async main().
+    The 'Starting API server' banner printed, then RuntimeError. Boot the
+    real subprocess and poll /health."""
+    import importlib.util  # noqa: F401 -- find_spec used in the marker
+    import socket
+    import time
+    import urllib.request
+
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+
+    proc = subprocess.Popen(
+        [sys.executable, MAIN_PY, "server",
+         "--port", str(port), "--host", "127.0.0.1"],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    try:
+        deadline = time.monotonic() + 20
+        healthy = False
+        while time.monotonic() < deadline and proc.poll() is None:
+            try:
+                with urllib.request.urlopen(
+                        f"http://127.0.0.1:{port}/health",
+                        timeout=2) as resp:
+                    healthy = resp.status == 200
+                    break
+            except OSError:
+                time.sleep(0.25)
+        assert healthy, "server never answered /health"
+        assert proc.poll() is None
+    finally:
+        proc.terminate()
+        proc.wait(timeout=10)

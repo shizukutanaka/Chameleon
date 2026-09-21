@@ -2274,6 +2274,24 @@ json.loads accepts the literals NaN/Infinity by default, so a JSON config
 file can smuggle them into any "numeric" field. The check is
 isinstance(x, (int, float)) AND math.isfinite(x), in that order, before
 any range assertion.
+Q: The `server` command prints "Starting API server" -- does a server
+   actually start? What does running it produce?
+A (2026-09-21): A RuntimeError, every time. `main()` is a coroutine
+   (`cli()` wraps it in asyncio.run), and it called `uvicorn.run()`,
+   whose internals call `asyncio.run()` again -- "asyncio.run() cannot
+   be called from a running event loop", so the command could never
+   have started a server on this codebase, and the banner was a claim
+   with no truth behind it. The fix awaits `uvicorn.Server(config).serve()`
+   on the existing loop (uvicorn still installs its own SIGINT handler
+   for graceful shutdown; the `--workers != 1` rejection above it makes
+   the Multiprocess path moot). Every HTTP route was then exercised for
+   real -- login, upload, analyze, normalize, download, batch submit /
+   status, audit log, plus no-auth 403 and traversal rejection -- which
+   also exposed why the defect survived: all prior API coverage drove
+   FastAPI's TestClient against the app object, never the `main.py
+   server` launch path. The regression test boots the real subprocess
+   and polls /health. The testable surface of a CLI includes how the
+   process is launched, not just what it serves.
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented

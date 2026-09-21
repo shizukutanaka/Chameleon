@@ -3323,12 +3323,19 @@ async def main():
             exit_code = ExitCode.ERROR
         else:
             print(f"Starting API server on {args.host}:{args.port}")
-            uvicorn.run(
+            # uvicorn.run() calls asyncio.run() -- illegal inside this
+            # already-async main (RuntimeError: asyncio.run() cannot be
+            # called from a running event loop). Drive the server
+            # coroutine on this loop instead; uvicorn.Server still
+            # installs its own SIGINT handler for a graceful Ctrl-C.
+            # workers must be 1 (checked above), so the Multiprocess
+            # path uvicorn.run would take for N>1 is irrelevant.
+            config = uvicorn.Config(
                 "api_server:app",
                 host=args.host,
                 port=args.port,
-                workers=getattr(args, "workers", 1),
             )
+            await uvicorn.Server(config).serve()
 
     return exit_code
 

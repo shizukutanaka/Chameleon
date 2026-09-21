@@ -55,6 +55,20 @@
 
 ### Fixed
 
+- **`main.py server` could never start a server** -- `main()` is a
+  coroutine (`cli()` wraps it in `asyncio.run`), and it called
+  `uvicorn.run()`, which calls `asyncio.run()` internally: every
+  invocation crashed with `RuntimeError: asyncio.run() cannot be
+  called from a running event loop` right after printing "Starting
+  API server". The command now awaits `uvicorn.Server(config).serve()`
+  on the existing loop -- the server actually binds, serves, and
+  keeps uvicorn's graceful SIGINT shutdown. The whole HTTP surface
+  was then exercised end-to-end (login, upload, analyze, normalize,
+  download, batch submit/status, audit log, unauthenticated 403,
+  path-traversal rejection). Existing API tests used FastAPI's
+  TestClient against the app object, so the broken launch path was
+  invisible to them; the new regression test boots the real
+  subprocess and polls `/health`.
 - **`--convert-bit-depth 32` wrote an IEEE-float WAV that Chameleon
   itself cannot read** -- `save_audio` mapped bit depth 32 to
   soundfile's `FLOAT` subtype (format tag 3), so the converted artifact
