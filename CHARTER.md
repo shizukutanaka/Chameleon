@@ -2432,3 +2432,18 @@ any range assertion.
   the artifact was rejected by the dependency-free parser it ships with.
   Verify writer output against the first-party reader, not just the
   library's subtype list.
+
+**Q: Where does a claim of validity live — extension or bytes?**
+
+A (2026-09-21): The bytes. `/audio/upload` validated the *name's* suffix
+and stored whatever followed: `fake.wav` containing "not a wav at all"
+returned 200 SUCCESS, was registered for processing, and only failed at
+every operation that later consumed it. The CLI's `_filter_safe_files`
+and `BatchProcessor` had already refused this lie via
+`DeepFileInspector.validate_for_processing` — the upload boundary just
+never called it. Now it does: a failed magic check deletes the stored
+bytes and returns 400 naming the real file type. Also probed and pinned
+this cycle: same-dir `--output-dir` writes alongside without overwrite
+of inputs, `midi compose --length` scales content, hidden inputs in a
+batch warn and process (and write hidden-named outputs), and duplicate
+`process` inputs refuse upfront.

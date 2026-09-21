@@ -65,6 +65,12 @@ from security_validator import (
     SecureFileOperations,
 )
 
+try:
+    from advanced_validation import DeepFileInspector
+    _DEEP_INSPECTOR = DeepFileInspector()
+except ImportError:  # pragma: no cover - module is stdlib-only
+    _DEEP_INSPECTOR = None
+
 # The audio endpoints run on the standard-library core. These adapters convert
 # the core's ProcessingResult into the dict shape the endpoints expect.
 import core as _core
@@ -1173,6 +1179,21 @@ async def upload_audio_file(
             raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid upload destination")
 
         total_bytes = await _persist_upload(file, destination)
+
+        # The extension check says what the file claims to be; the inspector
+        # says what it is. A .wav-named blob of text would be stored, audited
+        # "SUCCESS", and fail every operation it is later submitted to --
+        # accepting it at upload is a lie the CLI's _filter_safe_files already
+        # refuses to tell.
+        if _DEEP_INSPECTOR is not None:
+            inspection = _DEEP_INSPECTOR.validate_for_processing(destination)
+            if not inspection.is_valid:
+                destination.unlink(missing_ok=True)
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    detail="Uploaded file is not a valid WAV: "
+                           + "; ".join(inspection.errors[:3]),
+                )
 
         api_state.register_uploaded_file(
             unique_name,

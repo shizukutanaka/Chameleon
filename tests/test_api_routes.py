@@ -13,6 +13,7 @@ project's graceful-degradation convention.
 """
 
 import hashlib
+import io
 
 import pytest
 
@@ -582,3 +583,28 @@ def test_audit_log_is_bounded():
     for i in range(cap + 50):
         api_server.log_audit_event("u", "OP", "res", "SUCCESS", "", "ip", "")
     assert len(api_server.api_state.audit_log) == cap
+
+
+def test_upload_rejects_wav_named_non_wav_bytes(client):
+    """Extension-check alone is a lie the CLI refuses to tell: a .wav-named
+    blob of text must be 400 at upload, not stored and failed downstream."""
+    token = _login(client).json()["token"]
+    response = client.post(
+        "/audio/upload",
+        files={"file": ("fake.wav", io.BytesIO(b"not a wav at all"), "audio/wav")},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 400
+    assert "not a valid WAV" in response.json()["detail"]
+    # nothing registered under a stored name
+    assert all("fake.wav" not in k for k in api_server.api_state.uploaded_files)
+
+
+def test_upload_rejects_empty_file(client):
+    token = _login(client).json()["token"]
+    response = client.post(
+        "/audio/upload",
+        files={"file": ("empty.wav", io.BytesIO(b""), "audio/wav")},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 400

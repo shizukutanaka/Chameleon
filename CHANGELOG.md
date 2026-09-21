@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Fixed
+
+- **`/audio/upload` trusted the extension, not the bytes** -- a
+  `.wav`-named blob of text or an empty file was stored, registered,
+  and audited SUCCESS, failing only at every operation it was later
+  submitted to. The same `DeepFileInspector` the CLI's file filter uses
+  now runs at upload: a failed magic check deletes the stored bytes and
+  returns 400 naming the real file type.
+
 ### Security
 
 - **Plugin sandbox escaped via builtins needing no import** -- the AST
