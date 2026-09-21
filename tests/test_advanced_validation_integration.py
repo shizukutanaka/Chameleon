@@ -165,3 +165,32 @@ def test_main_block_self_test_writes_no_state_into_the_real_home(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "Verification: True" in result.stdout
     assert not (home / ".chameleon").exists()
+
+
+def test_inspector_names_wave64_and_accepts_str_paths(tmp_path):
+    """Two external-container gaps: a Sony Wave64 file (GUID-based magic,
+    produced by Sonic Foundry/Sony tools and some archival pipelines) was
+    reported 'Invalid file type: UNKNOWN' -- the container is real, just
+    unparsed; and inspect_file/validate_for_processing leaked AttributeError
+    through the error list when handed a plain str path."""
+    from advanced_validation import DeepFileInspector
+
+    inspector = DeepFileInspector()
+    w64 = tmp_path / "recording.w64"
+    w64.write_bytes(
+        DeepFileInspector.W64_RIFF_GUID + b"\x80" + b"\x00" * 7 + bytes(64)
+    )
+    for p in (w64, str(w64)):
+        result = inspector.inspect_file(p)
+        assert result.file_type == "W64"
+        assert any("W64" in e for e in result.errors)
+
+    import wave
+    wav = tmp_path / "ok.wav"
+    with wave.open(str(wav), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(44100)
+        w.writeframes(b"\x00\x00" * 441)
+    assert inspector.inspect_file(str(wav)).file_type == "WAV"
+    assert inspector.validate_for_processing(str(wav)).is_valid
