@@ -2597,6 +2597,19 @@ request genuinely cannot return). General lesson: a bound added to one
 code path is not a bound on the operation — check every caller of the
 same primitive.
 
+**Q: Every per-request resource is bounded — what about the request
+body itself?**
+A (2026-09-20): It wasn't. `BatchJobRequest.files` accepted an
+unbounded list: each name fans out into a per-file results dict, so a
+job naming one registered file a million times grew
+`job_data['results']` without bound while occupying a worker slot. The
+upload cap (1000 registered files) did not constrain the *list*, which
+may repeat names. `CHAMELEON_MAX_BATCH_FILES` (default 10,000, 0
+disables) rejects oversized submissions with 413 at submit time
+(`tests/test_batch_files_cap.py`). General lesson: bound the request
+body too — a cap on a referenced resource does not cap the reference
+list.
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
