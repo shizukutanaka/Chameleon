@@ -487,6 +487,17 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **Mastering enhancement knobs failed silently or leaked internals off
+  their documented ranges** — `harmonic_enhancement` past its documented
+  0–1 range inverted the blend (`audio*(1-amount)` goes negative, so
+  "more enhancement" is a phase-flipped subtraction that removed ~8 dB
+  from a sine); `mono_freq >= Nyquist` leaked scipy's internal "Digital
+  filter critical frequencies" error; and `StereoProcessor` standalone
+  silently truncated >2-channel input to its first two channels — the
+  same silent channel drop `Limiter`/`Compressor` were already taught to
+  refuse. `harmonic_enhancement` is validated to [0, 1] with a named
+  bound, `mono_freq` names itself and the valid range at filter setup,
+  and multichannel input is rejected with the channel count.
 
 ### Changed
 

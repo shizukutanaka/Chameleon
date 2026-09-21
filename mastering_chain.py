@@ -699,6 +699,15 @@ class StereoProcessor:
         """Setup filters for bass mono processing"""
         if HAS_SCIPY and self.config.bass_mono:
             nyquist = self.sample_rate / 2
+            # butter() requires 0 < Wn < 1; a mono_freq at or past Nyquist
+            # leaked scipy's internal 'Digital filter critical frequencies'
+            # ValueError with no mention of which knob was wrong.
+            if not (0 < self.config.mono_freq < nyquist):
+                raise ValueError(
+                    f"mono_freq must be in (0, {nyquist}) Hz for "
+                    f"sample_rate={self.sample_rate}; got "
+                    f"{self.config.mono_freq}"
+                )
             cutoff = self.config.mono_freq / nyquist
             self.mono_b, self.mono_a = signal.butter(2, cutoff, 'low')
 
@@ -709,8 +718,13 @@ class StereoProcessor:
             return np.array([audio, audio])
 
         if audio.shape[0] != 2:
-            # More than 2 channels - just return first 2
-            return audio[:2]
+            # More than 2 channels used to be silently truncated to the
+            # first two -- channels 3+ vanished with no warning. Limiter and
+            # Compressor already refuse this; name it instead.
+            raise ValueError(
+                f"StereoProcessor handles mono or stereo; got "
+                f"{audio.shape[0]} channels. Downmix first."
+            )
 
         left, right = audio[0], audio[1]
 
@@ -873,6 +887,14 @@ class MasteringChain:
 
         # 4. Harmonic enhancement (simplified)
         if self.config.harmonic_enhancement > 0:
+            # The blend is audio*(1-amount) + saturated*amount: past 1.0 the
+            # dry term goes negative and the output is a phase-flipped
+            # subtraction, not 'more enhancement'. Documented range is 0-1.
+            if not (0.0 <= self.config.harmonic_enhancement <= 1.0):
+                raise ValueError(
+                    f"harmonic_enhancement must be in [0.0, 1.0]; got "
+                    f"{self.config.harmonic_enhancement}"
+                )
             processed = self._apply_harmonic_enhancement(processed, self.config.harmonic_enhancement)
 
         # 5. Limiting

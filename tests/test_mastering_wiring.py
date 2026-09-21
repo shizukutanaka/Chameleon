@@ -117,3 +117,57 @@ def test_mastering_rejects_multichannel_instead_of_dropping_channels():
     )
     with pytest.raises(ValueError, match="mono or stereo"):
         chain.process(quad)
+
+
+def test_stereo_processor_rejects_multichannel_standalone():
+    """audit-103: StereoProcessor used standalone silently truncated >2ch
+    to audio[:2] -- channels 3+ vanished with no warning. Limiter and
+    Compressor already refuse multichannel; this brings it in line."""
+    np = pytest.importorskip("numpy")
+    import mastering_chain
+
+    audio = np.stack([np.zeros(4410) for _ in range(3)])
+    sp = mastering_chain.StereoProcessor(
+        mastering_chain.StereoConfig(bass_mono=False), 44100
+    )
+    with pytest.raises(ValueError, match="mono or stereo"):
+        sp.process(audio)
+
+
+def test_bass_mono_freq_above_nyquist_named_not_scipy_error():
+    """mono_freq >= Nyquist used to leak scipy's 'Digital filter critical
+    frequencies' ValueError with no mention of the offending knob."""
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("scipy")
+    import mastering_chain
+
+    with pytest.raises(ValueError, match="mono_freq"):
+        mastering_chain.StereoProcessor(
+            mastering_chain.StereoConfig(bass_mono=True, mono_freq=99999),
+            44100,
+        )
+
+
+def test_harmonic_enhancement_past_one_rejected():
+    """harmonic_enhancement blends audio*(1-amount) + saturated*amount;
+    amount>1 makes the dry term negative -- a phase-flipped subtraction,
+    not 'more enhancement'. The documented range is [0, 1]."""
+    np = pytest.importorskip("numpy")
+    import mastering_chain
+
+    cfg = mastering_chain.MasteringConfig()
+    cfg.harmonic_enhancement = 2.0
+    cfg.eq_enabled = False
+    cfg.compressor_enabled = False
+    cfg.limiter_enabled = False
+    cfg.stereo_enabled = False
+    cfg.dither_enabled = False
+    cfg.auto_gain = False
+    chain = mastering_chain.MasteringChain(cfg, 44100)
+    audio = 0.3 * np.sin(2 * np.pi * 440 * np.arange(4410) / 44100)
+    with pytest.raises(ValueError, match="harmonic_enhancement"):
+        chain.process(audio)
+
+    cfg.harmonic_enhancement = 0.5
+    out, _ = mastering_chain.MasteringChain(cfg, 44100).process(audio)
+    assert np.isfinite(out).all()
