@@ -3252,3 +3252,16 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** What still lies in the remaining thin
+surfaces -- loudness windows, boundary detection, key detection,
+no-operation requests?
+**A:** Nothing new. A pin cycle, not a defect cycle:
+`measure_momentary_loudness`/`measure_short_term_loudness` return []
+below their window lengths instead of partial-window numbers;
+`_find_audio_boundaries` reports (0,0) for all-silence and the CLI
+turns that into an INPUT refusal with "No audio content" plus no
+output file; `detect_key([])` reports confidence 0; `process` with no
+operation flags exits USAGE; `midi generate --tempo` rejects
+non-positive BPM. Three regression tests now pin the window-length,
+silent-trim, and zero-confidence contracts.

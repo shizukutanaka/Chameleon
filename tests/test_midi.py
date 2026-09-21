@@ -459,3 +459,11 @@ def test_generate_melody_still_generates_for_valid_length():
     chord = Chord(root=0, chord_type="major", notes=[0, 4, 7],
                   start_time=0.0, duration=8.0)
     assert len(composer.generate_melody([chord], key, length=8.0)) == 16
+
+
+def test_detect_key_reports_zero_confidence_on_empty_notes():
+    # With no notes there is no pitch-class evidence; the meter must say
+    # so (confidence 0) rather than report a key with a confidence it
+    # cannot support.
+    key = MIDIAnalyzer().detect_key([])
+    assert key.confidence == 0.0
