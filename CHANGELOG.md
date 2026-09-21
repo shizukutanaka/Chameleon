@@ -487,6 +487,13 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **Loop workflows and schedules accepted impossible counts** —
+  `metadata.iterations` fed `range()` unchecked: `-3` returned empty
+  results as a silent success, `"abc"` died on a bare TypeError, `true`
+  ran once (bool is an int). Now requires a positive integer. Similarly
+  `every_<minutes>` fed `int()` into `schedule.every()` — `every_0` and
+  `every_-5` produced nonsensical intervals and `every_abc` a raw
+  ValueError; both are now named rejections and unregistered.
 
 ### Changed
 
