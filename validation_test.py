@@ -266,6 +266,52 @@ def test_core_modules():
 
     print("✓ Core module test completed")
 
+def test_real_product_code_paths():
+    """Exercise the actual Chameleon modules this script claims to validate.
+
+    Every other test here re-parses its own fixtures or re-implements the
+    checks it "verifies" -- before this test was added, the suite could print
+    'the core Chameleon system is ready for use' on a machine where core.py
+    could not parse a WAV at all.
+    """
+    print("Testing real product code paths...")
+
+    from security_validator import SecurityValidator, SecurityError
+    from core import WAVProcessor
+
+    validator = SecurityValidator()
+
+    # The validator must actually reject the shapes it advertises.
+    for bad in ("../../../etc/passwd", "test\x00.wav"):
+        try:
+            validator.validate_file_path(bad)
+        except SecurityError:
+            pass
+        else:
+            raise AssertionError(f"validator accepted dangerous path: {bad!r}")
+
+    # analyze() must really read a WAV through the shipped parser.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src = os.path.join(tmpdir, "analyze_me.wav")
+        create_test_wav(src, 440.0, 0.5, 44100, 0.5)
+
+        processor = WAVProcessor()
+        result = processor.analyze(src)
+        assert result.success, f"analyze() rejected a valid WAV: {result.message}"
+        assert result.data is not None, "analyze() returned no AudioInfo"
+        assert abs(result.data.duration - 0.5) < 0.05, \
+            f"duration wrong: {result.data.duration}"
+        assert result.data.sample_rate == 44100
+
+        # normalize() must really write a new WAV through the shipped writer.
+        dst = os.path.join(tmpdir, "normalized.wav")
+        nres = processor.normalize(src, dst, target_peak=0.5)
+        assert nres.success, f"normalize() failed: {nres.message}"
+        assert os.path.exists(dst) and os.path.getsize(dst) > 100, \
+            "normalize() reported success but produced no usable file"
+
+    print("✓ Real product code paths passed")
+
 def run_all_tests():
     """Run all validation tests"""
     print("=" * 60)
@@ -278,7 +324,8 @@ def run_all_tests():
         test_basic_audio_analysis,
         test_file_operations,
         test_performance_basic,
-        test_security_validation
+        test_security_validation,
+        test_real_product_code_paths
     ]
 
     passed = 0

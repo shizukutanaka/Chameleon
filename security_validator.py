@@ -249,7 +249,15 @@ class SecurityValidator:
             raise SecurityError(f"Extension not allowed: {resolved.suffix}")
 
         if operation == "read":
-            if not resolved.exists() or not resolved.is_file():
+            # exists()/is_file() can raise OSError themselves (e.g.
+            # ENAMETOOLONG on a name under MAX_PATH_LENGTH but over the
+            # filesystem's per-component limit); keep the contract "raises
+            # SecurityError on rejection" airtight.
+            try:
+                found = resolved.exists() and resolved.is_file()
+            except OSError as exc:
+                raise SecurityError(f"Cannot stat file: {file_path}") from exc
+            if not found:
                 raise SecurityError(f"File not found: {file_path}")
             try:
                 if resolved.stat().st_size > self.config.max_file_size:

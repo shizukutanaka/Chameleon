@@ -2471,3 +2471,24 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** Does `validation_test.py` -- the gate's own
+"basic validation" step -- exercise Chameleon at all?
+**A:** No, before this audit it never imported a single Chameleon module.
+Every test re-parsed its own fixture bytes (`create_test_wav` output read
+back with raw `struct`), re-implemented path checks locally
+(`blocked_patterns` in the test, not `security_validator`), and printed a
+warning instead of failing for any dangerous path outside its tiny list.
+It could print 'the core Chameleon system is ready for use' on a machine
+where `core.py` could not parse a WAV. Added
+`test_real_product_code_paths`, which runs `WAVProcessor().analyze()` and
+`.normalize()` on a generated WAV and asserts `SecurityValidator` rejects
+traversal/NUL paths through the real validator.
+
+**Q (2026-09-21, continued):** `validate_file_path`'s contract is "raises
+SecurityError on rejection" -- is the boundary airtight?
+**A:** Almost. `resolved.exists()`/`is_file()` sat outside the OSError
+wrap, so a filename under MAX_PATH_LENGTH (4096) but over the
+filesystem's per-component limit surfaced a raw
+`OSError(ENAMETOOLONG)` instead of `SecurityError`. Now wrapped: the
+existence check raises `SecurityError("Cannot stat file")` on OSError.

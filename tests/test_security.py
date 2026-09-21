@@ -330,3 +330,13 @@ class TestSecurityConfigFromEnvironment:
         with pytest.warns(UserWarning, match="does not exist"):
             cfg = SecurityConfig.from_environment()
         assert str(tmp_path / "ghost") in cfg.trusted_roots
+
+
+def test_validate_file_path_overlong_name_raises_security_error_not_oserror():
+    # A filename under MAX_PATH_LENGTH but over the filesystem's per-
+    # component limit made exists() raise OSError -- the validator's
+    # "raises SecurityError on rejection" contract leaked through.
+    from security_validator import SecurityError
+    validator = SecurityValidator()
+    with pytest.raises(SecurityError, match="Cannot stat"):
+        validator.validate_file_path("a" * 1000 + ".wav")
