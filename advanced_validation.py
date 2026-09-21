@@ -516,38 +516,42 @@ class SanitizationEngine:
 if __name__ == "__main__":
     print("Testing Advanced Validation Module...")
 
-    # Create test WAV file
-    from validation_test import create_test_wav
-    test_file = Path("test_validation.wav")
-    create_test_wav(str(test_file))
+    # The whole self-test runs inside a temp directory: it used to create
+    # test_validation.wav / test_sanitized.wav in the CWD (clobbering a
+    # same-named user file on the way) and leave a test_manifest.json in
+    # ~/.chameleon/manifests. Nothing should persist now.
+    import tempfile
+    with tempfile.TemporaryDirectory() as scratch:
+        scratch = Path(scratch)
 
-    # Test deep inspection
-    inspector = DeepFileInspector()
-    result = inspector.inspect_file(test_file)
+        # Create test WAV file
+        from validation_test import create_test_wav
+        test_file = scratch / "test_validation.wav"
+        create_test_wav(str(test_file))
 
-    print(f"\nValidation Result:")
-    print(f"  Valid: {result.is_valid}")
-    print(f"  Type: {result.file_type}")
-    print(f"  Size: {result.size_bytes}")
-    print(f"  Checksum: {result.checksum_sha256[:16]}...")
-    print(f"  Warnings: {result.warnings}")
-    print(f"  Metadata: {result.metadata}")
+        # Test deep inspection
+        inspector = DeepFileInspector()
+        result = inspector.inspect_file(test_file)
 
-    # Test manifest creation
-    verifier = IntegrityVerifier()
-    manifest_path = verifier.create_manifest([test_file], "test_manifest")
-    print(f"\nManifest created: {manifest_path}")
+        print(f"\nValidation Result:")
+        print(f"  Valid: {result.is_valid}")
+        print(f"  Type: {result.file_type}")
+        print(f"  Size: {result.size_bytes}")
+        print(f"  Checksum: {result.checksum_sha256[:16]}...")
+        print(f"  Warnings: {result.warnings}")
+        print(f"  Metadata: {result.metadata}")
 
-    # Verify manifest
-    valid, issues = verifier.verify_manifest(manifest_path)
-    print(f"Verification: {valid}, Issues: {issues}")
+        # Test manifest creation
+        verifier = IntegrityVerifier(manifest_dir=scratch)
+        manifest_path = verifier.create_manifest([test_file], "test_manifest")
+        print(f"\nManifest created: {manifest_path}")
 
-    # Test sanitization
-    sanitized_file = Path("test_sanitized.wav")
-    SanitizationEngine.sanitize_wav_metadata(test_file, sanitized_file)
+        # Verify manifest
+        valid, issues = verifier.verify_manifest(manifest_path)
+        print(f"Verification: {valid}, Issues: {issues}")
 
-    # Cleanup
-    test_file.unlink()
-    sanitized_file.unlink()
+        # Test sanitization
+        sanitized_file = scratch / "test_sanitized.wav"
+        SanitizationEngine.sanitize_wav_metadata(test_file, sanitized_file)
 
     print("\nAdvanced validation tests completed")
