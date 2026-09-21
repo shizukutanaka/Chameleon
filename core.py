@@ -221,7 +221,13 @@ class ProcessingResult:
 
 
 # Initialize the security validator with a default configuration
-security_validator = SecurityValidator(SecurityConfig())
+# SecurityValidator() with no config reads CHAMELEON_* env config; a bare
+# SecurityConfig() here silently disabled CHAMELEON_TRUSTED_ROOTS and
+# CHAMELEON_MAX_FILE_SIZE on every core-path check (class-level hybrid calls
+# already used the env-aware default instance, which is why the leak went
+# unnoticed: the same named policy applied or not depending on which spelling
+# the call site used).
+security_validator = SecurityValidator()
 
 
 class MemoryManager:

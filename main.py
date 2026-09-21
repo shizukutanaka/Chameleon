@@ -2570,6 +2570,11 @@ async def main():
             # the whole family (missing dir, directory-as-file, permissions).
             try:
                 export_path = _sanitize_cli_input(args.export, "export path")
+                # The export is a write like any other -- trusted roots and
+                # the extension allowlist apply here too, or the boundary is
+                # one flag wide.
+                if not SecurityValidator.validate_path(export_path):
+                    raise ValueError(f"Unsafe export path: {export_path}")
                 with atomic_output(export_path, 'w', encoding='utf-8') as f:
                     json.dump(results, f, indent=2, default=_json_export_default)
             except (OSError, ValueError) as exc:
@@ -2937,6 +2942,15 @@ async def main():
             print(f"Error: specified path is not a directory: {directory}", file=sys.stderr)
             return ExitCode.INPUT
 
+        # The input directory is inside the trusted-root boundary like any
+        # other path: batching a dir outside CHAMELEON_TRUSTED_ROOTS used to
+        # sail through because only file-level checks were env-aware.
+        try:
+            directory = SecurityValidator.validate_directory(directory_arg)
+        except SecurityError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return ExitCode.SECURITY
+
         # Flags scoped to an operation that was not requested would be
         # silently ignored -- reject them instead of pretending they ran.
         if args.operation != "convert":
@@ -3128,6 +3142,12 @@ async def main():
             print(f"Input validation error: {exc}", file=sys.stderr)
             return ExitCode.INPUT
         if output_path:
+            # Same boundary as every other output: the trusted-root check
+            # must apply to a .mid destination or containment is partial.
+            if not SecurityValidator.validate_path(output_path):
+                print(f"Error: unsafe MIDI output path: '{output_path}'",
+                      file=sys.stderr)
+                return ExitCode.INPUT
             parent = os.path.dirname(output_path) or "."
             if os.path.isdir(output_path) or not os.path.isdir(parent):
                 print(f"Error: cannot write MIDI output to '{output_path}' "
