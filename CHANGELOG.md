@@ -558,6 +558,14 @@
   `signal.stft` silently shrinks `nperseg` to fit short input while
   `istft` kept a literal 2048, raising "operands could not be broadcast"
   on any file under 2048 samples. Both calls now use `min(2048, len)`.
+- **One vanished file failed the entire batch job** —
+  `process_batch_job` resolved each file's path inside the per-file
+  loop but outside any per-file guard, so a file deleted between
+  submit-time validation and processing raised `HTTPException` into
+  the job-level handler: the job reported `failed`, tripped the
+  circuit breaker a notch, and never attempted the remaining files.
+  A resolve failure is now recorded as that file's result
+  (`success: False`) and the job continues.
 - **`--master` on input shorter than the filter padlen leaked scipy
   internals** — filtfilt needs >9 samples (3× biquad order); a shorter
   file surfaced "input vector x must be greater than padlen". The chain

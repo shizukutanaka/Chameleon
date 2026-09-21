@@ -582,3 +582,58 @@ def test_audit_log_is_bounded():
     for i in range(cap + 50):
         api_server.log_audit_event("u", "OP", "res", "SUCCESS", "", "ip", "")
     assert len(api_server.api_state.audit_log) == cap
+
+
+def test_batch_job_one_vanished_file_fails_per_file_not_whole_job(monkeypatch):
+    # _resolve_uploaded_path ran inside the per-file loop but outside any
+    # per-file guard: a file deleted between submit-time validation and
+    # processing raised HTTPException, hit the job-level except, and marked
+    # the whole job 'failed' -- stranding every file after it.
+    import asyncio
+    from datetime import datetime, timezone
+    from fastapi import HTTPException
+
+    api_server.api_state.circuit_breaker_open = False
+    api_server.api_state.job_failures_window.clear()
+    api_server.api_state.active_jobs.clear()
+    api_server.api_state.job_queue.clear()
+
+    seen = []
+
+    def fake_resolve(name):
+        if name == "gone.wav":
+            raise HTTPException(404, detail="File not found")
+        return api_server.Path(name)
+
+    async def fake_analyze(path):
+        seen.append(str(path))
+        return {"success": True, "processing_method": "stdlib-core"}
+
+    monkeypatch.setattr(api_server, "_resolve_uploaded_path", fake_resolve)
+    monkeypatch.setattr(api_server, "analyze_audio_fast", fake_analyze)
+
+    api_server.api_state.active_jobs["j9"] = {
+        "files": ["gone.wav", "still-there.wav"],
+        "operation": "analyze",
+        "options": {},
+        "user": "tester",
+        "status": "queued",
+        "results": [],
+        "completed_files": 0,
+        "total_files": 2,
+        "progress": 0.0,
+        "current_file": None,
+        "updated_at": datetime.now(timezone.utc),
+        "owner_session_id": None,
+    }
+    api_server.api_state.job_queue.append("j9")
+
+    asyncio.run(api_server.process_batch_job("j9"))
+
+    job = api_server.api_state.active_jobs["j9"]
+    # One dead file must not take the job down: it completes, the missing
+    # file is a per-file failure, and the file after it still ran.
+    assert job["status"] == "completed"
+    assert job["results"][0]["result"]["success"] is False
+    assert job["results"][1]["result"]["success"] is True
+    assert seen == ["still-there.wav"]
