@@ -487,6 +487,12 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`cache_plugins=True` never actually served from the cache** —
+  `load_plugin` read the hash entry, logged "Loading cached plugin",
+  and then re-executed the module anyway: every repeated load re-ran
+  the plugin's top-level code and built a second instance, so the
+  default-on knob did nothing. A hit now returns the loaded instance;
+  changed files (different hash) and unloaded plugins still load fresh.
 
 ### Changed
 

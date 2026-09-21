@@ -489,3 +489,54 @@ def test_execute_with_limits_restores_memory_off_main_thread(monkeypatch):
     assert result == [42]
     assert (state.soft, state.hard) == (4 << 30, 8 << 30)
 
+
+
+_PLUGIN_SRC = (
+    "from plugin_system import UtilityPlugin, PluginMetadata\n"
+    "class P(UtilityPlugin):\n"
+    "    def get_metadata(self):\n"
+    "        return PluginMetadata(name='p', version='1.0.0', author='t',\n"
+    "                              description='t', category='utility')\n"
+    "    def initialize(self, config):\n"
+    "        return True\n"
+    "    def cleanup(self):\n"
+    "        pass\n"
+    "    def execute(self, **params):\n"
+    "        return 1\n"
+)
+
+
+def test_cache_hit_returns_the_loaded_instance(tmp_path):
+    """With cache_plugins=True the cache lookup used to log 'Loading
+    cached plugin' and then reload the module anyway -- the knob did
+    nothing (a second load re-executed top-level code and built a new
+    instance). A hit must return the instance already in self.plugins."""
+    loader = PluginLoader(PluginConfig(plugin_directories=[str(tmp_path)],
+                                     auto_discover=False))
+    f = tmp_path / "p_plugin.py"
+    f.write_text(_PLUGIN_SRC)
+    first = loader.load_plugin(str(f))
+    second = loader.load_plugin(str(f))
+    assert first is second
+
+
+def test_cache_miss_after_unload_reloads_fresh(tmp_path):
+    """unload_plugin removes the instance but leaves the hash entry; the
+    next load must not resurrect a stale object."""
+    loader = PluginLoader(PluginConfig(plugin_directories=[str(tmp_path)],
+                                     auto_discover=False))
+    f = tmp_path / "p_plugin.py"
+    f.write_text(_PLUGIN_SRC)
+    first = loader.load_plugin(str(f))
+    loader.unload_plugin("p")
+    reloaded = loader.load_plugin(str(f))
+    assert reloaded is not None and reloaded is not first
+
+
+def test_cache_disabled_always_loads_fresh(tmp_path):
+    loader = PluginLoader(PluginConfig(plugin_directories=[str(tmp_path)],
+                                     auto_discover=False,
+                                     cache_plugins=False))
+    f = tmp_path / "p_plugin.py"
+    f.write_text(_PLUGIN_SRC)
+    assert loader.load_plugin(str(f)) is not loader.load_plugin(str(f))
