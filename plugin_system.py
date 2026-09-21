@@ -330,14 +330,14 @@ class PluginLoader:
         if not resolved.is_absolute():
             resolved = resolved.parent.resolve(strict=False) / resolved.name
 
-        if os.name == 'posix':
+        # Discovery is read-only: never create the directory. When it
+        # exists, tighten its permissions (the documented hardening); when
+        # it doesn't, return it unresolved so callers skip it.
+        if os.name == 'posix' and resolved.exists():
             try:
-                resolved.mkdir(parents=True, exist_ok=True)
                 os.chmod(resolved, 0o750)
             except PermissionError:
                 self.logger.warning(f"Insufficient permissions to secure directory {resolved}")
-        else:
-            resolved.mkdir(parents=True, exist_ok=True)
 
         return resolved
 
@@ -681,10 +681,8 @@ class PluginManager:
         """Initialize the plugin system"""
         self.logger.info("Initializing plugin system...")
 
-        # Create plugin directories if they don't exist
-        for directory in self.config.plugin_directories:
-            dir_path = Path(directory).expanduser()
-            dir_path.mkdir(parents=True, exist_ok=True)
+        # Read-only entry points (plugins list/audit) must not create
+        # directories; discover_plugins skips paths that don't exist.
 
         # Auto-discover plugins if enabled
         if self.config.auto_discover:
