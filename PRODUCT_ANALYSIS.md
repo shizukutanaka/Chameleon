@@ -3,8 +3,8 @@
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
 **Version:** 1.1.0 · **Tests:** re-run 2026-09-20 on Python 3.12, green in
 all three configurations — **553 passed** on a bare install (stdlib only,
-48 skipped), **661** with numpy (scipy/librosa/soundfile blocked, 43
-skipped), **777** with numpy + scipy + librosa + soundfile + fastapi
+49 skipped), **661** with numpy (scipy/librosa/soundfile blocked, 44
+skipped), **780** with numpy + scipy + librosa + soundfile + fastapi
 (5 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
@@ -383,6 +383,7 @@ here because they need a user decision first.
 | ~~P2~~ | ~~`interpolate_selection` on a whole-spectrogram selection copied the magnitude back unchanged yet reported True and pushed an undo frame — no unselected source bins exist~~ | Med | XS | Med | **DONE 2026-09-20** — fails honestly with "nothing to interpolate from" when the mask covers every bin (`tests/test_empty_selection.py`) |
 | ~~P2~~ | ~~`detect_chords` crashed on `[]` (siblings return empty) and looped forever on `window_size<=0` — the step parameter controlled termination~~ | Med | XS | Med | **DONE 2026-09-20** — empty notes → `[]`, non-positive window → `ValueError` (`tests/test_detect_chords_bounds.py`) |
 | ~~P2~~ | ~~`_rate_limit_windows` cleanup only removed already-empty deques — one-shot identifiers left expired entries forever; dict grew unboundedly per unique identifier~~ | Med | XS | Med | **DONE 2026-09-20** — drops every window whose newest entry aged out, not just emptied ones (`tests/test_rate_limit_cleanup.py`) |
+| ~~P2~~ | ~~`AudioRestorer.restore` on silent/empty input — `log10(0)` RuntimeWarning (DSP-gate error) on silence; hard crash on empty~~ | Med | XS | Med | **DONE 2026-09-20** — `-inf` set explicitly, empty input returns empty metrics, `hf_preservation` omitted on silent originals (`tests/test_restoration_metrics_edges.py`) |
 | P4 | Plugin sandbox runtime boundary (restricted builtins for `exec_module`) | High (security) | L | High | Architectural; leaky if done partially — design first |
 | P4 | Surround-channel loudness weighting | Low | M | Low | Only if a real multichannel use case appears |
 
