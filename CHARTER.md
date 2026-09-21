@@ -2471,3 +2471,19 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+
+**Q (2026-09-21, audit 51): Does core.open_secure honor the modes it
+accepts?**
+**A:** No -- one defect fixed (same class as audit 50's secure_open).
+'w+'/'a+' passed the write/append guard but opened O_WRONLY, so the
+read-back those modes promise raised io.UnsupportedOperation. '+' now
+selects O_RDWR. Pure-read modes (r/r+/x) still raise ValueError -- an
+honest refusal, not a silent misroute. Verified alongside: plugin AST
+sandbox rejects getattr-with-computed-name, attribute escapes
+(__globals__/__traceback__/f_globals/...), __import__/import_module,
+and bare-name aliasing of dangerous builtins -- already hardened in
+earlier cycles; the `stream` subcommand validates negative device
+indices, gates the banner on HAS_PYAUDIO, and treats --effects as a
+file spec (correct).
+ (Socratic audit 51: open_secure accepted '+' modes it couldn't honor)

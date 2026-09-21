@@ -121,7 +121,7 @@ def open_secure(path: Union[str, Path], mode: str = "wb", *, encoding: Optional[
     if "w" not in mode and "a" not in mode:
         raise ValueError("open_secure only supports write/append modes")
 
-    flags = os.O_WRONLY
+    flags = os.O_RDWR if "+" in mode else os.O_WRONLY
     if "a" in mode:
         flags |= os.O_CREAT | os.O_APPEND
     else:

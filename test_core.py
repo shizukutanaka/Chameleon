@@ -150,3 +150,29 @@ class SecurityValidatorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OpenSecureModeTests(unittest.TestCase):
+    """open_secure's mode contract: '+' modes must be able to read back."""
+
+    def test_wplus_can_read_back_written_data(self) -> None:
+        import tempfile
+        from pathlib import Path
+        # 'w+' previously opened O_WRONLY -- the read this mode promises
+        # raised io.UnsupportedOperation.
+        with tempfile.TemporaryDirectory() as d:
+            target = Path(d) / "rw.bin"
+            with open_secure(target, "w+b") as handle:
+                handle.write(b"payload")
+                handle.seek(0)
+                self.assertEqual(handle.read(), b"payload")
+
+    def test_read_only_modes_still_rejected(self) -> None:
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as d:
+            target = Path(d) / "f.bin"
+            target.write_bytes(b"x")
+            for bad in ("r", "rb", "r+"):
+                with self.assertRaises(ValueError):
+                    open_secure(target, bad)
