@@ -2448,6 +2448,18 @@ called it with `tone.tolist()`. A guard written for one Sequence flavor
 silently breaks the other; `len(...) == 0` means what it says for both
 (`tests/test_loudness_ndarray_input.py`).
 
+**Q: Is 0.0 the measurement of silence?**
+A (2026-09-20): No -- it is the absence of one. On digital silence
+`analyze` reported `spectral_centroid=0.0` Hz (librosa guards the 0/0
+division and returns zeros) and stored `frequency_range=(0.0, 0.0)` as
+the *dataclass default* -- so even a file never analyzed reported a
+frequency range of DC-to-DC. The export serializer had to
+post-facto-remap both back to null, and only there; the console, the
+API, and any in-process consumer still saw the fabricated values.
+"Not computable" is now None at the field: `frequency_range` defaults
+to None, centroid/tempo are only assigned on non-silent input
+(`tests/test_silence_metrics.py`).
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
