@@ -2471,3 +2471,16 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, audit 43): Does the MIDI writer enforce the 7-bit
+domain it emits?**
+**A:** No -- pitch=128 emitted byte 0x80, a note-off STATUS byte, in the
+middle of an event and returned True: a corrupt .mid written as a
+success. generate_midi_file now rejects pitch/velocity outside 0-127
+before touching the file (verified: no file created, boundary 127/127
+still writes). Meanwhile the WAV parser passed every adversarial-byte
+probe: truncated RIFF, non-RIFF magic, chunk_size > file, fmt-only
+files, odd-sized chunk padding, data-before-fmt ordering, float (tag 3)
+files all handled -- rejections are clean and float files carry an
+honest "PCM only, install [audio]" reason. _MAX_WAV_CHUNKS=256 bounds
+the walk.

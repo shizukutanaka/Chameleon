@@ -487,6 +487,11 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`generate_midi_file` wrote corrupt MIDI for out-of-range pitch or
+  velocity** — pitch and velocity are 7-bit fields; a pitch of 128
+  emitted byte 0x80 (a note-off *status* byte) inside an event, and the
+  function still returned True. Out-of-range values are now rejected
+  before the file is touched.
 
 ### Changed
 

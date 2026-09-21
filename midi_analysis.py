@@ -586,6 +586,18 @@ class MIDIAnalyzer:
             # Sort notes by start time
             sorted_notes = sorted(notes, key=lambda n: n.start_time)
 
+            # Pitch and velocity are 7-bit fields. A pitch of 128 writes
+            # byte 0x80 -- a note-off STATUS byte -- into the middle of an
+            # event, corrupting the whole stream. Reject out-of-range
+            # values before touching the file.
+            for note in sorted_notes:
+                if not (0 <= note.pitch <= 127):
+                    raise ValueError(
+                        f"MIDI pitch {note.pitch} out of range (0-127)")
+                if not (0 <= note.velocity <= 127):
+                    raise ValueError(
+                        f"MIDI velocity {note.velocity} out of range (0-127)")
+
             current_time = 0
             active_notes = {}
 
