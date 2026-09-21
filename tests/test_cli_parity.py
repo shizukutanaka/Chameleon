@@ -598,3 +598,25 @@ def test_convert_bit_depth_32_writes_pcm_not_float(tmp_path):
     assert fmt_off > 0
     format_tag = int.from_bytes(body[fmt_off + 8:fmt_off + 10], "little")
     assert format_tag == 1  # PCM, not IEEE float (3)
+
+
+def test_batch_processing_doc_lists_only_real_flags():
+    """docs/en/batch_processing.md once advertised --skip-errors, --output and
+    --max-files and claimed batch was "single-threaded" -- a phantom interface
+    for a different command. Every --flag the doc names must appear in the
+    real `batch --help` (or the global --help for the two global flags)."""
+    import re, subprocess, sys
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    doc_flags = set(re.findall(r"--[a-z][a-z-]+",
+                               (root / "docs/en/batch_processing.md").read_text()))
+    batch_help = subprocess.run(
+        [sys.executable, str(root / "main.py"), "batch", "--help"],
+        capture_output=True, text=True, timeout=30).stdout
+    global_help = subprocess.run(
+        [sys.executable, str(root / "main.py"), "--help"],
+        capture_output=True, text=True, timeout=30).stdout
+    real = set(re.findall(r"--[a-z][a-z-]+", batch_help + global_help))
+    assert doc_flags <= real, (
+        f"doc flags not in parser: {sorted(doc_flags - real)}")
+    assert doc_flags - {"--help"}, "doc lists no flags to check"

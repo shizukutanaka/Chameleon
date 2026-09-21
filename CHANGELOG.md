@@ -487,6 +487,15 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`docs/en/batch_processing.md` described a `batch` command that does
+  not exist** — it advertised `--skip-errors`, `--output`, `--max-files`
+  and `--format json|csv` (the real `--format` takes only `{wav}` and
+  selects the `convert` output container), claimed batch "runs analyze"
+  (an operation argument is required), "walks recursively" (opt-in via
+  `--recursive`), and is "single-threaded" (a ThreadPoolExecutor with
+  `--max-workers`/`CHAMELEON_MAX_WORKERS`/`--no-parallel`). Rewritten
+  against the real parser; `test_cli_parity.py` now pins every `--flag`
+  the doc names against `batch --help` / `--help`.
 
 ### Changed
 

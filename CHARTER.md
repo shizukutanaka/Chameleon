@@ -2471,3 +2471,21 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, audit 32): Does docs/en/batch_processing.md describe the
+`batch` command that exists?**
+**A:** No -- it documented a different program: flags `--skip-errors`,
+`--output`, `--max-files`, `--format json|csv` (none exist; `--format`
+takes only `{wav}` and means the audio container for `convert`, not a
+report format), "runs analyze" (batch requires an operation argument:
+analyze/normalize/mono/trim/denoise/restore/convert/effects), "walks
+recursively" (opt-in via --recursive), and "single-threaded, no worker
+pool" (false -- ThreadPoolExecutor with --max-workers /
+CHAMELEON_MAX_WORKERS / --no-parallel). The page was rewritten against
+the actual parser and handler: real flags with their operation scoping,
+non-recursive default, <stem>_<op>.<ext> naming, the same-dir warning,
+per-file success/failure lines, and the 0/INPUT/SECURITY/ERROR exit
+mapping verified in the handler. tests/test_cli_parity.py now asserts
+every --flag the doc names appears in `batch --help` or global `--help`.
+Env-var sweep clean this cycle (the two flagged names are client-side
+conventions documented as such or pending on an open PR).
