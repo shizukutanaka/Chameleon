@@ -17,6 +17,7 @@ import os
 import sys
 import time
 import json
+import math
 import datetime
 import struct
 import shutil
@@ -659,7 +660,7 @@ class WAVProcessor:
         if not security_validator.validate_path(output_path):
             return ProcessingResult(False, "Invalid output path")
 
-        if target_peak <= 0 or target_peak > 1.0:
+        if not math.isfinite(target_peak) or target_peak <= 0 or target_peak > 1.0:
             return ProcessingResult(False, "Invalid target peak (0-1.0)")
 
         try:
@@ -756,7 +757,7 @@ class WAVProcessor:
         if not security_validator.validate_path(output_path):
             return ProcessingResult(False, "Invalid output path")
 
-        if threshold <= 0 or threshold >= 1.0:
+        if not math.isfinite(threshold) or threshold <= 0 or threshold >= 1.0:
             return ProcessingResult(False, "Invalid threshold (0.01-0.99)")
 
         if not security_validator.validate_file_size(input_path):
