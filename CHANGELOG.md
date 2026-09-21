@@ -465,6 +465,7 @@
   like `Bb` accepted, unknown keys rejected as INPUT), and `compose`
   uses a real minor-mode progression (i-v-VI-iv) under `--mode minor`
   so chord tones stay inside the requested scale.
+<<<<<<< HEAD
 - **`core.batch_process_async` silently returned a different contract than
   the documented batch API** — the README advertises "one ProcessingResult
   per file, plus a trailing batch-summary result", but the asyncio variant
@@ -487,6 +488,19 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+||||||| parent of 2b952387 (api: give the circuit breaker a half-open path so a trip is not terminal)
+=======
+- **The API circuit breaker could never recover** — once tripped (5
+  batch failures in 60s) `circuit_breaker_open` stayed True forever: the
+  only code that clears it is `_update_circuit_breaker`'s success branch,
+  which is unreachable while open because `process_batch_job` returns
+  early on the flag. A transient burst of failures permanently rejected
+  every batch job until process restart. The gate is now
+  `_circuit_breaker_blocks()`: after the newest failure ages past
+  `CIRCUIT_BREAKER_RESET_SECONDS` the next job runs as a half-open trial
+  whose success closes the breaker and whose failure keeps it open for
+  the next quiet window.
+>>>>>>> 2b952387 (api: give the circuit breaker a half-open path so a trip is not terminal)
 
 ### Changed
 
