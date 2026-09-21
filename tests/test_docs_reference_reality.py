@@ -123,3 +123,13 @@ def test_real_imports_are_not_flagged():
     for module in ("core", "main", "bs1770_loudness", "security_validator"):
         assert (PROJECT_ROOT / f"{module}.py").is_file()
     assert "numpy" in EXTERNAL and "pytest" in EXTERNAL
+
+
+def test_dockerfile_installs_pyaudios_system_dependencies():
+    # The image bundles `.[audio,api]`; PyAudio publishes no Linux wheels
+    # (Windows wheels + sdist on PyPI), so pip compiles its C extension and
+    # dies without portaudio.h, and the built extension needs libportaudio2
+    # at runtime. The build used to fail here.
+    dockerfile = (PROJECT_ROOT / "Dockerfile").read_text()
+    assert "portaudio19-dev" in dockerfile   # headers, build stage
+    assert "libportaudio2" in dockerfile     # shared lib, runtime stage

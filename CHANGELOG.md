@@ -487,6 +487,10 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- The Dockerfile's `pip install -e ".[audio,api]"` could never succeed:
+  PyAudio ships no Linux wheels, so pip compiles its C extension and dies
+  without `portaudio19-dev`, which the build stage did not install. Added
+  `portaudio19-dev` (build) and `libportaudio2` (runtime).
 
 ### Changed
 

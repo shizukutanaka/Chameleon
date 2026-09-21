@@ -17,8 +17,11 @@ LABEL org.opencontainers.image.revision="${GIT_COMMIT}"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.source="https://github.com/shizukutanaka/Chameleon"
 
+# portaudio19-dev: PyAudio ships no Linux wheels (PyPI publishes Windows
+# wheels + sdist only), so `pip install .[audio]` compiles its C extension
+# and fails without portaudio.h.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc g++ libc6-dev make pkg-config \
+    gcc g++ libc6-dev make pkg-config portaudio19-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -40,9 +43,11 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Production stage
 FROM python:3.11-slim AS production
 
+# libportaudio2: the runtime shared library PyAudio's compiled extension
+# links against (the dev package is only needed in the build stage).
 RUN apt-get update && apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
-    ca-certificates curl tini gosu tzdata && \
+    ca-certificates curl tini gosu tzdata libportaudio2 && \
     rm -rf /var/lib/apt/lists/* && apt-get clean
 
 RUN groupadd -r -g 1000 chameleon && \
