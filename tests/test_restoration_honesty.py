@@ -224,3 +224,37 @@ def test_auto_mode_does_not_run_unvetted_detectors():
         audio_restoration.RestorationConfig(click_removal=True))
     _, opt_in = restorer.restore(noise, SAMPLE_RATE)
     assert "click_removal" in opt_in["applied_processes"]
+
+
+def test_restore_rejects_unknown_mode_and_empty_audio():
+    """`mode='banana'` used to run the auto pipeline anyway and echo the
+    unknown name back in info['mode']; an empty array died inside the
+    FFT with a librosa-shaped error."""
+    import numpy as np
+    import pytest
+    import audio_restoration
+
+    restorer = audio_restoration.AudioRestorer()
+    audio = np.sin(2 * np.pi * 440 * np.arange(8000) / 8000.0).astype(np.float32)
+
+    with pytest.raises(ValueError, match="Unknown restoration mode"):
+        restorer.restore(audio, 8000, mode="banana")
+    with pytest.raises(ValueError, match="audio is empty"):
+        restorer.restore(np.array([], dtype=np.float32), 8000)
+
+
+def test_silent_input_reports_unmeasurable_metrics_as_none():
+    """dynamic_range = log10(max/std): on silent input both are 0, so the
+    metric used to come out -inf under a RuntimeWarning. Unmeasurable is
+    None, not -inf."""
+    import warnings
+    import numpy as np
+    import audio_restoration
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        _, info = audio_restoration.AudioRestorer().restore(
+            np.zeros(8000, dtype=np.float32), 8000)
+    metrics = info["quality_metrics"]
+    assert metrics["dynamic_range_original"] is None
+    assert metrics["dynamic_range_restored"] is None

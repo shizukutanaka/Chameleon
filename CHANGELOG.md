@@ -487,6 +487,13 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`AudioRestorer.restore` accepted unknown modes, empty audio, and
+  reported -inf metrics on silence** — `mode='banana'` ran the auto
+  pipeline anyway and echoed the name back in `info['mode']`; an empty
+  array died inside `np.fft` with a librosa-shaped error; and on silent
+  input `dynamic_range` computed log10(0/0) = -inf under a
+  RuntimeWarning. Unknown modes and empty input are rejected up front,
+  and uncomputable metrics report None instead of -inf.
 
 ### Changed
 

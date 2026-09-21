@@ -580,8 +580,19 @@ class AudioRestorer:
         Args:
             audio: Input audio
             sample_rate: Sample rate
-            mode: "auto", "vinyl", "digital", "voice", "music"
+            mode: "auto", "vinyl", "digital", "voice", "music".
+                "vinyl" runs the specialized VinylRestorer pipeline; the
+                other four names currently select the same configured
+                step list (they are aliases, not distinct pipelines --
+                recorded in CHARTER §9 rather than left to imply
+                mode-specific processing that does not exist).
         """
+        if mode not in ("auto", "vinyl", "digital", "voice", "music"):
+            raise ValueError(
+                f"Unknown restoration mode: {mode!r}. "
+                "Valid: auto, vinyl, digital, voice, music")
+        if audio.size == 0:
+            raise ValueError("audio is empty -- nothing to restore")
         info = {
             "mode": mode,
             "applied_processes": [],
@@ -645,13 +656,17 @@ class AudioRestorer:
             metrics["signal_to_change_db"] = float(
                 10 * np.log10(signal_power / change_power))
 
-        # Dynamic range
-        metrics["dynamic_range_original"] = 20 * np.log10(
-            np.max(np.abs(original)) / (np.std(original) + 1e-10)
-        )
-        metrics["dynamic_range_restored"] = 20 * np.log10(
-            np.max(np.abs(restored)) / (np.std(restored) + 1e-10)
-        )
+        # Dynamic range. On a silent signal max and std are both 0, so
+        # the log10 ratio came out -inf with a RuntimeWarning -- an
+        # incomputable metric is reported as None, the same honest contract
+        # /system/status uses for unmeasured fields.
+        def _dynamic_range(x):
+            peak, std = np.max(np.abs(x)), np.std(x)
+            if std <= 0 or peak <= 0:
+                return None
+            return float(20 * np.log10(peak / std))
+        metrics["dynamic_range_original"] = _dynamic_range(original)
+        metrics["dynamic_range_restored"] = _dynamic_range(restored)
 
         # Clarity (high-frequency preservation)
         if HAS_LIBROSA:
