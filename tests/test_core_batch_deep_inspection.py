@@ -89,3 +89,34 @@ def test_disguised_executable_is_filtered_from_batch_process_async(tmp_path):
     # is no longer leaked -- see core.BatchProcessor._execute_operation_async).
     assert len(results) == 1
     assert results[0].success
+
+
+# ------------------------------------------------- option bounds at the gate --
+
+def test_process_directory_rejects_zero_target_peak_upfront(tmp_path):
+    """The gather-stage gate used `0.0 <= x`, admitting 0 -- which every
+    downstream normalize then rejected per-file. The gate now states the
+    real domain (0.0, 1.0] and refuses before any file is touched."""
+    write_sine_wave(tmp_path / "a.wav")
+    processor = core.BatchProcessor()
+
+    results = processor.process_directory(
+        str(tmp_path), "normalize", target_peak=0.0)
+
+    assert len(results) == 1
+    assert not results[0].success
+    assert "(0.0, 1.0]" in results[0].message
+
+
+def test_process_directory_rejects_boundary_thresholds_upfront(tmp_path):
+    """trim_silence accepts (0, 1); the gather gate's `<=` admitted both
+    endpoints so a batch discovered the rejection one file at a time."""
+    write_sine_wave(tmp_path / "a.wav")
+    processor = core.BatchProcessor()
+
+    for bad in (0.0, 1.0):
+        results = processor.process_directory(
+            str(tmp_path), "trim", threshold=bad)
+        assert len(results) == 1
+        assert not results[0].success
+        assert "(0.0, 1.0)" in results[0].message, results[0].message
