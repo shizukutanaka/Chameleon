@@ -487,6 +487,11 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`WorkflowBuilder.from_dict` leaked internals on malformed configs** —
+  a missing workflow `id` died on `KeyError`, a missing task `id` on
+  `AttributeError` (the absent `function` block reached the factory as
+  `None`), and a builtin spec without `name` on `KeyError`. Each now
+  raises `ValueError` naming the missing field and where it was.
 
 ### Changed
 

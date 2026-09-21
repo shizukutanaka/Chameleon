@@ -283,3 +283,17 @@ def test_condition_expression_in_on_non_iterable_is_typed():
             _evaluate_condition_expression(bad, {})
 
     assert _evaluate_condition_expression('"x" in results["t"].status', {}) is False
+
+
+def test_workflow_from_dict_names_missing_required_fields():
+    # Malformed configs used to leak KeyError/AttributeError from deep
+    # inside the builder; they now name the missing field.
+    builder = ba.WorkflowBuilder()
+    with pytest.raises(ValueError, match="missing required field 'id'"):
+        builder.from_dict({"name": "x", "tasks": []})
+    with pytest.raises(ValueError, match="missing required field 'id'"):
+        builder.from_dict({"id": "w", "tasks": [{"function": {"type": "builtin", "name": "len"}}]})
+    with pytest.raises(ValueError, match="missing required.*'function'"):
+        builder.from_dict({"id": "w", "tasks": [{"id": "t"}]})
+    with pytest.raises(ValueError, match="requires 'name'"):
+        builder.from_dict({"id": "w", "tasks": [{"id": "t", "function": {"type": "builtin"}}]})

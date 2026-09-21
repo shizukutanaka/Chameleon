@@ -950,9 +950,17 @@ class WorkflowBuilder:
         """Build workflow from dictionary"""
         tasks = []
 
-        for task_config in config.get('tasks', []):
+        for index, task_config in enumerate(config.get('tasks', [])):
+            if 'id' not in task_config:
+                raise ValueError(
+                    f"tasks[{index}] is missing required field 'id'")
             # Create task function from configuration
-            func = self._create_function(task_config.get('function'))
+            func_config = task_config.get('function')
+            if func_config is None:
+                raise ValueError(
+                    f"task {task_config['id']!r} is missing required "
+                    "field 'function'")
+            func = self._create_function(func_config)
 
             task = BatchTask(
                 id=task_config['id'],
@@ -967,6 +975,8 @@ class WorkflowBuilder:
             )
             tasks.append(task)
 
+        if 'id' not in config:
+            raise ValueError("workflow config is missing required field 'id'")
         workflow = Workflow(
             id=config['id'],
             name=config.get('name', config['id']),
@@ -990,7 +1000,10 @@ class WorkflowBuilder:
             # `function(**inputs)` -- so the raw callable could never run.
             # Adapt to positional in the declared input order.
             module_name = func_config.get('module', 'builtins')
-            func_name = func_config['name']
+            func_name = func_config.get('name')
+            if func_name is None:
+                raise ValueError(
+                    "builtin task function requires 'name'")
 
             func = _import_safe_function(module_name, func_name)
 
