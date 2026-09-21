@@ -2274,6 +2274,13 @@ json.loads accepts the literals NaN/Infinity by default, so a JSON config
 file can smuggle them into any "numeric" field. The check is
 isinstance(x, (int, float)) AND math.isfinite(x), in that order, before
 any range assertion.
+**Q: Is an empty request an error?**
+A (2026-09-21): Yes, when it manufactures a success. `files: []` made a
+batch job that queued, "processed" nothing, and reported completed --
+the REST boundary admitted what the CLI refuses ("No valid audio
+files"). A list-shaped parameter that iterates to nothing should be
+checked at the boundary, not trusted to be harmless downstream; 0 items
+through a job is not a degenerate case, it is a category error.
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented

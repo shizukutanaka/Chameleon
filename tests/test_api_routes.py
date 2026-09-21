@@ -582,3 +582,18 @@ def test_audit_log_is_bounded():
     for i in range(cap + 50):
         api_server.log_audit_event("u", "OP", "res", "SUCCESS", "", "ip", "")
     assert len(api_server.api_state.audit_log) == cap
+
+
+def test_batch_submit_empty_files_list_is_rejected(client):
+    """A batch job over zero files used to queue, "process", and report
+    completed -- a success that never happened. The schema now refuses it
+    (422) the same way the CLI refuses an empty directory."""
+    login = _login(client)
+    token = login.json()["token"]
+
+    response = client.post(
+        "/batch/submit",
+        json={"files": [], "operation": "analyze", "options": {}},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 422

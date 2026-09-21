@@ -258,7 +258,10 @@ class AudioNormalizationResponse(BaseModel):
     error: Optional[str] = None
 
 class BatchJobRequest(BaseModel):
-    files: List[str]
+    # Empty submissions used to be accepted: a job with zero files was queued,
+    # "processed", and reported completed -- a success that never happened.
+    # Reject at the boundary like the CLI's "No valid audio files" does.
+    files: List[str] = Field(..., min_items=1)
     operation: str = Field(..., **{_PATTERN_KW: r'^(analyze|normalize)$'})
     options: Dict[str, Any] = Field(default_factory=dict)
 
