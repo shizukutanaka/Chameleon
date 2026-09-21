@@ -3,8 +3,8 @@
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
 **Version:** 1.1.0 · **Tests:** re-run 2026-09-20 on Python 3.12, green in
 all three configurations — **531 passed** on a bare install (stdlib only,
-43 skipped), **629** with numpy (scipy/librosa/soundfile blocked, 36
-skipped), **738** with numpy + scipy + librosa + soundfile + fastapi
+44 skipped), **631** with numpy (scipy/librosa/soundfile blocked, 36
+skipped), **740** with numpy + scipy + librosa + soundfile + fastapi
 (5 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
@@ -372,6 +372,7 @@ here because they need a user decision first.
 | ~~P2~~ | ~~`midi compose --length N` looped forever once past the last chord — every iteration emitted nothing, and the "melody length" exceeded the notes produced~~ | Med | XS | Med | **DONE 2026-09-20** — `generate_melody` stops at `min(length, last_chord_end)`; the CLI warns when `--length` exceeds the progression's span (`tests/test_compose_length_bound.py`) |
 | ~~P1~~ | ~~A cancelled or hung batch job sat at `processing` forever — CancelledError fell outside `except Exception`, and no timeout bounded a stuck per-file op~~ | High | S | High | **DONE 2026-09-20** — CancelledError now records 'failed'/'job cancelled'; `CHAMELEON_FILE_TIMEOUT` (default 300s) bounds each per-file await. Root-caused the recorded ~1-in-4 api_routes flake: bare `TestClient` gets a fresh event loop per request and cancels `create_task` jobs at response end — fixture now uses `with` (`tests/test_batch_job_timeout.py`) |
 | ~~P2~~ | ~~API upload store unbounded in aggregate — registry entry + disk file per upload/output, never evicted~~ | Med | S | Med | **DONE 2026-09-20** — `CHAMELEON_MAX_UPLOADED_FILES` (default 1000) LRU-evicts oldest tracked file + its disk copy on registration; 0 disables (`tests/test_upload_eviction.py`) |
+| ~~P3~~ | ~~Durable `api-audit.log` grew forever — the in-memory deque was bounded but the file was append-only~~ | Low | XS | Med | **DONE 2026-09-20** — `CHAMELEON_MAX_AUDIT_LOG_BYTES` (default 50MB) rotates to `api-audit.log.1` once over cap; 0 disables (`tests/test_audit_log_rotation.py`) |
 | P4 | Plugin sandbox runtime boundary (restricted builtins for `exec_module`) | High (security) | L | High | Architectural; leaky if done partially — design first |
 | P4 | Surround-channel loudness weighting | Low | M | Low | Only if a real multichannel use case appears |
 
