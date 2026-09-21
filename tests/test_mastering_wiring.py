@@ -138,3 +138,28 @@ def test_stereo_width_rejects_non_finite_and_negative():
     proc = mc.StereoProcessor(mc.StereoConfig(width=1.0, bass_mono=False), 44100)
     sig = np.stack([np.ones(1000), -np.ones(1000)]) * 0.2
     assert np.isfinite(proc.process(sig)).all()
+
+
+def test_limiter_and_compressor_reject_surround_input_instead_of_zeroing_it():
+    # The stereo loops only read/write channels 0-1; a quad input used to
+    # come back with channels 2+ silently zeroed.
+    np = pytest.importorskip("numpy")
+    import mastering_chain
+    audio = np.random.RandomState(0).randn(3, 2000) * 0.1
+    with pytest.raises(ValueError, match="mono or stereo"):
+        mastering_chain.Limiter(mastering_chain.LimiterConfig(), 44100).process(audio)
+    with pytest.raises(ValueError, match="mono or stereo"):
+        mastering_chain.Compressor(mastering_chain.CompressorConfig(), 44100).process(audio)
+
+
+def test_limiter_rejects_degenerate_time_constants():
+    # lookahead=0 produced an empty delay buffer (.max() on an empty slice
+    # leaked a numpy internals error); release=0 divided by zero mid-stream.
+    pytest.importorskip("numpy")
+    import mastering_chain
+    with pytest.raises(ValueError, match="lookahead must be positive"):
+        mastering_chain.Limiter(mastering_chain.LimiterConfig(lookahead=0.0), 44100)
+    with pytest.raises(ValueError, match="lookahead must be positive"):
+        mastering_chain.Limiter(mastering_chain.LimiterConfig(lookahead=-1.0), 44100)
+    with pytest.raises(ValueError, match="release must be positive"):
+        mastering_chain.Limiter(mastering_chain.LimiterConfig(release=0.0), 44100)

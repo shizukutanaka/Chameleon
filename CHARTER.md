@@ -3252,3 +3252,13 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** `Limiter`/`Compressor` are public classes --
+does standalone use degrade honestly outside `MasteringChain`'s >2ch gate?
+**A:** No on both. The stereo loops only index channels 0 and 1, so a
+3-channel input returned with channels 2+ silently zeroed (verified: quad
+input -> ch3 all zeros, no error). Both now raise ValueError "mono or
+stereo" like the chain's own gate. Also `Limiter` accepted degenerate
+time constants: lookahead<=0 built an empty/negative delay buffer
+(numpy 'zero-size array to reduction' mid-process), release<=0 divided
+by zero in the gain-smoothing loop. Both rejected at construction.
