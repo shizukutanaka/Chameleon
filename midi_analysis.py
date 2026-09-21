@@ -163,8 +163,22 @@ class MIDIAnalyzer:
             notes = []
             current_time = 0.0
 
-            for i in range(0, len(audio_data) - frame_size, hop_size):
-                frame = audio_data[i:i + frame_size]
+            i = 0
+            while True:
+                frame = list(audio_data[i:i + frame_size])
+                if len(frame) < 8:
+                    # Below YIN's floor -- nothing left to analyze.
+                    break
+                if len(frame) < frame_size:
+                    # Tail shorter than a full frame: pad with zeros so the
+                    # last notes still reach the pitch estimator instead of
+                    # silently dropping the end of the file.
+                    frame = frame + [0.0] * (frame_size - len(frame))
+                if i + frame_size >= len(audio_data):
+                    # This is the last frame -- process it, then stop.
+                    last = True
+                else:
+                    last = False
 
                 # Simple energy-based onset detection
                 energy = sum(x * x for x in frame)
@@ -185,6 +199,9 @@ class MIDIAnalyzer:
                             channel=0
                         ))
 
+                if last:
+                    break
+                i += hop_size
                 current_time += hop_size / sample_rate
 
             return self._merge_overlapping_notes(notes)

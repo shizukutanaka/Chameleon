@@ -247,3 +247,32 @@ def test_analyze_harmony_names_the_key_not_a_pitch_class():
     harmony = analyzer.analyze_harmony(chords, key)
 
     assert harmony["key"] == "C major"
+
+
+def test_extraction_covers_the_final_frame_and_tail():
+    """parse_midi_from_audio's `range(0, len - frame_size, hop)` never
+    yielded the position of the last full frame, so a file of exactly one
+    frame returned zero notes and the last partial frame of every file
+    went unanalyzed (verified: 23 ms of clean A4 -> []). The loop now
+    walks to the end, padding a short tail to a full frame and refusing
+    tails under YIN's 8-sample floor."""
+    import math
+    from midi_analysis import MIDIAnalyzer
+
+    analyzer = MIDIAnalyzer()
+    sr = 44100
+    frame_size = int(sr * 0.023)
+    tone = lambda n: [0.5 * math.sin(2 * math.pi * 440 * i / sr)
+                      for i in range(n)]
+
+    # Exactly one frame of A4 now produces the note (pitch 69).
+    notes = analyzer.parse_midi_from_audio(tone(frame_size), sr)
+    assert notes and notes[0].pitch == 69
+
+    # A one-and-a-half-frame file gets a note from the padded tail too.
+    notes = analyzer.parse_midi_from_audio(tone(int(frame_size * 1.5)), sr)
+    assert notes and notes[0].pitch == 69
+
+    # Silence and sub-floor input still produce nothing.
+    assert analyzer.parse_midi_from_audio([0.0] * frame_size * 3, sr) == []
+    assert analyzer.parse_midi_from_audio([0.1] * 5, sr) == []
