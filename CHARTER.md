@@ -2733,6 +2733,21 @@ a proof of progress — the bound must be in what the loop *consumes*, and
 a parameter that controls the step size controls termination; also, one
 method accepting an edge case creates the contract the others must meet.
 
+**Q: A cleanup that only removes *empty* entries — does the
+rate-limiter's window dict actually shrink?**
+A (2026-09-20): No. `_enforce_rate_limit`'s opportunistic cleanup deleted
+only deques that were already empty — but a deque is emptied only by its
+*own* identifier's next call, so a one-shot identifier (rotating
+usernames at `/auth/login`, distinct client IPs) left a live entry of
+expired timestamps forever. The comment claimed boundedness the code
+didn't deliver: one dict entry per unique identifier, permanently
+(verified: 250 stale ids survived cleanup at HEAD). The cleanup now
+drops every window whose newest entry has aged out, not just ones
+already empty (`tests/test_rate_limit_cleanup.py`). General lesson: a
+bound that only fires after the thing it bounds has already done its
+job binds nothing — eviction that requires the stale entry to visit
+again is eviction that never happens for the entries that matter.
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
