@@ -87,7 +87,11 @@ class SecurityConfig:
             for entry in raw.replace(";", ":" if os.sep == "/" else ";").split(os.pathsep):
                 entry = entry.strip()
                 if entry:
-                    root = str(Path(entry).expanduser())
+                    # Resolve eagerly: a relative root would be re-resolved
+                    # against whatever cwd the validator happens to run in,
+                    # making the trusted boundary drift with the process's
+                    # working directory.
+                    root = str(Path(entry).expanduser().resolve())
                     roots.add(root)
                     if not Path(root).exists():
                         warnings.warn(
@@ -307,6 +311,10 @@ class SecurityValidator:
     def sanitize_filename(self, filename: str) -> str:
         """Strip dangerous characters from a filename component."""
         sanitized = _FILENAME_SCRUB.sub("_", filename)
+        # Dots are not scrubbed, so '..' and '.' would pass through
+        # verbatim -- a parent-directory or self component, not a filename.
+        if sanitized in (".", ".."):
+            sanitized = "untitled"
         if len(sanitized) > 255:
             name, ext = os.path.splitext(sanitized)
             # The extension can itself be longer than the whole budget (or
@@ -368,8 +376,13 @@ class SecureFileOperations:
         # that the O_NOFOLLOW open below refuses.
         writing = any(flag in mode for flag in "wax+")
         operation = "write" if writing else "read"
-        self.validator.validate_file_path(path, operation=operation)
+        resolved = self.validator.validate_file_path(path, operation=operation)
 
+        # Open the resolved path, not the raw argument: validation expanded
+        # '~' and followed symlinks, so the raw string can name a different
+        # file (open('~/x') looks for a literal tilde dir) -- or, at worst,
+        # be swapped for one after validation. Opening `resolved` keeps the
+        # file that was checked the file that is opened.
         if writing:
             flags = os.O_RDWR if "+" in mode else os.O_WRONLY
             if "a" in mode:
@@ -382,10 +395,10 @@ class SecureFileOperations:
                 flags |= os.O_NOFOLLOW
             if hasattr(os, "O_BINARY"):
                 flags |= os.O_BINARY
-            fd = os.open(os.fspath(path), flags, 0o600)
+            fd = os.open(os.fspath(resolved), flags, 0o600)
             handle = os.fdopen(fd, mode, encoding=encoding)
         else:
-            handle = open(path, mode, encoding=encoding)
+            handle = open(resolved, mode, encoding=encoding)
 
         try:
             yield handle
