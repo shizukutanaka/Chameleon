@@ -676,6 +676,17 @@ class WorkflowEngine:
         results = {}
         running_tasks = {}
 
+        # A dependency must name a task that exists, and the graph must
+        # terminate: without both checks an unknown dep crashed with KeyError
+        # and a cyclic workflow silently "completed" having run zero tasks.
+        unknown = {dep for task in workflow.tasks for dep in task.dependencies
+                   if dep not in task_map}
+        if unknown:
+            raise ValueError(
+                f"Workflow {workflow.id!r} has dependencies on undefined "
+                f"task(s): {sorted(unknown)}"
+            )
+
         # Get initial ready tasks
         ready_tasks = self.dep_graph.get_ready_tasks()
         for task_id in ready_tasks:
@@ -715,6 +726,14 @@ class WorkflowEngine:
             if running_tasks:
                 import time
                 time.sleep(0.1)
+
+        unscheduled = [t for t in task_map if t not in results]
+        if unscheduled:
+            raise ValueError(
+                f"Workflow {workflow.id!r} left task(s) unscheduled "
+                f"{sorted(unscheduled)} -- their dependencies form a cycle "
+                f"or are otherwise unsatisfiable"
+            )
 
         return results
 

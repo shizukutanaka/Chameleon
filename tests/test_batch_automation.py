@@ -93,3 +93,50 @@ def test_scheduler_fails_loudly_without_schedule_package():
     scheduler = BatchScheduler()
     with pytest.raises(ImportError):
         scheduler.start()
+
+
+class TestDagWorkflowValidation:
+    """A DAG whose dependencies can't be satisfied must fail loudly --
+    a cyclic workflow used to 'complete' having run zero tasks, and an
+    unknown dep used to crash the executor with a bare KeyError."""
+
+    def _engine(self):
+        return ba.WorkflowEngine()
+
+    def _task(self, task_id, dependencies=()):
+        return ba.BatchTask(id=task_id, name=task_id, function=lambda: task_id,
+                            inputs={}, dependencies=list(dependencies))
+
+    def test_cyclic_dependencies_raise_not_silently_skip(self):
+        workflow = ba.Workflow(
+            id="cyc", name="cyclic", type=ba.WorkflowType.DAG,
+            tasks=[self._task("a", ["b"]), self._task("b", ["a"])])
+        with pytest.raises(ValueError, match="unscheduled.*a.*b|cycle"):
+            self._engine().execute_workflow(workflow)
+
+    def test_self_dependency_is_a_cycle(self):
+        workflow = ba.Workflow(
+            id="self", name="self", type=ba.WorkflowType.DAG,
+            tasks=[self._task("a", ["a"])])
+        with pytest.raises(ValueError, match="unscheduled"):
+            self._engine().execute_workflow(workflow)
+
+    def test_unknown_dependency_names_it(self):
+        workflow = ba.Workflow(
+            id="miss", name="missing", type=ba.WorkflowType.DAG,
+            tasks=[self._task("a", ["ghost"])])
+        with pytest.raises(ValueError, match="undefined.*ghost"):
+            self._engine().execute_workflow(workflow)
+
+    def test_valid_dag_still_runs_in_order(self):
+        order = []
+        workflow = ba.Workflow(
+            id="ok", name="ok", type=ba.WorkflowType.DAG,
+            tasks=[ba.BatchTask(id="a", name="a",
+                                function=lambda: order.append("a"), inputs={}),
+                   ba.BatchTask(id="b", name="b",
+                                function=lambda: order.append("b"), inputs={},
+                                dependencies=["a"])])
+        results = self._engine().execute_workflow(workflow)
+        assert order == ["a", "b"]
+        assert set(results) == {"a", "b"}

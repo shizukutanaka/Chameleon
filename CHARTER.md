@@ -2471,3 +2471,19 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, audit 34): Can a DAG workflow express an impossible
+schedule -- and what happens when it does?**
+**A:** Two defects, one root cause (the graph was never validated).
+A cyclic workflow (a<->b) returned {} -- every task silently skipped,
+the workflow reporting completion having run nothing. A dependency on
+an undefined task id crashed with a bare KeyError at schedule time. A
+self-dependency is the same cycle of one. _execute_dag now rejects
+unknown dep ids up front (ValueError naming them) and, after the
+scheduling loop, raises ValueError naming any tasks that never became
+ready (cycle / unsatisfiable). Valid DAGs unchanged: a->b still runs
+in dependency order. Also verified honest this cycle: _execute_parallel
+genuinely ignores dependencies (its contract is all-at-once; DAG is the
+type that honors ordering), the plugin AST gate's expression evaluator
+caps oversized results, and IntegrityVerifier manifests write
+atomically (tmp+rename).
