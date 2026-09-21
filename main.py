@@ -941,6 +941,11 @@ class AudioProcessor:
         band-limit the signal, so downsampling does not alias.
         """
 
+        # Source rate is validated too: 0 dies on a bare ZeroDivisionError
+        # and a negative rate silently produced a one-sample array of zeros
+        # in the windowed-sinc fallback (ratio < 0 collapses n_out to 1).
+        if source_sr <= 0:
+            raise ValueError("Source sample rate must be positive.")
         if target_sr <= 0:
             raise ValueError("Target sample rate must be positive.")
 

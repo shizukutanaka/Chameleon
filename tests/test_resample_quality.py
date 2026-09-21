@@ -120,3 +120,15 @@ def test_matches_scipy_resample_poly_within_a_small_tolerance():
 
     # Both should suppress the out-of-band tone to a similar degree.
     assert _rms_db(mine) == pytest.approx(_rms_db(reference), abs=3.0)
+
+
+@pytest.mark.parametrize("bad_sr", [0, -1, -48000])
+def test_resample_rejects_impossible_source_rates(bad_sr):
+    """_resample_audio validated only the target rate: source_sr=0 died on a
+    bare ZeroDivisionError, and in the numpy-only windowed-sinc fallback a
+    negative source rate collapsed the output to a single zeroed sample --
+    a silent "success" on impossible input. Both are now named ValueErrors.
+    """
+    tone = np.zeros(4800, dtype=np.float32)
+    with pytest.raises(ValueError, match="Source sample rate"):
+        main.AudioProcessor()._resample_audio(tone, bad_sr, 24000)
