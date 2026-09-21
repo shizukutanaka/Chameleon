@@ -1314,7 +1314,15 @@ async def process_audio(
 
         file_path = _get_authorized_file_path(payload.file_name, user)
 
-        result = await analyze_audio_fast(file_path)
+        file_timeout = SECURITY_CONFIG.get('file_timeout_seconds') or None
+        try:
+            result = await asyncio.wait_for(
+                analyze_audio_fast(file_path), file_timeout)
+        except TimeoutError:
+            result = {
+                'success': False,
+                'error': f'timed out after {file_timeout}s',
+            }
 
         client_ip = _get_request_ip(http_request)
 
@@ -1367,9 +1375,18 @@ async def normalize_audio(
             raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
         # Use high-performance processor
-        result = await normalize_audio_fast(
-            input_path, output_path, payload.target_peak
-        )
+        file_timeout = SECURITY_CONFIG.get('file_timeout_seconds') or None
+        try:
+            result = await asyncio.wait_for(
+                normalize_audio_fast(input_path, output_path,
+                                     payload.target_peak),
+                file_timeout,
+            )
+        except TimeoutError:
+            result = {
+                'success': False,
+                'error': f'timed out after {file_timeout}s',
+            }
 
         client_ip = _get_request_ip(http_request)
 
