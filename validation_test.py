@@ -188,37 +188,56 @@ def test_performance_basic():
     print("✓ Performance test passed")
 
 def test_security_validation():
-    """Test basic security validation"""
+    """Exercise the real SecurityValidator -- not a re-implementation of it."""
     print("Testing security validation...")
 
-    # Test path validation
-    dangerous_paths = [
-        "../../../etc/passwd",
+    from security_validator import SecurityConfig, SecurityValidator
+
+    validator = SecurityValidator()
+
+    # The real validator's shape checks must refuse traversal sequences
+    # and control bytes; an empty policy (no trusted roots / extension
+    # list) intentionally does not restrict which absolute paths pass.
+    rejected_by_shape = [
         "..\\..\\windows\\system32",
-        "/etc/passwd",
-        "C:\\Windows\\System32\\config",
         "test\x00.wav",
-        "a" * 1000 + ".wav"  # Very long filename
+        "a" * 1000 + ".wav",  # component over filesystem limits
     ]
+    for path in rejected_by_shape:
+        assert not validator.validate_path(path), (
+            f"validator accepted unsafe path {path[:50]!r}")
+        print(f"✓ Validator rejected: {path[:40]!r}")
 
-    blocked_patterns = ['../', '..\\', '\x00', '/etc/', '/proc/', '/sys/']
+    assert validator.validate_path("ordinary_name.wav"), \
+        "validator rejected an ordinary filename"
+    print("✓ Ordinary filename accepted")
 
-    for path in dangerous_paths:
-        is_dangerous = any(pattern in path.lower() for pattern in blocked_patterns)
-        is_dangerous = is_dangerous or len(path) > 500
+    # Trusted-root containment is enforced component-wise.
+    with tempfile.TemporaryDirectory() as allowed, \
+            tempfile.TemporaryDirectory() as outside:
+        scoped = SecurityValidator(SecurityConfig(trusted_roots={allowed}))
+        inside = Path(allowed, "ok.wav")
+        inside.write_bytes(b"RIFF")
+        sibling = Path(allowed.rstrip("/\\") + "-evil")
+        sibling.mkdir(exist_ok=True)
+        try:
+            assert scoped.validate_path(inside), "inside root rejected"
+            assert not scoped.validate_path(Path(outside, "x.wav")), \
+                "path outside trusted root accepted"
+            assert not scoped.validate_path(sibling / "x.wav"), \
+                "sibling directory with a shared prefix accepted"
+        finally:
+            sibling.rmdir()
+        print("✓ Trusted-root containment enforced (incl. shared-prefix sibling)")
 
-        if is_dangerous:
-            print(f"✓ Correctly blocked dangerous path: {path[:50]}...")
-        else:
-            print(f"⚠ Path might need additional validation: {path}")
-
-    # Test file size limits
-    max_size = 500 * 1024 * 1024  # 500MB
-    test_sizes = [0, 1000, 1024*1024, max_size - 1, max_size + 1]
-
-    for size in test_sizes:
-        is_valid = 0 < size <= max_size
-        print(f"✓ Size {size:,} bytes: {'valid' if is_valid else 'invalid'}")
+    # Size cap is enforced against the real file size.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        capped = SecurityValidator(SecurityConfig(max_file_size=100))
+        small = Path(tmpdir, "small.wav"); small.write_bytes(b"x" * 10)
+        big = Path(tmpdir, "big.wav"); big.write_bytes(b"x" * 200)
+        assert capped.validate_file_size(small)
+        assert not capped.validate_file_size(big)
+    print("✓ File-size cap enforced")
 
     print("✓ Security validation test passed")
 
@@ -313,4 +332,6 @@ def run_all_tests():
 
 if __name__ == "__main__":
     success = run_all_tests()
+    # The verification gate runs this script -- a failure that still
+    # exits 0 would be invisible to it.
     sys.exit(0 if success else 1)

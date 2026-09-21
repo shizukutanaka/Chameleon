@@ -181,12 +181,13 @@ class SecurityValidator:
             return False
         if not self._extension_allowed(resolved):
             return False
-        if resolved.exists() and resolved.is_file():
-            try:
+        try:
+            if resolved.exists() and resolved.is_file():
                 if resolved.stat().st_size > self.config.max_file_size:
                     return False
-            except OSError:
-                return False
+        except OSError:
+            # e.g. ENAMETOOLONG on an overlong name -- not a valid file.
+            return False
         return True
 
     @_hybridmethod

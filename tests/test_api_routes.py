@@ -582,3 +582,26 @@ def test_audit_log_is_bounded():
     for i in range(cap + 50):
         api_server.log_audit_event("u", "OP", "res", "SUCCESS", "", "ip", "")
     assert len(api_server.api_state.audit_log) == cap
+
+
+def test_security_log_dir_env_var_controls_the_audit_file(tmp_path, monkeypatch):
+    """docs/api_documentation.md lists CHAMELEON_SECURITY_LOG_DIR as a
+    deployment knob -- it used to be read by nothing: the audit file was
+    hardcoded to ~/.chameleon/logs and the documented knob was inert."""
+    import api_server as srv
+
+    monkeypatch.setenv("CHAMELEON_SECURITY_LOG_DIR", str(tmp_path))
+    path = srv._resolve_audit_log_path()
+    assert path == tmp_path / "api-audit.log"
+
+
+def test_security_log_dir_rejection_falls_back_and_warns(monkeypatch, caplog):
+    """An env dir outside the validator's allowed roots must not be used
+    silently -- fall back to the default home dir and say so."""
+    import api_server as srv
+
+    monkeypatch.setenv("CHAMELEON_SECURITY_LOG_DIR", "/proc/definitely-not-allowed")
+    with caplog.at_level("WARNING"):
+        path = srv._resolve_audit_log_path()
+    assert "CHAMELEON_SECURITY_LOG_DIR" in caplog.text
+    assert path.name == "api-audit.log"

@@ -330,3 +330,29 @@ class TestSecurityConfigFromEnvironment:
         with pytest.warns(UserWarning, match="does not exist"):
             cfg = SecurityConfig.from_environment()
         assert str(tmp_path / "ghost") in cfg.trusted_roots
+
+
+class TestValidatePathRobustness:
+    def test_overlong_filename_is_rejected_not_raised(self):
+        """Path.resolve() succeeds, but stat()/exists() raise ENAMETOOLONG --
+        validate_path's bool contract used to break with a raw OSError
+        (observed as a traceback from `process <300-char>.wav`)."""
+        assert SecurityValidator().validate_path("a" * 300 + ".wav") is False
+
+    def test_validation_test_harness_propagates_failures(self):
+        """`python validation_test.py` is part of the verification gate;
+        its __main__ must exit nonzero when a check fails."""
+        import subprocess, sys
+        repo_root = Path(__file__).resolve().parent.parent
+        rc = subprocess.run([sys.executable, "validation_test.py"],
+                            cwd=repo_root, capture_output=True).returncode
+        assert rc == 0
+        source = (repo_root / "validation_test.py").read_text()
+        assert "sys.exit" in source.split('if __name__ == "__main__"')[-1]
+
+    def test_run_all_tests_returns_false_on_failure(self, monkeypatch):
+        import validation_test
+        def boom():
+            raise RuntimeError("injected")
+        monkeypatch.setattr(validation_test, "test_core_modules", boom)
+        assert validation_test.run_all_tests() is False

@@ -480,6 +480,25 @@
   (`a_normalized_normalized.wav`). The CLI now warns when the resolved
   output directory is inside the scan root, while it is still possible
   to pick a directory outside it.
+- **`CHAMELEON_SECURITY_LOG_DIR` was a documented-but-inert knob** —
+  docs/api_documentation.md listed it as a deployment variable, but
+  nothing read it: the API audit file was hardcoded to
+  `~/.chameleon/logs`. It is now honoured by `_resolve_audit_log_path`
+  (validated through the same audit validator; a rejected directory
+  warns and falls back to the default).
+- **`validation_test.py` could never report failure** — its `__main__`
+  never called `sys.exit`, so the verification-gate step exited 0 even
+  while printing "Some tests failed". It now exits nonzero on failure.
+  Its "security validation" also never touched `SecurityValidator` — it
+  classified paths against its own pattern list and printed
+  "Correctly blocked" for inputs the real policy accepts. It now
+  exercises the real validator (shape rejection, trusted-root
+  containment including shared-prefix siblings, size caps).
+- **`SecurityValidator.validate_path` crashed on overlong filenames** —
+  `Path.stat()`/`exists()` raised `ENAMETOOLONG` straight through the
+  boolean API, so `process <300-char-name>.wav` printed a raw OSError
+  traceback. The stat block now returns False, and the CLI rejects the
+  path cleanly ("Skipping unsafe path", exit SECURITY).
 
 ### Changed
 

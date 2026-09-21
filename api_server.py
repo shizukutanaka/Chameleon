@@ -703,23 +703,26 @@ def _get_allowed_origins() -> list[str]:
 
 def _resolve_audit_log_path() -> Path:
     """Return secure audit log path with directory validation."""
-    preferred_dir = Path.home() / '.chameleon' / 'logs'
+    candidates = []
+    env_dir = os.environ.get('CHAMELEON_SECURITY_LOG_DIR')
+    if env_dir:
+        candidates.append(Path(env_dir))
+    candidates.append(Path.home() / '.chameleon' / 'logs')
+    candidates.append(Path(tempfile.gettempdir()) / 'chameleon' / 'logs')
 
-    try:
-        log_dir = _AUDIT_VALIDATOR.validate_directory(
-            preferred_dir,
-            require_exists=False,
-            allow_create=True,
-        )
-    except ChameleonSecurityError:
-        fallback = Path(tempfile.gettempdir()) / 'chameleon' / 'logs'
-        log_dir = _AUDIT_VALIDATOR.validate_directory(
-            fallback,
-            require_exists=False,
-            allow_create=True,
-        )
-
-    return log_dir / 'api-audit.log'
+    for i, candidate in enumerate(candidates):
+        try:
+            log_dir = _AUDIT_VALIDATOR.validate_directory(
+                candidate, require_exists=False, allow_create=True,
+            )
+        except ChameleonSecurityError:
+            if i == 0 and env_dir:
+                logging.warning(
+                    "CHAMELEON_SECURITY_LOG_DIR %r rejected by the "
+                    "security validator; falling back", env_dir)
+            continue
+        return log_dir / 'api-audit.log'
+    raise ChameleonSecurityError("no writable audit log directory")
 
 # FastAPI app initialization
 app = FastAPI(
