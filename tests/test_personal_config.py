@@ -155,6 +155,8 @@ def test_playlists_created_at_different_times_get_different_timestamps(manager):
 
 
 def test_a_playlist_keeps_its_files(manager):
+    # Playlists reference scanned library members -- populate them first.
+    manager.library_db["files"] = {"a.wav": {}, "b.wav": {}}
     manager.create_playlist("mix", ["a.wav", "b.wav"])
 
     assert manager.library_db["playlists"]["mix"]["files"] == ["a.wav", "b.wav"]
@@ -419,3 +421,75 @@ def test_backup_workflow_verifies_an_intact_copy(tmp_path, monkeypatch, capsys):
 
     assert (dest_dir / "a.wav").exists()
     assert "verified successfully" in capsys.readouterr().out
+
+
+def test_backup_workflow_refuses_empty_or_missing_library(tmp_path):
+    import personal_config as pc
+
+    with pytest.raises(ValueError, match="does not exist"):
+        pc.PersonalWorkflow.backup_workflow(tmp_path / "nope", tmp_path / "dest")
+    empty = tmp_path / "empty_lib"
+    empty.mkdir()
+    with pytest.raises(ValueError, match="no .wav files"):
+        pc.PersonalWorkflow.backup_workflow(empty, tmp_path / "dest")
+
+
+def test_backup_manifest_lives_inside_the_backup(tmp_path, monkeypatch):
+    from tests._helpers import write_sine_wave
+    import personal_config as pc
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    library = tmp_path / "lib"
+    library.mkdir()
+    write_sine_wave(library / "a.wav", duration=0.05)
+    dest_dir = tmp_path / "dest"
+
+    pc.PersonalWorkflow.backup_workflow(library, dest_dir)
+
+    # The manifest belongs inside the backup so the copy is self-describing;
+    # it used to land in ~/.chameleon/manifests and get overwritten per run.
+    assert (dest_dir / "backup_manifest.json").exists()
+    assert not (tmp_path / "home" / ".chameleon" / "manifests" / "backup_manifest.json").exists()
+
+
+def _manager(tmp_path, library_path, db=None):
+    mgr = personal_config.PersonalLibraryManager.__new__(
+        personal_config.PersonalLibraryManager
+    )
+    config = personal_config.PersonalConfig()
+    config.audio_library = str(library_path)
+    mgr.config = config
+    mgr.library_path = library_path
+    mgr.db_path = tmp_path / "library.json"
+    mgr.library_db = db if db is not None else {"files": {}, "playlists": {}, "tags": {}}
+    return mgr
+
+
+def test_scan_library_names_a_missing_path(tmp_path):
+    mgr = _manager(tmp_path, tmp_path / "does-not-exist")
+    with pytest.raises(ValueError, match="audio_library does not exist"):
+        mgr.scan_library()
+
+
+def test_scan_library_ignores_malformed_format_entries(tmp_path, caplog):
+    library = tmp_path / "lib"
+    (library / "subdir").mkdir(parents=True)  # a directory, not a file
+    mgr = _manager(tmp_path, library_path=library)
+    mgr.config.supported_formats = [".wav", "*"]
+    result = mgr.scan_library()
+    assert result["total_files"] == 0  # '*' must not register directories
+    assert "malformed supported_formats" in caplog.text
+
+
+def test_create_playlist_drops_phantom_entries_and_bad_names(tmp_path):
+    library = tmp_path / "lib"
+    library.mkdir()
+    mgr = _manager(tmp_path, library_path=library)
+    mgr.library_db["files"] = {"song.wav": {"path": "x"}}
+
+    mgr.create_playlist("mix", ["song.wav", "/etc/passwd", "ghost.flac"])
+    assert mgr.library_db["playlists"]["mix"]["files"] == ["song.wav"]
+
+    for bad_name in ("", "   ", 42):
+        with pytest.raises(ValueError, match="playlist name"):
+            mgr.create_playlist(bad_name, [])

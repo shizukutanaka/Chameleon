@@ -325,15 +325,37 @@ class PersonalLibraryManager:
         _atomic_write_text(self.db_path, json.dumps(self.library_db, indent=2))
 
     def scan_library(self) -> Dict[str, Any]:
-        """Scan audio library and update database"""
+        """Scan audio library and update database.
+
+        A missing library path is a named error, not an empty report --
+        `rglob` on a nonexistent directory yields nothing, so a typo'd
+        `audio_library` previously produced a silent all-zeros result
+        indistinguishable from a real empty library.
+        """
         from advanced_validation import DeepFileInspector
+
+        if not self.library_path.is_dir():
+            raise ValueError(
+                f"audio_library does not exist: {self.library_path} "
+                "(set it with `python personal_config.py setup`)"
+            )
 
         inspector = DeepFileInspector()
         new_files = []
         updated_files = []
 
         for ext in self.config.supported_formats:
+            if not isinstance(ext, str) or not ext.startswith("."):
+                # "*.wav" is a glob; "*" (a malformed entry) is `rglob("**")`
+                # and would register directories too.
+                logger.warning(
+                    "Ignoring malformed supported_formats entry: %r "
+                    "(entries must start with '.', e.g. '.wav')", ext
+                )
+                continue
             for file_path in self.library_path.rglob(f"*{ext}"):
+                if not file_path.is_file():
+                    continue
                 file_key = str(file_path.relative_to(self.library_path))
 
                 # Check if file is new or modified
@@ -386,12 +408,31 @@ class PersonalLibraryManager:
         self._save_db()
 
     def create_playlist(self, name: str, file_list: list) -> None:
-        """Create playlist from file list"""
+        """Create playlist from file list.
+
+        A playlist is a list of *library members*: entries that are not in
+        the scanned library are dropped and reported, rather than stored
+        as phantom tracks (`/etc/passwd` was accepted verbatim, and `""`
+        was accepted as a name).
+        """
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("playlist name must be a non-empty string")
+
+        known = set(self.library_db["files"])
+        kept = [f for f in file_list if f in known]
+        dropped = [f for f in file_list if f not in known]
+        if dropped:
+            logger.warning(
+                "Dropping %d playlist entr%s not in the scanned library: %s",
+                len(dropped), "y" if len(dropped) == 1 else "ies",
+                ", ".join(str(f) for f in dropped[:10])
+            )
+
         # The timestamp used to be `Path.home().stat().st_mtime` -- the home
         # directory's modification time, which is the same value for every
         # playlist ever created and has nothing to do with when this one was.
         self.library_db["playlists"][name] = {
-            "files": file_list,
+            "files": kept,
             "created": datetime.now(timezone.utc).isoformat()
         }
         self._save_db()
@@ -447,15 +488,33 @@ class PersonalWorkflow:
 
     @staticmethod
     def backup_workflow(library_path: Path, backup_path: Path) -> None:
-        """Backup audio library with verification"""
+        """Backup audio library with verification.
+
+        Refuses when there is nothing to back up: an empty or missing
+        library used to sail through all three steps and print "Backup
+        verified successfully!" over zero files -- a backup that contains
+        nothing cannot be verified, it can only be absent.
+        """
         from advanced_validation import IntegrityVerifier
 
         print("💾 Backup Workflow")
 
-        # 1. Create manifest
-        print("  [1/3] Creating integrity manifest...")
-        verifier = IntegrityVerifier()
+        library_path = Path(library_path)
+        backup_path = Path(backup_path)
+        if not library_path.is_dir():
+            raise ValueError(f"library path does not exist: {library_path}")
         files = list(library_path.rglob("*.wav"))
+        if not files:
+            raise ValueError(
+                f"library has no .wav files to back up: {library_path}"
+            )
+
+        # 1. Create manifest -- inside the backup itself, so the copy is
+        # self-describing. The previous code wrote `backup_manifest.json`
+        # into ~/.chameleon/manifests (the verifier's default state dir),
+        # leaking a permanent file there and overwriting it on every run.
+        print("  [1/3] Creating integrity manifest...")
+        verifier = IntegrityVerifier(manifest_dir=backup_path)
         manifest_path = verifier.create_manifest(files, "backup_manifest")
 
         # 2. Copy files

@@ -2471,3 +2471,23 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21):** `personal_config`'s library manager and backup workflow --
+do they report success for work that did not happen, the way the empty
+batch and empty /batch/submit did?
+**A:** Three instances of it. `backup_workflow` on an empty or missing
+library ran all three printed steps and announced "Backup verified
+successfully!" over zero files -- and its integrity manifest was written
+into ~/.chameleon/manifests (the verifier's state dir), leaking a
+permanent file that every run overwrote; it now refuses a missing path
+and an empty library by name, and the manifest lives inside the backup so
+the copy is self-describing. `scan_library` on a nonexistent
+`audio_library` returned an all-zeros report indistinguishable from a
+real empty library -- a named ValueError now, plus malformed
+`supported_formats` entries (anything not starting with ".") are skipped
+with a warning since `"*"` would have made `rglob("**")` register
+directories as audio files. `create_playlist` stored whatever it was
+handed -- an empty name, absolute paths outside the library, files that
+do not exist (`/etc/passwd` was accepted verbatim) -- all recorded as
+playlist members; entries that are not scanned library members are now
+dropped with a warning, and empty/blank/non-string names are refused.
