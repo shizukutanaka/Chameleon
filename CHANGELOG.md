@@ -487,6 +487,12 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`TaskQueue.remove_task` did not remove** — the entry stayed in the
+  `PriorityQueue` and `get_task` still returned it, so removed tasks
+  executed anyway. Re-adding the same id double-enqueued it, and an
+  identical `(priority, id)` pair crashed the heap on `BatchTask`
+  comparison. Entries now carry a sequence counter and stale entries
+  are skipped lazily.
 
 ### Changed
 

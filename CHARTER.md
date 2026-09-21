@@ -3252,3 +3252,12 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** `TaskQueue.remove_task` -- does a removed
+task stay removed?
+**A:** No. It only deleted the `task_map` entry; the item stayed in the
+PriorityQueue and `get_task` still returned it, so a "removed" task
+executed anyway. Re-adding the same id double-enqueued (executed twice),
+and an identical (priority, id) pair made the heap compare `BatchTask`
+objects and crash with TypeError. Entries now carry a sequence counter
+and stale entries are skipped lazily; `is_empty` reflects `task_map`.
