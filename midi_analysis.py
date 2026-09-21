@@ -184,8 +184,14 @@ class MIDIAnalyzer:
                 # Estimate fundamental frequency using autocorrelation
                 pitch_hz = self._estimate_pitch(frame, sample_rate)
 
-                if pitch_hz is not None:
+                if pitch_hz is not None and pitch_hz > 0:
                     midi_pitch = self._hz_to_midi(pitch_hz)
+                    # A pitch outside 0..127 is not representable in a
+                    # .mid event -- emit nothing rather than write a
+                    # clamped note that lies about the detected pitch
+                    # (or crash the write and lose every other note).
+                    if not 0 <= midi_pitch <= 127:
+                        continue
                     velocity = min(127, int(energy * 1000))
 
                     notes.append(MIDINote(
