@@ -181,6 +181,14 @@ SECURITY_CONFIG['max_uploaded_files'] = _env_int(
 SECURITY_CONFIG['max_audit_log_bytes'] = _env_int(
     'CHAMELEON_MAX_AUDIT_LOG_BYTES', 50 * 1024 * 1024)
 
+# A batch job's files list had no length cap: each entry fans out into a
+# results dict per file, so a job naming the same registered file a
+# million times grew job_data['results'] without bound while occupying a
+# worker slot. max_batch_files rejects oversized submissions at 413;
+# CHAMELEON_MAX_BATCH_FILES=0 disables the bound.
+SECURITY_CONFIG['max_batch_files'] = _env_int(
+    'CHAMELEON_MAX_BATCH_FILES', 10000)
+
 PRIVILEGED_CLEARANCE = {"SECRET", "TOP_SECRET"}
 
 # Clearance order for capping a self-declared login clearance. The request
@@ -1483,6 +1491,13 @@ async def submit_batch_job(
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Batch queue is at capacity; try again later",
+            )
+
+        files_limit = SECURITY_CONFIG.get('max_batch_files')
+        if files_limit and len(payload.files) > files_limit:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"Batch job exceeds max_batch_files ({files_limit})",
             )
 
         # Validate all files exist
