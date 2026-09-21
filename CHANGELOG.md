@@ -487,6 +487,17 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`secure_open` opened a different path than it validated** — it
+  resolved and validated `~/file` then `open()`ed the raw argument, so a
+  tilde path failed with a bare FileNotFoundError after passing
+  validation (and could be swapped for a different file in between). The
+  resolved path is opened instead.
+- **`sanitize_filename('..')` returned '..' verbatim** — a caller joining
+  the result onto an output directory would escape it. Dot components now
+  become 'untitled'.
+- **`CHAMELEON_TRUSTED_ROOTS` kept relative entries relative** — each
+  validation re-resolved them against the process's cwd, so the trusted
+  boundary drifted. `from_environment` resolves them at config time.
 
 ### Changed
 

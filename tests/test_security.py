@@ -330,3 +330,62 @@ class TestSecurityConfigFromEnvironment:
         with pytest.warns(UserWarning, match="does not exist"):
             cfg = SecurityConfig.from_environment()
         assert str(tmp_path / "ghost") in cfg.trusted_roots
+
+
+def test_sanitize_filename_rejects_dot_components():
+    """`sanitize_filename('..')` returned '..' verbatim -- a caller writing
+    `out_dir / sanitize_filename(user_input)` would escape the output
+    directory. Dot components are not filenames; they become 'untitled'."""
+    from security_validator import SecurityValidator
+
+    v = SecurityValidator()
+    assert v.sanitize_filename("..") == "untitled"
+    assert v.sanitize_filename(".") == "untitled"
+    assert v.sanitize_filename("normal.wav") == "normal.wav"
+    assert v.sanitize_filename("...") == "..."  # a real filename, kept
+
+
+def test_secure_open_opens_the_path_it_validated(tmp_path):
+    """secure_open used to validate the resolved path but open() the raw
+    argument -- '~/file' passed validation (expanduser) then failed in
+    open() with a raw FileNotFoundError. The opened file must be the file
+    that was checked."""
+    import os
+    from security_validator import SecurityValidator, SecureFileOperations
+
+    target = tmp_path / "t.wav"
+    target.write_bytes(b"RIFF" + b"\x00" * 40)
+    ops = SecureFileOperations(SecurityValidator())
+
+    # '~' expansion: validated path and opened path must be the same file
+    home_probe = Path(os.path.expanduser("~")) / "chameleon_secure_open_probe.wav"
+    home_probe.write_bytes(b"RIFF" + b"\x00" * 40)
+    try:
+        with ops.secure_open("~/chameleon_secure_open_probe.wav", "rb") as fh:
+            assert fh.read(4) == b"RIFF"
+    finally:
+        home_probe.unlink()
+
+
+def test_env_trusted_roots_are_pinned_at_config_time(tmp_path, monkeypatch):
+    """A relative CHAMELEON_TRUSTED_ROOTS entry used to stay relative --
+    each validation resolved it against the current cwd, so the trusted
+    boundary drifted with wherever the process happened to be."""
+    import os
+    from security_validator import SecurityConfig, SecurityValidator
+
+    root = tmp_path / "data"
+    root.mkdir()
+    (root / "ok.wav").write_bytes(b"RIFF" + b"\x00" * 40)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CHAMELEON_TRUSTED_ROOTS", "data")
+
+    cfg = SecurityConfig.from_environment()
+    assert all(Path(r).is_absolute() for r in cfg.trusted_roots)
+
+    validator = SecurityValidator(cfg)
+    assert validator.validate_path("data/ok.wav")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    assert not validator.validate_path("data/ok.wav")

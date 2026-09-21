@@ -2471,3 +2471,18 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21):** The validator's edges: does secure_open open the file
+it validated, does sanitize_filename survive '..', and do env-configured
+trusted roots stay put?
+**A:** Three cracks. secure_open validated the resolved path but open()ed
+the raw argument -- '~/file.wav' expanded under validation then failed
+in open() with a bare FileNotFoundError, and in between the validated
+file and the opened file could diverge. It now opens the resolved path.
+sanitize_filename's scrub list never covered bare dot components, so
+'..' and '.' returned verbatim -- a caller joining the result onto an
+output dir would escape it; they now become 'untitled' (the same fix
+audit-61 gave the sibling validator). And CHAMELEON_TRUSTED_ROOTS kept
+relative entries relative: each validation re-resolved them against the
+current cwd, so the trusted boundary drifted with the process's working
+directory. from_environment resolves them to absolute at config time.
