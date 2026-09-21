@@ -2583,6 +2583,20 @@ bounding disk at ~2×cap; history older than the rotation is dropped by
 design — the bounded in-memory tail is what `/audit/log` serves anyway
 (`tests/test_audit_log_rotation.py`).
 
+**Q: The batch watchdog bounds per-file work — what about the same
+operations through the single-file endpoints?**
+A (2026-09-20): They had none. `/audio/analyze` and `/audio/normalize`
+awaited `analyze_audio_fast`/`normalize_audio_fast` directly — a hung
+operation parked the request (and its worker) forever while the batch
+path, added one round earlier, already had `CHAMELEON_FILE_TIMEOUT`.
+The same `asyncio.wait_for` bound now wraps both endpoints: a timed-out
+op returns `success=False` with `'timed out after Ns'` and a FAILED
+audit entry, identical semantics to the batch path
+(`tests/test_endpoint_op_timeout.py`; at HEAD the test hangs — the
+request genuinely cannot return). General lesson: a bound added to one
+code path is not a bound on the operation — check every caller of the
+same primitive.
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
