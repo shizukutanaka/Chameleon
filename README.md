@@ -125,7 +125,7 @@ chameleon process --trim --threshold 0.02 audio.wav
 chameleon process --master streaming audio.wav
 
 # Batch process directory
-# (operations: analyze/normalize/mono/trim/denoise/convert/effects)
+# (operations: analyze/normalize/mono/trim/denoise/restore/convert/effects)
 chameleon batch /path/to/audio/ normalize --target-peak 0.9 --output-dir /output/
 chameleon batch /path/to/audio/ effects --effects chain.json --output-dir /output/
 
