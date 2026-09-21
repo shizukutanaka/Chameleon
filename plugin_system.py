@@ -251,7 +251,17 @@ class PluginSandbox:
         else:
             signal = None
 
-        if signal is not None and hasattr(signal, 'SIGALRM') and max_time > 0:
+        # SIGALRM only exists on POSIX and only fires in the main thread;
+        # calling signal() off-main raises ValueError, so other threads fall
+        # back to the worker-thread path below, which enforces the same bound.
+        use_sigalrm = (
+            signal is not None
+            and hasattr(signal, 'SIGALRM')
+            and hasattr(signal, 'setitimer')
+            and max_time > 0
+            and threading.current_thread() is threading.main_thread()
+        )
+        if use_sigalrm:
             previous_handler = signal.getsignal(signal.SIGALRM)
 
             def timeout_handler(signum, frame):  # pragma: no cover - requires timing
@@ -259,12 +269,14 @@ class PluginSandbox:
 
             try:
                 signal.signal(signal.SIGALRM, timeout_handler)
-                signal.alarm(int(max_time))
+                # setitimer keeps sub-second precision: alarm(int(0.5)) = 0
+                # would *disarm* the timer and run the plugin unbounded.
+                signal.setitimer(signal.ITIMER_REAL, max_time)
                 with self._apply_memory_limit():
                     return func(*args, **kwargs)
             finally:
                 try:
-                    signal.alarm(0)
+                    signal.setitimer(signal.ITIMER_REAL, 0)
                 finally:
                     signal.signal(signal.SIGALRM, previous_handler)
 
@@ -288,8 +300,12 @@ class PluginSandbox:
             worker.join()
 
         if worker.is_alive():
+            # Python cannot kill a thread: the daemon worker keeps running
+            # (and mutating state) after we return. The timeout bounds the
+            # *wait*, not the plugin -- say so rather than claim containment.
             self.logger.error(
-                "Plugin execution exceeded timeout of %.2f seconds; continuing with failure", max_time
+                "Plugin execution exceeded timeout of %.2f seconds; "
+                "the plugin thread is still running and cannot be stopped", max_time
             )
             raise TimeoutError("Plugin execution timed out")
 
