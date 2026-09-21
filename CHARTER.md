@@ -3252,3 +3252,17 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, audit 38): Do the stdlib fallback signal paths in
+spectral_utils actually work?**
+**A:** Yes -- verified and pinned. linear_resample preserves frequency
+(440 Hz tone measured 439 Hz after 2x up and 2x down) and peak; the
+three-band apply_spectral_mask measurably removes the targeted band
+(high_gain=0 -> output rms equals the low component within 0.05) and
+rejects negative gains. The block-wise DFT path (4096-sample blocks
+without numpy) does not drop the tail. Also verified honest this cycle:
+ClickRemover detects and attenuates clicks (approximate repair, as
+labeled); repair_audio wires only declip/dehum, gates deps, orders
+canonically, and rescales restored crests so the format clamp does not
+re-clip them; /audit/log limit has a lower bound and the deque itself
+caps at 10k entries; no MIDI-file reader is claimed or present.
