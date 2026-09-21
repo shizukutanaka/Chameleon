@@ -2471,3 +2471,11 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21):** Plugin discovery is a read path -- does
+`plugins list --directory DIR` leave the filesystem as it found it?
+**A:** No. `_resolve_directory` ran `os.chmod(dir, 0o750)`
+unconditionally on POSIX, so pointing `plugins list` or `plugins audit`
+at a directory the user already owned silently stripped its group/other
+permissions. Now only a directory the loader creates itself receives
+the tightened mode; existing directories keep their permissions.

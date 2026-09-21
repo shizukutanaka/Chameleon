@@ -321,8 +321,14 @@ class PluginLoader:
 
         if os.name == 'posix':
             try:
-                resolved.mkdir(parents=True, exist_ok=True)
-                os.chmod(resolved, 0o750)
+                # Only tighten permissions on directories we create --
+                # chmod'ing a directory the caller already had (say
+                # ~/Music passed to `plugins list --directory`) would
+                # silently strip its group/other access on a read
+                # operation.
+                if not resolved.exists():
+                    resolved.mkdir(parents=True)
+                    os.chmod(resolved, 0o750)
             except PermissionError:
                 self.logger.warning(f"Insufficient permissions to secure directory {resolved}")
         else:

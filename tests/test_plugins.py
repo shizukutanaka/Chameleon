@@ -304,3 +304,28 @@ def test_load_plugin_limits_all_plugin_code_sites(tmp_path, hang_site):
     with pytest.raises(TimeoutError, match="timed out"):
         loader.load_plugin(plugin)
     assert time.monotonic() - t0 < 10
+
+
+def test_discover_does_not_chmod_an_existing_directory(tmp_path):
+    """`_resolve_directory` used to `chmod 0o750` unconditionally, so
+    `plugins list --directory ~/shared` silently stripped group/other
+    access from a directory the caller already had. Only directories the
+    loader creates itself get the tightened mode."""
+    import os
+    import stat
+    from plugin_system import PluginLoader, PluginConfig
+
+    existing = tmp_path / "existing"
+    existing.mkdir(0o755)
+    loader = PluginLoader(PluginConfig(
+        plugin_directories=[str(existing)], auto_discover=False))
+    loader.discover_plugins()
+    assert stat.S_IMODE(os.stat(existing).st_mode) == 0o755, (
+        "listing plugins tightened permissions on a pre-existing directory")
+
+    fresh = tmp_path / "fresh"
+    loader2 = PluginLoader(PluginConfig(
+        plugin_directories=[str(fresh)], auto_discover=False))
+    loader2.discover_plugins()
+    assert fresh.is_dir()
+    assert stat.S_IMODE(os.stat(fresh).st_mode) == 0o750

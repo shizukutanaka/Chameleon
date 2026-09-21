@@ -487,6 +487,11 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **Plugin discovery chmod'ed directories it didn't create** —
+  `_resolve_directory` ran `chmod 0o750` unconditionally on POSIX, so
+  `plugins list --directory ~/shared` silently stripped group/other
+  permissions from an existing directory on a read operation. Only
+  directories the loader creates itself now get the tightened mode.
 
 ### Changed
 
