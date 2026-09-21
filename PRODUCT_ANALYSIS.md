@@ -2,9 +2,9 @@
 
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
 **Version:** 1.1.0 · **Tests:** re-run 2026-09-20 on Python 3.12, green in
-all three configurations — **519 passed** on a bare install (stdlib only,
-41 skipped), **611** with numpy (scipy/librosa/soundfile blocked, 36
-skipped), **720** with numpy + scipy + librosa + soundfile + fastapi
+all three configurations — **521 passed** on a bare install (stdlib only,
+41 skipped), **613** with numpy (scipy/librosa/soundfile blocked, 36
+skipped), **722** with numpy + scipy + librosa + soundfile + fastapi
 (5 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
@@ -366,6 +366,7 @@ here because they need a user decision first.
 | ~~P2~~ | ~~Silence reported as measurements: `spectral_centroid=0.0`, `tempo=0.0`, `frequency_range=(0.0,0.0)` dataclass default on unmeasured fields~~ | Low | S | Low | **DONE 2026-09-20** — `frequency_range` defaults to None; centroid/tempo assigned only on non-silent input (`tests/test_silence_metrics.py`) |
 | ~~P2~~ | ~~`generate_midi_file` wrote pitch/velocity/duration unchecked — pitch>127 crashed mid-write, negative duration silently emitted note_off before note_on~~ | Med | S | Med | **DONE 2026-09-20** — writer validates tempo + every note field; extraction skips pitches >127 instead of crashing (`tests/test_midi_note_validation.py`) |
 | ~~P2~~ | ~~`WAVProcessor._header_rejection_reason` shared across `--parallel` workers — one thread's rejection reason could be reported on another's file~~ | Low | XS | Med | **DONE 2026-09-20** — field is `threading.local` (`tests/test_header_reason_isolation.py`) |
+| ~~P2~~ | ~~Phantom sample caps — `_calculate_levels_safe` measured only a 1M-sample prefix (silent wrong gain); `_apply_gain_safe` failed files >10M channel-samples (~113s stereo) well under the 500MB size limit~~ | High | S | Med | **DONE 2026-09-20** — caps removed; loops bounded by data_size and chunked reads (`tests/test_full_file_processing.py`) |
 | P4 | Plugin sandbox runtime boundary (restricted builtins for `exec_module`) | High (security) | L | High | Architectural; leaky if done partially — design first |
 | P4 | Surround-channel loudness weighting | Low | M | Low | Only if a real multichannel use case appears |
 
