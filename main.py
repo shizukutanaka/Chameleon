@@ -699,7 +699,18 @@ class AudioProcessor:
         with handle as f:
             # Read RIFF header
             riff = f.read(12)
-            if riff[:4] != b'RIFF' or riff[8:12] != b'WAVE':
+            if riff[8:12] != b'WAVE':
+                raise ValueError("Not a valid WAV file")
+            if riff[:4] in (b'RF64', b'BW64'):
+                raise ValueError(
+                    "Unsupported WAV container: RF64/BW64 broadcast "
+                    "extension (EBU Tech 3306, >4GB); convert to plain "
+                    "RIFF first")
+            if riff[:4] == b'RIFX':
+                raise ValueError(
+                    "Unsupported WAV container: RIFX big-endian variant; "
+                    "convert to little-endian RIFF first")
+            if riff[:4] != b'RIFF':
                 raise ValueError("Not a valid WAV file")
 
             # PCM subformat GUIDs for WAVE_FORMAT_EXTENSIBLE.
