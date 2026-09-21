@@ -487,6 +487,13 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`ParametricEQ.add_band` silently dropped or misbuilt bands** —
+  unknown `filter_type` ("notch", "peaking") no-oped, `frequency <= 0`
+  produced a mirrored invalid biquad (or a raw scipy error on the pass
+  bands), and `frequency >= Nyquist` returned early. Unknown types and
+  frequencies outside `(0, Nyquist)` now raise `ValueError`. Preset
+  bands above Nyquist on low-sample-rate masters now fail rather than
+  silently skip.
 
 ### Changed
 

@@ -403,15 +403,30 @@ class ParametricEQ:
         self.sample_rate = sample_rate
         self.filters = []
 
+    _FILTER_TYPES = ("bell", "highpass", "lowpass", "highshelf", "lowshelf")
+
     def add_band(self, band: EQBand):
         """Add EQ band"""
-        if not HAS_SCIPY:
-            return
+        if band.filter_type not in self._FILTER_TYPES:
+            # An unrecognised type used to fall through every branch and
+            # add nothing -- the caller believed a band existed that never
+            # would ("peaking" and "notch" both silently no-oped).
+            raise ValueError(
+                f"Unknown filter_type {band.filter_type!r}; "
+                f"supported: {', '.join(self._FILTER_TYPES)}")
 
         nyquist = self.sample_rate / 2
         freq_norm = band.frequency / nyquist
 
-        if freq_norm >= 1.0:
+        if not (0.0 < freq_norm < 1.0):
+            # frequency<=0 silently produced a mirrored/invalid bell or a
+            # raw scipy error on the pass bands; frequency>=nyquist was
+            # silently dropped. Neither outcome told the caller anything.
+            raise ValueError(
+                f"EQ band frequency {band.frequency} Hz is outside "
+                f"(0, {nyquist:.0f}) for sample rate {self.sample_rate}")
+
+        if not HAS_SCIPY:
             return
 
         # Bell and shelving bands use RBJ biquads, whose coefficients already

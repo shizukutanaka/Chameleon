@@ -117,3 +117,23 @@ def test_mastering_rejects_multichannel_instead_of_dropping_channels():
     )
     with pytest.raises(ValueError, match="mono or stereo"):
         chain.process(quad)
+
+
+def test_eq_rejects_unknown_filter_types_and_impossible_frequencies():
+    # add_band used to silently no-op on unrecognised filter_type
+    # ("notch", "peaking"), silently add a mirrored invalid biquad for
+    # frequency<=0, and silently drop bands >= Nyquist.
+    np = pytest.importorskip("numpy")
+    import mastering_chain
+    eq = mastering_chain.ParametricEQ(44100)
+    with pytest.raises(ValueError, match="Unknown filter_type"):
+        eq.add_band(mastering_chain.EQBand(1000.0, 6.0, 1.0, "notch"))
+    with pytest.raises(ValueError, match="Unknown filter_type"):
+        eq.add_band(mastering_chain.EQBand(1000.0, 6.0, 1.0, "peaking"))
+    with pytest.raises(ValueError, match="outside"):
+        eq.add_band(mastering_chain.EQBand(-100.0, 6.0, 1.0, "bell"))
+    with pytest.raises(ValueError, match="outside"):
+        eq.add_band(mastering_chain.EQBand(30000.0, 6.0, 1.0, "highpass"))
+    eq.add_band(mastering_chain.EQBand(1000.0, 6.0, 1.0, "bell"))
+    if mastering_chain.HAS_SCIPY:
+        assert len(eq.filters) == 1
