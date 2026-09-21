@@ -160,7 +160,7 @@ Positional: `directory` then one of
 | Flag | Meaning |
 |------|---------|
 | `--recursive` | Process subdirectories too |
-| `--output-dir DIR` | Output directory |
+| `--output-dir DIR` | Output directory; for `analyze`, receives `<stem>_analysis.json` reports |
 | `--format FMT` | Output format for the `convert` operation |
 | `--quality {standard,high}` | `normalize` only: `high` applies a soft clipper for headroom, `standard` does not. `low`/`medium`/`lossless` are accepted for compatibility and behave as `standard` |
 | `--target-peak F` | Target peak for the `normalize` operation |

@@ -158,7 +158,7 @@ chameleon batch ./audio denoise --recursive --output-dir out/
 | オプション | 意味 |
 |-----------|------|
 | `--recursive` | サブディレクトリも処理 |
-| `--output-dir DIR` | 出力ディレクトリ |
+| `--output-dir DIR` | 出力ディレクトリ。`analyze` では `<stem>_analysis.json` レポートを出力 |
 | `--format FMT` | `convert` 操作の出力フォーマット |
 | `--quality {standard,high}` | `normalize` のみ: `high` はソフトクリップでヘッドルームを確保、`standard` は適用しない。`low`/`medium`/`lossless` は互換性のため受理され `standard` と同等 |
 | `--target-peak F` | `normalize` 操作の目標ピーク値 |

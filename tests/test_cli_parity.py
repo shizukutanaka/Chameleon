@@ -516,7 +516,8 @@ def test_zero_frame_wav_analyze_and_transforms_are_identity(tmp_path):
     except ModuleNotFoundError:
         # The stdlib-gate sitecustomize raises from find_spec itself.
         has_numpy = False
-    ops = (["--declip"], ["--dehum"], ["--denoise"], ["--convert"]) if has_numpy else ()
+    ops = (["--declip"], ["--dehum"], ["--denoise"],
+           ["--convert", "--convert-bit-depth", "24"]) if has_numpy else ()
     for op in (*ops, ["--normalize"], ["--trim"]):
         proc = subprocess.run(
             [sys.executable, main_py, "process", str(wav)] + op,
@@ -598,3 +599,62 @@ def test_convert_bit_depth_32_writes_pcm_not_float(tmp_path):
     assert fmt_off > 0
     format_tag = int.from_bytes(body[fmt_off + 8:fmt_off + 10], "little")
     assert format_tag == 1  # PCM, not IEEE float (3)
+
+
+def test_batch_analyze_reports_instead_of_discarding(tmp_path):
+    """`batch analyze` computed per-file metadata then printed only the
+    tally -- an analysis command whose output was a count. It now prints
+    the same fields `analyze` does and writes <stem>_analysis.json when
+    --output-dir is given."""
+    src = tmp_path / "in"
+    src.mkdir()
+    write_sine_wave(src / "tone.wav")
+    out = tmp_path / "reports"
+
+    result = _run("batch", str(src), "analyze", "--output-dir", str(out))
+
+    assert result.returncode == 0, result.stderr
+    assert "Duration:" in result.stdout
+    assert "Peak Level:" in result.stdout
+    report = out / "tone_analysis.json"
+    assert report.exists()
+    payload = json.loads(report.read_text())
+    assert payload["sample_rate"] == 44100
+
+
+def test_process_convert_requires_a_target(tmp_path):
+    """Bare `--convert` resolves to wav@same-or-default params -- on a .wav
+    input a byte-identical copy wearing a '_converted' name. A conversion
+    that cannot change anything is not a request; refuse it."""
+    wav = write_sine_wave(tmp_path / "tone.wav")
+
+    result = _run("process", str(wav), "--convert",
+                  "--output-dir", str(tmp_path / "out"))
+
+    assert result.returncode == 3
+    assert "--convert" in result.stderr and "target" in result.stderr
+
+
+def test_batch_convert_requires_a_target(tmp_path):
+    src = tmp_path / "in"
+    src.mkdir()
+    write_sine_wave(src / "tone.wav")
+
+    result = _run("batch", str(src), "convert",
+                  "--output-dir", str(tmp_path / "out"))
+
+    assert result.returncode == 3
+    assert "target" in result.stderr
+
+
+def test_plugins_list_on_uncreatable_directory_is_input_not_traceback(tmp_path):
+    """A plugin dir under a regular file cannot be created -- that is a bad
+    user-supplied path (INPUT), not an internal failure (traceback)."""
+    blocker = tmp_path / "afile"
+    blocker.write_text("not a directory")
+
+    result = _run("plugins", "list", "--directory", str(blocker / "sub"))
+
+    assert result.returncode == 3
+    assert "Plugin directory error" in result.stderr
+    assert "Traceback" not in result.stderr

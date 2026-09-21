@@ -2642,6 +2642,16 @@ async def main():
             operations.append("effects")
 
         if args.convert:
+            # Bare --convert resolves to wav@same-or-default params -- on a
+            # .wav input a byte-identical copy wearing a '_converted' name.
+            # A conversion that cannot change anything is not a request the
+            # user meant to make; require an actual target.
+            if not any([args.convert_format, args.convert_sample_rate,
+                        args.convert_bit_depth]):
+                print("Error: --convert needs a target: "
+                      "--convert-sample-rate, --convert-bit-depth, or "
+                      "--convert-format", file=sys.stderr)
+                return ExitCode.INPUT
             operations.append("convert")
             kwargs["format"] = args.convert_format or "wav"
             kwargs["sample_rate"] = args.convert_sample_rate
@@ -2777,7 +2787,10 @@ async def main():
                 _assert_unique_paths(directories, "plugin directory")
 
             manager, sanitized_dirs = _initialize_plugin_manager(directories)
-        except ValueError as exc:
+        except (ValueError, OSError) as exc:
+            # OSError covers the whole "directory cannot be created/read"
+            # family (read-only fs, permissions) -- a user-supplied path
+            # that fails is input, not a traceback.
             print(f"Plugin directory error: {exc}", file=sys.stderr)
             return ExitCode.INPUT
 
@@ -2960,6 +2973,13 @@ async def main():
             kwargs["dry_run"] = True
 
         if args.operation == "convert":
+            # Same rule as `process --convert`: with no target flags the op
+            # writes byte-identical copies under a '_converted' name.
+            if not any([format_arg, args.sample_rate, args.bit_depth]):
+                print("Error: the convert operation needs a target: "
+                      "--sample-rate, --bit-depth, or --format",
+                      file=sys.stderr)
+                return ExitCode.INPUT
             kwargs["format"] = format_arg or "wav"
             kwargs["sample_rate"] = args.sample_rate
             kwargs["bit_depth"] = args.bit_depth or 16
@@ -3002,6 +3022,44 @@ async def main():
         if len(results) == 1 and "exit_code" in results[0]:
             print(f"Error: {results[0]['error']}", file=sys.stderr)
             return results[0]["exit_code"]
+
+        if args.operation == "analyze" and not args.dry_run:
+            # batch analyze used to compute per-file metadata, print only the
+            # tally, and drop the data -- an analysis command whose output was
+            # a count. Print the same fields `analyze` prints, and when
+            # --output-dir is given write <stem>_analysis.json per file so the
+            # flag has a consumer for this operation too.
+            if output_dir:
+                try:
+                    Path(output_dir).mkdir(parents=True, exist_ok=True)
+                except OSError as exc:
+                    print(f"Error: cannot create output directory "
+                          f"{output_dir}: {exc}", file=sys.stderr)
+                    return ExitCode.INPUT
+            for result in results:
+                if "error" in result:
+                    print(f"Error: {result['error']}", file=sys.stderr)
+                    continue
+                metadata = result["metadata"]
+                print(f"\n{result['file']}:")
+                print(f"  Duration: {metadata.duration:.2f}s")
+                print(f"  Sample Rate: {metadata.sample_rate}Hz")
+                print(f"  Channels: {metadata.channels}")
+                print(f"  Peak Level: {metadata.peak_level:.3f}")
+                print(f"  RMS Level: {metadata.rms_level:.3f}")
+                if output_dir:
+                    report_path = (Path(output_dir)
+                                   / f"{Path(result['file']).stem}_analysis.json")
+                    try:
+                        with open(report_path, 'w') as fh:
+                            json.dump(_serialize_result(metadata), fh,
+                                      indent=2, default=str)
+                    except OSError as exc:
+                        print(f"Error: cannot write analysis report "
+                              f"{report_path}: {exc}", file=sys.stderr)
+                        exit_code = ExitCode.INPUT
+            if output_dir:
+                print(f"\nAnalysis reports written to {output_dir}")
 
         successful = sum(1 for r in results if "error" not in r)
         verb = "Would process" if args.dry_run else "Processed"

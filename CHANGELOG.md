@@ -1036,6 +1036,26 @@
   `config_manager` (deleted this cycle), which would have broken the workflow
   the moment a maintainer adopted it verbatim; corrected to the current
   stdlib-core module list.
+- `batch <dir> analyze` computed per-file metadata, printed only the
+  "Processed N/M" tally, and discarded it — an analysis command whose entire
+  output was a count, while `--output-dir` was silently ignored. It now
+  prints the same per-file fields `analyze` does and writes
+  `<stem>_analysis.json` into `--output-dir` when provided.
+- `DeepFileInspector._validate_wav_structure` recorded structural verdicts
+  in a metadata key nothing consumed: a WAV with no `data` chunk passed
+  `validate_for_processing` with `is_valid=True`, and "Non-PCM format" /
+  unusual field warnings were invisible. Verdicts now promote into the
+  result's errors (missing fmt/data → rejected at intake) and warnings.
+  The walk also gained the truncation checks the format requires: a chunk
+  declaring more bytes than remain and a RIFF declared size larger than the
+  file both warn at intake instead of silently processing the stub.
+- `plugins list/audit --directory` on an uncreatable path dumped a raw
+  traceback (the handler caught ValueError but not the mkdir OSError);
+  it now reports "Plugin directory error" and exits INPUT.
+- `process --convert` / `batch convert` with no target flag wrote a
+  byte-identical copy under a `*_converted` name and reported "Processed";
+  both now require at least one target (--sample-rate/--bit-depth/--format)
+  and exit INPUT.
 
 ### Changed (honesty)
 

@@ -142,3 +142,61 @@ def test_sanitize_preserves_data_after_odd_sized_metadata(tmp_path):
 
     with wave.open(str(dst)) as w:
         assert w.readframes(4) == payload
+
+
+# --- structural verdicts must gate, not sit in metadata ---------------------
+
+def test_wav_missing_data_chunk_fails_inspection(tmp_path):
+    """A RIFF with fmt but no data chunk is structurally unprocessable --
+    the verdict must reach ``errors``, not be written to a metadata key
+    no caller reads."""
+    header = (b'RIFF' + struct.pack('<I', 36) + b'WAVE'
+              + b'fmt ' + struct.pack('<IHHIIHH', 16, 1, 1, 44100, 88200, 2, 16))
+    wav = tmp_path / "nodata.wav"
+    wav.write_bytes(header)
+
+    result = DeepFileInspector().validate_for_processing(wav)
+
+    assert not result.is_valid
+    assert any("data" in e.lower() for e in result.errors)
+
+
+def test_wav_missing_fmt_chunk_fails_inspection(tmp_path):
+    header = (b'RIFF' + struct.pack('<I', 36) + b'WAVE'
+              + b'data' + struct.pack('<I', 4) + b'\x00' * 4)
+    wav = tmp_path / "nofmt.wav"
+    wav.write_bytes(header)
+
+    result = DeepFileInspector().validate_for_processing(wav)
+
+    assert not result.is_valid
+    assert any("fmt" in e.lower() for e in result.errors)
+
+
+def test_truncated_data_chunk_warns_instead_of_silent_accept(tmp_path):
+    """A data chunk declaring 40000 bytes in a file holding 100 must surface
+    as a warning -- processing what remains is legitimate, hiding the
+    truncation is not."""
+    header = (b'RIFF' + struct.pack('<I', 36000) + b'WAVE'
+              + b'fmt ' + struct.pack('<IHHIIHH', 16, 1, 1, 44100, 88200, 2, 16)
+              + b'data' + struct.pack('<I', 40000))
+    wav = tmp_path / "trunc.wav"
+    wav.write_bytes(header + b'\x00' * 100)
+
+    result = DeepFileInspector().validate_for_processing(wav)
+
+    assert result.is_valid  # the bytes present are still usable audio
+    assert any("truncat" in w.lower() for w in result.warnings)
+
+
+def test_inspect_file_promotes_structural_verdicts_too(tmp_path):
+    """The heavy inspect path must gate the same way as the light one."""
+    header = (b'RIFF' + struct.pack('<I', 36) + b'WAVE'
+              + b'fmt ' + struct.pack('<IHHIIHH', 16, 1, 1, 44100, 88200, 2, 16))
+    wav = tmp_path / "nodata.wav"
+    wav.write_bytes(header)
+
+    result = DeepFileInspector().inspect_file(wav)
+
+    assert not result.is_valid
+    assert any("data" in e.lower() for e in result.errors)

@@ -95,10 +95,13 @@ class DeepFileInspector:
                 warnings.extend([f"Suspicious pattern: {p.decode('latin1', errors='ignore')}"
                                for p in suspicious])
 
-            # Validate WAV structure
+            # Validate WAV structure; structural verdicts promote into
+            # errors/warnings so they gate rather than sit in metadata.
             if file_type.startswith('WAV'):
                 wav_validation = self._validate_wav_structure(file_path)
                 metadata.update(wav_validation)
+                errors.extend(wav_validation.get("structural_errors", []))
+                warnings.extend(wav_validation.get("structural_warnings", []))
 
             # Check file permissions
             if stats.st_mode & 0o111:  # Executable bit set
@@ -164,7 +167,10 @@ class DeepFileInspector:
                                  for p in suspicious])
 
             if file_type.startswith('WAV'):
-                metadata.update(self._validate_wav_structure(file_path))
+                wav_validation = self._validate_wav_structure(file_path)
+                metadata.update(wav_validation)
+                errors.extend(wav_validation.get("structural_errors", []))
+                warnings.extend(wav_validation.get("structural_warnings", []))
 
             if stats.st_mode & 0o111:
                 warnings.append("File has executable permissions")
@@ -304,20 +310,38 @@ class DeepFileInspector:
         return regions
 
     def _validate_wav_structure(self, file_path: Path) -> Dict:
-        """Validate WAV file structure"""
+        """Validate WAV file structure.
+
+        Structural verdicts are collected in ``structural_errors`` (a WAV
+        missing fmt/data is not processable) and ``structural_warnings``
+        (truncated payloads, unusual fields); the callers promote them into
+        the result's errors/warnings. The older ``error``/``warning`` keys
+        had no reader, so verdicts stored there gated nothing.
+        """
 
         metadata = {}
+        structural_errors: List[str] = []
+        structural_warnings: List[str] = []
 
         try:
+            actual_size = file_path.stat().st_size
             with open(file_path, 'rb') as f:
                 # Read RIFF header
                 riff_header = f.read(12)
 
                 if len(riff_header) < 12:
-                    return {"error": "Truncated RIFF header"}
+                    metadata["structural_errors"] = ["Truncated RIFF header"]
+                    return metadata
 
                 file_size = struct.unpack('<I', riff_header[4:8])[0]
                 metadata["declared_size"] = file_size
+
+                # The RIFF size counts the bytes after its own field; a
+                # larger declaration means the container is truncated.
+                if file_size > actual_size - 8:
+                    structural_warnings.append(
+                        f"RIFF declares {file_size} bytes but the file holds "
+                        f"{actual_size - 8} -- truncated container")
 
                 # Parse chunks
                 chunks_found = []
@@ -330,6 +354,17 @@ class DeepFileInspector:
                     chunk_size = struct.unpack('<I', chunk_header[4:8])[0]
 
                     chunks_found.append(chunk_id.decode('latin1', errors='ignore'))
+
+                    # A chunk claiming bytes the file does not have is
+                    # truncation, not a boundary -- seeking past EOF silently
+                    # "succeeds" and the walk would just end, hiding it.
+                    remaining = actual_size - f.tell()
+                    if chunk_size > remaining:
+                        structural_warnings.append(
+                            f"Chunk {chunk_id.decode('latin1', errors='ignore')} "
+                            f"declares {chunk_size} bytes but only {remaining} "
+                            f"remain -- truncated audio")
+                        break
 
                     if chunk_id == b'fmt ':
                         # Parse format chunk
@@ -347,13 +382,13 @@ class DeepFileInspector:
 
                             # Validate format
                             if format_tag != 1:  # PCM
-                                metadata["warning"] = f"Non-PCM format: {format_tag}"
+                                structural_warnings.append(f"Non-PCM format: {format_tag}")
 
                             if channels < 1 or channels > 8:
-                                metadata["warning"] = f"Unusual channel count: {channels}"
+                                structural_warnings.append(f"Unusual channel count: {channels}")
 
                             if sample_rate not in [8000, 11025, 16000, 22050, 44100, 48000, 96000]:
-                                metadata["warning"] = f"Non-standard sample rate: {sample_rate}"
+                                structural_warnings.append(f"Non-standard sample rate: {sample_rate}")
 
                         # Skip any unread remainder of an oversized fmt body.
                         remainder = chunk_size - len(fmt_data)
@@ -371,12 +406,17 @@ class DeepFileInspector:
 
                 # Verify required chunks
                 if 'fmt ' not in chunks_found:
-                    metadata["error"] = "Missing fmt chunk"
+                    structural_errors.append("Missing fmt chunk")
                 if 'data' not in chunks_found:
-                    metadata["error"] = "Missing data chunk"
+                    structural_errors.append("Missing data chunk")
 
         except Exception as e:
-            metadata["error"] = str(e)
+            structural_errors.append(str(e))
+
+        if structural_errors:
+            metadata["structural_errors"] = structural_errors
+        if structural_warnings:
+            metadata["structural_warnings"] = structural_warnings
 
         return metadata
 
