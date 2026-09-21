@@ -2,9 +2,9 @@
 
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
 **Version:** 1.1.0 · **Tests:** re-run 2026-09-20 on Python 3.12, green in
-all three configurations — **531 passed** on a bare install (stdlib only,
-46 skipped), **636** with numpy (scipy/librosa/soundfile blocked, 36
-skipped), **745** with numpy + scipy + librosa + soundfile + fastapi
+all three configurations — **534 passed** on a bare install (stdlib only,
+46 skipped), **639** with numpy (scipy/librosa/soundfile blocked, 36
+skipped), **748** with numpy + scipy + librosa + soundfile + fastapi
 (5 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
@@ -375,6 +375,7 @@ here because they need a user decision first.
 | ~~P3~~ | ~~Durable `api-audit.log` grew forever — the in-memory deque was bounded but the file was append-only~~ | Low | XS | Med | **DONE 2026-09-20** — `CHAMELEON_MAX_AUDIT_LOG_BYTES` (default 50MB) rotates to `api-audit.log.1` once over cap; 0 disables (`tests/test_audit_log_rotation.py`) |
 | ~~P2~~ | ~~Single-file `/audio/analyze`+`/audio/normalize` had no op timeout — a hung op parked the request forever (batch path had `file_timeout_seconds`, endpoints did not)~~ | Med | S | Med | **DONE 2026-09-20** — same `asyncio.wait_for` bound wraps both endpoints; timed-out op returns `success=False` + FAILED audit entry (`tests/test_endpoint_op_timeout.py`) |
 | ~~P2~~ | ~~`BatchJobRequest.files` unbounded — a job naming one file a million times grew `job_data['results']` forever while holding a worker slot~~ | Med | S | Med | **DONE 2026-09-20** — `CHAMELEON_MAX_BATCH_FILES` (default 10,000) rejects oversized submissions at 413; 0 disables (`tests/test_batch_files_cap.py`) |
+| ~~P1~~ | ~~`SanitizationEngine.sanitize_wav_metadata` trusted declared chunk sizes — `read(chunk_size)` on a crafted header drove attacker-sized allocation, and truncated input produced an output whose rewritten header claimed uncopied bytes~~ | Med | S | Med | **DONE 2026-09-20** — declared chunk exceeding remaining file bytes now fails closed (ValueError) before reading (`tests/test_sanitize_chunk_bounds.py`) |
 | P4 | Plugin sandbox runtime boundary (restricted builtins for `exec_module`) | High (security) | L | High | Architectural; leaky if done partially — design first |
 | P4 | Surround-channel loudness weighting | Low | M | Low | Only if a real multichannel use case appears |
 
