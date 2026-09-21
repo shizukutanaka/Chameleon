@@ -165,3 +165,36 @@ def test_main_block_self_test_writes_no_state_into_the_real_home(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "Verification: True" in result.stdout
     assert not (home / ".chameleon").exists()
+
+
+def test_sanitizer_refuses_non_wav_input(tmp_path):
+    """sanitize_wav_metadata's contract is a valid metadata-stripped WAV, but
+    it never checked the container magic -- a PNG came out 'sanitized' as a
+    file starting with b'\\x89PNG'. Reject before creating the output so a
+    failed call also leaves no zero-byte artifact."""
+    import pytest
+    from advanced_validation import SanitizationEngine
+
+    not_wav = tmp_path / "fake.wav"
+    not_wav.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 40)
+    out = tmp_path / "out.wav"
+    with pytest.raises(ValueError, match="Not a RIFF/WAVE"):
+        SanitizationEngine.sanitize_wav_metadata(not_wav, out)
+    assert not out.exists()
+
+    truncated = tmp_path / "tiny.wav"
+    truncated.write_bytes(b"RIF")
+    with pytest.raises(ValueError, match="Not a RIFF/WAVE"):
+        SanitizationEngine.sanitize_wav_metadata(truncated, out)
+    assert not out.exists()
+
+
+def test_sanitizer_still_processes_real_wav(tmp_path):
+    from advanced_validation import SanitizationEngine
+    from tests._helpers import write_sine_wave
+
+    src = write_sine_wave(tmp_path / "ok.wav")
+    out = tmp_path / "ok_out.wav"
+    SanitizationEngine.sanitize_wav_metadata(src, out)
+    data = out.read_bytes()
+    assert data[:4] == b"RIFF" and data[8:12] == b"WAVE"

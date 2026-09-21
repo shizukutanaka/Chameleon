@@ -464,50 +464,61 @@ class SanitizationEngine:
 
         KEEP_CHUNKS = {b'RIFF', b'WAVE', b'fmt ', b'data'}
 
-        with open(file_path, 'rb') as infile, open(output_path, 'wb') as outfile:
-            # Read and write RIFF header
+        with open(file_path, 'rb') as infile:
+            # Validate the container before creating the output -- the
+            # sanitizer's contract is a valid metadata-stripped WAV, and it
+            # used to write whatever the first 12 bytes happened to be, so
+            # a PNG came out "sanitized" as a file starting with '\x89PNG'
+            # (verified). Checking first also keeps a failed call from
+            # leaving a zero-byte artifact at output_path.
             riff_header = infile.read(12)
-            outfile.write(riff_header[:4])  # RIFF
+            if (len(riff_header) < 12 or riff_header[:4] != b'RIFF'
+                    or riff_header[8:12] != b'WAVE'):
+                raise ValueError(
+                    f"Not a RIFF/WAVE file, nothing to sanitize: {file_path}")
 
-            # We'll update size later
-            size_pos = outfile.tell()
-            outfile.write(b'\x00\x00\x00\x00')  # Placeholder
+            with open(output_path, 'wb') as outfile:
+                outfile.write(riff_header[:4])  # RIFF
 
-            outfile.write(riff_header[8:12])  # WAVE
+                # We'll update size later
+                size_pos = outfile.tell()
+                outfile.write(b'\x00\x00\x00\x00')  # Placeholder
 
-            total_size = 4  # WAVE tag
+                outfile.write(riff_header[8:12])  # WAVE
 
-            # Process chunks
-            while True:
-                chunk_header = infile.read(8)
-                if len(chunk_header) < 8:
-                    break
+                total_size = 4  # WAVE tag
 
-                chunk_id = chunk_header[:4]
-                chunk_size = struct.unpack('<I', chunk_header[4:8])[0]
+                # Process chunks
+                while True:
+                    chunk_header = infile.read(8)
+                    if len(chunk_header) < 8:
+                        break
 
-                # Only keep essential chunks
-                if chunk_id in KEEP_CHUNKS:
-                    outfile.write(chunk_header)
-                    chunk_data = infile.read(chunk_size)
-                    outfile.write(chunk_data)
-                    total_size += 8 + chunk_size
+                    chunk_id = chunk_header[:4]
+                    chunk_size = struct.unpack('<I', chunk_header[4:8])[0]
 
-                    # Pad to even boundary
-                    if chunk_size % 2:
-                        outfile.write(b'\x00')
-                        total_size += 1
-                else:
-                    # Skip metadata chunk -- including its RIFF pad byte,
-                    # otherwise the next header is read one byte early and
-                    # the chunk walk desyncs (an odd-sized LIST once made
-                    # the data chunk vanish).
-                    infile.seek(chunk_size + (chunk_size % 2), 1)
-                    logger.info(f"Removed chunk: {chunk_id.decode('latin1', errors='ignore')}")
+                    # Only keep essential chunks
+                    if chunk_id in KEEP_CHUNKS:
+                        outfile.write(chunk_header)
+                        chunk_data = infile.read(chunk_size)
+                        outfile.write(chunk_data)
+                        total_size += 8 + chunk_size
 
-            # Update file size
-            outfile.seek(size_pos)
-            outfile.write(struct.pack('<I', total_size))
+                        # Pad to even boundary
+                        if chunk_size % 2:
+                            outfile.write(b'\x00')
+                            total_size += 1
+                    else:
+                        # Skip metadata chunk -- including its RIFF pad byte,
+                        # otherwise the next header is read one byte early and
+                        # the chunk walk desyncs (an odd-sized LIST once made
+                        # the data chunk vanish).
+                        infile.seek(chunk_size + (chunk_size % 2), 1)
+                        logger.info(f"Removed chunk: {chunk_id.decode('latin1', errors='ignore')}")
+
+                # Update file size
+                outfile.seek(size_pos)
+                outfile.write(struct.pack('<I', total_size))
 
         os.chmod(output_path, 0o600)
         logger.info(f"Sanitized: {file_path} -> {output_path}")
