@@ -3252,3 +3252,24 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+
+**Q (2026-09-21, continued):** `_load_effects` validates the JSON file path
+thoroughly, but `apply_effects` is also called directly (process_stream,
+batch kwargs, library callers). Does the consumption point defend itself?
+**A:** It did not. Direct calls bypassed the file loader's validation and
+reached the DSP unchecked: an eq band with `freq <= 0` fell between the
+`0 < freq < sr/2` and `freq >= sr/2` branches and was silently skipped
+(a no-op reported as "Processed"), a `gain=NaN` band produced NaN biquad
+coefficients that `lfilter` spread across the entire output, `q<=0` was
+silently clamped to 1e-6 into a degenerate biquad, and `reverb wet`
+outside [0,1] extrapolated instead of blending (wet=1.5 measured a 2.2x
+input peak on a 0.5 sine). `Compressor` itself also accepted config the
+effects contract forbids: `ratio=0` reached a raw ZeroDivisionError inside
+`_gain_reduction_db`, `ratio<1` made the "compressor" expand, and negative
+attack/release/knee were silently clamped to 1 sample. Validation now
+lives where the values are consumed: `apply_effects` rejects non-finite
+gain, non-positive/non-finite frequency and non-positive q per band, and
+reverb rejects non-positive room_size and out-of-range wet;
+`Compressor.__init__` rejects non-finite fields, ratio<1, negative
+attack/release/knee, and non-positive sample_rate.

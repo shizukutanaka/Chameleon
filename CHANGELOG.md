@@ -488,6 +488,20 @@
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
 
+- **`apply_effects` now validates effect parameters at the point of use** —
+  the JSON file path was fully checked by `_load_effects`, but callers that
+  reach `apply_effects` directly (`process_stream`, batch kwargs, library
+  use) bypassed it: an eq band with `frequency <= 0` or NaN was silently
+  skipped (a no-op reported as processed), `gain=NaN` produced NaN biquad
+  coefficients that `lfilter` spread across the entire output, `q <= 0` was
+  silently clamped into a degenerate biquad, and `reverb` `wet` outside
+  [0,1] extrapolated instead of blending (wet=1.5 measured a 2.2x input
+  peak). Invalid bands/params now raise ValueError naming the field.
+  `Compressor.__init__` gained matching validation: `ratio=0` used to reach
+  a raw ZeroDivisionError inside `_gain_reduction_db`, `ratio < 1` made the
+  "compressor" expand, and negative attack/release/knee were silently
+  clamped to a 1-sample envelope.
+
 ### Changed
 
 - **`batch --quality` collapsed to the two real behaviors** — the flag

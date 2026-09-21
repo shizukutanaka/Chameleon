@@ -101,3 +101,72 @@ def test_compression_is_dynamics_processing_not_waveshaping(processor):
     assert 20 * np.log10(np.abs(steady).max()) < -10.0, "crest did not come down"
     assert level(1320) - level(440) < -60.0  # 3rd harmonic
     assert level(2200) - level(440) < -60.0  # 5th harmonic
+
+
+def _skip_unless(scipy_needed=False, mastering_needed=False):
+    import pytest as _p
+    if scipy_needed and not getattr(main, "HAS_SCIPY", False):
+        _p.skip("effect path needs scipy")
+    if mastering_needed and not getattr(main, "HAS_MASTERING_CHAIN", False):
+        _p.skip("effect path needs mastering_chain")
+
+
+def test_apply_effects_eq_band_with_nonpositive_frequency_named(processor):
+    # freq<=0 used to fall between `0 < freq < sr/2` and `freq >= sr/2`,
+    # being silently skipped -- a no-op reported as "Processed".
+    _skip_unless(scipy_needed=True, mastering_needed=True)
+    with pytest.raises(ValueError, match="positive"):
+        processor.apply_effects(
+            _tone(), 44100, {"eq": [{"frequency": -100.0, "gain": 3.0}]})
+    with pytest.raises(ValueError, match="positive"):
+        processor.apply_effects(
+            _tone(), 44100, {"eq": [{"frequency": 0.0, "gain": 3.0}]})
+
+
+def test_apply_effects_eq_band_with_nan_gain_rejected(processor):
+    # A NaN gain produced NaN biquad coefficients, which lfilter spread
+    # across the entire output -- the whole file became NaN.
+    _skip_unless(scipy_needed=True, mastering_needed=True)
+    with pytest.raises(ValueError, match="finite"):
+        processor.apply_effects(
+            _tone(), 44100, {"eq": [{"frequency": 1000.0, "gain": float("nan")}]})
+
+
+def test_apply_effects_eq_band_with_nonpositive_q_rejected(processor):
+    # q<=0 was silently clamped to 1e-6 inside design_peaking_eq, producing
+    # a degenerate biquad unrelated to the requested band.
+    _skip_unless(scipy_needed=True, mastering_needed=True)
+    with pytest.raises(ValueError, match="'q'"):
+        processor.apply_effects(
+            _tone(), 44100, {"eq": [{"frequency": 1000.0, "gain": 3.0, "q": 0.0}]})
+
+
+def test_apply_effects_reverb_wet_outside_unit_interval_rejected(processor):
+    # wet is a blend ratio; 1.5 extrapolated to dry*(-0.5)+wet*1.5 and
+    # clipped a 0.5-amplitude sine to a 2.2 peak.
+    _skip_unless(scipy_needed=True)
+    with pytest.raises(ValueError, match="wet"):
+        processor.apply_effects(
+            _tone(), 44100, {"reverb": {"wet": 1.5}})
+    with pytest.raises(ValueError, match="wet"):
+        processor.apply_effects(
+            _tone(), 44100, {"reverb": {"wet": -0.5}})
+
+
+def test_apply_effects_reverb_nonpositive_room_size_rejected(processor):
+    _skip_unless(scipy_needed=True)
+    with pytest.raises(ValueError, match="room_size"):
+        processor.apply_effects(
+            _tone(), 44100, {"reverb": {"room_size": 0.0}})
+
+
+def test_apply_effects_compression_ratio_below_one_rejected(processor):
+    # ratio<1 makes slope positive -- an expander, not a compressor; ratio=0
+    # reached a raw ZeroDivisionError inside _gain_reduction_db.
+    _skip_unless(mastering_needed=True)
+    with pytest.raises(ValueError, match="ratio"):
+        processor.apply_effects(
+            _tone(), 44100, {"compression": {"ratio": 0.0}})
+    with pytest.raises(ValueError, match="ratio"):
+        processor.apply_effects(
+            _tone(), 44100, {"compression": {"ratio": 0.5}})
