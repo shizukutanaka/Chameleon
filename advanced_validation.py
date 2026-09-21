@@ -40,6 +40,13 @@ class DeepFileInspector:
         b'RIFX': 'WAV_BIG_ENDIAN'
     }
 
+    # Sony Wave64 -- a GUID-based container whose magic is a 16-byte riff
+    # GUID (66666972-2E91-11CF-A5D6-28DB04C10000), not 'RIFF'. Naming it
+    # keeps the error ('Invalid file type: W64') honest: the container is
+    # real and understood, just not parsed here.
+    W64_RIFF_GUID = (b'\x72\x69\x66\x66\x91\x2e\xcf\x11'
+                     b'\xa5\xd6\x28\xdb\x04\xc1\x00\x00')
+
     # Signatures that make a file executable -- and only do so at offset 0.
     # `MZ` in the middle of a WAV is two PCM samples; `MZ` at the start is a
     # Windows binary wearing a .wav extension.
@@ -76,6 +83,9 @@ class DeepFileInspector:
         metadata = {}
 
         try:
+            # Path-like callers sometimes hand over a plain str; normalize
+            # once rather than leaking AttributeError through the report.
+            file_path = Path(file_path)
             # Get file stats
             stats = file_path.stat()
             size = stats.st_size
@@ -150,6 +160,7 @@ class DeepFileInspector:
         metadata: Dict = {}
 
         try:
+            file_path = Path(file_path)
             stats = file_path.stat()
             size = stats.st_size
 
@@ -210,7 +221,12 @@ class DeepFileInspector:
         """Identify file type by magic number"""
 
         with open(file_path, 'rb') as f:
-            header = f.read(12)
+            header = f.read(16)
+
+        # Wave64 leads with a 16-byte GUID whose first four bytes happen to
+        # be lowercase 'riff' -- check it before the 12-byte RIFF test.
+        if header == self.W64_RIFF_GUID:
+            return 'W64'
 
         # Check WAV magic numbers
         for magic, file_type in self.WAV_MAGIC.items():

@@ -487,6 +487,10 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- The deep inspector reported `Invalid file type: UNKNOWN` for Sony
+  **Wave64** files (a real GUID-based container) and leaked a raw
+  AttributeError when handed a `str` path — Wave64 is now named `W64`
+  and both entry points accept str.
 
 ### Changed
 

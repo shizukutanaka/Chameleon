@@ -3252,3 +3252,24 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**2026-09-21 (Socratic audit 113, external-source pass):** Probed against
+external references: PEP 594 dead-batteries removal (`wave`/`audioop`/
+`aifc` gone in Python 3.13 -- verified clean, only a test file imports
+`wave`), and broadcast/archival container coverage:
+
+- Sony **Wave64** (GUID-based container, 66666972-2E91-11CF-A5D6-28DB04-
+  C10000 as its riff GUID) was reported `Invalid file type: UNKNOWN` --
+  the container is real and produced by Sonic Foundry/archival tools, it
+  is just not parsed here. The inspector now names it `W64` so the error
+  is honest (same fix class as the RF64/RIFX naming, still open in
+  #123).
+- `inspect_file`/`validate_for_processing` typed their parameter `Path`
+  but leaked `AttributeError: 'str' object has no attribute 'stat'`
+  through the error list when handed a plain `str` (verified). Both now
+  normalize once with `Path(file_path)`.
+
+Verified honest: PEP 594 removals do not touch the stdlib core (the only
+`import wave` lives in a test file); a WAV carrying bext/iXML/cue/smpl
+chunks analyzes correctly (unknown chunks skipped, data_offset past all
+of them); 'riff' lowercase in W64's GUID cannot collide with 'RIFF'.
