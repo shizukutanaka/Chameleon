@@ -55,6 +55,16 @@
 
 ### Fixed
 
+- **`batch` discarded every per-file result and printed only the
+  tally** -- "Processed 1/2 files successfully" was the entire output
+  of every batch operation: outputs went unnamed, a failing file's
+  error message never reached the user (just a lower count), a
+  `--dry-run` named nothing it planned, and `batch <dir> analyze`
+  computed per-file metadata and threw it away. Every result now
+  prints one line -- `Processed`/`Would process <file> -> <output>`
+  on stdout, `Error: <file>: <reason>` on stderr -- and `analyze`
+  prints the same stats block as the single-file command, writing
+  `<stem>_analysis.json` when `--output-dir` is given.
 - **`--convert-bit-depth 32` wrote an IEEE-float WAV that Chameleon
   itself cannot read** -- `save_audio` mapped bit depth 32 to
   soundfile's `FLOAT` subtype (format tag 3), so the converted artifact
