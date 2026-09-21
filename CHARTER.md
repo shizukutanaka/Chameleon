@@ -2471,3 +2471,25 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** External sources name a family of WAV
+containers this project never met: RIFX (big-endian), RF64 and BW64 (EBU
+Tech 3306 broadcast WAV for >4GB files, where sizes live in a ds64 chunk
+and the 32-bit fields carry 0xFFFFFFFF markers). What does each layer say
+about them -- the truth, or a generic lie?
+**A:** Generic lies at two layers. The inspector knew only RIFF and RIFX,
+so an RF64 file -- a valid, standard container produced by Pro Tools and
+ffmpeg -- was reported "Invalid file type: UNKNOWN". The readers did worse
+by halves: `WAV_MAGIC` named RIFX 'WAV_BIG_ENDIAN', but every unpack in
+`_validate_wav_structure` and `_non_audio_regions` was hardwired
+little-endian, so RIFX metadata was endianness garbage (the format_tag,
+channel and rate fields all misread), and the suspicious-content walk
+misbounded the regions. Now: WAV_MAGIC names all four; inspection is
+endian-aware and flags the RF64 size marker; `_read_wav_header` and
+`_load_wav_basic` reject RF64/BW64/RIFX with a named reason ("Unsupported
+WAV container: ...") instead of "Invalid WAV file format". With the
+[audio] extra installed, librosa/soundfile still decode real RF64/RIFX
+files normally -- the named rejection only fires on the dependency-free
+fallback, exactly where the honest label is needed. Reading RF64's ds64
+was considered and not added: honest rejection beats a half-implementation
+that silently ignores the 64-bit chunk table.

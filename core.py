@@ -748,7 +748,21 @@ class WAVProcessor:
             file_size = os.path.getsize(file_path)
             with open(file_path, 'rb') as f:
                 riff_header = f.read(12)
-                if len(riff_header) != 12 or riff_header[:4] != b'RIFF' or riff_header[8:12] != b'WAVE':
+                if len(riff_header) != 12 or riff_header[8:12] != b'WAVE':
+                    return None
+                magic = riff_header[:4]
+                if magic in (b'RF64', b'BW64'):
+                    self._header_rejection_reason = (
+                        "Unsupported WAV container: RF64/BW64 broadcast "
+                        "extension (EBU Tech 3306, for files over 4GB); "
+                        "convert to plain RIFF first")
+                    return None
+                if magic == b'RIFX':
+                    self._header_rejection_reason = (
+                        "Unsupported WAV container: RIFX big-endian variant; "
+                        "convert to little-endian RIFF first")
+                    return None
+                if magic != b'RIFF':
                     return None
 
                 fmt_seen = False

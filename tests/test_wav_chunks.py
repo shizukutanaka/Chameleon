@@ -12,6 +12,7 @@ external files, stdlib only.
 
 import os
 import struct
+from pathlib import Path
 
 import pytest
 
@@ -186,3 +187,55 @@ def test_load_wav_basic_8bit_unsigned_offset(tmp_path):
     audio, sr = main.AudioProcessor()._load_wav_basic(str(wav))
     assert audio[0] == pytest.approx(0.0, abs=0.01)
     assert audio[2] == pytest.approx(-1.0, abs=0.01)
+
+
+def _write_rf64(path, magic=b'RF64'):
+    """EBU Tech 3306 broadcast WAV: >4GB sizes live in ds64, the legacy
+    32-bit fields carry the 0xFFFFFFFF marker."""
+    with open(path, 'wb') as f:
+        f.write(magic + struct.pack('<I', 0xFFFFFFFF) + b'WAVE')
+        f.write(b'ds64' + struct.pack('<I', 28)
+                + struct.pack('<QQQI', 100, 8000, 8000, 0))
+        f.write(b'fmt ' + struct.pack('<I', 16)
+                + struct.pack('<HHIIHH', 1, 1, 8000, 16000, 2, 16))
+        f.write(b'data' + struct.pack('<I', 0xFFFFFFFF) + b'\x00' * 100)
+    return str(path)
+
+
+def _write_rifx(path):
+    """Big-endian WAV: all fields, chunk sizes included, are big-endian."""
+    with open(path, 'wb') as f:
+        f.write(b'RIFX' + struct.pack('>I', 36 + 200) + b'WAVE')
+        f.write(b'fmt ' + struct.pack('>I', 16)
+                + struct.pack('>HHIIHH', 1, 1, 8000, 16000, 2, 16))
+        f.write(b'data' + struct.pack('>I', 200) + b'\x00' * 200)
+    return str(path)
+
+
+def test_rf64_and_bw64_are_named_then_rejected_honestly(tmp_path):
+    # A broadcast WAV is a valid container, not an "Invalid WAV file" --
+    # the inspector must name it and the reader must say why it stops.
+    import advanced_validation
+    for magic in (b'RF64', b'BW64'):
+        wav = _write_rf64(tmp_path / f"{magic.decode().lower()}.wav", magic)
+        result = advanced_validation.DeepFileInspector().inspect_file(Path(wav))
+        assert result.file_type == 'WAV_RF64', result.errors
+        proc = core.WAVProcessor()
+        assert proc.analyze(wav).success is False
+        assert 'RF64' in proc._header_rejection_reason
+        assert 'Unsupported' in proc._header_rejection_reason
+
+
+def test_rifx_is_named_then_rejected_honestly(tmp_path):
+    import advanced_validation
+    wav = _write_rifx(tmp_path / "be.wav")
+    inspector = advanced_validation.DeepFileInspector()
+    result = inspector.inspect_file(Path(wav))
+    assert result.file_type == 'WAV_BIG_ENDIAN'
+    # Big-endian fields must actually parse (little-endian unpack once
+    # produced garbage channel counts for RIFX).
+    assert result.metadata.get('channels') == 1
+    assert result.metadata.get('sample_rate') == 8000
+    proc = core.WAVProcessor()
+    assert proc.analyze(wav).success is False
+    assert 'RIFX' in proc._header_rejection_reason

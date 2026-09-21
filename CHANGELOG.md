@@ -487,6 +487,19 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **Broadcast/big-endian WAVs were reported as invalid files** —
+  `WAV_MAGIC` knew only RIFF and RIFX, so an RF64/BW64 container (EBU
+  Tech 3306, the standard for >4GB broadcast audio; emitted by Pro Tools
+  and ffmpeg) failed inspection as "Invalid file type: UNKNOWN", and RIFX
+  was named 'WAV_BIG_ENDIAN' yet parsed with little-endian unpacks —
+  garbage channels/rate metadata and a misbounded suspicious-content
+  walk. All four magics are now named (`WAV`, `WAV_BIG_ENDIAN`,
+  `WAV_RF64`), inspection parses RIFX big-endian and flags the RF64
+  `0xFFFFFFFF` size marker, and both readers reject the variants with a
+  named reason ("Unsupported WAV container: ...") instead of "Invalid
+  WAV file format". With the `[audio]` extra installed,
+  librosa/soundfile still decode real RF64/RIFX files — the named
+  rejection is the dependency-free fallback's honest answer.
 
 ### Changed
 

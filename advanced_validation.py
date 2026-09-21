@@ -34,10 +34,17 @@ class FileValidationResult:
 class DeepFileInspector:
     """Deep file inspection for security validation"""
 
-    # WAV file magic numbers
+    # WAV file magic numbers. RIFF is the ordinary little-endian container;
+    # RIFX is its big-endian sibling; RF64 and BW64 are the EBU Tech 3306
+    # broadcast extensions for >4GB files (sizes live in a ds64 chunk, with
+    # 0xFFFFFFFF markers in the legacy 32-bit fields). All four are real
+    # WAV-family containers -- recognising them by name keeps the verdict
+    # honest even where a downstream reader cannot process the variant.
     WAV_MAGIC = {
         b'RIFF': 'WAV',
-        b'RIFX': 'WAV_BIG_ENDIAN'
+        b'RIFX': 'WAV_BIG_ENDIAN',
+        b'RF64': 'WAV_RF64',
+        b'BW64': 'WAV_RF64',
     }
 
     # Signatures that make a file executable -- and only do so at offset 0.
@@ -86,7 +93,7 @@ class DeepFileInspector:
             # Validate file format
             file_type = self._identify_file_type(file_path)
 
-            if file_type not in ('WAV', 'WAV_BIG_ENDIAN'):
+            if file_type not in ('WAV', 'WAV_BIG_ENDIAN', 'WAV_RF64'):
                 errors.append(f"Invalid file type: {file_type}")
 
             # Check for suspicious content
@@ -155,7 +162,7 @@ class DeepFileInspector:
 
             file_type = self._identify_file_type(file_path)
 
-            if file_type not in ('WAV', 'WAV_BIG_ENDIAN'):
+            if file_type not in ('WAV', 'WAV_BIG_ENDIAN', 'WAV_RF64'):
                 errors.append(f"Invalid file type: {file_type}")
 
             suspicious = self._scan_for_suspicious_content(file_path)
@@ -273,17 +280,19 @@ class DeepFileInspector:
         For a RIFF file: the header plus every chunk except `data`. For
         anything else: all of it.
         """
-        if mm[:4] not in (b'RIFF', b'RIFX'):
+        if mm[:4] not in (b'RIFF', b'RIFX', b'RF64', b'BW64'):
             return [mm[:]]
 
         regions = [mm[:12]]
         offset = 12
         limit = len(mm)
+        # RIFX stores every field big-endian; RF64/BW64 stay little-endian.
+        endian = '>' if mm[:4] == b'RIFX' else '<'
 
         while offset + 8 <= limit:
             chunk_id = mm[offset:offset + 4]
             try:
-                chunk_size = struct.unpack('<I', mm[offset + 4:offset + 8])[0]
+                chunk_size = struct.unpack(f'{endian}I', mm[offset + 4:offset + 8])[0]
             except struct.error:
                 break
 
@@ -310,14 +319,20 @@ class DeepFileInspector:
 
         try:
             with open(file_path, 'rb') as f:
-                # Read RIFF header
+                # Read RIFF header. RIFX is the big-endian variant: every
+                # field (sizes included) is big-endian, so parse with '>'.
                 riff_header = f.read(12)
 
                 if len(riff_header) < 12:
                     return {"error": "Truncated RIFF header"}
 
-                file_size = struct.unpack('<I', riff_header[4:8])[0]
+                endian = '>' if riff_header[:4] == b'RIFX' else '<'
+                file_size = struct.unpack(f'{endian}I', riff_header[4:8])[0]
                 metadata["declared_size"] = file_size
+                if riff_header[:4] in (b'RF64', b'BW64'):
+                    # 0xFFFFFFFF is a marker; the real 64-bit sizes live in
+                    # the ds64 chunk (which still surfaces in the chunk list).
+                    metadata["rf64_size_marker"] = file_size == 0xFFFFFFFF
 
                 # Parse chunks
                 chunks_found = []
@@ -327,7 +342,7 @@ class DeepFileInspector:
                         break
 
                     chunk_id = chunk_header[:4]
-                    chunk_size = struct.unpack('<I', chunk_header[4:8])[0]
+                    chunk_size = struct.unpack(f'{endian}I', chunk_header[4:8])[0]
 
                     chunks_found.append(chunk_id.decode('latin1', errors='ignore'))
 
@@ -336,7 +351,7 @@ class DeepFileInspector:
                         fmt_data = f.read(min(chunk_size, 40))
                         if len(fmt_data) >= 16:
                             format_tag, channels, sample_rate, _, _, bits_per_sample = \
-                                struct.unpack('<HHIIHH', fmt_data[:16])
+                                struct.unpack(f'{endian}HHIIHH', fmt_data[:16])
 
                             metadata.update({
                                 "format_tag": format_tag,
