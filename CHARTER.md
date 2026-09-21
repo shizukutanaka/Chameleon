@@ -2460,6 +2460,18 @@ API, and any in-process consumer still saw the fabricated values.
 to None, centroid/tempo are only assigned on non-silent input
 (`tests/test_silence_metrics.py`).
 
+**Q: Does a byte-sized field validate its input?**
+A (2026-09-20): `generate_midi_file` wrote pitch/velocity into 0x90 events
+unchecked. pitch > 127 (an 8 kHz pitch estimate is a real YIN result)
+crashed `bytearray.extend` mid-write -- one bad note lost the whole
+file. A negative `duration` was worse: note_off emitted before note_on
+and the delta-time clamp `value < 0 -> 0` then encoded that order, so
+the file parsed but played corrupted -- silently wrong output, the
+hardest kind to catch. And `_hz_to_midi` on a non-positive estimate hit
+`math.log2(0)`. Now the writer validates every field first and returns
+False with a clear error; extraction skips pitches MIDI cannot encode
+(`tests/test_midi_note_validation.py`).
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
