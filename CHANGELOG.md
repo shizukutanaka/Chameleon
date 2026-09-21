@@ -46,6 +46,10 @@
 
 ### Added
 
+- **Docs↔parser parity test for batch operations** -- every operation
+  the `batch` parser accepts must appear in the docs' operation lists,
+  and no doc may name an operation the parser rejects. Covers both the
+  `{a, b, c}` brace-lists and README's `(operations: a/b/c)` comment.
 - **Noise-shaped (`"shaped"`) dither** in `mastering_chain` -- the
   advertised-but-unimplemented `dither_type` now works via a
   first-order error-feedback quantizer on the 16-bit grid (quantization
@@ -55,6 +59,18 @@
 
 ### Fixed
 
+- **`batch` jobs could be orphaned by the test client's request loop**
+  -- a bare `TestClient` (no context manager) creates a fresh anyio
+  blocking portal per request and tears it down when the response
+  returns; the `asyncio.create_task(process_batch_job)` in the submit
+  endpoint then raced loop teardown and could be orphaned after writing
+  `status='processing'` (observed: progress 0.0 forever under the full
+  suite). The `client` fixture now holds one portal open for the test,
+  matching uvicorn's single long-lived loop.
+- **README's batch operation list omitted `restore`** -- the operation
+  shipped and worked (and was listed in docs/en and docs/ja) but was
+  invisible in the quick-start comment; the parity test above now pins
+  the full set.
 - **`--convert-bit-depth 32` wrote an IEEE-float WAV that Chameleon
   itself cannot read** -- `save_audio` mapped bit depth 32 to
   soundfile's `FLOAT` subtype (format tag 3), so the converted artifact

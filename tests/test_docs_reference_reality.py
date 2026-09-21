@@ -21,6 +21,8 @@ that is actually here.
 """
 
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -123,3 +125,43 @@ def test_real_imports_are_not_flagged():
     for module in ("core", "main", "bs1770_loudness", "security_validator"):
         assert (PROJECT_ROOT / f"{module}.py").is_file()
     assert "numpy" in EXTERNAL and "pytest" in EXTERNAL
+
+
+def _documented_batch_ops(text):
+    """The operation sets a doc asserts -- `{a, b, c}` brace-lists and the
+    README's `(operations: a/b/c)` comment."""
+    sets = []
+    for match in re.finditer(r"\{([a-z, ]+)\}", text):
+        names = {name.strip() for name in match.group(1).split(",")}
+        if "analyze" in names and "normalize" in names:
+            sets.append(names)
+    paren = re.search(r"\(operations: ([a-z/]+)\)", text)
+    if paren:
+        sets.append({name.strip() for name in paren.group(1).split("/")})
+    return sets
+
+
+def test_documented_batch_operations_match_the_parser():
+    """Every batch operation the parser accepts must be documented, and no
+    doc may name an operation the parser rejects. README once listed six of
+    the seven -- `restore` shipped and worked but was invisible to a reader
+    of the quick-start."""
+    result = subprocess.run(
+        [sys.executable, str(PROJECT_ROOT / "main.py"), "batch", "--help"],
+        capture_output=True, text=True, check=True)
+    actual = set()
+    for match in re.finditer(r"\{([a-z,]+)\}", result.stdout):
+        names = {name.strip() for name in match.group(1).split(",")}
+        if "analyze" in names:
+            actual = names
+    assert actual, "could not find the batch operation choices in --help"
+
+    missing = []
+    for path in _documentation_files():
+        text = path.read_text(encoding="utf-8")
+        for names in _documented_batch_ops(text):
+            if names != actual:
+                missing.append(
+                    f"{_relative(path)}: documents {sorted(names)} "
+                    f"but parser accepts {sorted(actual)}")
+    assert not missing, "\n".join(missing)

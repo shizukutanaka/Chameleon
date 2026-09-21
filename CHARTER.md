@@ -2274,6 +2274,21 @@ json.loads accepts the literals NaN/Infinity by default, so a JSON config
 file can smuggle them into any "numeric" field. The check is
 isinstance(x, (int, float)) AND math.isfinite(x), in that order, before
 any range assertion.
+**Q: Where does a fire-and-forget task live?**
+A (2026-09-21): On the event loop that ran the code calling
+`asyncio.create_task` -- and that loop's lifetime is the caller's, not
+the task's. A bare `TestClient` raises a fresh portal (new loop, new
+thread) per request and kills it when the response returns, so the batch
+job submitted inside could be orphaned mid-flight: 'processing' written,
+first executor await never resolved, progress 0.0 forever. The endpoint
+was correct for uvicorn's one-long-lived-loop world; the fixture was the
+world that differed. Match the harness to the deployment before blaming
+the code -- and pin the match so the next "intermittent" stays dead.
+**Q: Does the doc's choice list equal the parser's?**
+A (2026-09-21): Only if it is compared. README's batch comment named six
+of seven operations; `restore` worked but was invisible in the
+quick-start. Brace-lists and parenthetical enumerations are claims --
+run the parser's own choices against every one of them.
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented

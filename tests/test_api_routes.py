@@ -44,7 +44,17 @@ def client(monkeypatch):
     api_server.api_state._rate_limit_windows.clear()
     # TrustedHostMiddleware only allows localhost/127.0.0.1 by default;
     # TestClient's default Host is "testserver", which it correctly rejects.
-    return TestClient(api_server.app, base_url="http://localhost")
+    #
+    # The context manager is load-bearing: a bare TestClient spins up a fresh
+    # blocking portal -- a new event loop in a new thread -- per request and
+    # tears it down when the response returns. The batch submit endpoint does
+    # asyncio.create_task(process_batch_job) on that request's loop, so the
+    # job task races portal teardown and can be orphaned after writing
+    # status='processing' (the observed flake: progress 0.0 forever). `with`
+    # keeps one portal alive for the whole test, matching how uvicorn serves
+    # the app on a single long-lived loop.
+    with TestClient(api_server.app, base_url="http://localhost") as test_client:
+        yield test_client
 
 
 def _login(client, username=DEV_USERNAME, password=DEV_PASSWORD):
