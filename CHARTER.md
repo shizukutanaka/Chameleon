@@ -2820,6 +2820,18 @@ dependency graph is a *success* precondition, not just an ordering —
 succeeded; and a result map that can silently omit a task has already
 lied.
 
+**Q: Does `remove_task` actually remove the task?**
+A (2026-09-20): No. It deleted the id from `task_map` but left the entry
+in the `PriorityQueue` (which cannot delete arbitrary entries). The next
+`get_task` popped the "removed" task and crashed on
+`del task_map[id]` — `KeyError` — so removal both *lied* (returned True
+while the task would still run) and took the consumer down. Removal is
+now a tombstone set honoured at pop: cancelled entries are discarded,
+never run, never crash (`tests/test_task_queue_remove.py`). General
+lesson: when a container can't physically delete, the removal is
+wherever the reader looks — the map delete without the queue tombstone
+half-applied the operation and each half broke differently.
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
