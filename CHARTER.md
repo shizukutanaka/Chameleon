@@ -2471,3 +2471,28 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, audit 28):** spectral_editor's docstring advertises a
+"highest quality" librosa STFT/ISTFT path. Does it ever run on the stock
+[audio] install? And do the packaging claims (console script, format
+extras) hold end-to-end?
+**A:** The librosa path was unreachable on stock installs: HAS_LIBROSA
+required `import librosa.display`, which drags in matplotlib -- a package
+the [audio] extra does not install -- so the flag was False and every
+STFT/ISTFT ran the manual fallback even with librosa present.
+`librosa.display` was never used anywhere in the module (no specshow
+call); the import is dropped, HAS_LIBROSA tracks `import librosa` alone,
+and the missing-librosa case now warns like the numpy/scipy guards do.
+Delete-selection measured on a 440Hz sine: band energy 11025->5849 with
+44% of it re-created at 1000-1500Hz under the manual path; with the
+librosa path it is 11025->2579 and only ~60 created out-of-band (window
+physics, expected). The manual path stays as the documented degraded
+fallback -- its ISTFT round-trip is exact (7e-11), the artifacts come
+from overlap-adding edited spectra at window edges.
+Verified honest, no changes needed: `pip install -e .` exposes the
+`chameleon` console script and it decodes flac/aiff/ogg/mp3 correctly
+through the advertised extras gating; `--version` reports main.VERSION
+(the single source that pyproject dynamic-version also reads) in all
+three envs; `process --output` is a directory flag and rejects a file
+argument cleanly (INPUT); `midi compose --output` overwrite semantics
+are the normal explicit-path contract.

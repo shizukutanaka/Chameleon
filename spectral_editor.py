@@ -42,10 +42,11 @@ except ImportError:
 
 try:
     import librosa
-    import librosa.display
     HAS_LIBROSA = True
 except ImportError:
     HAS_LIBROSA = False
+    warnings.warn("librosa not available. Falling back to the manual "
+                  "STFT/ISTFT, which has weaker edge behaviour.")
 
 try:
     import matplotlib.pyplot as plt
