@@ -2559,6 +2559,19 @@ flake. The fixture now yields a `with TestClient(...)` portal that lives
 for the whole test, matching production where uvicorn's loop persists
 (`tests/test_batch_job_timeout.py`, `tests/test_api_routes.py` fixture).
 
+**Q: What bounds the API's aggregate upload store?**
+A (2026-09-20): Nothing did — every other structure had a cap
+(sessions, job history/queue, audit log, rate-limit windows), but
+`api_state.uploaded_files` and UPLOAD_DIRECTORY accumulated one entry
+and one file per upload or batch output forever: the per-file 100MB
+limit was multiplied by infinity. `CHAMELEON_MAX_UPLOADED_FILES`
+(default 1000, 0 = unbounded) now LRU-evicts the least-recently-touched
+file — registry entry AND its disk copy — on every registration, with
+a FILE_EVICTED audit event. An evicted name returns a normal 404.
+(`tests/test_upload_eviction.py`). General lesson: a cap on the
+element is not a cap on the set — check the aggregate bound on every
+append-only structure.
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
