@@ -2359,6 +2359,29 @@ code interleaved bytes from both into one corrupt file. Alignment bonus:
 `generate_midi_file` and `sf.write` outputs now get `open_secure`'s
 0o600 instead of umask-default 0644.
 
+**Q: Can a quoted `-o "~/x.wav"` end up outside the trusted roots?**
+A (2026-09-20): It did -- and worse, it landed in two different places.
+`validate_directory` expanded `~` for its containment check while
+`open_secure`, `atomic_output`, every `Path(...).parent.mkdir` and the
+state-dir env var used the literal string: validation certified
+`$HOME/x.wav`, the bytes went to `./~/x.wav` beside the caller's cwd.
+When cwd was outside the trusted roots the tool wrote where it promised
+never to. `resolve_unique_paths` already expanduser()'d *inputs*; outputs
+were the asymmetric half. Now expanduser() sits at the one boundary each
+writer shares -- `open_secure`/`atomic_output`/`staged_output_path`/
+`StateRecoveryManager`/`_resolve_output_path`/`_preflight_output_dir`/
+`CHAMELEON_LOG_DIR` -- so a `~` cannot survive into a byte sink
+(`tests/test_tilde_expansion.py`).
+
+**Q: Does the "will overwrite each other's output" warning name what it
+counts?**
+A (2026-09-20): No. It grouped inputs by *raw* stem, but the collision is
+on the *written* name: `a:b.wav` and `a\b.wav` are distinct files whose
+stems both sanitize to `a_b`, so both wrote `a_b_normalized.wav` and the
+run overwrote silently. The warning now counts
+`sanitize_filename(Path(f).stem)` -- the name the file actually lands
+under -- and reports the sanitized stem it collided on.
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
