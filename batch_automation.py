@@ -480,10 +480,15 @@ class TaskQueue:
     def get_task(self) -> Optional[BatchTask]:
         """Get next task from queue"""
         try:
-            _, _, task = self.queue.get_nowait()
-            with self.lock:
-                del self.task_map[task.id]
-            return task
+            while True:
+                _, _, task = self.queue.get_nowait()
+                with self.lock:
+                    # PriorityQueue has no delete: entries dropped via
+                    # remove_task stay queued. Skip them here rather than
+                    # running a task the caller removed (or crashing on
+                    # the missing map entry).
+                    if self.task_map.pop(task.id, None) is not None:
+                        return task
         except queue.Empty:
             return None
 
@@ -562,36 +567,55 @@ class TaskExecutor:
 
         start_clock = time.perf_counter()
 
-        try:
-            # Execute with timeout if specified
-            if task.timeout:
-                future = self.thread_pool.submit(task.function, **task.inputs)
-                output = future.result(timeout=task.timeout)
-            else:
-                output = task.function(**task.inputs)
+        # retry_count is part of the declared task contract (and RETRYING
+        # a declared status): honor it. A transient failure must not
+        # surface as FAILED when the caller allowed retries.
+        max_attempts = 1 + max(0, task.retry_count)
+        attempts = 0
+        for attempt in range(max_attempts):
+            attempts = attempt + 1
+            try:
+                # Execute with timeout if specified
+                if task.timeout:
+                    future = self.thread_pool.submit(task.function, **task.inputs)
+                    output = future.result(timeout=task.timeout)
+                else:
+                    output = task.function(**task.inputs)
 
-            result.status = TaskStatus.COMPLETED
-            result.output = output
-            result.end_time = datetime.now()
+                result.status = TaskStatus.COMPLETED
+                result.output = output
+                result.end_time = datetime.now()
+                break
 
-        except TimeoutError:
-            result.status = TaskStatus.FAILED
-            result.error = f"Task timed out after {task.timeout} seconds"
-            result.end_time = datetime.now()
+            except TimeoutError:
+                if attempt < max_attempts - 1:
+                    self.logger.warning(
+                        f"Task {task.id} timed out "
+                        f"(attempt {attempts}/{max_attempts}); retrying")
+                    continue
+                result.status = TaskStatus.FAILED
+                result.error = f"Task timed out after {task.timeout} seconds"
+                result.end_time = datetime.now()
 
-        except Exception as e:
-            result.status = TaskStatus.FAILED
-            error_message = str(e)
-            if len(error_message) > 512:
-                error_message = error_message[:509] + "..."
-            result.error = error_message
-            result.end_time = datetime.now()
-            self.logger.error(f"Task {task.id} failed: {e}")
+            except Exception as e:
+                if attempt < max_attempts - 1:
+                    self.logger.warning(
+                        f"Task {task.id} failed "
+                        f"(attempt {attempts}/{max_attempts}); retrying: {e}")
+                    continue
+                result.status = TaskStatus.FAILED
+                error_message = str(e)
+                if len(error_message) > 512:
+                    error_message = error_message[:509] + "..."
+                result.error = error_message
+                result.end_time = datetime.now()
+                self.logger.error(f"Task {task.id} failed: {e}")
 
         duration_ms = (time.perf_counter() - start_clock) * 1000.0
         result.metadata.update({
             "duration_ms": round(duration_ms, 2),
             "retry_allowed": task.retry_count,
+            "attempts": attempts,
             "timeout_seconds": task.timeout,
             "tags": list(task.tags),
             "priority": task.priority,
@@ -603,7 +627,9 @@ class TaskExecutor:
     async def execute_async(self, task: BatchTask) -> TaskResult:
         """Execute task asynchronously"""
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, self.execute, task)
+        # None would dispatch to the loop's default executor, bypassing
+        # this executor's max_workers bound entirely.
+        return await loop.run_in_executor(self.thread_pool, self.execute, task)
 
     def cleanup(self) -> None:
         """Cleanup executor resources"""
@@ -667,6 +693,11 @@ class WorkflowEngine:
 
     def _execute_dag(self, workflow: Workflow) -> Dict[str, TaskResult]:
         """Execute DAG workflow"""
+        # Scheduling state is per-workflow: a reused engine would
+        # otherwise find this run's task ids already 'completed' from the
+        # previous run and silently schedule nothing.
+        self.dep_graph = DependencyGraph()
+        self.task_queue = TaskQueue()
         # Build dependency graph
         for task in workflow.tasks:
             self.dep_graph.add_task(task)

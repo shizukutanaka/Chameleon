@@ -93,3 +93,84 @@ def test_scheduler_fails_loudly_without_schedule_package():
     scheduler = BatchScheduler()
     with pytest.raises(ImportError):
         scheduler.start()
+
+
+class TestExecutorRetryAndQueueHonesty:
+    """TaskExecutor advertised retry_count/RETRYING but never retried,
+    TaskQueue.remove_task lied (the task still ran -- and after the
+    removal get_task crashed KeyError), dep_graph state leaked between
+    workflows on a reused engine, and execute_async bypassed the
+    max_workers pool bound."""
+
+    def _task(self, task_id, fn, **kw):
+        return ba.BatchTask(id=task_id, name=task_id, function=fn,
+                            inputs={}, **kw)
+
+    def test_transient_failure_retries_until_success(self):
+        calls = []
+        def flaky():
+            calls.append(1)
+            if len(calls) < 3:
+                raise RuntimeError("transient")
+            return "ok"
+        engine = ba.WorkflowEngine()
+        workflow = ba.Workflow(
+            id="r", name="retry", type=ba.WorkflowType.SEQUENTIAL,
+            tasks=[self._task("f", flaky, retry_count=3)])
+        results = engine.execute_workflow(workflow)
+        assert results["f"].status == ba.TaskStatus.COMPLETED
+        assert results["f"].output == "ok"
+        assert len(calls) == 3
+        assert results["f"].metadata["attempts"] == 3
+
+    def test_retry_exhaustion_still_fails_honestly(self):
+        def always():
+            raise RuntimeError("always")
+        engine = ba.WorkflowEngine()
+        workflow = ba.Workflow(
+            id="r", name="retry", type=ba.WorkflowType.SEQUENTIAL,
+            tasks=[self._task("g", always, retry_count=2)])
+        results = engine.execute_workflow(workflow)
+        assert results["g"].status == ba.TaskStatus.FAILED
+        assert results["g"].metadata["attempts"] == 3
+        assert "always" in results["g"].error
+
+    def test_no_retry_means_single_attempt(self):
+        calls = []
+        def fail():
+            calls.append(1)
+            raise RuntimeError("x")
+        engine = ba.WorkflowEngine()
+        workflow = ba.Workflow(
+            id="r", name="r", type=ba.WorkflowType.SEQUENTIAL,
+            tasks=[self._task("h", fail, retry_count=0)])
+        engine.execute_workflow(workflow)
+        assert len(calls) == 1
+
+    def test_removed_task_is_not_run_and_no_crash(self):
+        q = ba.TaskQueue()
+        q.add_task(self._task("x", lambda: "x"))
+        q.add_task(self._task("y", lambda: "y"))
+        assert q.remove_task("x") is True
+        assert q.get_task().id == "y"
+        assert q.get_task() is None
+
+    def test_engine_is_reusable_across_dag_workflows(self):
+        engine = ba.WorkflowEngine()
+        def wf(wf_id, value):
+            return ba.Workflow(
+                id=wf_id, name=wf_id, type=ba.WorkflowType.DAG,
+                tasks=[self._task("a", lambda: value)])
+        r1 = engine.execute_workflow(wf("w1", 1))
+        r2 = engine.execute_workflow(wf("w2", 2))
+        assert [v.output for v in r1.values()] == [1]
+        assert [v.output for v in r2.values()] == [2]
+
+    def test_execute_async_uses_bounded_pool(self):
+        import asyncio
+        executor = ba.TaskExecutor(max_workers=2)
+        task = self._task("a", lambda: "done")
+        result = asyncio.run(executor.execute_async(task))
+        assert result.status == ba.TaskStatus.COMPLETED
+        assert result.output == "done"
+        executor.cleanup()
