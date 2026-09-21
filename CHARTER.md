@@ -3252,3 +3252,13 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**2026-09-21 (Socratic audit 123, external-source pass):** Cross-checked the
+WAV write path against RIFF metadata conventions (cue/smpl/plst/ltxt/bext all
+anchor to absolute sample positions; ffmpeg/DAW practice expects them kept).
+`_copy_patched_header` preserved every pre-data chunk verbatim -- correct for
+normalize/mono where positions don't shift, wrong for trim: a `cue ` point at
+sample 44100 survived into a 1.0s output pointing past the content. The trim
+path (`_extract_audio_range`) now drops the position-anchored chunks
+(`_POSITION_ANCHORED_CHUNKS`) while still carrying descriptive metadata
+(LIST-INFO etc.). Normalize keeps cue points unchanged, verified on-device.
