@@ -2471,3 +2471,13 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** `WorkflowBuilder.from_dict` on a
+config with missing required fields -- clean error or leaked internals?
+**A:** Leaked internals. A workflow without 'id' died on
+`KeyError 'id'`; a task without 'id' died on
+`AttributeError: NoneType.get` (the missing 'function' config reached
+`_create_function` as None); a builtin function spec without 'name'
+died on `KeyError 'name'`. Each now raises ValueError naming the
+missing field and its position (tasks[i] / task 't'). Unknown type
+names and unpermitted builtins already raised informative ValueErrors.

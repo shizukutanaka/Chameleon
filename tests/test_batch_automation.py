@@ -93,3 +93,17 @@ def test_scheduler_fails_loudly_without_schedule_package():
     scheduler = BatchScheduler()
     with pytest.raises(ImportError):
         scheduler.start()
+
+
+def test_workflow_from_dict_names_missing_required_fields():
+    # Malformed configs used to leak KeyError/AttributeError from deep
+    # inside the builder; they now name the missing field.
+    builder = ba.WorkflowBuilder()
+    with pytest.raises(ValueError, match="missing required field 'id'"):
+        builder.from_dict({"name": "x", "tasks": []})
+    with pytest.raises(ValueError, match="missing required field 'id'"):
+        builder.from_dict({"id": "w", "tasks": [{"function": {"type": "builtin", "name": "len"}}]})
+    with pytest.raises(ValueError, match="missing required.*'function'"):
+        builder.from_dict({"id": "w", "tasks": [{"id": "t"}]})
+    with pytest.raises(ValueError, match="requires 'name'"):
+        builder.from_dict({"id": "w", "tasks": [{"id": "t", "function": {"type": "builtin"}}]})
