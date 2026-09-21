@@ -487,6 +487,11 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- MIDI files wrote no FF 59/FF 58 meta events, so `midi compose --key G`
+  produced a file every player opens as C major / 4-4 — the key request
+  shaped the notes but not the file's declaration. The writer now emits
+  FF 58 time signature and an optional FF 59 key signature, both
+  range-checked per the SMF spec.
 
 ### Changed
 
