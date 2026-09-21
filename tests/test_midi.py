@@ -459,3 +459,19 @@ def test_generate_melody_still_generates_for_valid_length():
     chord = Chord(root=0, chord_type="major", notes=[0, 4, 7],
                   start_time=0.0, duration=8.0)
     assert len(composer.generate_melody([chord], key, length=8.0)) == 16
+
+
+def test_pitch_extraction_fabricates_no_notes_on_edge_inputs():
+    # A pitch extractor that "finds" notes in silence or a DC offset is lying.
+    # Verified live: empty audio, a 10-sample clip, constant DC, and a single
+    # impulse all yield zero notes rather than invented pitches.
+    analyzer = MIDIAnalyzer()
+    cases = {
+        "empty": [],
+        "short": [0.0] * 10,
+        "dc_offset": [0.5] * 44100,
+        "impulse": [1.0] + [0.0] * 44099,
+    }
+    for label, audio in cases.items():
+        notes = analyzer.parse_midi_from_audio(audio, 44100)
+        assert notes == [], f"{label} input produced phantom notes: {notes[:3]}"

@@ -3252,3 +3252,20 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, audit 33): Do the remaining unexercised edges -- MIDI
+pitch extraction on degenerate input, directories passed as files,
+dry-run side effects, job ownership -- hold up?**
+**A:** All honest: parse_midi_from_audio returns zero notes for empty,
+10-sample, DC-offset, and single-impulse inputs (nothing fabricated);
+analyze/process given a directory exit INPUT(3) with "No valid audio
+files" instead of crashing; batch --dry-run writes nothing; batch job
+status enforces owner-or-privileged (403); the API analyze endpoint
+rejects http(s) URLs at 400 before file lookup; session tokens are
+secrets.token_urlsafe(32); ErrorFormatter suggestions map real error
+classes and return [] rather than invented advice for unmapped ones;
+ProgressBar guards total=0; analyze --spectrum works stdlib-only (its
+own fallback) while --detailed says "not measured". README's API audit
+example (X-API-Key alone -> 403) remains unfixed on main only because
+the fix sits on open PR #55 -- deliberately not re-fixed here to avoid
+a conflicting duplicate.
