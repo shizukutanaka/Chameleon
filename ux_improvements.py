@@ -245,7 +245,7 @@ class TableFormatter:
         lines.append("-" * len(header_line))
 
         # Format rows
-        for row in rows:
+        for row in normalized:
             row_line = " | ".join(
                 fmt.format(str(cell))
                 for fmt, cell in zip(formats, row)
