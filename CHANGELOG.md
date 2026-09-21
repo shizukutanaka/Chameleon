@@ -487,6 +487,11 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- The declared `requires-python = ">=3.8"` was false: `main.py` calls
+  `Path.is_relative_to` (3.9+) on the stdlib `batch --output-dir` path
+  and `api_server` annotates `-> list[str]` (evaluated at def time on
+  3.8). Floor raised to >=3.9 across pyproject, setup.py, README, and
+  PROJECT_STATUS.
 
 ### Changed
 

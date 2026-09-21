@@ -269,7 +269,7 @@ analogue).
 ## System Requirements
 
 ### Minimum
-- Python 3.8+
+- Python 3.9+
 - 512 MB RAM
 - 2 CPU cores
 - 100 MB disk space

@@ -45,7 +45,6 @@ setup(
         "Topic :: Multimedia :: Sound/Audio :: Conversion",
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
@@ -81,7 +80,7 @@ setup(
         "bs1770_loudness",
         "personal_config",
     ],
-    python_requires=">=3.8",
+    python_requires=">=3.9",
     install_requires=[
         # Core functionality works without dependencies.
         # Optional dependencies live in the extras below (and, canonically,
