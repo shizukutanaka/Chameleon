@@ -247,3 +247,56 @@ def test_analyze_harmony_names_the_key_not_a_pitch_class():
     harmony = analyzer.analyze_harmony(chords, key)
 
     assert harmony["key"] == "C major"
+
+
+def test_generate_midi_file_rejects_notes_the_format_cannot_express(tmp_path):
+    """Notes with out-of-range pitch/velocity or impossible timing used to
+    reach the byte packer: velocity 300 died on a bare struct-range error,
+    a negative duration wrote note_off BEFORE note_on (a corrupt file
+    reported as success), and a negative start_time silently collapsed
+    its delta to 0 ticks."""
+    analyzer = MIDIAnalyzer()
+    out = str(tmp_path / "x.mid")
+    for note in [
+        MIDINote(200, 100, 0.0, 0.5),    # pitch > 127
+        MIDINote(60, 300, 0.0, 0.5),     # velocity > 127
+        MIDINote(60, 100, -0.5, 1.0),    # negative start
+        MIDINote(60, 100, 0.0, -1.0),    # negative duration
+        MIDINote(60, 100, 0.0, float("nan")),
+    ]:
+        assert analyzer.generate_midi_file([note], out) is False, note
+
+
+def test_generated_midi_event_stream_is_well_formed(tmp_path):
+    """Round-trip sanity: every note_on is followed by its note_off, in
+    nondecreasing tick order."""
+    import struct
+    analyzer = MIDIAnalyzer()
+    out = str(tmp_path / "x.mid")
+    notes = [MIDINote(60, 100, 0.0, 0.5), MIDINote(64, 90, 0.25, 0.5)]
+    assert analyzer.generate_midi_file(notes, out)
+    data = open(out, 'rb').read()
+    i = data.find(b'MTrk') + 8
+    tick = 0
+    ons, offs = 0, 0
+    while i < len(data):
+        delta = 0
+        while True:
+            b = data[i]; i += 1
+            delta = (delta << 7) | (b & 0x7F)
+            if not b & 0x80:
+                break
+        tick += delta
+        status = data[i]
+        if status in (0x90, 0x80):
+            if status == 0x90:
+                ons += 1
+            else:
+                offs += 1
+            assert ons >= offs, "note_off arrived before its note_on"
+            i += 3
+        elif status == 0xFF:
+            i += 3 + data[i + 2]
+        else:
+            i += 1
+    assert ons == offs == len(notes)

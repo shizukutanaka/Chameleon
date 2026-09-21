@@ -594,6 +594,20 @@ class MIDIAnalyzer:
             ticks_per_second = 480.0 * tempo_bpm / 60.0
             events = []
             for note in sorted_notes:
+                # A note the format cannot express must fail here, not in
+                # the byte packer: duration <= 0 used to write note_off
+                # BEFORE note_on (a corrupt file reported as success),
+                # negative start_time silently collapsed its delta to 0,
+                # and velocity/pitch outside 0-127 died on a bare
+                # struct-range error.
+                if not (0 <= note.pitch <= 127):
+                    raise ValueError(f"MIDI pitch must be in 0..127, got {note.pitch}")
+                if not (0 <= note.velocity <= 127):
+                    raise ValueError(f"MIDI velocity must be in 0..127, got {note.velocity}")
+                if not math.isfinite(note.start_time) or note.start_time < 0:
+                    raise ValueError(f"note start_time must be finite and >= 0, got {note.start_time}")
+                if not math.isfinite(note.duration) or note.duration <= 0:
+                    raise ValueError(f"note duration must be finite and > 0, got {note.duration}")
                 events.append((note.start_time, 'note_on', note.pitch, note.velocity))
                 events.append((note.start_time + note.duration, 'note_off',
                                note.pitch, 0))

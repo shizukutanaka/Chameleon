@@ -487,6 +487,12 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`generate_midi_file` accepted notes the format cannot express** —
+  `velocity > 127` died on a bare struct-range error, `duration <= 0`
+  wrote a note_off BEFORE its note_on (a corrupt file reported as
+  success), and a negative `start_time` silently collapsed its delta
+  to 0 ticks. All four note fields are validated before any event is
+  emitted: a bad note now fails with a named reason.
 
 ### Changed
 
