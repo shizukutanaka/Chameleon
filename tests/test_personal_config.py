@@ -419,3 +419,51 @@ def test_backup_workflow_verifies_an_intact_copy(tmp_path, monkeypatch, capsys):
 
     assert (dest_dir / "a.wav").exists()
     assert "verified successfully" in capsys.readouterr().out
+
+
+# --- __main__ argument handling ---------------------------------------------
+#
+# `python personal_config.py --help` used to be indistinguishable from a bare
+# run: every unrecognized argv fell into the else-branch, which loads/creates
+# the config, writes ~/.chameleon/aliases.sh|.ps1, and scans the library --
+# filesystem writes as the answer to "show me usage". Now only the documented
+# `setup` subcommand and a bare run do anything; anything else is usage.
+
+def test_help_flag_prints_usage_and_writes_nothing(tmp_path):
+    import os
+    import subprocess
+    import sys
+
+    repo_root = Path(__file__).resolve().parent.parent
+    home = tmp_path / "home"
+    home.mkdir()
+
+    result = subprocess.run(
+        [sys.executable, "personal_config.py", "--help"],
+        capture_output=True, text=True, cwd=str(repo_root),
+        env={**os.environ, "HOME": str(home)},
+    )
+
+    assert result.returncode == 0
+    assert "Usage" in result.stdout
+    assert not (home / ".chameleon").exists()   # help must not write state
+
+
+def test_an_unrecognized_argument_is_a_usage_error_not_a_silent_run(tmp_path):
+    import os
+    import subprocess
+    import sys
+
+    repo_root = Path(__file__).resolve().parent.parent
+    home = tmp_path / "home"
+    home.mkdir()
+
+    result = subprocess.run(
+        [sys.executable, "personal_config.py", "--bogus-flag"],
+        capture_output=True, text=True, cwd=str(repo_root),
+        env={**os.environ, "HOME": str(home)},
+    )
+
+    assert result.returncode == 2
+    assert "Usage" in result.stderr
+    assert not (home / ".chameleon").exists()

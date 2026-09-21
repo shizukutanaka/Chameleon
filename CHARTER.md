@@ -2432,3 +2432,20 @@ any range assertion.
   the artifact was rejected by the dependency-free parser it ships with.
   Verify writer output against the first-party reader, not just the
   library's subtype list.
+
+**Q (2026-09-21, continued):** The py-modules ship `personal_config.py`,
+`batch_automation.py`, `spectral_editor.py` -- kept by explicit decision
+(2026-08-25) despite no CLI wiring. If a user runs them as scripts, do
+they behave the way their own output claims?
+**A:** Two of three do. `batch_automation.py`'s __main__ demo runs its
+DAG through the AST-gated evaluator (no eval/exec; script tasks are
+path-validated, env-sanitised, sha256-recorded) -- safe theatre.
+`spectral_editor.py`'s demo prints a feature matrix that honestly marks
+Visualization "✗" absent. `personal_config.py` did not: `sys.argv` was
+checked for exactly "setup" and every other byte of input fell into the
+status branch, so `--help` created ~/.chameleon, wrote the alias scripts,
+and scanned the library as its response to "show me usage". Unknown argv
+now exits 2 with the usage line; `-h`/`--help` prints it at exit 0; the
+two real commands are unchanged. This is the same defect class as the
+ignored flags on the main CLI -- input the user typed being pretended
+away -- just outside argparse's reach.

@@ -465,6 +465,13 @@
   like `Bb` accepted, unknown keys rejected as INPUT), and `compose`
   uses a real minor-mode progression (i-v-VI-iv) under `--mode minor`
   so chord tones stay inside the requested scale.
+- **`python personal_config.py <anything>` ran the full setup flow
+  regardless of the argument** — `--help`, `--version`, or a typo all
+  loaded/created `~/.chameleon/personal_config.json`, wrote the alias
+  scripts, and scanned the audio library: filesystem writes as the
+  answer to "show me the usage". Only the documented `setup` subcommand
+  and a bare status run now do work; `-h`/`--help` print usage (exit 0),
+  anything else is a usage error on stderr (exit 2).
 
 ### Changed
 
