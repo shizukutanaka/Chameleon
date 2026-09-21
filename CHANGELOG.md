@@ -487,6 +487,11 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`SpectralEditor.select_region` accepted empty selections** — an
+  inverted (`start > end`) or fully out-of-range range produced a mask
+  selecting zero bins, and `delete_selection` reported success while
+  changing nothing (consuming an undo state too). Empty selections now
+  raise `ValueError` naming both axes.
 
 ### Changed
 

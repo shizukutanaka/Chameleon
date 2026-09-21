@@ -3252,3 +3252,15 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** `spectral_editor.select_region` clamps
+each bound independently -- what happens on an inverted range?
+**A:** An "edit" that reports success while changing nothing.
+`select_region(0.6, 0.4, ...)` produced an empty mask;
+`delete_selection` then returned True, consumed an undo state, and
+logged a delete that never happened -- the same no-work-success class
+as audits 34/35. Empty selections now raise ValueError naming both
+axes. Also verified honest: `analyze --export` writes real JSON,
+`CHAMELEON_TIMEOUT` (documented name) bounds batch duration,
+`midi extract` is fully wired with honest empty/polyphonic handling,
+and dwChannelMask reaches the multichannel loudness call.

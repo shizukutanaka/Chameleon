@@ -181,3 +181,17 @@ def test_harmonic_enhance_refuses_empty_selection():
     assert not ed.harmonic_enhance_selection(empty)
     assert len(ed.undo_stack) == undo_depth
     assert np.array_equal(ed.current_audio, before_audio)
+
+
+def test_empty_selection_is_rejected_not_silently_successful():
+    # An inverted or fully out-of-range selection selects zero bins; ops
+    # on it used to return True while changing nothing (and still
+    # consuming an undo state). select_region now refuses to create one.
+    ed = spectral_editor.SpectralEditor()
+    audio = np.sin(2 * np.pi * 220 * np.arange(SAMPLE_RATE) / SAMPLE_RATE) * 0.3
+    ed.load_audio(audio, SAMPLE_RATE)
+
+    with pytest.raises(ValueError, match="Empty spectral selection"):
+        ed.select_region(0.6, 0.4, 0, 22050)   # time_start > time_end
+    with pytest.raises(ValueError, match="Empty spectral selection"):
+        ed.select_region(0.4, 0.6, 22050, 0)   # freq_start > freq_end
