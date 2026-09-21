@@ -247,3 +247,11 @@ def test_analyze_harmony_names_the_key_not_a_pitch_class():
     harmony = analyzer.analyze_harmony(chords, key)
 
     assert harmony["key"] == "C major"
+
+
+def test_detect_key_reports_zero_confidence_on_empty_notes():
+    # With no notes there is no pitch-class evidence; the meter must say
+    # so (confidence 0) rather than report a key with a confidence it
+    # cannot support.
+    key = MIDIAnalyzer().detect_key([])
+    assert key.confidence == 0.0

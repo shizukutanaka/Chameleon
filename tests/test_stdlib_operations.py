@@ -229,3 +229,23 @@ def test_a_batch_of_mixed_channel_counts_all_succeeds(blocker_dir, tmp_path):
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "2/2" in result.stdout
+
+
+def test_trim_all_silence_reports_no_content_and_writes_nothing(blocker_dir, tmp_path):
+    # An all-silent file has no boundary to trim to; the honest outcome is
+    # the INPUT refusal with the "no content" message, and no output file
+    # pretending a trim happened.
+    source = tmp_path / "silent.wav"
+    with wave.open(str(source), "w") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(44100)
+        handle.writeframes(b"\x00" * 2 * 44100)
+
+    result = _run_cli(blocker_dir, "process", str(source), "--trim",
+                      "--output-dir", str(tmp_path / "out"))
+
+    assert result.returncode == 3
+    assert "No audio content" in result.stderr + result.stdout
+    out_dir = tmp_path / "out"
+    assert not (out_dir / "silent_trimmed.wav").exists()

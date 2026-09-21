@@ -52,6 +52,11 @@
   error gets a (1 - z^-1) high-pass response; measured LF suppression
   ~11x vs flat TPDF on a sub-LSB input). Output lands exactly on the
   int16 grid so the PCM write stays transparent.
+- **Regression tests pinning verified-honest edge contracts** --
+  momentary/short-term loudness windows return `[]` below their frame
+  lengths, an all-silent `process --trim` exits INPUT(3) with "No audio
+  content" and writes nothing, and `detect_key([])` reports
+  confidence 0.
 
 ### Fixed
 

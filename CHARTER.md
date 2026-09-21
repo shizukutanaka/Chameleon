@@ -2471,3 +2471,16 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** What still lies in the remaining thin
+surfaces -- loudness windows, boundary detection, key detection,
+no-operation requests?
+**A:** Nothing new. A pin cycle, not a defect cycle:
+`measure_momentary_loudness`/`measure_short_term_loudness` return []
+below their window lengths instead of partial-window numbers;
+`_find_audio_boundaries` reports (0,0) for all-silence and the CLI
+turns that into an INPUT refusal with "No audio content" plus no
+output file; `detect_key([])` reports confidence 0; `process` with no
+operation flags exits USAGE; `midi generate --tempo` rejects
+non-positive BPM. Three regression tests now pin the window-length,
+silent-trim, and zero-confidence contracts.

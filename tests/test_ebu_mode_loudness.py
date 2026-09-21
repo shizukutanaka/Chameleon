@@ -224,3 +224,15 @@ def test_stdlib_lra_agrees_with_the_numpy_scipy_implementation():
     mine = bs1770.measure_loudness_range([channel], sample_rate)
 
     assert mine == pytest.approx(theirs, abs=0.1)
+
+
+def test_windows_shorter_than_their_frame_report_no_measurement():
+    # A 50 ms clip contains no complete 400 ms momentary window, and a
+    # 2 s clip no complete 3 s short-term window. Both must report "no
+    # measurement" -- an empty list -- rather than computing a value on a
+    # partial window and presenting it as a windowed loudness.
+    sample_rate = 48000
+    fifty_ms = [0.5] * int(0.05 * sample_rate)
+    two_s = [0.5] * int(2.0 * sample_rate)
+    assert bs1770.measure_momentary_loudness([fifty_ms], sample_rate) == []
+    assert bs1770.measure_short_term_loudness([two_s], sample_rate) == []
