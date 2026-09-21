@@ -3252,3 +3252,23 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**2026-09-21 (Socratic audit 116, external-source pass):** Probed the
+pitch-extraction internals against the published algorithms they cite
+(YIN — de Cheveigné & Kawahara 2002; Krumhansl-Schmuckler key profiles):
+
+- The YIN implementation is faithful (difference function over a fixed
+  window, CMND, absolute threshold with local-minimum descent, parabolic
+  interpolation) and the key profiles are the published coefficients.
+- But `parse_midi_from_audio`'s `range(0, len - frame_size, hop)` never
+  yielded the last full frame's position: a file of exactly one frame
+  returned ZERO notes (verified: 23 ms of clean A4 -> []), and the final
+  partial frame of every file went unanalyzed. The loop now walks to the
+  end of the buffer, zero-pads a tail >= 8 samples (YIN's floor) to a
+  full frame, and stops cleanly.
+
+Verified honest: K-S major/minor profiles match the published
+coefficients, the absolute-threshold + descent step defeats octave
+errors as designed, log-scale interval bucketing and octave-folded tempo
+estimation in analyze_rhythm, and the monophonic-density warning on the
+CLI path.

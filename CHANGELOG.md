@@ -487,6 +487,10 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- `midi extract` never analyzed the last full frame — a file of exactly
+  one frame returned zero notes and every file's partial tail was
+  dropped. The extraction loop now covers the end of the buffer,
+  zero-padding a tail of ≥8 samples to a full frame.
 
 ### Changed
 
