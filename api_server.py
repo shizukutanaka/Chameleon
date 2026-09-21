@@ -172,6 +172,15 @@ SECURITY_CONFIG['file_timeout_seconds'] = _env_int(
 SECURITY_CONFIG['max_uploaded_files'] = _env_int(
     'CHAMELEON_MAX_UPLOADED_FILES', 1000)
 
+# The in-memory audit deque is bounded (max_audit_log_entries); the
+# durable file it mirrors was not -- every event appended one JSON line
+# to api-audit.log forever. Rotate to a single api-audit.log.1 when the
+# file passes the cap, bounding disk at ~2x cap; older history is
+# dropped by design (the in-memory tail serves recent reads).
+# CHAMELEON_MAX_AUDIT_LOG_BYTES=0 disables rotation.
+SECURITY_CONFIG['max_audit_log_bytes'] = _env_int(
+    'CHAMELEON_MAX_AUDIT_LOG_BYTES', 50 * 1024 * 1024)
+
 PRIVILEGED_CLEARANCE = {"SECRET", "TOP_SECRET"}
 
 # Clearance order for capping a self-declared login clearance. The request
@@ -949,6 +958,13 @@ def log_audit_event(user: str, operation: str, resource: str, result: str,
     # Also log to file for persistent storage
     try:
         log_file = _resolve_audit_log_path()
+        max_bytes = SECURITY_CONFIG.get('max_audit_log_bytes')
+        if max_bytes:
+            try:
+                if log_file.stat().st_size >= max_bytes:
+                    os.replace(log_file, log_file.with_suffix('.log.1'))
+            except OSError:
+                pass
         with _AUDIT_FILES.secure_open(log_file, 'a', encoding='utf-8') as f:
             f.write(f"{_model_to_json(entry)}\n")
     except Exception as e:
