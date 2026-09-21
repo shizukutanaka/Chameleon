@@ -186,3 +186,35 @@ def test_load_wav_basic_8bit_unsigned_offset(tmp_path):
     audio, sr = main.AudioProcessor()._load_wav_basic(str(wav))
     assert audio[0] == pytest.approx(0.0, abs=0.01)
     assert audio[2] == pytest.approx(-1.0, abs=0.01)
+
+
+def _write_data_before_fmt(path):
+    """A RIFF whose 'data' chunk physically precedes 'fmt '."""
+    data = b"\x01\x00" * 400
+    fmt = struct.pack("<HHIIHH", 1, 1, 8000, 16000, 2, 16)
+    body = (
+        b"data" + struct.pack("<I", len(data)) + data
+        + b"fmt " + struct.pack("<I", len(fmt)) + fmt
+    )
+    path.write_bytes(
+        b"RIFF" + struct.pack("<I", 4 + len(body)) + b"WAVE" + body)
+    return str(path)
+
+
+def test_data_before_fmt_is_rejected_not_rewritten(tmp_path):
+    """fmt-after-data is not spec-legal (RIFF requires fmt first), and the
+    copy-through writers emit fmt-then-data -- so accepting it made
+    normalize() produce a file even Python's own wave module refuses
+    ("data chunk before fmt chunk"). Verified: pre-fix, normalize
+    returned success on an unreadable output."""
+    src = _write_data_before_fmt(tmp_path / "datafirst.wav")
+
+    processor = core.WAVProcessor()
+    assert processor._read_wav_header(src) is None
+    assert "precedes" in processor._header_rejection_reason
+
+    out = tmp_path / "out.wav"
+    result = core.WAVProcessor().normalize(src, str(out))
+    assert not result.success
+    assert "precedes" in result.message
+    assert not out.exists()

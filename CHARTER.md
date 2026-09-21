@@ -2471,3 +2471,17 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** The RIFF spec requires `fmt ` before `data`,
+and Python's own `wave` module refuses the reverse order. Chameleon's
+chunk-walking parser accepted `data`-before-`fmt ` -- what did the
+writers do with it?
+**A:** Produced an invalid file. `_copy_patched_header` copies bytes
+[0, data_offset-8) then appends a fresh data chunk, so a `fmt ` chunk
+located *after* `data` never made it into the output -- `normalize`
+reported success on a WAV that `wave.open` itself rejects. The numpy
+loader (`main._load_wav_basic`) already named the case ("WAV data chunk
+before fmt chunk"); the stdlib header walk now rejects it too, with a
+`_header_rejection_reason` telling the user to re-mux with a conformant
+writer. Trailing chunks after `data` are still deliberately dropped on
+rewrite -- documented policy in `_copy_patched_header`, unchanged.

@@ -487,6 +487,14 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **Accepted WAVs with `data` before `fmt `, then wrote invalid output** —
+  the chunk walker accepted spec-illegal ordering (RIFF requires `fmt `
+  first; even Python's `wave` refuses), but `_copy_patched_header` only
+  copies bytes before the data chunk, so `normalize` on such a file
+  reported success on an output with no `fmt ` chunk at all — a file
+  nothing can parse. The header walk now rejects the ordering with a
+  named reason ("re-mux with a standards-conformant writer"), matching
+  what the numpy loader already did.
 
 ### Changed
 

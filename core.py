@@ -807,6 +807,15 @@ class WAVProcessor:
 
                 if not fmt_seen or data_offset is None:
                     return None
+                if fmt_offset > data_offset:
+                    # fmt after data is not spec-legal (RIFF requires fmt
+                    # first) and our writers emit fmt-then-data — accepting
+                    # this and re-writing produced a file even Python's own
+                    # wave module refuses ("data chunk before fmt chunk").
+                    self._header_rejection_reason = (
+                        "Malformed WAV: 'data' chunk precedes 'fmt ' chunk; "
+                        "re-mux with a standards-conformant writer")
+                    return None
                 if format_tag != 1:
                     # Valid file, unsupported encoding -- the reason must
                     # reach the user instead of the generic 'invalid' below.
