@@ -487,6 +487,13 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **Empty spectral selections could poison or fake-edit the STFT** —
+  `noise_reduce_selection` on a reversed/out-of-range selection took
+  `np.median` of an empty array (NaN), and spectral subtraction spread it
+  across the whole spectrogram: audio came back all-NaN while the method
+  returned `True`. `enhance_selection`/`delete_selection` returned `True`
+  on empty selections too, consuming undo state for a no-op. All three
+  now reject empty selections before touching state.
 
 ### Changed
 
