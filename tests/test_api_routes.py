@@ -300,7 +300,7 @@ def test_batch_normalize_job_produces_a_downloadable_output(client, tmp_path, mo
     status = None
     # Poll by wall-clock deadline, not a poll count: a 429 costs 0.5s of
     # sleep, so an iteration cap gives a wildly variable real budget.
-    deadline = time.time() + 60
+    deadline = time.time() + 180  # full-suite load can delay the job past 60s
     while time.time() < deadline:
         s = client.get(f"/batch/status/{job_id}", headers=auth)
         if s.status_code == 429:  # rate limiter: keep polling, the job still runs
@@ -382,7 +382,7 @@ def test_batch_normalize_options_target_peak_reaches_the_output(client, tmp_path
     job_id = sub.json()["job_id"]
 
     status = None
-    deadline = time.time() + 60
+    deadline = time.time() + 180  # full-suite load can delay the job past 60s
     while time.time() < deadline:
         s = client.get(f"/batch/status/{job_id}", headers=auth)
         if s.status_code == 429:

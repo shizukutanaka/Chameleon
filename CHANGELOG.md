@@ -487,6 +487,16 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`detect_chords` crashed on an empty note list** — `max()` of an
+  empty iterable raised `ValueError` while its siblings already answered
+  honestly (`detect_key` → confidence 0.0, `analyze_rhythm` → empty
+  patterns, `analyze_harmony` → "No chords found"). Empty input is
+  legitimate — audio with no detectable notes yields `[]` — so
+  `detect_chords` now returns `[]` like the rest.
+- **Batch-status tests no longer flake under load** — the two
+  `/batch/status` poll loops used a 60 s wall-clock deadline that
+  full-suite resource contention could exceed; raised to 180 s. The
+  assertions are unchanged — this only tolerates slower machines.
 
 ### Changed
 

@@ -311,6 +311,8 @@ class MIDIAnalyzer:
 
     def detect_chords(self, notes: List[MIDINote], window_size: float = 1.0) -> List[Chord]:
         """Detect chords from MIDI notes"""
+        if not notes:
+            return []
         chords = []
         current_time = 0.0
 
