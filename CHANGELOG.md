@@ -487,6 +487,11 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **A sub-second plugin sandbox limit silently meant "no limit"** —
+  `execute_with_limits` armed `signal.alarm(int(max_time))`, so
+  `max_execution_time=0.5` truncated to `alarm(0)`, which *disables* the
+  timer on POSIX. It now uses `setitimer(ITIMER_REAL, …)`, which accepts
+  fractional seconds — verified: a 0.5 s limit interrupts a 5 s sleep.
 
 ### Changed
 

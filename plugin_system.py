@@ -247,12 +247,15 @@ class PluginSandbox:
 
             try:
                 signal.signal(signal.SIGALRM, timeout_handler)
-                signal.alarm(int(max_time))
+                # setitimer, not alarm(): int(0.5) == 0 and alarm(0)
+                # *disables* the timeout, so a sub-second limit silently
+                # meant "no limit". ITIMER_REAL honours fractional seconds.
+                signal.setitimer(signal.ITIMER_REAL, max_time)
                 with self._apply_memory_limit():
                     return func(*args, **kwargs)
             finally:
                 try:
-                    signal.alarm(0)
+                    signal.setitimer(signal.ITIMER_REAL, 0)
                 finally:
                     signal.signal(signal.SIGALRM, previous_handler)
 

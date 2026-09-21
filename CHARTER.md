@@ -2471,3 +2471,14 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** `PluginSandbox.execute_with_limits`
+enforces a timeout via `signal.alarm(int(max_time))`. What does a
+sub-second limit actually do?
+**A:** `int(0.5)` is 0, and `alarm(0)` *disables* the timer -- a
+"sandbox for half a second" ran with no time limit at all on POSIX.
+The threaded fallback already honoured fractions (`join(max_time)`),
+so only the signal path was hollow. Switched to
+`setitimer(ITIMER_REAL, max_time)`, which takes a float; a 0.5s limit
+now interrupts a 5s sleep. The disarm call is `setitimer(..., 0)` --
+the only fix that keeps fractional semantics symmetric.

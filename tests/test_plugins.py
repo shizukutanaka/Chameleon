@@ -304,3 +304,25 @@ def test_load_plugin_limits_all_plugin_code_sites(tmp_path, hang_site):
     with pytest.raises(TimeoutError, match="timed out"):
         loader.load_plugin(plugin)
     assert time.monotonic() - t0 < 10
+
+
+def test_sub_second_execution_limit_is_enforced_not_disabled():
+    # execute_with_limits used signal.alarm(int(max_time)): any limit
+    # under 1 second truncated to 0, and alarm(0) *disables* the timer --
+    # a "0.5s" sandbox ran unlimited. setitimer honours fractions.
+    import time
+
+    from plugin_system import PluginSandbox, PluginConfig
+
+    sandbox = PluginSandbox(PluginConfig(
+        sandbox_mode=True, max_execution_time=0.5))
+
+    def hang():
+        time.sleep(5.0)
+        return "never"
+
+    t0 = time.monotonic()
+    with pytest.raises(TimeoutError, match="timed out"):
+        sandbox.execute_with_limits(hang)
+    assert time.monotonic() - t0 < 5.0, (
+        "the 0.5s limit should interrupt the call, not run it to completion")
