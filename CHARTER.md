@@ -2471,3 +2471,13 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** `analyze_harmony`'s `degree` field -- does
+it report the scale degree its roman numeral implies?
+**A:** No. It reported `semitone_index + 1`, so the I-V-vi-IV example
+everyone reads came out as degrees 1-8-10-6 while the romans correctly
+said I-V-vi-IV -- a chord labeled IV claimed degree 6. The CLI's
+`midi analyze` output passes this dict through verbatim. Now mapped
+through `_SEMITONE_TO_SCALE_DEGREE` = (1,2,2,3,3,4,5,5,6,6,7,7), so a
+chromatic degree keeps its diatonic base (semitone 8 -> "♭VI" -> 6),
+consistent with the numeral.

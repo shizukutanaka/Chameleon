@@ -247,3 +247,26 @@ def test_analyze_harmony_names_the_key_not_a_pitch_class():
     harmony = analyzer.analyze_harmony(chords, key)
 
     assert harmony["key"] == "C major"
+
+
+def test_analyze_harmony_degree_matches_roman_numeral():
+    # The progression dict used to report "degree": semitone_index + 1, so
+    # an F-major chord in C claimed degree 6 while its roman said IV. The
+    # field now reports the diatonic degree the numeral encodes.
+    from midi_analysis import Chord, MusicalKey
+    analyzer = MIDIAnalyzer()
+    key = MusicalKey(tonic=0, mode="major", confidence=0.9)
+    chords = [
+        Chord(root=0, chord_type="major", notes=[], start_time=0.0, duration=2.0, confidence=0.9),
+        Chord(root=5, chord_type="major", notes=[], start_time=2.0, duration=2.0, confidence=0.9),
+        Chord(root=7, chord_type="major", notes=[], start_time=4.0, duration=2.0, confidence=0.9),
+        Chord(root=9, chord_type="minor", notes=[], start_time=6.0, duration=2.0, confidence=0.9),
+        Chord(root=8, chord_type="major", notes=[], start_time=8.0, duration=2.0, confidence=0.9),
+    ]
+
+    harmony = analyzer.analyze_harmony(chords, key)
+
+    expected = [("I", 1), ("IV", 4), ("V", 5), ("vi", 6), ("♭VI", 6)]
+    for entry, (roman, degree) in zip(harmony["progression"], expected):
+        assert entry["roman"] == roman
+        assert entry["degree"] == degree, f"{roman} reported degree {entry['degree']}"

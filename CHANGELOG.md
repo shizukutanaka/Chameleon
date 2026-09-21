@@ -487,6 +487,12 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`analyze_harmony` reported a bogus `degree` field** — it emitted
+  `semitone_index + 1`, so the chords it correctly romanized as
+  I-V-vi-IV were simultaneously labeled degrees 1-8-10-6 (IV "was"
+  degree 6). The field now reports the diatonic degree the roman
+  numeral encodes, via a semitone→degree map (chromatic steps keep
+  their diatonic base: ♭VI → 6). Surfaced verbatim by `midi analyze`.
 
 ### Changed
 

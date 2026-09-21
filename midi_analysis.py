@@ -115,6 +115,9 @@ class MusicalKey:
 
         self.scale_notes = [(self.tonic + interval) % 12 for interval in intervals]
 
+_SEMITONE_TO_SCALE_DEGREE = (1, 2, 2, 3, 3, 4, 5, 5, 6, 6, 7, 7)
+
+
 class MIDIAnalyzer:
     """MIDI analysis: onset/pitch detection (YIN), chord and key detection,
     and rhythm/tempo estimation."""
@@ -495,7 +498,8 @@ class MIDIAnalyzer:
         roman_numerals = ["I", "♭II", "II", "♭III", "III", "IV", "♭V", "V", "♭VI", "VI", "♭VII", "VII"]
 
         for chord in chords:
-            # Calculate scale degree
+            # Chromatic distance from the tonic in semitones (0-11); also
+            # used to index the roman-numeral table.
             degree = (chord.root - key.tonic) % 12
 
             # Determine quality based on chord type and key
@@ -512,7 +516,12 @@ class MIDIAnalyzer:
             progression.append({
                 "chord": chord.name,
                 "roman": roman,
-                "degree": degree + 1,
+                # Diatonic degree counted from the tonic (1-7); chromatic
+                # steps keep their diatonic base, matching the roman
+                # numeral (semitone 8 -> "♭VI" -> degree 6). Previously
+                # this reported `semitone + 1`, so an IV chord claimed to
+                # be degree 6.
+                "degree": _SEMITONE_TO_SCALE_DEGREE[degree],
                 "quality": quality,
                 "duration": chord.duration,
                 "confidence": chord.confidence
