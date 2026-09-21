@@ -2276,7 +2276,10 @@ def create_cli():
     # Defaults are None so the dispatcher can tell an explicitly-typed flag
     # from an unset one; per-operation defaults are applied where consumed.
     midi.add_argument("--key", help="Musical key (e.g., C, G, F#)")
-    midi.add_argument("--mode", choices=["major", "minor"], default=None)
+    midi.add_argument("--mode", choices=[
+                          "major", "minor", "ionian", "aeolian", "dorian",
+                          "phrygian", "lydian", "mixolydian", "locrian"],
+                      default=None)
     midi.add_argument("--tempo", type=float, default=None, help="Tempo in BPM")
     midi.add_argument("--length", type=float, default=None, help="Length in seconds")
 

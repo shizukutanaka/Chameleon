@@ -247,3 +247,33 @@ def test_analyze_harmony_names_the_key_not_a_pitch_class():
     harmony = analyzer.analyze_harmony(chords, key)
 
     assert harmony["key"] == "C major"
+
+
+def test_unknown_mode_is_rejected_and_real_modes_have_real_intervals():
+    """MusicalKey used to fall through to the major interval table for any
+    unknown mode while still labelling itself that mode -- `mode='lydian'`
+    produced major's [0,2,4,5,7,9,11] instead of lydian's raised-4th
+    [0,2,4,6,7,9,11]. The field lied about the content. The full diatonic
+    set is now implemented per the textbook W/H patterns and unknown names
+    raise ValueError."""
+    import pytest
+    from midi_analysis import MusicalKey
+
+    expected = {
+        "major": [0, 2, 4, 5, 7, 9, 11],
+        "minor": [0, 2, 3, 5, 7, 8, 10],
+        "dorian": [0, 2, 3, 5, 7, 9, 10],
+        "phrygian": [0, 1, 3, 5, 7, 8, 10],
+        "lydian": [0, 2, 4, 6, 7, 9, 11],
+        "mixolydian": [0, 2, 4, 5, 7, 8, 10],
+        "locrian": [0, 1, 3, 5, 6, 8, 10],
+    }
+    for mode, intervals in expected.items():
+        k = MusicalKey(tonic=0, mode=mode, confidence=1.0)
+        assert k.scale_notes == intervals, mode
+    # Aliases
+    assert MusicalKey(tonic=0, mode="ionian", confidence=1.0).scale_notes == expected["major"]
+    assert MusicalKey(tonic=0, mode="aeolian", confidence=1.0).scale_notes == expected["minor"]
+
+    with pytest.raises(ValueError, match="Unknown mode 'banana'"):
+        MusicalKey(tonic=0, mode="banana", confidence=1.0)

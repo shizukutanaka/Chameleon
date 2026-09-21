@@ -100,19 +100,31 @@ class MusicalKey:
     confidence: float
     scale_notes: List[int] = field(default_factory=list)
 
+    # Diatonic (church) modes -- standard interval tables, semitones from
+    # the tonic. Verified against the textbook W/H step patterns.
+    _MODE_INTERVALS = {
+        "major":      [0, 2, 4, 5, 7, 9, 11],   # ionian
+        "ionian":     [0, 2, 4, 5, 7, 9, 11],
+        "minor":      [0, 2, 3, 5, 7, 8, 10],   # aeolian
+        "aeolian":    [0, 2, 3, 5, 7, 8, 10],
+        "dorian":     [0, 2, 3, 5, 7, 9, 10],
+        "phrygian":   [0, 1, 3, 5, 7, 8, 10],
+        "lydian":     [0, 2, 4, 6, 7, 9, 11],
+        "mixolydian": [0, 2, 4, 5, 7, 8, 10],
+        "locrian":    [0, 1, 3, 5, 6, 8, 10],
+    }
+
     def __post_init__(self):
         """Initialize scale notes"""
-        if self.mode == "major":
-            intervals = [0, 2, 4, 5, 7, 9, 11]
-        elif self.mode == "minor":
-            intervals = [0, 2, 3, 5, 7, 8, 10]
-        elif self.mode == "dorian":
-            intervals = [0, 2, 3, 5, 7, 9, 10]
-        elif self.mode == "mixolydian":
-            intervals = [0, 2, 4, 5, 7, 9, 10]
-        else:
-            intervals = [0, 2, 4, 5, 7, 9, 11]  # Default to major
-
+        # An unknown mode used to fall through to the major intervals while
+        # still labelling itself e.g. "lydian" -- the field lied about what
+        # scale_notes contained (verified: mode='lydian' produced major's
+        # [0,2,4,5,7,9,11] instead of lydian's raised-4th table).
+        intervals = self._MODE_INTERVALS.get(self.mode)
+        if intervals is None:
+            raise ValueError(
+                f"Unknown mode {self.mode!r}; supported: "
+                f"{', '.join(sorted(self._MODE_INTERVALS))}")
         self.scale_notes = [(self.tonic + interval) % 12 for interval in intervals]
 
 class MIDIAnalyzer:

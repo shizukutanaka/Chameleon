@@ -487,6 +487,11 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- `MusicalKey` built the major interval table for ANY unknown mode while
+  still labelling itself that mode — `mode='lydian'` produced major's
+  notes, not lydian's. All seven diatonic modes (+ ionian/aeolian aliases)
+  are now implemented from the standard interval tables, unknown modes
+  raise ValueError, and `midi compose --mode` offers them all.
 
 ### Changed
 
