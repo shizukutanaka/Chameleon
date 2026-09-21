@@ -515,6 +515,15 @@ class SpectralEditor:
                 # repair that repaired nothing.
                 self.logger.error("Interpolation failed: empty selection")
                 return False
+            if mask.all():
+                # Interpolation fills the selection from *unselected*
+                # bins; when every bin is selected there is no source —
+                # the copy-out below would return identical audio while
+                # claiming True and pushing an undo frame.
+                self.logger.error(
+                    "interpolate selection covers the whole spectrogram; "
+                    "nothing to interpolate from")
+                return False
 
             self._save_state()
 
