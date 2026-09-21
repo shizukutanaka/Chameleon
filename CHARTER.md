@@ -2282,6 +2282,20 @@ any range assertion.
 - A deleted command can survive in a doc's `{a,b,c}` usage synopsis because no
   fantasy-feature grep matches a comma-list token. Compare the docs' choice
   list to the parser's actual subcommands — pattern scans don't see lists.
+
+**Q: What may an "error rate" be a rate of?**
+
+A (2026-09-21): Only over the thing the numerator counts.
+`/system/status` computed `error_rate = failed_jobs / total_requests` —
+mixed units: 10,000 requests would display 2-of-3 failed jobs as a
+0.0002 "error rate", a monitoring value that is arithmetically true and
+operationally false. The numerator counts failed *jobs*, so the
+denominator is finished jobs (`completed + failed`). No docs claimed the
+field, but a name is a claim: `error_rate` on a jobs dashboard must be
+the job error rate. Same cycle: `--target-peak`/`--threshold` help text
+advertised "0.0-1.0" while enforcement used `(0.0, 1.0]`/`(0.0, 1.0)` —
+an advertised value the program refuses is a doc defect, not a nicety;
+help and both `docs/*/commands.md` tables now print the real bounds.
 - A loader that collapses exceptions to None loses the failure's *kind*: the
   sandbox's SecurityError reached stderr but `load_failures` could only store
   a generic string. Re-raise the exceptions whose type is the information

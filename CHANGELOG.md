@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Fixed
+
+- **`/system/status` `error_rate` mixed units** -- it divided failed
+  jobs by total *requests*, so a server that failed 2 of 3 jobs after
+  10,000 requests reported 0.0002. It is now failed jobs over finished
+  jobs (`completed + failed`) -- the only denominator the numerator can
+  be a rate of.
+- **`--target-peak`/`--threshold` help advertised bounds the program
+  refuses** -- help and both commands.md tables said "0.0-1.0" for
+  values that actually require `(0.0, 1.0]` / `(0.0, 1.0)`. Help text
+  and docs now print the real domains.
+
 ### Security
 
 - **Plugin sandbox escaped via builtins needing no import** -- the AST
