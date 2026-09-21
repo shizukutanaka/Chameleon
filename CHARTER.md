@@ -3252,3 +3252,16 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21):** AudioRestorer.restore(mode=...) documents five modes.
+Do the names select distinct behavior, and what happens with a mode it
+never heard of -- or audio that cannot be measured?
+**A:** Three cracks. An unknown mode ran the auto pipeline anyway and
+echoed itself back in info['mode'] -- 'banana' produced a normal-looking
+report. Of the five documented names only 'vinyl' selects a different
+pipeline; digital/voice/music are aliases for the configured step list
+(now stated in the docstring rather than implied). Unknown modes are
+rejected. An empty array died inside np.fft with a librosa-shaped error;
+it is rejected up front. And on silent input the dynamic-range metrics
+computed log10(0/0) = -inf under a RuntimeWarning; uncomputable metrics
+are now None, the same honest contract /system/status uses.
