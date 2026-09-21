@@ -2471,3 +2471,12 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** `scan_library` claims to "update" the
+library database -- what happens to entries whose files were deleted?
+**A:** They stayed forever. `total_files` counted entries for files
+that no longer exist, and `search()` happily returned paths to nothing
+-- the DB claimed ghosts were library members. Scan now marks unseen
+entries `"missing"` (not deleted, so tags survive a file's return --
+verified: a returning file regains membership with tags intact), reports
+them in a separate `missing_files` count, and `search` skips them.

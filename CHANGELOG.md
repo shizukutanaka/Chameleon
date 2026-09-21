@@ -487,6 +487,11 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`scan_library` counted deleted files as library members forever** —
+  entries for removed files persisted, inflating `total_files` and
+  letting `search()` return paths that no longer exist. Scan now marks
+  unseen entries `"missing"` (tags are preserved if the file returns),
+  reports a separate `missing_files` count, and `search` skips them.
 
 ### Changed
 

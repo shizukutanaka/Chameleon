@@ -331,10 +331,12 @@ class PersonalLibraryManager:
         inspector = DeepFileInspector()
         new_files = []
         updated_files = []
+        seen = set()
 
         for ext in self.config.supported_formats:
             for file_path in self.library_path.rglob(f"*{ext}"):
                 file_key = str(file_path.relative_to(self.library_path))
+                seen.add(file_key)
 
                 # Check if file is new or modified
                 if file_key not in self.library_db["files"]:
@@ -351,6 +353,9 @@ class PersonalLibraryManager:
                     }
                     new_files.append(file_key)
                 else:
+                    # A previously missing file that came back is not
+                    # missing anymore.
+                    self.library_db["files"][file_key].pop("missing", None)
                     # Check if modified
                     current_checksum = self.library_db["files"][file_key].get("checksum")
                     result = inspector.inspect_file(file_path)
@@ -364,12 +369,23 @@ class PersonalLibraryManager:
                         })
                         updated_files.append(file_key)
 
+        # Entries whose file no longer exists must not pose as library
+        # members -- mark them missing (tags are preserved if the file
+        # returns) instead of letting total_files/search count ghosts.
+        missing = 0
+        for file_key, info in self.library_db["files"].items():
+            if file_key not in seen:
+                if not info.get("missing"):
+                    info["missing"] = True
+                missing += 1
+
         self._save_db()
 
         return {
-            "total_files": len(self.library_db["files"]),
+            "total_files": len(self.library_db["files"]) - missing,
             "new_files": len(new_files),
             "updated_files": len(updated_files),
+            "missing_files": missing,
             "new": new_files[:10],  # Show first 10
             "updated": updated_files[:10]
         }
@@ -401,6 +417,11 @@ class PersonalLibraryManager:
         results = []
 
         for file_key, file_info in self.library_db["files"].items():
+            # Files marked missing are not library members -- don't
+            # return paths that do not exist.
+            if file_info.get("missing"):
+                continue
+
             # Search in filename
             if query.lower() in file_key.lower():
                 results.append(file_key)
