@@ -3252,3 +3252,16 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** `ParametricEQ.add_band` -- does a rejected
+band tell the caller anything?
+**A:** No, in three different ways. An unknown `filter_type` ("notch",
+"peaking") fell through every branch and added nothing; `frequency<=0`
+silently built a mathematically invalid bell biquad (negative omega) --
+while the same value on a pass band leaked a raw scipy error; and
+`frequency >= Nyquist` returned early with no signal. The band the
+caller asked for either never existed or existed broken. Unknown types
+and out-of-(0, nyquist) frequencies now raise ValueError. Note this
+tightens the contract for low-sample-rate masters: a preset band above
+Nyquist (e.g. the 15 kHz lowpass on an 8 kHz file) now fails instead of
+being silently skipped.

@@ -138,3 +138,23 @@ def test_stereo_width_rejects_non_finite_and_negative():
     proc = mc.StereoProcessor(mc.StereoConfig(width=1.0, bass_mono=False), 44100)
     sig = np.stack([np.ones(1000), -np.ones(1000)]) * 0.2
     assert np.isfinite(proc.process(sig)).all()
+
+
+def test_eq_rejects_unknown_filter_types_and_impossible_frequencies():
+    # add_band used to silently no-op on unrecognised filter_type
+    # ("notch", "peaking"), silently add a mirrored invalid biquad for
+    # frequency<=0, and silently drop bands >= Nyquist.
+    np = pytest.importorskip("numpy")
+    import mastering_chain
+    eq = mastering_chain.ParametricEQ(44100)
+    with pytest.raises(ValueError, match="Unknown filter_type"):
+        eq.add_band(mastering_chain.EQBand(1000.0, 6.0, 1.0, "notch"))
+    with pytest.raises(ValueError, match="Unknown filter_type"):
+        eq.add_band(mastering_chain.EQBand(1000.0, 6.0, 1.0, "peaking"))
+    with pytest.raises(ValueError, match="outside"):
+        eq.add_band(mastering_chain.EQBand(-100.0, 6.0, 1.0, "bell"))
+    with pytest.raises(ValueError, match="outside"):
+        eq.add_band(mastering_chain.EQBand(30000.0, 6.0, 1.0, "highpass"))
+    eq.add_band(mastering_chain.EQBand(1000.0, 6.0, 1.0, "bell"))
+    if mastering_chain.HAS_SCIPY:
+        assert len(eq.filters) == 1
