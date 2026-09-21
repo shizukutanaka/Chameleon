@@ -3252,3 +3252,11 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** `process_directory`'s error list -- is one
+failure one entry?
+**A:** No -- a raised failure appended its analysis to
+`summary["errors"]` in the except block AND again in the result handler
+(`"analysis" in result.data`), so every exception-path failure counted
+twice in the data the service-degradation level is computed from. The
+except block no longer appends; the result handler is the single funnel.

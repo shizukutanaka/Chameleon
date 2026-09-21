@@ -229,3 +229,22 @@ def test_a_batch_of_mixed_channel_counts_all_succeeds(blocker_dir, tmp_path):
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "2/2" in result.stdout
+
+
+def test_batch_summary_records_each_failure_once(tmp_path):
+    # A raised failure used to land in summary["errors"] twice -- once in
+    # the except block and again in the result handler -- inflating the
+    # error list the service-degradation level is computed from.
+    import wave, struct
+    from unittest.mock import patch
+    from core import BatchProcessor
+    wav = tmp_path / "ok.wav"
+    with wave.open(str(wav), "wb") as f:
+        f.setnchannels(1); f.setsampwidth(2); f.setframerate(44100)
+        f.writeframes(struct.pack("<4410h", *([0] * 4410)))
+    bp = BatchProcessor()
+    with patch.object(bp.processor, "analyze", side_effect=RuntimeError("boom")):
+        summary = bp.process_directory(
+            str(tmp_path), "analyze", skip_errors=True)[-1].data["summary"]
+    assert summary["failed"] == 1
+    assert len(summary["errors"]) == 1
