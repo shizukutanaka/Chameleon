@@ -2471,3 +2471,10 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**2026-09-21 (Socratic audit 124, external-source pass):** `/batch/submit`
+reported `estimated_duration = files * 5.0` -- a flat guess exposed as a
+measurement (API consumers can't distinguish it from a computed value). The
+endpoint's own model allows null, and the API's contract for unmeasured
+numbers is already None (audit-58's /system/status). Now returns
+`estimated_duration=None`. Regression test pins it.

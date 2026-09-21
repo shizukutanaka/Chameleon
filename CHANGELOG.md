@@ -487,6 +487,9 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- `/batch/submit` reported `estimated_duration = files × 5.0` — a flat
+  guess presented as a measurement. It now returns `null`, matching the
+  API's contract for unmeasured numbers (`/system/status`).
 
 ### Changed
 

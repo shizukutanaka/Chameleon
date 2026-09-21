@@ -582,3 +582,30 @@ def test_audit_log_is_bounded():
     for i in range(cap + 50):
         api_server.log_audit_event("u", "OP", "res", "SUCCESS", "", "ip", "")
     assert len(api_server.api_state.audit_log) == cap
+
+
+def test_batch_submit_reports_no_fabricated_duration_estimate(client):
+    """estimated_duration used to return files*5.0 -- a flat guess with no
+    bearing on the submitted job, presented as a measurement. The API's
+    contract for unmeasured numbers is null (same as /system/status)."""
+    login = _login(client)
+    token = login.json()["token"]
+    auth = {"Authorization": f"Bearer {token}"}
+    import io, wave, math, struct
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(44100)
+        w.writeframes(struct.pack("<4410h",
+            *[int(0.3 * 32767 * math.sin(2 * math.pi * 220 * i / 44100)) for i in range(4410)]))
+    up = client.post("/audio/upload",
+                     files={"file": ("est.wav", buf.getvalue(), "audio/wav")},
+                     headers=auth)
+    assert up.status_code == 200
+    sub = client.post("/batch/submit",
+                      json={"files": [up.json()["stored_name"], up.json()["stored_name"]],
+                            "operation": "analyze"},
+                      headers=auth)
+    assert sub.status_code == 200
+    assert sub.json()["estimated_duration"] is None

@@ -1417,11 +1417,14 @@ async def submit_batch_job(
         # Start background processing
         asyncio.create_task(process_batch_job(job_id))
 
+        # estimated_duration stays None: a flat seconds-per-file guess is not
+        # a measurement, and this API's contract for unmeasured numbers is
+        # None (same as /system/status).
         return BatchJobResponse(
             success=True,
             job_id=job_id,
             total_files=len(payload.files),
-            estimated_duration=len(payload.files) * 5.0  # Estimate 5 seconds per file
+            estimated_duration=None,
         )
 
     except HTTPException as exc:
