@@ -224,3 +224,33 @@ def test_auto_mode_does_not_run_unvetted_detectors():
         audio_restoration.RestorationConfig(click_removal=True))
     _, opt_in = restorer.restore(noise, SAMPLE_RATE)
     assert "click_removal" in opt_in["applied_processes"]
+
+
+def test_component_removers_handle_empty_audio():
+    # remove_hum ran rfft on zero samples and detect_clipping ran np.max on
+    # them; both leaked numpy internals errors while their sibling removers
+    # returned the empty input unchanged. Now they all agree.
+    empty = np.array([])
+    assert audio_restoration.ClickRemover().remove_clicks(empty, 44100).size == 0
+    assert audio_restoration.CrackleRemover().remove_crackle(empty, 44100).size == 0
+    assert audio_restoration.HumRemover().remove_hum(empty, 44100).size == 0
+    assert audio_restoration.DeclippingProcessor().detect_clipping(empty) == ([], [])
+    assert audio_restoration.DeclippingProcessor().restore_clipped(empty, 44100).size == 0
+
+
+def test_remove_hum_rejects_nonpositive_sample_rate():
+    with pytest.raises(ValueError, match="sample_rate"):
+        audio_restoration.HumRemover().remove_hum(np.array([0.5] * 100), 0)
+
+
+def test_remove_clicks_repairs_boundary_clicks():
+    # A click inside the first 20 samples was detected but then skipped by
+    # the repair loop (it demanded >20 samples of context on both sides) --
+    # the spike survived at full amplitude with nothing said.
+    remover = audio_restoration.ClickRemover()
+    remover.threshold = 3.0
+    audio = np.random.RandomState(0).randn(2000) * 0.01
+    audio[5] = 0.9
+    assert 5 in remover.detect_clicks(audio, 44100)
+    out = remover.remove_clicks(audio, 44100)
+    assert abs(out[5]) < 0.1

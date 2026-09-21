@@ -113,6 +113,10 @@ class ClickRemover:
 
     def remove_clicks(self, audio: np.ndarray, sample_rate: int) -> np.ndarray:
         """Remove detected clicks"""
+        audio = np.asarray(audio)
+        if audio.size == 0:
+            return audio.copy()
+
         result = audio.copy()
         clicks = self.detect_clicks(audio, sample_rate)
 
@@ -135,6 +139,15 @@ class ClickRemover:
                 # Apply windowing for smooth transition
                 window = signal.windows.tukey(repair_length, 0.5)
                 result[start:end] = repaired * window + result[start:end] * (1 - window)
+            elif start < end:
+                # A click at the file edge has no clean context on one side;
+                # fill from the side that exists rather than leave the
+                # detected click in place, the same convention repair_gaps
+                # uses for boundary gaps.
+                if start > 0:
+                    result[start:end] = result[start - 1]
+                elif end < len(audio):
+                    result[start:end] = result[end]
 
         return result
 
@@ -147,6 +160,10 @@ class CrackleRemover:
 
     def remove_crackle(self, audio: np.ndarray, sample_rate: int) -> np.ndarray:
         """Remove crackle using median filtering"""
+        audio = np.asarray(audio)
+        if audio.size == 0:
+            return audio.copy()
+
         # Apply median filter to remove impulse noise
         filtered = median_filter(audio, size=self.median_filter_size)
 
@@ -197,6 +214,12 @@ class HumRemover:
 
     def remove_hum(self, audio: np.ndarray, sample_rate: int) -> np.ndarray:
         """Remove hum using notch filters"""
+        audio = np.asarray(audio)
+        if audio.size == 0:
+            return audio.copy()
+        if sample_rate <= 0:
+            raise ValueError("sample_rate must be positive")
+
         result = audio.copy()
 
         for base_freq in self.base_freqs:
@@ -298,6 +321,10 @@ class DeclippingProcessor:
         undetectable in principle: the plateau survives, but so does every
         innocent explanation for it.
         """
+        audio = np.asarray(audio)
+        if audio.size == 0:
+            return [], []
+
         peak = np.max(np.abs(audio))
         if peak <= 0:
             return [], []
@@ -424,6 +451,13 @@ class AdaptiveDenoiser:
         if not HAS_LIBROSA:
             raise RuntimeError(
                 "AdaptiveDenoiser needs librosa, which is not installed."
+            )
+
+        audio = np.asarray(audio)
+        if audio.size == 0:
+            raise RuntimeError(
+                "AdaptiveDenoiser cannot estimate a noise profile from "
+                "empty audio."
             )
 
         # Find quiet sections

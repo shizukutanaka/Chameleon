@@ -245,12 +245,35 @@ class SpectralEditor:
         self.spectrogram_processor = SpectrogramProcessor()
         self.logger = logging.getLogger(__name__)
 
+        # Populated by load_audio; None until then. Public operations check
+        # _require_loaded rather than leaking AttributeError on the raw
+        # attribute.
+        self.original_audio = None
+        self.current_audio = None
+        self.original_stft = None
+        self.stft = None
+        self.times = None
+        self.freqs = None
+        self.sample_rate = None
+
         # Edit history for undo/redo
         self.edit_history = []
         self.undo_stack = []
 
+    def _require_loaded(self) -> None:
+        if self.stft is None:
+            raise RuntimeError(
+                "no audio is loaded; call load_audio() before editing"
+            )
+
     def load_audio(self, audio: np.ndarray, sample_rate: int) -> Dict[str, Any]:
         """Load audio for spectral editing"""
+        audio = np.asarray(audio)
+        if audio.size == 0:
+            raise ValueError("audio cannot be empty")
+        if (not isinstance(sample_rate, (int, float))
+                or not math.isfinite(sample_rate) or sample_rate <= 0):
+            raise ValueError("sample_rate must be a positive finite number")
         self.original_audio = audio.copy()
         self.current_audio = audio.copy()
         self.sample_rate = sample_rate
@@ -270,6 +293,7 @@ class SpectralEditor:
     def select_region(self, time_start: float, time_end: float,
                      freq_start: float, freq_end: float) -> SpectralSelection:
         """Create spectral selection"""
+        self._require_loaded()
         # NaN/inf bounds cannot be clamped: Python's max/min comparisons
         # with NaN return the bound, so a non-finite bound silently widens
         # to the file's full range -- and the operation that follows
@@ -278,7 +302,6 @@ class SpectralEditor:
                             ("freq_start", freq_start), ("freq_end", freq_end)):
             if not isinstance(value, (int, float)) or not math.isfinite(value):
                 raise ValueError(f"{name} must be a finite number, got {value!r}")
-
         selection = SpectralSelection(
             time_start=max(0, time_start),
             time_end=min(self.times[-1], time_end),
@@ -290,6 +313,7 @@ class SpectralEditor:
 
     def get_selection_mask(self, selection: SpectralSelection) -> np.ndarray:
         """Get boolean mask for spectral selection"""
+        self._require_loaded()
         # Find time indices
         time_start_idx = np.searchsorted(self.times, selection.time_start)
         time_end_idx = np.searchsorted(self.times, selection.time_end)
@@ -343,6 +367,7 @@ class SpectralEditor:
                        target_selection: SpectralSelection) -> bool:
         """Paste spectral content to target location"""
         try:
+            self._require_loaded()
             # `copied_stft` holds content at the SOURCE mask positions;
             # indexing it by the target mask reads its (zeroed) target
             # positions and pastes silence. Stamp the nonzero support
@@ -503,6 +528,7 @@ class SpectralEditor:
     def interpolate_selection(self, selection: SpectralSelection) -> bool:
         """Interpolate missing spectral content"""
         try:
+            self._require_loaded()
             mask = self.get_selection_mask(selection)
             if not mask.any():
                 # Same contract as the delete/enhance/noise-reduce checks:
@@ -642,6 +668,7 @@ class SpectralEditor:
 
     def get_spectrogram_data(self, db_range: Tuple[float, float] = (-80, 0)) -> Dict[str, Any]:
         """Get spectrogram data for visualization"""
+        self._require_loaded()
         magnitude_db = 20 * np.log10(np.abs(self.stft) + 1e-10)
 
         # Clip to display range
@@ -657,10 +684,12 @@ class SpectralEditor:
 
     def export_current_audio(self) -> np.ndarray:
         """Export current edited audio"""
+        self._require_loaded()
         return self.current_audio.copy()
 
     def reset_to_original(self):
         """Reset to original audio"""
+        self._require_loaded()
         self.current_audio = self.original_audio.copy()
         self.stft = self.original_stft.copy()
         self.edit_history.clear()

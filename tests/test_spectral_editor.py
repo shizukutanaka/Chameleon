@@ -181,3 +181,29 @@ def test_harmonic_enhance_refuses_empty_selection():
     assert not ed.harmonic_enhance_selection(empty)
     assert len(ed.undo_stack) == undo_depth
     assert np.array_equal(ed.current_audio, before_audio)
+
+
+def test_editor_operations_before_load_fail_cleanly():
+    # AttributeError internals leaks -- "object has no attribute 'stft'" --
+    # told the caller nothing. Value-returning operations now raise a
+    # RuntimeError naming load_audio; bool-returning ones return False.
+    ed = spectral_editor.SpectralEditor()
+    for fn in (ed.export_current_audio, ed.get_spectrogram_data,
+               ed.reset_to_original,
+               lambda: ed.select_region(0, 1, 0, 1000),
+               lambda: ed.get_selection_mask(None),
+               lambda: ed.copy_selection(None)):
+        with pytest.raises(RuntimeError, match="load_audio"):
+            fn()
+    assert ed.paste_selection(np.zeros((4, 4), dtype=complex), None) is False
+    assert ed.interpolate_selection(None) is False
+    assert ed.undo() is False
+
+
+def test_load_audio_rejects_empty_and_bad_sample_rate():
+    ed = spectral_editor.SpectralEditor()
+    with pytest.raises(ValueError, match="audio cannot be empty"):
+        ed.load_audio(np.array([]), SAMPLE_RATE)
+    for bad in (0, -44100, float("nan"), float("inf")):
+        with pytest.raises(ValueError, match="sample_rate"):
+            ed.load_audio(np.array([0.5] * 100), bad)

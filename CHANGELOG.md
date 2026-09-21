@@ -487,6 +487,27 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`SpectralEditor` methods used before `load_audio` leaked
+  AttributeError internals** — `export_current_audio`,
+  `reset_to_original`, `get_spectrogram_data`, `select_region`,
+  `copy_selection` and friends all died on `'SpectralEditor' object has
+  no attribute 'stft'` instead of naming the actual contract. A
+  `_require_loaded` guard now raises `RuntimeError("call load_audio()
+  before editing")`; bool-returning ops still return False with the
+  reason logged, matching `undo`'s existing contract. `load_audio`
+  itself now rejects empty audio (it previously fabricated a one-frame
+  spectrogram for zero samples) and non-positive/non-finite sample
+  rates.
+- **Restoration component classes disagreed on empty input** —
+  `ClickRemover` returned the empty array while `HumRemover` died inside
+  `np.fft.rfft`, `DeclippingProcessor` inside `np.max`, `CrackleRemover`
+  emitted a RuntimeWarning (an error under the `-W error` DSP gate), and
+  `AdaptiveDenoiser`'s estimator died inside librosa. All now handle
+  empty input like the sibling removers (return unchanged) or name it;
+  `remove_hum` also rejects `sample_rate <= 0` before it can divide by
+  it, and `remove_clicks` now repairs clicks at the file edges instead
+  of detecting them and silently skipping them (one-sided fill, same as
+  `repair_gaps` boundary convention).
 
 ### Changed
 
