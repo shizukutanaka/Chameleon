@@ -533,7 +533,8 @@ class PersonalWorkflow:
 if __name__ == "__main__":
     import sys
 
-    if len(sys.argv) > 1 and sys.argv[1] == "setup":
+    args = sys.argv[1:]
+    if args == ["setup"]:
         # Run interactive setup. The wizard asks questions through
         # input(): when stdin is a closed or empty channel (piped,
         # redirected, no controlling terminal) the prompts cannot be
@@ -551,6 +552,19 @@ if __name__ == "__main__":
             sys.exit("Setup cancelled; nothing was saved.")
         except OSError as exc:
             sys.exit(f"Setup failed: {exc}")
+    elif args:
+        # Any other argument used to be silently ignored: `--help`,
+        # `--version`, or a typo all ran the load/write-aliases/scan
+        # flow below, creating ~/.chameleon files as a side effect of
+        # asking for help. Now the only two commands are the documented
+        # `setup` and the bare status display; everything else answers
+        # usage instead of writing state.
+        usage = "Usage: python personal_config.py [setup]"
+        if args in (["-h"], ["--help"]):
+            print(usage)
+            sys.exit(0)
+        print(usage, file=sys.stderr)
+        sys.exit(2)
     else:
         # Load existing config
         config = PersonalConfig.load()

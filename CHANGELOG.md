@@ -465,6 +465,7 @@
   like `Bb` accepted, unknown keys rejected as INPUT), and `compose`
   uses a real minor-mode progression (i-v-VI-iv) under `--mode minor`
   so chord tones stay inside the requested scale.
+<<<<<<< HEAD
 - **`core.batch_process_async` silently returned a different contract than
   the documented batch API** — the README advertises "one ProcessingResult
   per file, plus a trailing batch-summary result", but the asyncio variant
@@ -487,6 +488,16 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+||||||| parent of afc0e411 (personal_config: unknown argv ran the write-heavy status flow)
+=======
+- **`python personal_config.py <anything>` ran the full setup flow
+  regardless of the argument** — `--help`, `--version`, or a typo all
+  loaded/created `~/.chameleon/personal_config.json`, wrote the alias
+  scripts, and scanned the audio library: filesystem writes as the
+  answer to "show me the usage". Only the documented `setup` subcommand
+  and a bare status run now do work; `-h`/`--help` print usage (exit 0),
+  anything else is a usage error on stderr (exit 2).
+>>>>>>> afc0e411 (personal_config: unknown argv ran the write-heavy status flow)
 
 ### Changed
 
