@@ -487,6 +487,12 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **A bare `results["x"]` in a workflow condition always passed** —
+  `ResultProxy` had no `__bool__`, so every proxy was truthy, including
+  the deliberate `status='unknown'` sentinel returned for a missing
+  task. `results["ghost"]` and `results["failed_task"]` both satisfied
+  guards they should have blocked. `__bool__` now returns
+  `self.success`; attribute access is unchanged.
 
 ### Changed
 

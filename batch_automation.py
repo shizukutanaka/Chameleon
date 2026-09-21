@@ -179,6 +179,12 @@ class ResultProxy:
         self.success = success
         self.error = (error[:256] if error else None)
 
+    def __bool__(self) -> bool:
+        # A bare `results["x"]` in a condition must reflect success --
+        # otherwise even the 'unknown' sentinel for a missing task is
+        # truthy and a failed/gated-out task satisfies the guard.
+        return self.success
+
 
 class ConditionEvaluationError(Exception):
     """Raised when a condition expression is invalid"""

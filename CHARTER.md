@@ -3252,3 +3252,17 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, audit 37): Does a bare `results["x"]` in an expression
+condition reflect the task's success?**
+**A:** No. ResultProxy had no __bool__, so every proxy was truthy --
+including the deliberate `status='unknown', success=False` sentinel for
+a missing task. `results["ghost"]` and `results["failed_task"]` both
+evaluated True, satisfying guards they should have blocked. The proxy
+now defines __bool__ -> self.success, completing the sentinel's intent;
+attribute access (`.success`, `.status`) is unchanged. Verified honest
+this cycle: the expression evaluator rejects Call/Attribute/BinOp
+escapes and caps nodes at 200; `_import_safe_function` is allowlist-
+only; config/script paths must be absolute and validator-checked;
+script tasks sha256-hash and env-sanitize; unknown func_type raises.
+batch_automation remains library-only (no CLI wiring).

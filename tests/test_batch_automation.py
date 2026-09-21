@@ -283,3 +283,35 @@ def test_condition_expression_in_on_non_iterable_is_typed():
             _evaluate_condition_expression(bad, {})
 
     assert _evaluate_condition_expression('"x" in results["t"].status', {}) is False
+
+
+class TestConditionExpressionTruthiness:
+    """A bare results["x"] in an expression condition must reflect the
+    task's success -- ResultProxy objects were always truthy, so a
+    failed or nonexistent task satisfied the guard."""
+
+    def _results(self):
+        return {
+            "ok": ba.TaskResult(task_id="ok", status=ba.TaskStatus.COMPLETED,
+                                output=None),
+            "bad": ba.TaskResult(task_id="bad", status=ba.TaskStatus.FAILED,
+                                 output=None, error="boom"),
+        }
+
+    def test_bare_subscript_reflects_success(self):
+        results = self._results()
+        assert ba._evaluate_condition_expression('results["ok"]', results)
+        assert not ba._evaluate_condition_expression('results["bad"]', results)
+
+    def test_missing_task_is_falsy_not_truthy(self):
+        assert not ba._evaluate_condition_expression(
+            'results["ghost"]', self._results())
+
+    def test_attribute_access_unchanged(self):
+        results = self._results()
+        assert ba._evaluate_condition_expression(
+            'results["ok"].success', results)
+        assert not ba._evaluate_condition_expression(
+            'results["bad"].success', results)
+        assert ba._evaluate_condition_expression(
+            'results["ok"].status == "completed"', results)
