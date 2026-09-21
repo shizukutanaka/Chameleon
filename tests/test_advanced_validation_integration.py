@@ -165,3 +165,19 @@ def test_main_block_self_test_writes_no_state_into_the_real_home(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "Verification: True" in result.stdout
     assert not (home / ".chameleon").exists()
+
+
+def test_verify_manifest_reports_unreadable_manifest_instead_of_crashing(tmp_path):
+    # json.load was unguarded: a truncated or missing manifest crashed the
+    # verifier instead of reporting (False, issue) through its own contract.
+    from advanced_validation import IntegrityVerifier
+
+    verifier = IntegrityVerifier(manifest_dir=tmp_path)
+
+    truncated = tmp_path / "truncated.json"
+    truncated.write_text('{"x": {"checksum": "ab", "size": 5, "file_')
+    valid, issues = verifier.verify_manifest(truncated)
+    assert valid is False and "unreadable" in issues[0].lower()
+
+    valid, issues = verifier.verify_manifest(tmp_path / "missing.json")
+    assert valid is False and "unreadable" in issues[0].lower()

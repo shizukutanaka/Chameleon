@@ -2471,3 +2471,16 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** `IntegrityVerifier.verify_manifest`
+promises (bool, issues). What happens when the manifest itself is
+corrupt or missing?
+**A:** The open+json.load was unguarded -- a truncated manifest raised
+a raw JSONDecodeError and a missing one FileNotFoundError, crashing the
+verifier instead of reporting "cannot prove integrity" through its own
+contract. Both now return (False, "Manifest unreadable: ...").
+Verified honest this cycle: `midi generate` rejects malformed keys
+(garbage/H/C#10 -> INPUT exit 3) and writes a real MThd file for valid
+ones; upload persistence enforces the cap mid-stream and unlinks
+partials; `_sanitize_uploaded_name` rejects separators AND requires the
+sanitized name to equal the input verbatim (no laundering).

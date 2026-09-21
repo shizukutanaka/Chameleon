@@ -426,8 +426,14 @@ class IntegrityVerifier:
 
         import json
 
-        with open(manifest_path, 'r') as f:
-            manifest = json.load(f)
+        # A missing or truncated manifest is itself a verification failure
+        # ("cannot prove integrity"), not a crash -- json.JSONDecodeError and
+        # OSError used to propagate raw past the (bool, issues) contract.
+        try:
+            with open(manifest_path, 'r') as f:
+                manifest = json.load(f)
+        except (OSError, ValueError) as exc:
+            return False, [f"Manifest unreadable: {manifest_path}: {exc}"]
 
         all_valid = True
         issues = []

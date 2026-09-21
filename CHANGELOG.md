@@ -487,6 +487,11 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`verify_manifest` crashed on the corrupt manifests it exists to
+  catch** — `open` + `json.load` were unguarded, so a truncated or
+  missing manifest raised a raw exception instead of reporting
+  `(False, issue)` through the verifier's own contract. Both now return
+  `False` with a "Manifest unreadable" issue.
 
 ### Changed
 
