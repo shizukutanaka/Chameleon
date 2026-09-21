@@ -2078,7 +2078,19 @@ class AudioProcessor:
             except Exception as e:
                 self.logger.warning(f"Soundfile save failed: {e}")
 
-        # Fallback to basic WAV writing
+        # Fallback to basic WAV writing -- but only for a destination the
+        # writer can satisfy honestly. soundfile picks the container from
+        # the suffix, so when it fails on e.g. `-o out.mp3` the fallback
+        # would write RIFF WAV bytes under a .mp3 name: a file that is not
+        # what it claims to be.
+        suffix = Path(file_path).suffix.lower()
+        if suffix not in {"", ".wav", ".wave"}:
+            raise ValueError(
+                f"Cannot write WAV data to '{suffix or '(no extension)'}' "
+                f"destination: {file_path} (and soundfile could not write "
+                f"the requested format)"
+            )
+
         if target_bit_depth != 16 and self.logger:
             self.logger.warning(
                 "Falling back to 16-bit WAV output for %s (requested %s-bit).",
