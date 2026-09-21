@@ -2497,6 +2497,18 @@ incoherent between sibling transforms. A limit that doesn't bound a
 real resource is not protection; it's a wrong answer with better
 marketing. Both caps removed (`tests/test_full_file_processing.py`).
 
+**Q: Does `x <= 0 or x > 1` reject NaN?**
+A (2026-09-20): No. Every ordered comparison with NaN is False, so a
+two-sided bounds check that only tests the bounds passes NaN straight
+through. `WAVProcessor.normalize(..., nan)` crashed deep inside the
+transform (`cannot convert float NaN to integer`) and
+`trim_silence(..., nan)` reported "No audio content found above
+threshold" -- a plausible diagnosis for the wrong failure. The CLI and
+API happened to be immune (chained `0 < x < 1` comparisons, pydantic
+bounds), but the library contract is the contract: each layer that
+rechecks a parameter must include `math.isfinite`. Both guards now do
+(`tests/test_nan_param_validation.py`).
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
