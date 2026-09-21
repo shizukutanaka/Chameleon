@@ -217,3 +217,41 @@ def test_save_audio_silent_when_in_range(tmp_path):
         logger.removeHandler(handler)
 
     assert not any("hard-clip" in m for m in records)
+
+
+def _stft_bins(signal_len):
+    # The same grid remove_noise builds: nperseg=min(2048, len).
+    nperseg = min(2048, signal_len)
+    import scipy.signal
+    return np.abs(scipy.signal.stft(
+        np.zeros(signal_len, dtype=np.float32), fs=SAMPLE_RATE,
+        nperseg=nperseg)[2]).shape
+
+
+@pytest.mark.parametrize("bad_profile", ["negative", "nan", "wrong_shape"])
+def test_remove_noise_rejects_impossible_profiles(bad_profile):
+    """A caller-supplied noise_profile was trusted blindly at subtraction:
+    negative entries amplified (a -0.5 profile took a 0.5-peak tone to
+    608-peak), NaN emitted NaN, and a mismatched shape died on numpy's
+    broadcast error. It is now validated before touching the audio."""
+    bins, frames = _stft_bins(SAMPLE_RATE // 2)
+    if bad_profile == "negative":
+        profile = np.full((bins, 1), -0.5)
+    elif bad_profile == "nan":
+        profile = np.full((bins, 1), np.nan)
+    else:
+        profile = np.ones((3, 1))
+
+    t = np.linspace(0, 0.5, SAMPLE_RATE // 2)
+    audio = 0.5 * np.sin(2 * np.pi * 440 * t).astype(np.float32)
+    with pytest.raises(ValueError, match="noise_profile"):
+        _processor().remove_noise(audio, SAMPLE_RATE, noise_profile=profile)
+
+
+def test_remove_noise_accepts_a_valid_profile_shape():
+    bins, frames = _stft_bins(SAMPLE_RATE // 2)
+    t = np.linspace(0, 0.5, SAMPLE_RATE // 2)
+    audio = 0.5 * np.sin(2 * np.pi * 440 * t).astype(np.float32)
+    out = _processor().remove_noise(
+        audio, SAMPLE_RATE, noise_profile=np.zeros((bins, 1)))
+    assert np.isfinite(out).all()

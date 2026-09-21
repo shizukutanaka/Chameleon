@@ -1059,6 +1059,27 @@ class AudioProcessor:
                 noise_profile = np.where(estimate < loud_tail, estimate, 0.0)
             else:
                 noise_profile = np.zeros((magnitude.shape[0], 1))
+        else:
+            # A caller-supplied profile is trusted blindly at subtraction
+            # time: negative entries *add* energy (measured: a profile of
+            # -0.5 turned a 0.5-peak tone into a 608-peak signal), NaN
+            # emits NaN, and a wrong shape dies on numpy's broadcast
+            # error. A noise floor is per-frequency-bin magnitude data,
+            # so it must be finite, non-negative, and broadcast against
+            # this file's STFT grid.
+            noise_profile = np.asarray(noise_profile, dtype=np.float64)
+            if not np.isfinite(noise_profile).all():
+                raise ValueError("noise_profile contains NaN or inf")
+            if (noise_profile < 0).any():
+                raise ValueError(
+                    "noise_profile must be non-negative; negative values "
+                    "amplify the signal instead of subtracting noise")
+            try:
+                np.broadcast_shapes(noise_profile.shape, magnitude.shape)
+            except ValueError:
+                raise ValueError(
+                    f"noise_profile shape {noise_profile.shape} cannot "
+                    f"broadcast against the STFT grid {magnitude.shape}") from None
 
         # Spectral subtraction with a floor proportional to the input
         # magnitude, which bounds attenuation at ~20 dB per bin so a bad noise

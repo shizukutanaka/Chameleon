@@ -487,6 +487,11 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`remove_noise` trusted a caller-supplied `noise_profile` blindly** —
+  negative entries amplified the signal (a −0.5 profile took a 0.5-peak
+  tone to 608-peak), NaN produced NaN output, and a mismatched shape died
+  on numpy's raw broadcast error. The profile is now required to be
+  finite, non-negative, and broadcastable against the file's STFT grid.
 
 ### Changed
 

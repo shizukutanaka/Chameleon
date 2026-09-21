@@ -2471,3 +2471,14 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** `remove_noise` accepts a caller-supplied
+`noise_profile`. What stops that profile from *adding* energy or emitting
+non-finite output?
+**A:** Nothing, until now: the profile went straight into
+`magnitude - noise_profile`. A profile of -0.5 amplified a 0.5-peak tone
+to 608 (a "denoiser" that boosts the signal), NaN produced NaN output,
+and a mismatched shape died on numpy's raw broadcast ValueError. A noise
+floor is per-frequency-bin magnitude data — it is now required to be
+finite, non-negative, and broadcastable against the file's STFT grid,
+with a ValueError naming the violated property.
