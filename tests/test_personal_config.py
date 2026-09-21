@@ -565,3 +565,37 @@ def test_setup_reports_an_unusable_library_path_cleanly(tmp_path):
     assert "Setup failed" in result.stderr
     assert not (tmp_path / "home" / ".chameleon"
                 / "personal_config.json").exists()
+
+
+def test_scan_marks_deleted_files_missing_instead_of_counting_ghosts(manager, tmp_path):
+    # A file deleted from the library used to stay in the DB forever:
+    # total_files counted it and search() returned a path that does not
+    # exist. Entries are now marked missing (tags survive a return).
+    import wave, struct as _st
+
+    wav_path = Path(manager.library_path) / "song.wav"
+    with wave.open(str(wav_path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(44100)
+        w.writeframes(b"".join(_st.pack("<h", 0) for _ in range(441)))
+
+    report = manager.scan_library()
+    assert report["total_files"] == 1 and report["new_files"] == 1
+    manager.library_db["files"]["song.wav"]["tags"] = ["keep-me"]
+
+    wav_path.unlink()
+    report = manager.scan_library()
+    assert report["total_files"] == 0 and report["missing_files"] == 1
+    assert manager.search("song") == []
+
+    # File returns -> entry is a member again, tags preserved.
+    with wave.open(str(wav_path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(44100)
+        w.writeframes(b"".join(_st.pack("<h", 0) for _ in range(441)))
+    report = manager.scan_library()
+    assert report["total_files"] == 1 and report["missing_files"] == 0
+    assert manager.search("song") == ["song.wav"]
+    assert manager.library_db["files"]["song.wav"]["tags"] == ["keep-me"]

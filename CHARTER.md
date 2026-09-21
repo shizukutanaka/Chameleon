@@ -3252,3 +3252,12 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** `scan_library` claims to "update" the
+library database -- what happens to entries whose files were deleted?
+**A:** They stayed forever. `total_files` counted entries for files
+that no longer exist, and `search()` happily returned paths to nothing
+-- the DB claimed ghosts were library members. Scan now marks unseen
+entries `"missing"` (not deleted, so tags survive a file's return --
+verified: a returning file regains membership with tags intact), reports
+them in a separate `missing_files` count, and `search` skips them.
