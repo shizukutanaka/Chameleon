@@ -3252,3 +3252,20 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** `SpectralRepairer.repair_gaps` -- does every
+declared gap get repaired?
+**A:** No. Gaps touching frame 0 or the final frame failed the
+`start_frame > 0 and end_frame < n_frames` gate and were silently skipped
+-- the function returned "repaired" audio that was bit-identical to the
+input. Reversed or out-of-range gaps crashed inside `np.linspace`
+(negative count) instead of being validated. Gaps are now validated
+(0 <= start < end <= len) and boundary gaps are filled from the single
+available neighbour instead of skipped.
+
+**Q (2026-09-21, continued):** `IntegrityVerifier.create_manifest` -- can
+`manifest_name` write outside `manifest_dir`?
+**A:** Yes -- the name was interpolated straight into the output path, so
+`"../x"` wrote outside the directory and `"a/b"` crashed on missing
+subdirs. The name must now be a bare file name resolving to a direct
+child of `manifest_dir`, or ValueError.

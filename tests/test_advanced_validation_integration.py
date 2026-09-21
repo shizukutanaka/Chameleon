@@ -1,3 +1,5 @@
+import pytest
+
 """Integration tests for wiring DeepFileInspector into the default batch path.
 
 CHARTER §5/§9: the deep file inspector must actually run on the default
@@ -258,3 +260,17 @@ def test_sanitize_to_same_path_refuses_and_preserves_input(tmp_path):
     with _pt.raises(ValueError, match="same file"):
         SanitizationEngine.sanitize_wav_metadata(src, src)
     assert src.read_bytes() == before
+
+
+def test_create_manifest_rejects_names_that_escape_manifest_dir(tmp_path):
+    # manifest_name was interpolated straight into the output path, so
+    # "../x" wrote outside manifest_dir and "a/b" crashed on missing
+    # subdirs. It must be a bare name that resolves to a direct child.
+    import advanced_validation
+    verifier = advanced_validation.IntegrityVerifier(manifest_dir=tmp_path / "m")
+    for name in ["../escape", "a/b", "..", "", "."]:
+        with pytest.raises(ValueError, match="bare file name"):
+            verifier.create_manifest([], name)
+    path = verifier.create_manifest([], "ok_manifest")
+    assert path.parent == (tmp_path / "m").resolve()
+    assert path.name == "ok_manifest.json"
