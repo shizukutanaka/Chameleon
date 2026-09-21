@@ -465,6 +465,21 @@
   like `Bb` accepted, unknown keys rejected as INPUT), and `compose`
   uses a real minor-mode progression (i-v-VI-iv) under `--mode minor`
   so chord tones stay inside the requested scale.
+- **`core.batch_process_async` silently returned a different contract than
+  the documented batch API** — the README advertises "one ProcessingResult
+  per file, plus a trailing batch-summary result", but the asyncio variant
+  appended no summary row, skipped `record_state`/`degradation.evaluate`,
+  and accepted `skip_errors`/timeout options that did nothing. The async
+  path now emits the same summary row (recovery metrics, state snapshot,
+  service-level transition) and its docstring + README state that a
+  concurrent gather always runs to completion. Four tests that pinned
+  the missing-summary shape now assert per-file + summary.
+- **`batch --output-dir` inside the scanned directory re-ingested its own
+  outputs** — each re-run processed last run's `*_normalized.wav` as new
+  input, compounding quantization noise and name growth
+  (`a_normalized_normalized.wav`). The CLI now warns when the resolved
+  output directory is inside the scan root, while it is still possible
+  to pick a directory outside it.
 
 ### Changed
 

@@ -315,3 +315,20 @@ def test_eq_effect_with_empty_band_list_is_a_noop(tmp_path):
     result = _run("process", str(wav), "--effects", str(fx), cwd=str(tmp_path))
     assert result.returncode == 0
     assert "Processed" in result.stdout
+
+
+def test_batch_warns_when_output_dir_is_inside_the_scan(tmp_path):
+    """Outputs inside the scanned tree are re-ingested as inputs on the
+    next run -- the CLI now warns while a directory outside it can still
+    be picked."""
+    src = tmp_path / "in"
+    src.mkdir()
+    write_sine_wave(src / "a.wav", duration=0.2)
+    outside = tmp_path / "out"
+    outside.mkdir()
+
+    inside = _run("batch", str(src), "normalize", "--output-dir", str(src))
+    assert "re-processed as inputs" in inside.stderr
+
+    apart = _run("batch", str(src), "normalize", "--output-dir", str(outside))
+    assert "re-processed as inputs" not in apart.stderr

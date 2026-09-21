@@ -87,5 +87,8 @@ def test_disguised_executable_is_filtered_from_batch_process_async(tmp_path):
 
     # Each entry is a ProcessingResult (the internal (result, attempts) tuple
     # is no longer leaked -- see core.BatchProcessor._execute_operation_async).
-    assert len(results) == 1
+    # The async path now appends the same batch-summary row as the sync
+    # process_directory, so a filtered-out executable yields 1 per-file + 1
+    # summary = 2 results.
+    assert len(results) == 2
     assert results[0].success

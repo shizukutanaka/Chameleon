@@ -1820,7 +1820,16 @@ class BatchProcessor:
         return results
 
     async def process_directory_async(self, directory: str, operation: str, **kwargs) -> List[ProcessingResult]:
-        """Asynchronously process all WAV files in directory with concurrency control."""
+        """Asynchronously process all WAV files in directory with concurrency control.
+
+        Returns one ProcessingResult per file plus a trailing batch-summary
+        result, matching the synchronous ``process_directory``. Options are
+        the subset with a concurrent analogue: ``output_dir``,
+        ``target_peak``, ``threshold``, ``max_files`` and ``recursive`` are
+        honoured; ``skip_errors`` and the sync path's wall-clock timeout are
+        not -- ``asyncio.gather`` always runs the gathered set to completion,
+        so this variant never short-circuits on a failure.
+        """
         # Use asyncio.gather for concurrent processing with semaphore for resource control
         semaphore = asyncio.Semaphore(4)  # Limit concurrent operations
 
@@ -1863,7 +1872,12 @@ class BatchProcessor:
         if not wav_files:
             return [ProcessingResult(False, "No WAV files found")]
 
-        # Process files concurrently
+        previous_state = self.state_manager.load_last_state()
+
+        # Process files concurrently. asyncio.gather always runs the full
+        # set: ``skip_errors`` and the sync path's wall-clock deadline have
+        # no concurrent analogue, so this variant never short-circuits.
+        start_time = time.perf_counter()
         tasks = [process_file_with_semaphore(file_path) for file_path in wav_files]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -1875,6 +1889,67 @@ class BatchProcessor:
             else:
                 processed_results.append(result)
 
+        # Emit the same trailing batch-summary row the synchronous
+        # process_directory appends, so the advertised asyncio variant
+        # honours the documented contract ("one per file, plus a summary")
+        # instead of silently returning a different shape.
+        duration_ms = int((time.perf_counter() - start_time) * 1000)
+        successful = sum(1 for item in processed_results if item.success)
+        recovery_metrics = self.recovery.export_metrics()
+        summary = {
+            "processed": len(processed_results),
+            "successful": successful,
+            "failed": len(processed_results) - successful,
+            "skipped": 0,
+            "operation": operation_normalized,
+            "retries": recovery_metrics.get("total_retries", 0),
+            "errors": [{"message": item.message}
+                       for item in processed_results if not item.success],
+            "timed_out": False,
+            "service_level": self.degradation.current_level,
+            "previous_state": previous_state,
+            "duration_ms": duration_ms,
+            "recovery_metrics": recovery_metrics,
+        }
+
+        degradation_info = self.degradation.evaluate(summary)
+        summary["service_level"] = degradation_info["current_level"]
+        summary["service_transition"] = degradation_info
+
+        summary_message = (
+            f"Batch processed {summary['processed']} file(s) in {duration_ms}ms: "
+            f"{summary['successful']} succeeded, {summary['failed']} failed, "
+            f"retries: {summary['retries']}"
+        )
+        if degradation_info["changed"]:
+            summary_message += (
+                f", service level: {degradation_info['previous_level']} → "
+                f"{degradation_info['current_level']}"
+            )
+        else:
+            summary_message += f", service level: {summary['service_level']}"
+
+        try:
+            state_path = self.state_manager.record_state(summary)
+        except Exception:
+            state_path = None
+        if state_path:
+            summary["state_recorded"] = True
+            summary["state_path"] = str(state_path)
+            summary_message += f", state saved: {state_path}"
+        else:
+            summary["state_recorded"] = False
+
+        processed_results.append(
+            ProcessingResult(
+                summary["failed"] == 0,
+                summary_message,
+                {"summary": summary},
+                duration_ms,
+            )
+        )
+
+        self.processor.perf.record_operation("batch_process", duration_ms)
         return processed_results
 
     def _build_operation_runner(self, operation: str, file_path: Path,
@@ -2182,7 +2257,12 @@ async def trim_silence_async(input_path: str, output_path: str, threshold: float
     return await _processor.trim_silence_async(input_path, output_path, threshold)
 
 async def batch_process_async(directory: str, operation: str, **kwargs) -> List[ProcessingResult]:
-    """Asynchronously process directory - main API."""
+    """Asynchronously process directory - main API.
+
+    Returns one result per file plus the trailing batch-summary row the
+    synchronous ``BatchProcessor.process_directory`` emits; see
+    ``process_directory_async`` for which options apply.
+    """
     return await _batch_processor.process_directory_async(directory, operation, **kwargs)
 
 

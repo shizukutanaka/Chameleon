@@ -236,7 +236,11 @@ for result in results:
 ```
 
 Supported operations are `analyze`, `normalize`, `mono` and `trim`. An
-`asyncio` variant is available as `core.batch_process_async(directory, op)`.
+`asyncio` variant is available as `core.batch_process_async(directory, op)`;
+it returns the same per-file results plus the batch-summary row, but runs
+the files concurrently, so it always processes the whole gathered set
+(`skip_errors` and the sync path's wall-clock timeout have no concurrent
+analogue).
 
 ## Architecture
 

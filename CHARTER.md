@@ -2432,3 +2432,24 @@ any range assertion.
   the artifact was rejected by the dependency-free parser it ships with.
   Verify writer output against the first-party reader, not just the
   library's subtype list.
+
+**Q (2026-09-21, continued):** The README sells `core.BatchProcessor` as
+the directory-batch engine and `batch_process_async` as "an asyncio
+variant". One class, two loops -- does the async variant keep the
+documented contract?
+**A:** No, and the drift had already cost real fixes. Three batch engines
+exist -- `AudioProcessor.batch_process` (the CLI), the API's
+`process_batch_job` loop, and `core.BatchProcessor`/`batch_process_async`
+(the library surface the README documents). The async sibling diverged
+from its own sync twin: no trailing summary row (the README's stated
+shape), no state snapshot, no degradation evaluation, and `skip_errors`/
+the wall-clock timeout were accepted kwargs that did nothing. Each
+silently-different surface is where drift accumulates (the strict-bounds
+gap fixed on another branch was the same class). The async path now
+emits the summary row, records state, and evaluates degradation
+identically; what concurrency cannot honour is now written down instead
+of silently swallowed. Related edge, same audit: `batch --output-dir`
+inside the scanned tree feeds last run's outputs back as inputs on every
+re-run; the scan happens upfront so the current run is correct, but the
+CLI now warns at submission time -- refusal would break the legitimate
+"normalize a directory in place with a suffix" use.

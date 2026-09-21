@@ -2952,6 +2952,22 @@ async def main():
                       f"{', '.join(dupes)} will overwrite each other's "
                       f"output in {output_dir}", file=sys.stderr)
 
+            # Outputs written inside the scanned tree are
+            # indistinguishable from inputs on the next run -- every
+            # re-run re-ingests them (a_normalized_normalized.wav, ...).
+            # The scan happens upfront so this run is unaffected, but the
+            # compounding deserves a warning while the user can pick a
+            # directory outside it.
+            try:
+                if Path(output_dir).resolve().is_relative_to(
+                        directory.resolve()):
+                    print(f"Warning: --output-dir {output_dir} is inside "
+                          f"the scanned directory; its outputs will be "
+                          f"re-processed as inputs on future runs",
+                          file=sys.stderr)
+            except OSError:
+                pass
+
         kwargs: Dict[str, Any] = {
             "output_dir": output_dir,
             "format": format_arg,
