@@ -21,10 +21,14 @@ def test_batch_normalize_processes_all_files(tmp_path):
 
     results = _run_batch(src, "normalize", output_dir=str(out))
 
-    assert len(results) == 3
+    # One per-file ProcessingResult plus the trailing batch-summary row --
+    # the same contract the synchronous process_directory documents.
+    assert len(results) == 4
     # Each entry is a ProcessingResult (batch_process_async no longer leaks
     # the internal (result, attempts) tuple -- see core.BatchProcessor).
     assert all(item.success for item in results), results
+    summary = results[-1].data["summary"]
+    assert summary["processed"] == 3 and summary["successful"] == 3
     assert len(list(out.glob("*.wav"))) == 3
 
 
@@ -36,7 +40,7 @@ def test_batch_analyze_reports_each_file(tmp_path):
 
     results = _run_batch(src, "analyze")
 
-    assert len(results) == 2
+    assert len(results) == 3  # 2 files + batch summary
     assert all(item.success for item in results), results
 
 
@@ -76,5 +80,6 @@ def test_batch_skips_unsupported_file_types(tmp_path):
     results = _run_batch(src, "analyze")
 
     # Only the WAV should be processed; non-audio files are silently skipped.
-    assert len(results) == 1
+    # (1 per-file result + trailing batch summary.)
+    assert len(results) == 2
     assert results[0].success is True
