@@ -181,3 +181,17 @@ def test_harmonic_enhance_refuses_empty_selection():
     assert not ed.harmonic_enhance_selection(empty)
     assert len(ed.undo_stack) == undo_depth
     assert np.array_equal(ed.current_audio, before_audio)
+
+
+def test_has_librosa_tracks_librosa_alone_not_its_display_submodule():
+    """HAS_LIBROSA used to require `import librosa.display`, which pulls in
+    matplotlib -- a package the [audio] extra does not install. On a stock
+    install the flag was False and every STFT/ISTFT silently ran the manual
+    fallback despite librosa being present. The flag must reflect `import
+    librosa` alone."""
+    try:
+        import librosa  # noqa: F401
+        expected = True
+    except ImportError:
+        expected = False
+    assert spectral_editor.HAS_LIBROSA is expected

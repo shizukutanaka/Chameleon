@@ -487,6 +487,16 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`spectral_editor`'s librosa path was unreachable on a stock
+  `[audio]` install** — `HAS_LIBROSA` required `import librosa.display`,
+  which pulls in matplotlib (not installed by the extra), so every
+  STFT/ISTFT silently ran the manual fallback even with librosa
+  present. `librosa.display` was never used anywhere in the module; the
+  import is dropped, the flag now tracks `import librosa` alone, and a
+  missing librosa warns like the numpy/scipy guards. Measured on a
+  440Hz sine band-delete: the manual path leaked ~44% of the removed
+  energy into an out-of-band region; the librosa path keeps it at
+  window-bleed level (~0.5%).
 
 ### Changed
 
