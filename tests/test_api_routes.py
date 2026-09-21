@@ -582,3 +582,28 @@ def test_audit_log_is_bounded():
     for i in range(cap + 50):
         api_server.log_audit_event("u", "OP", "res", "SUCCESS", "", "ip", "")
     assert len(api_server.api_state.audit_log) == cap
+
+
+def test_rate_limit_windows_do_not_grow_unboundedly(monkeypatch):
+    # The cleanup loop only deleted deques that were already empty, but a
+    # deque only empties when its own identifier hits again -- so every
+    # one-shot identifier left a permanent entry and the dict grew
+    # unbounded despite the comment promising otherwise.
+    import time
+    wins = api_server.api_state._rate_limit_windows
+    wins.clear()
+
+    for i in range(250):
+        api_server._enforce_rate_limit(f"flood:{i}")
+    # Age every window past expiry.
+    for w in wins.values():
+        w[0] = time.time() - 3600
+    api_server._enforce_rate_limit("trigger")
+
+    assert len(wins) < 10
+    assert "trigger" in wins
+
+    # An identifier still inside its window keeps its entry.
+    api_server._enforce_rate_limit("fresh")
+    assert "fresh" in wins
+

@@ -2471,3 +2471,16 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+**Q (2026-09-21, audit 48): Does the rate limiter's "opportunistic
+cleanup" actually bound the windows dict?**
+**A:** No -- one defect fixed. _enforce_rate_limit's cleanup only deleted
+deques that were already empty, but a deque only empties when its own
+identifier hits again -- every one-shot identifier left a permanent
+entry, so a flood of distinct IPs/usernames grew the dict without bound
+(verified: 301 stale windows survived a cleanup trigger). The sweep now
+expires aged timestamps inside other identifiers' windows before
+dropping the empties; within-window identifiers keep their slots.
+Self-declared clearance was also probed and is honest: docs/api_
+documentation.md states plainly that clearance_level is client-claimed
+and capped by CHAMELEON_API_MAX_CLEARANCE.
+
