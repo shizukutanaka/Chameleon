@@ -3252,3 +3252,13 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** `analyze_harmony`'s `degree` field -- does
+it report the scale degree its roman numeral implies?
+**A:** No. It reported `semitone_index + 1`, so the I-V-vi-IV example
+everyone reads came out as degrees 1-8-10-6 while the romans correctly
+said I-V-vi-IV -- a chord labeled IV claimed degree 6. The CLI's
+`midi analyze` output passes this dict through verbatim. Now mapped
+through `_SEMITONE_TO_SCALE_DEGREE` = (1,2,2,3,3,4,5,5,6,6,7,7), so a
+chromatic degree keeps its diatonic base (semitone 8 -> "♭VI" -> 6),
+consistent with the numeral.
