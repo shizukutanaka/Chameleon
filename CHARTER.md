@@ -2471,3 +2471,17 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** `core.convert_to_mono` shares its gate
+pattern with `normalize`/`trim_silence` -- input validation, output
+validation, parent-dir creation. Is the symmetry real?
+**A:** No -- mono skipped both output-side steps. An invalid output
+path sailed to the filesystem as a raw OSError, and an output into a
+missing directory failed with FileNotFoundError while its siblings
+created the directory. Both are now applied (`validate_path` on the
+output, `parent.mkdir(parents=True)`), matching the contract the
+other two operations already honoured. Also verified honest: `mono`
+on an already-mono file copies it through and reports success
+(previous fix), `trim` on all-silence reports "No audio content found
+above threshold" rather than writing an empty file, and the async
+wrappers delegate to the same bodies.

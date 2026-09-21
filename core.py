@@ -636,7 +636,15 @@ class WAVProcessor:
         if not security_validator.validate_path(input_path):
             return ProcessingResult(False, "Invalid input path")
 
+        # Same output gates normalize/trim apply: a path the validator
+        # rejects must not be written, and a missing parent directory is
+        # created rather than surfacing a raw FileNotFoundError.
+        if not security_validator.validate_path(output_path):
+            return ProcessingResult(False, "Invalid output path")
+
         try:
+            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
             info = self._read_wav_header(input_path)
             if not info:
                 return ProcessingResult(False, self._header_rejection_reason
