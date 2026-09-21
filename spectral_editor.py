@@ -73,6 +73,21 @@ class SpectrogramConfig:
     overlap: float = 0.75
     zero_padding: int = 0
 
+    def __post_init__(self):
+        # Reject impossible geometry up front: the manual path used to
+        # surface these as raw numpy errors (broadcast, zero division)
+        # or silently emit a 1-frame garbage spectrogram (hop_length<0).
+        if self.n_fft <= 0:
+            raise ValueError(f"n_fft must be positive, got {self.n_fft}")
+        if self.hop_length <= 0:
+            raise ValueError(
+                f"hop_length must be positive, got {self.hop_length}")
+        if self.win_length is not None and not (
+                0 < self.win_length <= self.n_fft):
+            raise ValueError(
+                f"win_length must be in (0, n_fft], got {self.win_length} "
+                f"for n_fft={self.n_fft}")
+
 @dataclass
 class SpectralEditConfig:
     """Configuration for spectral editing operations"""
@@ -248,6 +263,14 @@ class SpectralEditor:
         self.edit_history = []
         self.undo_stack = []
 
+        # None until load_audio(); ops guard on it via _require_loaded.
+        self.stft = None
+
+    def _require_loaded(self) -> None:
+        """Operations before load_audio get a clear error, not AttributeError."""
+        if self.stft is None:
+            raise RuntimeError("No audio loaded -- call load_audio() first")
+
     def load_audio(self, audio: np.ndarray, sample_rate: int) -> Dict[str, Any]:
         """Load audio for spectral editing"""
         self.original_audio = audio.copy()
@@ -269,6 +292,7 @@ class SpectralEditor:
     def select_region(self, time_start: float, time_end: float,
                      freq_start: float, freq_end: float) -> SpectralSelection:
         """Create spectral selection"""
+        self._require_loaded()
         selection = SpectralSelection(
             time_start=max(0, time_start),
             time_end=min(self.times[-1], time_end),
@@ -324,6 +348,7 @@ class SpectralEditor:
 
     def copy_selection(self, selection: SpectralSelection) -> np.ndarray:
         """Copy spectral content from selection"""
+        self._require_loaded()
         mask = self.get_selection_mask(selection)
         copied_stft = self.stft.copy()
         copied_stft[~mask] = 0  # Zero out everything except selection
@@ -619,6 +644,7 @@ class SpectralEditor:
 
     def get_spectrogram_data(self, db_range: Tuple[float, float] = (-80, 0)) -> Dict[str, Any]:
         """Get spectrogram data for visualization"""
+        self._require_loaded()
         magnitude_db = 20 * np.log10(np.abs(self.stft) + 1e-10)
 
         # Clip to display range
@@ -634,10 +660,12 @@ class SpectralEditor:
 
     def export_current_audio(self) -> np.ndarray:
         """Export current edited audio"""
+        self._require_loaded()
         return self.current_audio.copy()
 
     def reset_to_original(self):
         """Reset to original audio"""
+        self._require_loaded()
         self.current_audio = self.original_audio.copy()
         self.stft = self.original_stft.copy()
         self.edit_history.clear()

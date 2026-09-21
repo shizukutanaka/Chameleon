@@ -2471,3 +2471,17 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** Two contract questions for
+spectral_editor: what do impossible `SpectrogramConfig` values do, and
+what do operations before `load_audio()` do?
+**A:** Both leaked implementation noise. `win_length > n_fft` crashed
+on a numpy broadcast error, `hop_length=0` on ZeroDivisionError, and
+`hop_length=-5` silently produced a 1-frame "spectrogram". Config
+geometry is now validated in `__post_init__` (n_fft>0, hop_length>0,
+0<win_length<=n_fft), covering manual and librosa paths alike. And the
+methods without try/except -- `select_region`, `copy_selection`,
+`get_spectrogram_data`, `export_current_audio`, `reset_to_original` --
+leaked bare AttributeError before load_audio; they now raise a clear
+RuntimeError via `_require_loaded` (the bool-returning ops already
+failed closed).
