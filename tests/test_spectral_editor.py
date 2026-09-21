@@ -109,3 +109,23 @@ def test_harmonic_enhance_stays_inside_selection():
     assert changed.size > 0
     times = ed.times
     assert all(0.4 <= times[c[1]] <= 0.5 for c in changed)
+
+
+def test_unknown_window_name_rejected_and_hamming_round_trips(monkeypatch):
+    # The manual STFT silently fell back to rectangular for any name it
+    # didn't know -- under librosa the same name was honored, so output
+    # depended on which extras were installed. Worse, the manual ISTFT
+    # only handled "hann": hamming analysis + rectangular synthesis.
+    monkeypatch.setattr(spectral_editor, "HAS_LIBROSA", False)
+    audio = np.random.RandomState(0).randn(SAMPLE_RATE) * 0.1
+
+    with pytest.raises(ValueError, match="Unknown window"):
+        spectral_editor.SpectrogramProcessor(
+            spectral_editor.SpectrogramConfig(window="blackman")
+        ).compute_stft(audio, SAMPLE_RATE)
+
+    proc = spectral_editor.SpectrogramProcessor(
+        spectral_editor.SpectrogramConfig(window="hamming"))
+    stft, _, _ = proc.compute_stft(audio, SAMPLE_RATE)
+    rec = proc.compute_istft(stft, SAMPLE_RATE, len(audio))
+    assert np.abs(audio - rec).max() < 1e-10

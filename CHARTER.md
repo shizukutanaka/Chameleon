@@ -2471,3 +2471,15 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** `SpectrogramConfig.window` names an
+analysis window -- does an unknown name fail or degrade?
+**A:** It degraded silently, and worse: the manual STFT fell back to
+rectangular for any unknown name (so a librosa-supported name like
+"blackman" produced install-dependent output), while the manual ISTFT
+only knew "hann" -- window="hamming" meant hamming analysis with
+rectangular synthesis, an asymmetric round-trip. Both paths now share
+`_make_window`, which supports hann/hamming/rectangular and raises
+ValueError naming the supported set. `overlap` and `zero_padding` are
+read by no code path (hop_length governs overlap); labeled reserved
+rather than deleted.

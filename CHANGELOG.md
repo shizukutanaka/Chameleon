@@ -487,6 +487,15 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`SpectrogramConfig.window` degraded silently and asymmetrically** —
+  the manual STFT fell back to a rectangular window for any unknown
+  name (while librosa honored it, making output install-dependent), and
+  the manual ISTFT only knew `"hann"` so `window="hamming"` produced a
+  hamming-analysis/rectangular-synthesis round-trip. Both paths now
+  share a validating window factory that supports hann/hamming/
+  rectangular and raises `ValueError` for unknown names. The `overlap`
+  and `zero_padding` fields are read by no code path and are now
+  labeled reserved.
 
 ### Changed
 

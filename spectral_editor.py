@@ -70,8 +70,10 @@ class SpectrogramConfig:
     hop_length: int = 512
     win_length: int = None
     window: str = "hann"
+    # Reserved -- the frame overlap is governed by hop_length/n_fft; this
+    # field is not read by any code path yet.
     overlap: float = 0.75
-    zero_padding: int = 0
+    zero_padding: int = 0  # reserved -- not read by any code path yet
 
 @dataclass
 class SpectralEditConfig:
@@ -134,13 +136,7 @@ class SpectrogramProcessor:
         hop_length = self.config.hop_length
         win_length = self.config.win_length or n_fft
 
-        # Create window
-        if self.config.window == "hann":
-            window = np.hanning(win_length)
-        elif self.config.window == "hamming":
-            window = np.hamming(win_length)
-        else:
-            window = np.ones(win_length)
+        window = self._make_window(win_length)
 
         # Zero-pad window if needed
         if win_length < n_fft:
@@ -173,6 +169,24 @@ class SpectrogramProcessor:
 
         return stft, times, freqs
 
+    def _make_window(self, win_length: int) -> np.ndarray:
+        """Analysis/synthesis window for the manual STFT paths.
+
+        Unknown names raise rather than silently becoming rectangular --
+        under librosa the same name would have been honored, so a silent
+        fallback made output depend on which extras are installed.
+        """
+        name = self.config.window
+        if name == "hann":
+            return np.hanning(win_length)
+        if name == "hamming":
+            return np.hamming(win_length)
+        if name in ("rectangular", "boxcar", "ones"):
+            return np.ones(win_length)
+        raise ValueError(
+            f"Unknown window {name!r}: the manual STFT supports "
+            "'hann', 'hamming', 'rectangular'")
+
     def compute_istft(self, stft: np.ndarray, sample_rate: int, length: int = None) -> np.ndarray:
         """Inverse Short-Time Fourier Transform"""
         if HAS_LIBROSA:
@@ -192,11 +206,7 @@ class SpectrogramProcessor:
         hop_length = self.config.hop_length
         win_length = self.config.win_length or n_fft
 
-        # Create window
-        if self.config.window == "hann":
-            window = np.hanning(win_length)
-        else:
-            window = np.ones(win_length)
+        window = self._make_window(win_length)
 
         if win_length < n_fft:
             window = np.pad(window, (0, n_fft - win_length))
