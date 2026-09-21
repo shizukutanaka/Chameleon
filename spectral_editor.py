@@ -490,68 +490,38 @@ class SpectralEditor:
 
             mask = self.get_selection_mask(selection)
 
-            if HAS_SCIPY:
-                # Use scipy for advanced interpolation
+            if HAS_SCIPY and self.config.interpolation == "cubic":
+                # Interpolate magnitude
                 magnitude = np.abs(self.stft)
                 phase = np.angle(self.stft)
-
-                # Interpolate magnitude
                 magnitude_interp = magnitude.copy()
 
-                # Simple interpolation - replace with surrounding values
-                if self.config.interpolation == "linear":
-                    # Linear interpolation across time and frequency
-                    coords = np.where(mask)
-                    for i, (freq_idx, time_idx) in enumerate(zip(coords[0], coords[1])):
-                        # Find neighboring values
-                        neighbors = []
+                # More sophisticated interpolation using scipy
+                from scipy import interpolate
 
-                        # Check surrounding pixels
-                        for df, dt in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                            nf, nt = freq_idx + df, time_idx + dt
-                            if (0 <= nf < magnitude.shape[0] and
-                                0 <= nt < magnitude.shape[1] and
-                                not mask[nf, nt]):
-                                neighbors.append(magnitude[nf, nt])
+                # Create interpolation grid
+                y_grid, x_grid = np.mgrid[0:magnitude.shape[0], 0:magnitude.shape[1]]
+                points = np.column_stack([y_grid[~mask].ravel(), x_grid[~mask].ravel()])
+                values = magnitude[~mask].ravel()
 
-                        if neighbors:
-                            magnitude_interp[freq_idx, time_idx] = np.mean(neighbors)
+                # Interpolate missing values
+                interp_points = np.column_stack([y_grid[mask].ravel(), x_grid[mask].ravel()])
 
-                elif self.config.interpolation == "cubic":
-                    # More sophisticated interpolation using scipy
-                    from scipy import interpolate
-
-                    # Create interpolation grid
-                    y_grid, x_grid = np.mgrid[0:magnitude.shape[0], 0:magnitude.shape[1]]
-                    points = np.column_stack([y_grid[~mask].ravel(), x_grid[~mask].ravel()])
-                    values = magnitude[~mask].ravel()
-
-                    # Interpolate missing values
-                    interp_points = np.column_stack([y_grid[mask].ravel(), x_grid[mask].ravel()])
-
-                    if len(points) > 0 and len(interp_points) > 0:
-                        interp_values = interpolate.griddata(
-                            points, values, interp_points,
-                            method='cubic', fill_value=0
-                        )
-                        magnitude_interp[mask] = interp_values.reshape(-1)
+                if len(points) > 0 and len(interp_points) > 0:
+                    interp_values = interpolate.griddata(
+                        points, values, interp_points,
+                        method='cubic', fill_value=0
+                    )
+                    magnitude_interp[mask] = interp_values.reshape(-1)
 
                 # Reconstruct
                 self.stft = magnitude_interp * np.exp(1j * phase)
             else:
-                # Simple averaging interpolation
+                # 4-neighbor mean fill -- pure numpy, no scipy needed
                 magnitude = np.abs(self.stft)
                 phase = np.angle(self.stft)
-
-                # Simple neighbor averaging
-                kernel = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]]) / 4
-                if HAS_SCIPY:
-                    smoothed = ndimage.convolve(magnitude, kernel, mode='reflect')
-                else:
-                    smoothed = magnitude  # Fallback to no interpolation
-
-                magnitude[mask] = smoothed[mask]
-                self.stft = magnitude * np.exp(1j * phase)
+                magnitude_interp = self._neighbor_mean_fill(mask, magnitude)
+                self.stft = magnitude_interp * np.exp(1j * phase)
 
             # Reconstruct audio
             self.current_audio = self.spectrogram_processor.compute_istft(
@@ -564,6 +534,22 @@ class SpectralEditor:
         except Exception as e:
             self.logger.error(f"Interpolation failed: {e}")
             return False
+
+    @staticmethod
+    def _neighbor_mean_fill(mask: np.ndarray, magnitude: np.ndarray) -> np.ndarray:
+        """Fill masked bins with the mean of their unmasked 4-neighbors."""
+        filled = magnitude.copy()
+        for freq_idx, time_idx in zip(*np.where(mask)):
+            neighbors = []
+            for df, dt in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                nf, nt = freq_idx + df, time_idx + dt
+                if (0 <= nf < magnitude.shape[0] and
+                        0 <= nt < magnitude.shape[1] and
+                        not mask[nf, nt]):
+                    neighbors.append(magnitude[nf, nt])
+            if neighbors:
+                filled[freq_idx, time_idx] = np.mean(neighbors)
+        return filled
 
     def _smooth_mask_edges(self, mask: np.ndarray, kernel_size: int = 3) -> np.ndarray:
         """Smooth mask edges to reduce artifacts"""
