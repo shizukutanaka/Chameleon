@@ -1027,15 +1027,27 @@ class WAVProcessor:
         except (OSError, PermissionError) as e:
             return ProcessingResult(False, f"File system error: {e}")
 
+    # RIFF chunks whose bodies anchor to absolute sample positions: after
+    # trimming, every byte they describe has shifted, so preserving them
+    # verbatim would ship stale cue points / loop markers / time references.
+    # (The processed file is a new artifact; dropping is the honest choice —
+    # the same policy already applies to chunks trailing the data payload.)
+    _POSITION_ANCHORED_CHUNKS = frozenset({b'cue ', b'smpl', b'plst', b'ltxt', b'bext'})
+
     def _copy_patched_header(self, src, dst, info: AudioInfo, new_data_size: int,
-                             *, channels: Optional[int] = None) -> None:
+                             *, channels: Optional[int] = None,
+                             drop_chunk_ids: Optional[frozenset] = None) -> None:
         """Copy the input header prefix verbatim and patch its size fields.
 
         Copies everything up to the data payload (preserving LIST/JUNK/fact
         chunks and non-16-byte fmt bodies exactly as they were), then patches:
-        the data chunk size at data_offset-4, the RIFF size at offset 4, and —
-        when *channels* is given (mono conversion) — the channel count, byte
-        rate, and block align inside the fmt body at fmt_offset.
+        the data chunk size at the end of the copied prefix, the RIFF size at
+        offset 4, and — when *channels* is given (mono conversion) — the
+        channel count, byte rate, and block align inside the fmt body.
+
+        *drop_chunk_ids* removes the named chunks while copying (used by the
+        trim path for position-anchored metadata — see
+        ``_POSITION_ANCHORED_CHUNKS``).
 
         Policy notes (deliberate, documented choices): chunks that trail the
         data payload are dropped from the output — the processed file is a new
@@ -1046,16 +1058,34 @@ class WAVProcessor:
         if len(header) != info.data_offset:
             raise ValueError("Invalid WAV header")
 
+        if drop_chunk_ids:
+            kept = bytearray(header[:12])
+            pos = 12
+            fmt_offset = None
+            while pos + 8 <= len(header):
+                chunk_id = bytes(header[pos:pos + 4])
+                chunk_size = struct.unpack_from('<I', header, pos + 4)[0]
+                end = min(len(header), pos + 8 + chunk_size + (chunk_size % 2))
+                if chunk_id not in drop_chunk_ids:
+                    if chunk_id == b'fmt ':
+                        fmt_offset = len(kept) + 8
+                    kept += header[pos:end]
+                pos = end
+            header = kept
+            fmt_offset_out = fmt_offset if fmt_offset is not None else info.fmt_offset
+        else:
+            fmt_offset_out = info.fmt_offset
+
         pad = new_data_size % 2
-        struct.pack_into('<I', header, 4, info.data_offset - 8 + new_data_size + pad)
-        struct.pack_into('<I', header, info.data_offset - 4, new_data_size)
+        struct.pack_into('<I', header, 4, len(header) - 8 + new_data_size + pad)
+        struct.pack_into('<I', header, len(header) - 4, new_data_size)
 
         if channels is not None:
             bytes_per_sample = max(1, info.bit_depth // 8)
-            struct.pack_into('<H', header, info.fmt_offset + 2, channels)
-            struct.pack_into('<I', header, info.fmt_offset + 8,
+            struct.pack_into('<H', header, fmt_offset_out + 2, channels)
+            struct.pack_into('<I', header, fmt_offset_out + 8,
                              info.sample_rate * bytes_per_sample * channels)
-            struct.pack_into('<H', header, info.fmt_offset + 12,
+            struct.pack_into('<H', header, fmt_offset_out + 12,
                              bytes_per_sample * channels)
 
         dst.write(bytes(header))
@@ -1253,7 +1283,8 @@ class WAVProcessor:
                             max(0, info.data_size - start_byte))
 
         with open(input_path, 'rb') as src, open_secure(output_path, 'wb') as dst:
-            self._copy_patched_header(src, dst, info, new_data_size)
+            self._copy_patched_header(src, dst, info, new_data_size,
+                                      drop_chunk_ids=self._POSITION_ANCHORED_CHUNKS)
 
             src.seek(info.data_offset + start_byte)
 

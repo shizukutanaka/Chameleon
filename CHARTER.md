@@ -2471,3 +2471,13 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**2026-09-21 (Socratic audit 123, external-source pass):** Cross-checked the
+WAV write path against RIFF metadata conventions (cue/smpl/plst/ltxt/bext all
+anchor to absolute sample positions; ffmpeg/DAW practice expects them kept).
+`_copy_patched_header` preserved every pre-data chunk verbatim -- correct for
+normalize/mono where positions don't shift, wrong for trim: a `cue ` point at
+sample 44100 survived into a 1.0s output pointing past the content. The trim
+path (`_extract_audio_range`) now drops the position-anchored chunks
+(`_POSITION_ANCHORED_CHUNKS`) while still carrying descriptive metadata
+(LIST-INFO etc.). Normalize keeps cue points unchanged, verified on-device.

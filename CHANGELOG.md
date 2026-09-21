@@ -487,6 +487,11 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- `trim` copied position-anchored RIFF chunks (`cue `/`smpl`/`plst`/
+  `ltxt`/`bext`) verbatim into a shorter file, so cue points/loops/time
+  references pointed at deleted audio. The trim path now drops them
+  (descriptive chunks like LIST-INFO still carry over); `normalize`/
+  `mono`, where positions don't shift, keep them unchanged.
 
 ### Changed
 

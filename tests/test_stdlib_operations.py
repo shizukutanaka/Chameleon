@@ -229,3 +229,58 @@ def test_a_batch_of_mixed_channel_counts_all_succeeds(blocker_dir, tmp_path):
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "2/2" in result.stdout
+
+
+def test_trim_drops_position_anchored_metadata_chunks(tmp_path):
+    # A `cue ` (or smpl/plst/bext) chunk before `data` anchors to absolute
+    # sample positions; copying it verbatim through trim ships stale cue
+    # points that refer to deleted audio. The processed file is a new
+    # artifact, so trim drops them -- while descriptive chunks like
+    # LIST-INFO still carry over.
+    import wave
+    sr = 44100
+    loud = b"\x00\x20" * sr
+    silent = b"\x00\x00" * sr
+    cue_body = struct.pack("<I", 1) + struct.pack("<II4sIII", 1, sr, b"data", 0, 0, sr)
+    list_body = b"INFO" + b"INAM" + struct.pack("<I", 5) + b"title\x00\x00\x00"
+    fmt_body = struct.pack("<HHIIHH", 1, 1, sr, sr * 2, 2, 16)
+    body = b"fmt " + struct.pack("<I", 16) + fmt_body
+    body += b"cue " + struct.pack("<I", len(cue_body)) + cue_body
+    body += b"LIST" + struct.pack("<I", len(list_body)) + list_body
+    if len(list_body) % 2:
+        body += b"\x00"
+    samples = silent + loud
+    body += b"data" + struct.pack("<I", len(samples)) + samples
+    source = tmp_path / "cued.wav"
+    source.write_bytes(b"RIFF" + struct.pack("<I", 4 + len(body)) + b"WAVE" + body)
+
+    from core import WAVProcessor
+    out = tmp_path / "trimmed.wav"
+    result = WAVProcessor().trim_silence(str(source), str(out), threshold=0.01)
+    assert result.success, result.message
+
+    written = out.read_bytes()
+    assert b"cue " not in written, "stale cue points survived the trim"
+    assert b"LIST" in written, "descriptive metadata was dropped too"
+    with wave.open(str(out)) as handle:
+        assert abs(handle.getnframes() / handle.getframerate() - 1.0) < 0.05
+
+
+def test_normalize_keeps_position_metadata(tmp_path):
+    # Positions don't shift under gain, so verbatim preservation is right.
+    import wave
+    sr = 44100
+    cue_body = struct.pack("<I", 1) + struct.pack("<II4sIII", 1, sr // 2, b"data", 0, 0, sr // 2)
+    fmt_body = struct.pack("<HHIIHH", 1, 1, sr, sr * 2, 2, 16)
+    body = b"fmt " + struct.pack("<I", 16) + fmt_body
+    body += b"cue " + struct.pack("<I", len(cue_body)) + cue_body
+    samples = b"\x00\x20" * sr
+    body += b"data" + struct.pack("<I", len(samples)) + samples
+    source = tmp_path / "cued.wav"
+    source.write_bytes(b"RIFF" + struct.pack("<I", 4 + len(body)) + b"WAVE" + body)
+
+    from core import WAVProcessor
+    out = tmp_path / "norm.wav"
+    result = WAVProcessor().normalize(str(source), str(out))
+    assert result.success, result.message
+    assert b"cue " in out.read_bytes()
