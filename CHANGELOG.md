@@ -487,6 +487,11 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`core.to_mono` skipped the output-path gates its siblings apply** —
+  `normalize`/`trim_silence` validate the output path and create its
+  parent directory; mono did neither, so an invalid path reached the
+  filesystem as a raw `OSError` and an output into a missing directory
+  died with `FileNotFoundError`. Both gates now apply.
 
 ### Changed
 

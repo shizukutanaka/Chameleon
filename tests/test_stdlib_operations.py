@@ -229,3 +229,33 @@ def test_a_batch_of_mixed_channel_counts_all_succeeds(blocker_dir, tmp_path):
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "2/2" in result.stdout
+
+
+def test_mono_writes_into_a_missing_output_directory(tmp_path):
+    # convert_to_mono never created the output's parent -- normalize and
+    # trim both mkdir before writing, so mono alone failed with a raw
+    # FileNotFoundError for the exact same directory layout.
+    import core
+
+    source = tmp_path / "in.wav"
+    _write_stereo_wav(source)
+    out = tmp_path / "not_created_yet" / "out.wav"
+
+    result = core.to_mono(str(source), str(out))
+
+    assert result.success, result.message
+    assert out.exists()
+
+
+def test_mono_rejects_an_invalid_output_path(tmp_path):
+    # The validator's output-path check ran on normalize/trim but not mono,
+    # so a NUL byte sailed straight into the filesystem as an OSError.
+    import core
+
+    source = tmp_path / "in.wav"
+    _write_stereo_wav(source)
+
+    result = core.to_mono(str(source), str(tmp_path) + "/bad\x00name.wav")
+
+    assert result.success is False
+    assert "Invalid output path" in result.message

@@ -668,12 +668,17 @@ class WAVProcessor:
         if not security_validator.validate_path(input_path):
             return ProcessingResult(False, "Invalid input path")
 
+        # Same output gates normalize/trim apply: a path the validator
+        # rejects must not be written.
+        if not security_validator.validate_path(output_path):
+            return ProcessingResult(False, "Invalid output path")
         if _paths_refer_to_same_file(input_path, output_path):
             return ProcessingResult(
                 False, "Input and output paths are the same file; "
                 "in-place processing is not supported")
-
         try:
+            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
             info = self._read_wav_header(input_path)
             if not info:
                 return ProcessingResult(False, self._header_rejection_reason
