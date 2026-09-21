@@ -2,9 +2,9 @@
 
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
 **Version:** 1.1.0 · **Tests:** re-run 2026-09-20 on Python 3.12, green in
-all three configurations — **503 passed** on a bare install (stdlib only,
-35 skipped), **586** with numpy (scipy/librosa/soundfile blocked, 35
-skipped), **693** with numpy + scipy + librosa + soundfile + fastapi
+all three configurations — **505 passed** on a bare install (stdlib only,
+38 skipped), **591** with numpy (scipy/librosa/soundfile blocked, 35
+skipped), **698** with numpy + scipy + librosa + soundfile + fastapi
 (5 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
@@ -357,6 +357,8 @@ here because they need a user decision first.
 | ~~P4~~ | ~~Eager `~/.chameleon_state` mkdir on `import core`; per-call RLIMIT_AS warning spam~~ | Low | XS | Low | **DONE 2026-09-20** — state dir created lazily on first `record_state()`; the sandbox warns once per process (macOS cannot lower RLIMIT_AS — verified) |
 | ~~P1~~ | ~~Non-atomic output writes: a mid-write failure left a truncated-but-parseable file at the destination name~~ | High | S | Low | **DONE 2026-09-20** — all producers (`_apply_gain_safe`, `_convert_to_mono`, `_extract_audio_range`, mono copyfile, `save_audio`/`_save_wav_basic`, `generate_midi_file`, `sanitize_wav_metadata`, `--export` JSON, `record_state`) now write sibling `.part-<pid>-<n>` temps renamed via `os.replace` only on success; failure preserves the old destination and removes the temp (`tests/test_atomic_writes.py`) |
 | ~~P1~~ | ~~`~` expanded by output validation but not by the writers — `-o "~/x.wav"` certified `$HOME` and wrote `./~/x.wav`~~ | High | S | Med | **DONE 2026-09-20** — `expanduser()` at every shared write boundary (`open_secure`, `atomic_output`/`staged_output_path`, `StateRecoveryManager`, `_resolve_output_path`, `_preflight_output_dir`, `CHAMELEON_LOG_DIR`, batch output_root); the overwrite warning now counts sanitized stems, so `a:b.wav` vs `a\b.wav` is flagged (`tests/test_tilde_expansion.py`) |
+| ~~P2~~ | ~~Shared `PerformanceTracker.start_time` raced under parallel batch — every file reported the last starter's duration (or 0)~~ | Low | XS | Med | **DONE 2026-09-20** — `start_time` is `threading.local()` (`tests/test_perf_tracker.py`) |
+| ~~P2~~ | ~~`save_audio` fallback wrote RIFF WAV under a foreign suffix (`output_path="out.mp3"`)~~ | Med | XS | Low | **DONE 2026-09-20** — fallback restricted to `""`/`.wav`/`.wave` destinations, else `ValueError` (`tests/test_output_integrity.py`) |
 | P4 | Plugin sandbox runtime boundary (restricted builtins for `exec_module`) | High (security) | L | High | Architectural; leaky if done partially — design first |
 | P4 | Surround-channel loudness weighting | Low | M | Low | Only if a real multichannel use case appears |
 

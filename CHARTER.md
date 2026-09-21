@@ -2382,6 +2382,25 @@ run overwrote silently. The warning now counts
 `sanitize_filename(Path(f).stem)` -- the name the file actually lands
 under -- and reports the sanitized stem it collided on.
 
+**Q: Is a reported duration a measurement?**
+A (2026-09-20): Not under parallel batch. `PerformanceTracker.start_time`
+was one attribute on a shared `AudioProcessor` that `process_directory_async`
+drives from `run_in_executor` worker threads: N `start()` calls overwrote
+each other, an interleaved `end()` zeroed the next caller's measurement,
+and the `ProcessingResult` still said "in Xms" as if it had measured that
+file. `start_time` is now `threading.local()`; `operations` stays a dict
+(last-writer-wins per key is acceptable bookkeeping)
+(`tests/test_perf_tracker.py`).
+
+**Q: Does a file named `out.mp3` contain MP3?**
+A (2026-09-20): No -- it contained RIFF WAV. `save_audio` tries sf.write
+(suffix picks the container) then falls back to `_save_wav_basic`, which
+writes WAV unconditionally: any foreign suffix that soundfile rejected
+became WAV bytes under a lying name. The fallback now refuses suffixes it
+cannot produce (`""`/`.wav`/`.wave` only) and raises ValueError; a bad
+destination is an INPUT error, not a mislabeled artifact
+(`tests/test_output_integrity.py`).
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
