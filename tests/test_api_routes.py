@@ -44,7 +44,13 @@ def client(monkeypatch):
     api_server.api_state._rate_limit_windows.clear()
     # TrustedHostMiddleware only allows localhost/127.0.0.1 by default;
     # TestClient's default Host is "testserver", which it correctly rejects.
-    return TestClient(api_server.app, base_url="http://localhost")
+    # A bare TestClient has no persistent portal: each request spins up a
+    # fresh event loop and cancels pending tasks when the call returns,
+    # so a background job (asyncio.create_task in /batch/submit) is killed
+    # mid-flight and the job sits at 'processing' forever. `with` keeps
+    # one loop alive for the whole test, matching production.
+    with TestClient(api_server.app, base_url="http://localhost") as c:
+        yield c
 
 
 def _login(client, username=DEV_USERNAME, password=DEV_PASSWORD):

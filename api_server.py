@@ -134,6 +134,35 @@ SECURITY_CONFIG = {
     'api_key_header': 'X-API-Key',
 }
 
+# A batch job awaiting a single file's operation must not sit in
+# 'processing' forever when the awaited work never completes (a hung
+# executor call, a wedged codec path). Without a bound, one stuck file
+# permanently holds a worker permit and the job is indistinguishable from
+# a slow one. Bound each file's operation; a timed-out file is recorded
+# as a failure like any other per-file error and the job moves on.
+# The underlying executor thread cannot be killed mid-call — it may keep
+# running — but the job no longer waits on it.
+# CHAMELEON_FILE_TIMEOUT=0 disables the bound (like CHAMELEON_TIMEOUT).
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        logging.warning("Ignoring invalid %s=%r; using default %d",
+                        name, raw, default)
+        return default
+    if value < 0:
+        logging.warning("Ignoring negative %s=%r; using default %d",
+                        name, raw, default)
+        return default
+    return value
+
+
+SECURITY_CONFIG['file_timeout_seconds'] = _env_int(
+    'CHAMELEON_FILE_TIMEOUT', 300)
+
 PRIVILEGED_CLEARANCE = {"SECRET", "TOP_SECRET"}
 
 # Clearance order for capping a self-declared login clearance. The request
@@ -1571,9 +1600,18 @@ async def process_batch_job(job_id: str):
                 job_data['current_file'] = file_name
                 job_data['updated_at'] = datetime.now(timezone.utc)
 
+                file_timeout = SECURITY_CONFIG.get('file_timeout_seconds') or None
+
                 # Process file based on operation
                 if job_data['operation'] == 'analyze':
-                    result = await analyze_audio_fast(file_path)
+                    try:
+                        result = await asyncio.wait_for(
+                            analyze_audio_fast(file_path), file_timeout)
+                    except TimeoutError:
+                        result = {
+                            'success': False,
+                            'error': f'timed out after {file_timeout}s',
+                        }
                 elif job_data['operation'] == 'normalize':
                     output_name = f"normalized_{uuid.uuid4().hex}_{file_name}"
                     sanitized_output = _sanitize_uploaded_name(output_name)
@@ -1583,10 +1621,20 @@ async def process_batch_job(job_id: str):
                     except ChameleonSecurityError as exc:
                         result = {'success': False, 'error': str(exc)}
                     else:
-                        result = await normalize_audio_fast(
-                            file_path, output_path,
-                            target_peak=job_data['options'].get('target_peak', 0.95),
-                        )
+                        try:
+                            result = await asyncio.wait_for(
+                                normalize_audio_fast(
+                                    file_path, output_path,
+                                    target_peak=job_data['options'].get(
+                                        'target_peak', 0.95),
+                                ),
+                                file_timeout,
+                            )
+                        except TimeoutError:
+                            result = {
+                                'success': False,
+                                'error': f'timed out after {file_timeout}s',
+                            }
                         if result.get('success'):
                             try:
                                 output_size = output_path.stat().st_size
@@ -1631,6 +1679,20 @@ async def process_batch_job(job_id: str):
 
             _record_job_completion(job_id)
 
+    except asyncio.CancelledError:
+        # A cancelled task must still leave an honest terminal state:
+        # CancelledError is BaseException, so without this branch a
+        # server-shutdown/teardown cancellation leaves the job stuck at
+        # 'processing' forever -- indistinguishable from work in flight.
+        job_data = api_state.active_jobs.get(job_id, {})
+        job_data['status'] = 'failed'
+        job_data['error'] = 'job cancelled'
+        job_data['completed_at'] = datetime.now(timezone.utc)
+        api_state.stats['failed_jobs'] += 1
+        if job_id in api_state.job_queue:
+            api_state.job_queue.remove(job_id)
+        _record_job_completion(job_id)
+        raise
     except Exception as e:
         logging.error(f"Batch job processing error: {e}")
         job_data['status'] = 'failed'
