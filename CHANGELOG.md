@@ -487,6 +487,13 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **The audit log's documented rotation never existed** —
+  docs/api_documentation.md says rotation is managed by
+  `SecurityValidator`, and `_AUDIT_VALIDATOR` carries a 10 MB
+  `max_file_size`, but the size check only ran for reads so the append-
+  only log grew without bound. Past the cap the file now rotates to a
+  single-generation `api-audit.log.1` before appending, bounding on-disk
+  audit data to ~2x the cap.
 
 ### Changed
 

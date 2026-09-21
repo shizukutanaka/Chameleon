@@ -3252,3 +3252,16 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, audit 49): Is the audit log's promised size management
+real?**
+**A:** No -- one defect fixed. docs/api_documentation.md states the audit
+log's rotation is managed by SecurityValidator, and _AUDIT_VALIDATOR
+carries max_file_size=10MB -- but validate_file_path checks size only
+for *reads*, so the cap was decorative and the log grew forever. Writes
+now rotate single-generation: past the cap the file moves to
+api-audit.log.1 (bounded ~2x cap total) before the append. In-memory
+deque stays capped at max_audit_log_entries. Endpoint flow re-verified
+honest meanwhile: normalize registers generated outputs under
+server-minted names, download authorization re-checks owner/privilege,
+analyze rejects remote URLs before path resolution.
