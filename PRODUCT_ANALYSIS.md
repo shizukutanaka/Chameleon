@@ -3,7 +3,7 @@
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
 **Version:** 1.1.0 · **Tests:** re-run 2026-09-21 on Python 3.12, green in
 all three configurations — **464 passed** on a bare install (stdlib only,
-33 skipped), **546** with numpy (scipy/librosa/soundfile blocked, 34
+36 skipped), **546** with numpy (scipy/librosa/soundfile blocked, 34
 skipped), **652** with numpy + scipy + librosa + soundfile + fastapi
 (5 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
