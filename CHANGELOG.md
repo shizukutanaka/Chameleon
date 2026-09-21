@@ -487,6 +487,10 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- `IntegrityVerifier.create_manifest` interpolated `manifest_name`
+  straight into `manifest_dir / "{name}.json"`, so `"../escape"` or an
+  absolute name wrote the manifest outside the configured directory.
+  The name must now be a plain filename.
 
 ### Changed
 

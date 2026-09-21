@@ -407,6 +407,12 @@ class IntegrityVerifier:
                 "metadata": result.metadata
             }
 
+        # manifest_name becomes a filename: a `../` or absolute name would
+        # write the manifest outside manifest_dir.
+        if (not manifest_name or manifest_name != Path(manifest_name).name
+                or manifest_name.startswith('.')):
+            raise ValueError(f"Invalid manifest name: {manifest_name!r}")
+
         # Save manifest atomically: a torn write leaves a corrupt JSON that
         # would fail every future verify for a reason the user cannot see.
         manifest_path = self.manifest_dir / f"{manifest_name}.json"

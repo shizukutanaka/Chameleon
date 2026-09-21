@@ -165,3 +165,20 @@ def test_main_block_self_test_writes_no_state_into_the_real_home(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "Verification: True" in result.stdout
     assert not (home / ".chameleon").exists()
+
+
+def test_manifest_name_cannot_escape_the_manifest_dir(tmp_path):
+    # manifest_name is interpolated into `manifest_dir / f"{name}.json"`;
+    # a `../` or absolute name used to write the manifest outside the
+    # directory callers configured -- e.g. "../cron" or "/tmp/x".
+    import pytest
+    from advanced_validation import IntegrityVerifier
+
+    verifier = IntegrityVerifier(manifest_dir=tmp_path / "manifests")
+    for bad in ("../escape", "/tmp/abs", "a/b", ".hidden", ""):
+        with pytest.raises(ValueError):
+            verifier.create_manifest([], bad)
+
+    good = verifier.create_manifest([], "good")
+    assert good.parent == tmp_path / "manifests"
+    assert good.name == "good.json"

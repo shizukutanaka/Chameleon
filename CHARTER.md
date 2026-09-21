@@ -2471,3 +2471,10 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**2026-09-21 (Socratic audit 125, external-source pass):** `create_manifest`
+interpolated `manifest_name` straight into `manifest_dir / "{name}.json"` --
+`"../escape"` and absolute names wrote the manifest outside the configured
+directory (verified on-device). The name is now required to be a plain
+filename (`Path(name).name` round-trip, no leading dot, non-empty).
+Regression test pins the rejection set.
