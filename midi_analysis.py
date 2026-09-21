@@ -786,7 +786,13 @@ class MIDIComposer:
         current_time = 0.0
         note_duration = 0.5  # Half beat notes
 
-        while current_time < length:
+        # Notes exist only where a chord covers current_time; past the last
+        # chord's end every iteration emits nothing, so a huge --length used
+        # to spin unbounded (and report a melody longer than it produced).
+        chord_end = max((c.start_time + c.duration for c in chords), default=0.0)
+        end_time = min(length, chord_end)
+
+        while current_time < end_time:
             # Find current chord
             current_chord = None
             for chord in chords:

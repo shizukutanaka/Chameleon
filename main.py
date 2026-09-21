@@ -3301,6 +3301,17 @@ async def main():
                 for i, (root, chord_type, notes) in enumerate(progression)
             ]
 
+            # generate_melody emits notes only inside chord coverage, so a
+            # --length past the progression's end silently produced the same
+            # short melody (and used to spin that many extra iterations).
+            progression_end = max(c["start_time"] + c["duration"]
+                                  for c in basic_chords)
+            if length > progression_end:
+                print(f"Note: --length {length} exceeds the built-in "
+                      f"progression's span ({progression_end:.0f} beats); "
+                      "the melody ends with the last chord.",
+                      file=sys.stderr)
+
             key_info = {"tonic": tonic, "mode": mode, "confidence": 1.0}
 
             melody = processor.compose_melody(basic_chords, key_info, length)
