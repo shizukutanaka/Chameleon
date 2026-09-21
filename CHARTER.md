@@ -2471,3 +2471,20 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, audit 33): Do the remaining unexercised edges -- MIDI
+pitch extraction on degenerate input, directories passed as files,
+dry-run side effects, job ownership -- hold up?**
+**A:** All honest: parse_midi_from_audio returns zero notes for empty,
+10-sample, DC-offset, and single-impulse inputs (nothing fabricated);
+analyze/process given a directory exit INPUT(3) with "No valid audio
+files" instead of crashing; batch --dry-run writes nothing; batch job
+status enforces owner-or-privileged (403); the API analyze endpoint
+rejects http(s) URLs at 400 before file lookup; session tokens are
+secrets.token_urlsafe(32); ErrorFormatter suggestions map real error
+classes and return [] rather than invented advice for unmapped ones;
+ProgressBar guards total=0; analyze --spectrum works stdlib-only (its
+own fallback) while --detailed says "not measured". README's API audit
+example (X-API-Key alone -> 403) remains unfixed on main only because
+the fix sits on open PR #55 -- deliberately not re-fixed here to avoid
+a conflicting duplicate.

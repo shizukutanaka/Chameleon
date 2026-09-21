@@ -141,3 +141,14 @@ def test_unexpected_exceptions_are_not_swallowed():
 
     assert "except Exception" not in code
     assert "except (ValueError, FileNotFoundError)" in code
+
+
+def test_directory_input_is_input_error_not_crash(tmp_path):
+    # `analyze`/`process` given a directory must fail as bad input, not with a
+    # traceback: a directory is not a WAV the user meant to decode.
+    proc = subprocess.run(
+        [sys.executable, str(REPO_ROOT / "main.py"), "analyze", str(tmp_path)],
+        capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 3
+    assert "No valid audio files" in proc.stderr
+    assert "Traceback" not in proc.stderr

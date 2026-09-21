@@ -247,3 +247,19 @@ def test_analyze_harmony_names_the_key_not_a_pitch_class():
     harmony = analyzer.analyze_harmony(chords, key)
 
     assert harmony["key"] == "C major"
+
+
+def test_pitch_extraction_fabricates_no_notes_on_edge_inputs():
+    # A pitch extractor that "finds" notes in silence or a DC offset is lying.
+    # Verified live: empty audio, a 10-sample clip, constant DC, and a single
+    # impulse all yield zero notes rather than invented pitches.
+    analyzer = MIDIAnalyzer()
+    cases = {
+        "empty": [],
+        "short": [0.0] * 10,
+        "dc_offset": [0.5] * 44100,
+        "impulse": [1.0] + [0.0] * 44099,
+    }
+    for label, audio in cases.items():
+        notes = analyzer.parse_midi_from_audio(audio, 44100)
+        assert notes == [], f"{label} input produced phantom notes: {notes[:3]}"

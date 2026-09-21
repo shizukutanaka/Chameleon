@@ -487,6 +487,15 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **No new defects; pinned verified-honest edges** — regression tests now
+  cover: `parse_midi_from_audio` fabricating zero notes on empty / DC /
+  impulse input, `analyze`/`process` rejecting a directory with INPUT(3)
+  instead of crashing, and `batch --dry-run` writing nothing. Verified
+  live this cycle: batch job status enforces owner-or-privileged (403),
+  the API analyze endpoint rejects http(s) URLs (400), session tokens
+  are `secrets.token_urlsafe(32)`, `ProgressBar` guards `total=0`, and
+  `ErrorFormatter` returns `[]` rather than invented advice for unmapped
+  error classes.
 
 ### Changed
 
