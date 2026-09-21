@@ -582,3 +582,30 @@ def test_audit_log_is_bounded():
     for i in range(cap + 50):
         api_server.log_audit_event("u", "OP", "res", "SUCCESS", "", "ip", "")
     assert len(api_server.api_state.audit_log) == cap
+
+
+def test_upload_rejects_nested_path_filenames(client):
+    """Upload used Path().name to strip the directories and silently store
+    '../../etc/passwd.wav' as 'passwd.wav' with a 200. The traversal is now
+    refused like _sanitize_uploaded_name's other callers."""
+    token = _login(client).json()["token"]
+    for name in ("../../etc/passwd.wav", "..\\..\\win.wav", "a/b/c.wav"):
+        response = client.post(
+            "/audio/upload",
+            files={"file": (name, _wav_bytes(), "audio/wav")},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 400, name
+        assert "Nested paths" in response.json()["detail"]
+
+
+def test_upload_still_accepts_plain_filenames(client):
+    """The stricter check must not break ordinary names."""
+    token = _login(client).json()["token"]
+    response = client.post(
+        "/audio/upload",
+        files={"file": ("my file.WAV", _wav_bytes(), "audio/wav")},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    assert response.json()["stored_name"].endswith("my file.WAV")

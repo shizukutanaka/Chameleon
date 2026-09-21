@@ -55,6 +55,12 @@
 
 ### Fixed
 
+- **`POST /audio/upload` silently rewrote traversal filenames** -- a client
+  uploading `../../etc/passwd.wav` got a 200 and a stored `passwd.wav`:
+  the API's own `_sanitize_uploaded_name` (which refuses "Nested paths are
+  not permitted") existed but this route bypassed it for `Path().name`.
+  Upload now refuses traversal-style names with 400, so the denial is
+  audited instead of laundered into a safe name.
 - **`--convert-bit-depth 32` wrote an IEEE-float WAV that Chameleon
   itself cannot read** -- `save_audio` mapped bit depth 32 to
   soundfile's `FLOAT` subtype (format tag 3), so the converted artifact

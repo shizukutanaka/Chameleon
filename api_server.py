@@ -1165,7 +1165,10 @@ async def upload_audio_file(
     try:
         _validate_upload_extension(file.filename)
 
-        sanitized_name = _REQUEST_VALIDATOR.sanitize_filename(Path(file.filename).name)
+        # Reject nested/encoded path tricks rather than silently rewriting
+        # them: Path().name would turn "../../etc/passwd.wav" into a stored
+        # "passwd.wav" with a 200 -- the audit trail should show the denial.
+        sanitized_name = _sanitize_uploaded_name(file.filename)
         unique_name = f"{uuid.uuid4().hex}_{sanitized_name}"
         destination = (UPLOAD_DIRECTORY / unique_name).resolve(strict=False)
         upload_root = UPLOAD_DIRECTORY.resolve(strict=False)
