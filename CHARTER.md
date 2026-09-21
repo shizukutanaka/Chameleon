@@ -3252,3 +3252,24 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**2026-09-21 (Socratic audit 112, external-source pass):** Probed against
+external references: the TOCTOU residual in secure_open (the deliberate
+resolve-then-allow design already covers final-component symlinks on write
+via O_NOFOLLOW; the read path's intermediate-component race has no cheap
+POSIX mitigation on macOS -- recorded as a known limitation), MIDI SMPTE
+time-bases (N/A -- the tool writes SMF but never parses one), and the
+musical-mode table:
+
+- `MusicalKey(mode='lydian')` built the MAJOR interval table
+  [0,2,4,5,7,9,11] while labelling itself 'lydian' -- the field lied about
+  the content (verified). Every unknown name did the same. The full
+  diatonic set is now implemented from the standard W/H step patterns
+  (ionian/major, dorian, phrygian, lydian, mixolydian, aeolian/minor,
+  locrian), ionian/aeolian accepted as aliases, and unknown modes raise a
+  named ValueError. `midi compose --mode` now offers all nine spellings.
+- Verified honest: secure_open uses O_NOFOLLOW on write/append;
+  docs/en+ja command flags all exist in the parsers (machine-checked);
+  Chord.notes/scale_notes are pitch classes so the +60 octave shift is
+  correct; generate_melody's empty-chord path returns [] rather than
+  crashing; --mode callers are argparse-constrained.
