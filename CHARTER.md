@@ -2471,3 +2471,20 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** `EnhancedSecurityValidator` ships an
+integrity check -- does it actually execute, and does it pass a normal
+file?
+**A:** It could do neither. `_calculate_file_entropy` called
+`float.bit_length()` and crashed on any non-empty input (the
+"simplified" formula was not Shannon entropy at all); the entropy gate
+(>7.5 bits/byte) then flagged every real WAV -- PCM is high-entropy by
+nature, a 1s sine reads ~7.55; and the permissions check compared
+`st_mode & 0o777 != st_mode`, which is never true on POSIX because
+st_mode carries file-type bits, so `check_file_integrity` could never
+return True. Now: real Shannon entropy, no entropy gate (documented
+why), and the permission check tests only setuid/setgid/sticky bits.
+Also fixed the class's `sanitize_filename('..')` -> '..' hole (dot
+components pass the character scrub) the same way the sibling
+validator was fixed. All dormant methods -- no callers -- but shipped
+API must not lie when called.

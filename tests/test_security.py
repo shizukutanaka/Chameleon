@@ -330,3 +330,53 @@ class TestSecurityConfigFromEnvironment:
         with pytest.warns(UserWarning, match="does not exist"):
             cfg = SecurityConfig.from_environment()
         assert str(tmp_path / "ghost") in cfg.trusted_roots
+
+
+class TestEnhancedValidatorInternals:
+    """core.EnhancedSecurityValidator is dormant but shipped API; its
+    internals must still work and must not lie."""
+
+    def test_entropy_is_shannon_not_a_crashing_placeholder(self, tmp_path):
+        # The old "simplified" formula called float.bit_length() and
+        # crashed on any non-empty file; the replacement must produce
+        # real bits-per-byte: ~0 for constant data, ~8 for uniform.
+        from core import EnhancedSecurityValidator
+        import random
+
+        empty = tmp_path / "empty.bin"
+        empty.write_bytes(b"")
+        zeros = tmp_path / "zeros.bin"
+        zeros.write_bytes(b"\x00" * 10000)
+        rng = random.Random(0)
+        noise = tmp_path / "noise.bin"
+        noise.write_bytes(bytes(rng.getrandbits(8) for _ in range(20000)))
+
+        v = EnhancedSecurityValidator
+        assert v._calculate_file_entropy(str(empty)) == 0.0
+        assert v._calculate_file_entropy(str(zeros)) == 0.0
+        assert v._calculate_file_entropy(str(noise)) > 7.5
+
+    def test_integrity_does_not_flag_high_entropy_audio(self, tmp_path):
+        # PCM audio is high-entropy by nature; a check that rejects
+        # entropy > 7.5 marks every ordinary WAV "tampered".
+        from core import EnhancedSecurityValidator
+        import wave as _wave
+
+        wav = tmp_path / "sine.wav"
+        with _wave.open(str(wav), "w") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(44100)
+            import math as _m
+            w.writeframes(b"".join(
+                struct.pack("<h", int(0.4 * 32767 * _m.sin(2 * _m.pi * 440 * i / 44100)))
+                for i in range(44100)))
+
+        assert EnhancedSecurityValidator.check_file_integrity(str(wav)) is True
+
+    def test_sanitize_filename_rejects_dot_components(self):
+        # '..' contains no scrubbed characters, so it passed through
+        # unchanged -- and resolves to the parent directory when joined.
+        from core import EnhancedSecurityValidator
+        assert EnhancedSecurityValidator.sanitize_filename("..") == "untitled"
+        assert EnhancedSecurityValidator.sanitize_filename(".") == "untitled"
