@@ -1,5 +1,7 @@
 """Tests for MIDI musical analysis (chord and key detection)."""
 
+import pytest
+
 from midi_analysis import MIDIAnalyzer, MIDINote
 
 
@@ -247,3 +249,35 @@ def test_analyze_harmony_names_the_key_not_a_pitch_class():
     harmony = analyzer.analyze_harmony(chords, key)
 
     assert harmony["key"] == "C major"
+
+
+def test_midi_compose_rejects_tempo_that_underflows_the_tempo_field(tmp_path):
+    """`--tempo 1e9` used to write a 0 us-per-quarter tempo event -- an
+    infinite tempo that breaks parsers dividing by it. The 24-bit field
+    also can't express it; both the CLI gate and the writer must reject.
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+    main_py = str(Path(__file__).resolve().parent.parent / "main.py")
+    out = tmp_path / "m.mid"
+    for tempo in ["1e9", "120000000"]:
+        proc = subprocess.run(
+            [sys.executable, main_py, "midi", "compose",
+             "--tempo", tempo, "--output", str(out)],
+            capture_output=True, text=True, timeout=30)
+        assert proc.returncode == 3, (tempo, proc.stderr)
+        assert "us-per-quarter" in proc.stderr
+        assert not out.exists()
+
+
+def test_generate_midi_file_rejects_unencodable_tempo(tmp_path):
+    """The library path must refuse the same way the CLI does: the writer
+    itself raises instead of emitting a 0/overflow tempo event."""
+    import midi_analysis
+    analyzer = midi_analysis.MIDIAnalyzer()
+    notes = [midi_analysis.MIDINote(60, 100, 0.0, 0.5)]
+    with pytest.raises(ValueError, match="us-per-quarter"):
+        analyzer.generate_midi_file(notes, str(tmp_path / "x.mid"), 1e9)
+    with pytest.raises(ValueError, match="us-per-quarter"):
+        analyzer.generate_midi_file(notes, str(tmp_path / "x.mid"), 1.0)

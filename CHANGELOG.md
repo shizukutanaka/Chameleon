@@ -487,6 +487,16 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`midi compose --tempo` accepted tempos that underflow the tempo
+  meta event** — the us-per-quarter-note field is 24-bit: too slow
+  overflowed it and was already rejected, but `--tempo 1e9` wrote
+  `round(60e6/1e9) = 0`, a zero tempo event meaning *infinite* tempo
+  (players divide by it). The boundary disagreed with itself too:
+  `--tempo 120000000` passed the CLI gate and then failed in the writer
+  because round-half-even turns 0.5 into 0. Both layers now enforce
+  `1 <= us_per_quarter <= 0xFFFFFF` — INPUT(3) naming the encodable
+  range at the CLI, and `generate_midi_file` raises the same
+  constraint for library callers before its catch-all flattens it.
 
 ### Changed
 

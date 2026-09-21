@@ -563,6 +563,15 @@ class MIDIAnalyzer:
         ``tempo_bpm`` is written as the FF 51 03 meta event -- without it
         every player defaults to 120 BPM and a requested tempo would have no
         effect on the produced file."""
+        # The tempo field is 24 bits: too slow overflows (> 0xFFFFFF), too
+        # fast UNDERFLOWS to zero (round(60e6/1e9) == 0) -- a 0 us/qn event
+        # is an infinite tempo that breaks parsers dividing by it. Raise
+        # before the try so the ValueError isn't flattened into False.
+        us_per_quarter = int(round(60_000_000 / tempo_bpm))
+        if not 1 <= us_per_quarter <= 0xFFFFFF:
+            raise ValueError(
+                f"tempo {tempo_bpm} BPM is not encodable in the MIDI "
+                f"24-bit us-per-quarter field (would be {us_per_quarter})")
         try:
             # Basic MIDI file structure
             midi_data = bytearray()
@@ -579,7 +588,6 @@ class MIDIAnalyzer:
 
             # Tempo meta event at tick 0 so the requested BPM reaches the
             # file instead of dying in the caller.
-            us_per_quarter = int(round(60_000_000 / tempo_bpm))
             track_data.extend(b'\x00\xff\x51\x03')
             track_data.extend(us_per_quarter.to_bytes(3, 'big'))
 

@@ -3069,9 +3069,14 @@ async def main():
             # isfinite first: NaN defeats `<= 0` (it's False) and inf makes
             # us-per-quarter 0 -- both reached the encoder as int(nan) errors.
             if not math.isfinite(args.tempo) \
-                    or args.tempo <= 0 or 60_000_000 / args.tempo > 0xFFFFFF:
+                    or args.tempo <= 0 or 60_000_000 / args.tempo > 0xFFFFFF \
+                    or 60_000_000 / args.tempo <= 0.5:
+                # Python's round-half-to-even makes round(0.5) == 0, so the
+                # boundary rejects too: <= 0.5 us/qn underflows to a zero
+                # tempo event -- an infinite tempo no parser can use.
                 print("Error: --tempo must be a finite positive BPM encodable "
-                      "in the MIDI 24-bit us-per-quarter field (>= ~3.6)",
+                      "in the MIDI 24-bit us-per-quarter field "
+                      "(~3.6 <= BPM <= 120,000,000)",
                       file=sys.stderr)
                 return ExitCode.INPUT
         if (args.length is not None
