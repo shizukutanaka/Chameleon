@@ -2435,6 +2435,19 @@ match its effect. All five mutating ops now check `mask.any()` before
 saving state and return False on an empty selection
 (`tests/test_empty_selection.py`).
 
+**Q: Does `if not samples:` mean "no samples"?**
+A (2026-09-20): For a list, yes; for the ndarray every caller actually
+passes (`load_wav` returns ndarrays), it raises
+`ValueError: truth value of an array ... is ambiguous`. Every exported
+bs1770 meter that guarded its input that way --
+`measure_integrated_loudness`, `measure_integrated_loudness_multichannel`,
+`_ungated_window_lufs` (momentary/short-term/max-*/LRA), `measure_true_peak`,
+`measure_true_peak_multichannel` -- crashed on its most natural input
+dtype. Only tests passed, because tests alone called the mono meter, and
+called it with `tone.tolist()`. A guard written for one Sequence flavor
+silently breaks the other; `len(...) == 0` means what it says for both
+(`tests/test_loudness_ndarray_input.py`).
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
