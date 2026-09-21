@@ -2274,6 +2274,24 @@ json.loads accepts the literals NaN/Infinity by default, so a JSON config
 file can smuggle them into any "numeric" field. The check is
 isinstance(x, (int, float)) AND math.isfinite(x), in that order, before
 any range assertion.
+Q: After four cycles of probes, which verified-true behaviors are still
+   one refactor away from silently becoming false? What does an audit
+   owe a surface it cannot fault?
+A (2026-09-21): A pinning test. This cycle's CLI sweep found no new lie:
+   `midi extract` of a 440 Hz sine yields exactly A4 in the .mid
+   (note-on byte 0x45) and refuses noise instead of hallucinating
+   notes; `midi compose --key D --mode minor` emits only D-natural-minor
+   pitch classes; unsigned 8-bit PCM decodes correctly (peak 60/128, not
+   the raw-byte misread); `batch --recursive` descends only when asked;
+   `plugins audit --fail-fast` stops at the first FAILED verdict;
+   trimming all silence answers INPUT rather than emitting an empty
+   WAV; `--export` to an unwritable path answers INPUT with the errno;
+   `stream` on a bare install refuses with the right install hint;
+   `process` with multiple transforms writes one named artifact per
+   op. Each is now pinned by a characterization test -- today's truth,
+   CI-enforced against tomorrow's refactor. An audit that finds nothing
+   is not wasted motion: it converts "I checked" into "it cannot
+   silently change".
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
