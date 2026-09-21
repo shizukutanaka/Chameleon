@@ -487,6 +487,10 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- `convert --bit-depth 24` named its output after the *requested* depth,
+  so a numpy-only install (no soundfile) produced `x_converted_24bit.wav`
+  files containing 16-bit PCM. The filename and the dry-run `bit_depth`
+  field now report the depth `save_audio` will actually write.
 
 ### Changed
 

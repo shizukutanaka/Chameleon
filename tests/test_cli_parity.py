@@ -627,3 +627,31 @@ def test_direct_api_normalize_rejects_out_of_range_target_peak(tmp_path):
         output_dir=str(out_dir), target_peak=0.5)
     assert "error" not in results[0], results
     assert 0.49 < _peak(out_file) < 0.51
+
+
+@pytest.mark.skipif(not main.HAS_NUMPY, reason="convert needs numpy")
+def test_convert_output_name_reports_the_depth_actually_written(tmp_path, monkeypatch):
+    # save_audio writes the requested depth only through soundfile; without
+    # it the fallback emits 16-bit PCM. A name like tone_converted_24bit.wav
+    # containing 16-bit audio lies about its own bytes -- and propagates the
+    # lie into pipelines that parse the filename.
+    monkeypatch.setattr(main, "HAS_SOUNDFILE", False)
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    out_dir = tmp_path / "out"
+
+    result = main.AudioProcessor()._process_single_file(
+        str(wav), "convert", output_dir=str(out_dir), bit_depth=24)
+
+    out = Path(result["output"])
+    assert out.name == "tone_converted_16bit.wav"
+    assert result["bit_depth"] == 16
+    import wave as _w
+    with _w.open(str(out)) as handle:
+        assert handle.getsampwidth() * 8 == 16
+
+    # dry-run reports the depth a real run would write, not the request.
+    dry = main.AudioProcessor()._process_single_file(
+        str(wav), "convert", output_dir=str(out_dir), bit_depth=24,
+        dry_run=True)
+    assert dry["bit_depth"] == 16
+    assert dry["planned_output"].endswith("tone_converted_16bit.wav")

@@ -3252,3 +3252,18 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**2026-09-21 (Socratic audit 117, external-source pass):** Cross-checked the
+bit-depth conversion against the output contract. `save_audio` reports the
+depth actually written (16 when soundfile is absent and the fallback PCM
+writer runs) -- but the convert output FILENAME was minted before the write
+from the *requested* depth, so a numpy-only install produced
+`x_converted_24bit.wav` files containing 16-bit PCM (verified on-device:
+sampwidth=2 under the `numpy_only` config). The filename now uses the depth
+`save_audio` will actually write (`resolved_bit_depth if HAS_SOUNDFILE else
+16`), and dry-run's `bit_depth` field reports that same planned actual depth
+rather than the request. Verified honest: the collision-warning and
+re-ingestion warnings on batch `--output-dir`, the BS.1770 module (K-weighting
+biquads, two-stage gating, 20-LU LRA gate, Annex-2 oversampled true peak --
+all cross-checked and honestly labeled "estimate" where coefficients are
+generated), and batch `--dry-run` (returns planned outputs, writes nothing).
