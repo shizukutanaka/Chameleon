@@ -2798,6 +2798,28 @@ helper's job is to degrade — the moment a *display* layer can crash,
 every caller that logs or prints under failure inherits the crash at
 exactly the wrong moment.
 
+**Q: What does "B depends on A" actually promise — that B runs *after*
+A, or *because A succeeded*?**
+A (2026-09-20): Neither fully. `_execute_dag` called `mark_completed`
+on *any* finished task — a failed dependency released its dependents
+onto the wreckage (verified: B executed after A raised). Worse, a
+dependency cycle or a dep on a task id that doesn't exist left the task
+in `in_degree > 0` forever — the result set simply *omitted* it, so a
+workflow that returns without mentioning half its tasks reported
+success it never earned; the missing-dep phantom even crashed the
+scheduler on `task_map[dep]`. And `dep_graph`/`task_queue` were engine
+state across runs: a second workflow inherited the first's `completed`
+ids and silently dropped colliding tasks. Fixed: fresh graph/queue per
+run; a ready task whose dependency failed is recorded FAILED
+("Skipped: dependency 'X' failed") and its failure cascades; after the
+loop, every task absent from `results` is marked FAILED with
+"dependency cycle or missing dependency"
+(`tests/test_dag_failure_propagation.py`). General lesson: an edge in a
+dependency graph is a *success* precondition, not just an ordering —
+`mark_completed` must know the difference between finished and
+succeeded; and a result map that can silently omit a task has already
+lied.
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
