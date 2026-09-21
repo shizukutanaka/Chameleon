@@ -487,6 +487,13 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`secure_open` let write-capable modes bypass the hardened path** —
+  the write check was `"w" in mode or "a" in mode`, so `'r+'` opened
+  read-write through the *read* branch (no `O_NOFOLLOW`, no `0o600`),
+  `'x'` created files via plain `open()` unvalidated, and `'w+'` opened
+  `O_WRONLY` so its promised read-back raised `UnsupportedOperation`.
+  Modes are now mapped properly: `'+'` implies `O_RDWR`, `'r+'` keeps
+  no `O_CREAT`, and `w`/`a`/`x` map to `O_TRUNC`/`O_APPEND`/`O_EXCL`.
 
 ### Changed
 
