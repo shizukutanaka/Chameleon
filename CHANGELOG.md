@@ -487,6 +487,12 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`CHAMELEON_DEV_PASSWORD_HASH` had no documented, producible form** —
+  login compared unsalted `sha256(password)` hex while the only helper
+  (`hash_password`) returned salted PBKDF2 bytes that could never match.
+  Added `hash_password_for_env()` (salted `pbkdf2$sha256$iters$salt$hash`)
+  and `verify_dev_password()` which accepts that form plus the legacy
+  sha256 hex; formats documented in the API guide.
 
 ### Changed
 

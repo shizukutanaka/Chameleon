@@ -825,6 +825,47 @@ def hash_password(password: str, salt: bytes) -> bytes:
     return hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 100000)
 
 
+def hash_password_for_env(password: str, iterations: int = 100_000) -> str:
+    """Produce a value suitable for CHAMELEON_DEV_PASSWORD_HASH.
+
+    Returns the versioned, salted PBKDF2 form ``pbkdf2$sha256$<iterations>$
+    <salt_hex>$<hash_hex>``. A bare 64-hex sha256 digest also works (see
+    verify_dev_password) but is unsalted and weaker -- prefer this.
+    """
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac(
+        'sha256', password.encode(), salt, iterations)
+    return f"pbkdf2$sha256${iterations}${salt.hex()}${digest.hex()}"
+
+
+def verify_dev_password(password: str, stored: str) -> bool:
+    """Verify a password against CHAMELEON_DEV_PASSWORD_HASH.
+
+    Accepted forms:
+      * ``pbkdf2$sha256$<iterations>$<salt_hex>$<hash_hex>`` -- salted,
+        produced by hash_password_for_env().
+      * bare 64-hex sha256 digest of the password -- the legacy form. It
+        is unsalted; rotate to the pbkdf2 form when convenient.
+
+    Anything else (including the raw bytes repr from hash_password(),
+    which used to be the only documented-looking helper and could never
+    match) is rejected.
+    """
+    if stored.startswith("pbkdf2$"):
+        try:
+            _, algo, iterations, salt_hex, digest_hex = stored.split("$")
+            if algo != "sha256":
+                return False
+            computed = hashlib.pbkdf2_hmac(
+                'sha256', password.encode(),
+                bytes.fromhex(salt_hex), int(iterations))
+            return hmac.compare_digest(computed.hex(), digest_hex)
+        except (ValueError, TypeError):
+            return False
+    provided = hashlib.sha256(password.encode('utf-8')).hexdigest()
+    return hmac.compare_digest(provided, stored)
+
+
 def verify_token_signature(token: str, secret: str, expected_signature: str) -> bool:
     """Verify HMAC signature of token using constant time comparison."""
     if not token or not secret or not expected_signature:
@@ -1068,11 +1109,9 @@ async def login(request: AuthenticationRequest, http_request: Request):
                 error="Authentication unavailable"
             )
 
-        provided_hash = hashlib.sha256(request.password.encode('utf-8')).hexdigest()
-
         if not (
             hmac.compare_digest(request.username, _DEV_USERNAME)
-            and hmac.compare_digest(provided_hash, _DEV_PASSWORD_HASH)
+            and verify_dev_password(request.password, _DEV_PASSWORD_HASH)
         ):
             log_audit_event(
                 request.username,

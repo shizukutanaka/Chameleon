@@ -28,6 +28,10 @@ Content-Type: application/json
 
 - **レスポンス**: 成功時は `token` と `expires_at` を返します。
 - 失敗時は `success: false` と `error` メッセージを返します。
+- **資格情報**: `CHAMELEON_DEV_USERNAME` と `CHAMELEON_DEV_PASSWORD_HASH` 環境変数で設定します。パスワードハッシュは次のいずれかの形式です:
+  - `pbkdf2$sha256$<iterations>$<salt_hex>$<hash_hex>` — 推奨（ソルト付き）。生成: `python -c "from api_server import hash_password_for_env; print(hash_password_for_env('your-password'))"`
+  - 64桁16進の SHA-256 ダイジェスト（レガシー互換、ソルトなし・弱い）。
+  その他の形式（`hash_password()` の生 bytes など）は一致せず、ログインは常に失敗します。
 
 ### 2.2 ログアウト
 

@@ -2471,3 +2471,15 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** `CHAMELEON_DEV_PASSWORD_HASH` -- can an
+operator produce a value that works?
+**A:** Not from anything the code offered. Login compared a bare
+`sha256(password)` hex, while the module's only helper `hash_password`
+returns salted PBKDF2 bytes that can never match -- and no doc told the
+operator which form was required. An operator following the obvious
+helper gets a deployment where login always fails. `verify_dev_password`
+now accepts the legacy sha256 hex AND a versioned salted
+`pbkdf2$sha256$<iters>$<salt>$<hash>` form produced by the new
+`hash_password_for_env`; the accepted formats are documented in
+api_documentation.md.

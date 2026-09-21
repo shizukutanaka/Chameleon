@@ -582,3 +582,19 @@ def test_audit_log_is_bounded():
     for i in range(cap + 50):
         api_server.log_audit_event("u", "OP", "res", "SUCCESS", "", "ip", "")
     assert len(api_server.api_state.audit_log) == cap
+
+
+def test_dev_password_verification_accepts_both_hash_forms():
+    # CHAMELEON_DEV_PASSWORD_HASH accepts a bare sha256 hex (legacy) or
+    # the salted pbkdf2$sha256$iters$salt$hash form from
+    # hash_password_for_env. Anything else must not authenticate.
+    import hashlib as _hashlib
+    sha = _hashlib.sha256(DEV_PASSWORD.encode()).hexdigest()
+    assert api_server.verify_dev_password(DEV_PASSWORD, sha)
+    assert not api_server.verify_dev_password("wrong", sha)
+    env_hash = api_server.hash_password_for_env(DEV_PASSWORD)
+    assert env_hash.startswith("pbkdf2$sha256$")
+    assert api_server.verify_dev_password(DEV_PASSWORD, env_hash)
+    assert not api_server.verify_dev_password("wrong", env_hash)
+    for bad in ("pbkdf2$md5$1$aa$bb", "pbkdf2$sha256$bad$xx$yy", "", "x"):
+        assert not api_server.verify_dev_password(DEV_PASSWORD, bad)
