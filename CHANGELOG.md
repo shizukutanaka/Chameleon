@@ -487,6 +487,22 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **The integrity gate's two checks were both broken in opposite
+  directions** — `EnhancedSecurityValidator._calculate_file_entropy`
+  called `p.bit_length()` on a float (a raw `AttributeError` escaped the
+  `OSError`/`IOError` guard for every non-empty file), and
+  `check_file_integrity`'s permission test `mode & 0o777 != mode` was
+  true for every regular file since `st_mode` carries file-type bits
+  above `0o777` — so every normal file was flagged suspicious while the
+  entropy check never ran at all. Shannon entropy is now computed via
+  `math.log2`, and the permission gate tests `mode & 0o7000` directly.
+- **RIFX (big-endian WAV) containers were recognized but parsed
+  little-endian** — `DeepFileInspector._validate_wav_structure` reported
+  a 40-byte RIFX as `declared_size=671 MB`, `format_tag=256`, and
+  "Missing data chunk" on a file that had one; the suspicious-content
+  region splitter's inflated chunk sizes likewise scanned the PCM payload
+  for markup patterns. All container-field parses now pick endianness
+  from the magic, and the metadata reports which it used.
 
 ### Changed
 
