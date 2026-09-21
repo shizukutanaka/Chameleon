@@ -3252,3 +3252,22 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21):** External reference check (SMF spec, mido/python-midi
+issue archives): our writer emits note_off explicitly rather than relying
+on running-status note_on-velocity-0, so the generator is conservative.
+But what happens when a *caller* hands generate_midi_file a note the
+format cannot express?
+**A:** Three silent-corruption paths. velocity > 127 reached the byte
+packer as a bare struct error (message said nothing about velocity).
+duration <= 0 produced note_off BEFORE note_on in the stream -- an
+inverted event pair inside a file reported as written successfully.
+Negative start_time silently collapsed its delta-time to 0 ticks
+(int(-x * tps) then the VLQ writer's <0 clamp). All four note fields
+(pitch, velocity, start_time, duration) are now validated in
+generate_midi_file before any event is emitted; a bad note returns
+False with a named reason instead of a corrupt file or a cryptic crash.
+Also verified honest this cycle: the WAV chunk walker skips LIST bodies
+atomically (a 'data' subchunk inside LIST/INFO is not misread as audio),
+zero-size chunks don't stall the walk, and an odd-size chunk missing its
+pad byte fails closed.
