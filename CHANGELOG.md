@@ -487,6 +487,10 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- PROJECT_STATUS §3 still listed `process_directory` as broken and §5
+  listed `audio_restoration` as unwired — both were fixed and wired long
+  ago. PRODUCT_ANALYSIS §4 duplicated the header test counts again
+  (324/365/454 vs the real 464/545/650).
 
 ### Changed
 

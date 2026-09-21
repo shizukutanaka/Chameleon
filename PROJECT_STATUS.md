@@ -104,12 +104,10 @@ end-to-end — recommend a maintainer run `docker build .` once to confirm).
 
 ## 3. Known-broken, deliberately left alone (recorded, not silently fixed)
 
-- **`BatchProcessor.process_directory` (sync)**: calls a nonexistent method,
-  `self._execute_operation`. Confirmed zero callers anywhere in the codebase
-  — only the async `process_directory_async` (via `core.batch_process_async`)
-  is actually used. Needs a decision: implement the sync method for parity,
-  or delete the dead one. Not fixed because it's new work outside whatever
-  task was in progress when it was found, not a one-line correction.
+- ~~**`BatchProcessor.process_directory` (sync)**~~ — **fixed** (commit
+  `a6101a3`, "make BatchProcessor's sync batch path actually work"):
+  `_execute_operation` exists and the sync path is exercised by
+  `tests/test_core_batch_deep_inspection.py`. Verified working 2026-09-21.
 - **`advanced_validation.py`'s `IntegrityVerifier`/`SanitizationEngine`**:
   real code, only reachable via `personal_config.py`, not wired into the
   default batch/load path. Left alone deliberately — security-affecting
@@ -165,16 +163,18 @@ is also covered by `tests/test_personal_config.py`. See CHARTER.md §9.
 
 ## 5. Deliberately kept as-is (real code, but a product-scope call, not a bug)
 
-Three more orphaned-but-real modules were reviewed and intentionally left
+Two orphaned-but-real modules were reviewed and intentionally left
 unwired rather than deleted or integrated, because integrating them is a
-product-scope decision, not a mechanical fix:
+product-scope decision, not a mechanical fix. (`audio_restoration.py` was
+the third — it has since been wired into `process`/`batch`, noted below.)
 
 - **`spectral_editor.py`**: a full interactive spectral editor (selection
   regions, undo, visualization) — larger surface than this CLI's batch-WAV
   job-to-be-done.
-- **`audio_restoration.py`**: real DSP (click/hum/clip repair) but imports
-  numpy/scipy unconditionally (would need the same stdlib-install guard fix
-  as other modules before it could ship) and needs a new CLI subcommand.
+- ~~**`audio_restoration.py`**~~ — **now wired**: `process --dehum/--declip`
+  and `batch <dir> restore` route through `AudioProcessor.repair_audio`
+  (main.py `RESTORATION_REPAIRS`), with `_require_restoration_deps()` gating
+  numpy/scipy cleanly on bare installs. No longer orphaned.
 - **`batch_automation.py`**: a genuine DAG/scheduler engine, but wiring a
   generic task-orchestration framework into a "dependency-light auditable
   CLI" risks the exact "second product" scope creep CHARTER §4 forbids.
