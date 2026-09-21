@@ -3,8 +3,8 @@
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
 **Version:** 1.1.0 · **Tests:** re-run 2026-09-20 on Python 3.12, green in
 all three configurations — **577 passed** on a bare install (stdlib only,
-49 skipped), **685** with numpy (scipy/librosa/soundfile blocked, 44
-skipped), **804** with numpy + scipy + librosa + soundfile + fastapi
+50 skipped), **703** with numpy (scipy/librosa/soundfile blocked, 44
+skipped), **822** with numpy + scipy + librosa + soundfile + fastapi
 (5 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
@@ -388,6 +388,7 @@ here because they need a user decision first.
 | ~~P3~~ | ~~`ux_improvements` display layer — ragged table rows crashed (`IndexError`) or misaligned; `format_duration(nan)` → `ValueError`; `format_file_size(nan)` → "nan PB"~~ | Low | XS | Med | **DONE 2026-09-20** — rows normalized to header count, non-finite/negative → "unknown" (`tests/test_ux_formatting_edges.py`) |
 | ~~P1~~ | ~~`_execute_dag` ran dependents of *failed* tasks (mark_completed fired on any finish); dependency cycles/missing deps silently omitted tasks from results; engine state leaked across workflows~~ | High | S | High | **DONE 2026-09-20** — failed dep → dependent FAILED + cascade; unreachable tasks marked FAILED; fresh graph/queue per run (`tests/test_dag_failure_propagation.py`) |
 | ~~P2~~ | ~~`TaskQueue.remove_task` deleted from task_map but left the queued entry — next `get_task` popped the removed task and crashed `KeyError`~~ | Med | XS | Med | **DONE 2026-09-20** — tombstone set honoured at pop (`tests/test_task_queue_remove.py`) |
+| ~~P2~~ | ~~`Limiter` delay-line: zero prefix + dropped tail every call, previous buffer's audio emitted as next buffer's head; `Compressor` envelope leaked across calls; `ratio=0`/`release≈0`/NaN configs crashed or polluted~~ | High | M | Med | **DONE 2026-09-20** — forward-window lookahead, per-call state reset, config validation (`tests/test_processor_state_reset.py`) |
 | P4 | Plugin sandbox runtime boundary (restricted builtins for `exec_module`) | High (security) | L | High | Architectural; leaky if done partially — design first |
 | P4 | Surround-channel loudness weighting | Low | M | Low | Only if a real multichannel use case appears |
 
