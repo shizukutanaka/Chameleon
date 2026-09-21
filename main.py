@@ -1203,17 +1203,34 @@ class AudioProcessor:
         # outside the band alone.
         if "eq" in effects and HAS_SCIPY and HAS_MASTERING_CHAIN:
             eq_params = effects["eq"]
-            for band in eq_params:
-                freq = band["frequency"]
-                gain = band["gain"]
+            for idx, band in enumerate(eq_params):
+                # The JSON path validates these in _load_effects, but
+                # apply_effects is also reached directly (process_stream,
+                # batch kwargs, library use). A non-finite gain poisoned the
+                # whole output with NaN; freq<=0 slipped between the two
+                # branches below and was silently skipped.
+                for key in ("frequency", "gain"):
+                    value = band.get(key)
+                    if not isinstance(value, (int, float)) or not math.isfinite(value):
+                        raise ValueError(
+                            f"eq band #{idx}: '{key}' must be a finite number, "
+                            f"got {value!r}")
+                freq, gain = band["frequency"], band["gain"]
                 q = band.get("q", 1.0)
+                if not isinstance(q, (int, float)) or not math.isfinite(q) or q <= 0:
+                    raise ValueError(
+                        f"eq band #{idx}: 'q' must be a positive finite number, "
+                        f"got {q!r}")
+                if freq <= 0:
+                    raise ValueError(
+                        f"eq band #{idx}: 'frequency' must be positive, got {freq}")
 
-                if 0 < freq < sr / 2:
+                if freq < sr / 2:
                     b, a = mastering_chain.design_peaking_eq(freq, sr, gain, q)
                     # Single forward pass: filtfilt would apply the response
                     # twice and double the requested dB gain.
                     processed = signal.lfilter(b, a, processed)
-                elif freq >= sr / 2:
+                else:
                     # A band above Nyquist cannot be represented; skipping it
                     # silently would report "Processed" for a no-op band.
                     print(f"Warning: eq band at {freq} Hz exceeds Nyquist "
@@ -1224,6 +1241,18 @@ class AudioProcessor:
             reverb_params = effects["reverb"]
             room_size = reverb_params.get("room_size", 0.5)
             wet = reverb_params.get("wet", 0.3)
+
+            # wet is a blend ratio: outside [0, 1] it extrapolates (wet=1.5
+            # is dry*(-0.5) + wet*1.5 -- a phase-flipped mix that also
+            # clipped: measured 2.2x input peak on a 0.5-amplitude sine).
+            if (not isinstance(room_size, (int, float)) or not math.isfinite(room_size)
+                    or room_size <= 0):
+                raise ValueError(
+                    f"reverb 'room_size' must be a positive finite number, got {room_size!r}")
+            if (not isinstance(wet, (int, float)) or not math.isfinite(wet)
+                    or not 0.0 <= wet <= 1.0):
+                raise ValueError(
+                    f"reverb 'wet' must be within [0, 1], got {wet!r}")
 
             # Synthetic exponentially-decaying noise impulse response -- not a
             # measured room. The generator is seeded so the same input yields

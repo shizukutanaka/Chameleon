@@ -472,6 +472,25 @@ class Compressor:
     """Professional audio compressor with advanced features"""
 
     def __init__(self, config: CompressorConfig, sample_rate: int = 44100):
+        for name in ("threshold", "ratio", "attack", "release", "knee",
+                     "makeup_gain"):
+            value = getattr(config, name)
+            if not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise ValueError(
+                    f"CompressorConfig.{name} must be a finite number, "
+                    f"got {value!r}")
+        if config.ratio < 1:
+            raise ValueError(
+                f"CompressorConfig.ratio must be >= 1 (below 1 is expansion, "
+                f"not compression), got {config.ratio}")
+        for name in ("attack", "release", "knee"):
+            if getattr(config, name) < 0:
+                raise ValueError(
+                    f"CompressorConfig.{name} must be >= 0, "
+                    f"got {getattr(config, name)}")
+        if sample_rate <= 0:
+            raise ValueError(f"sample_rate must be positive, got {sample_rate}")
+
         self.config = config
         self.sample_rate = sample_rate
 
