@@ -487,6 +487,17 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`save_audio` wrote NaN samples silently** — the over-range warning
+  counted `|x| > 1.0` but not NaN (NaN comparisons are False), so NaN
+  passed `np.clip` unchanged and was written as 0 with no warning. The
+  count now covers all non-finite samples, and `np.nan_to_num` makes the
+  written values deterministic (NaN -> 0, +-inf -> +-1).
+- **`SecurityValidator.sanitize_filename` passed `..` and `.` through
+  unchanged** -- dots are legal characters but `..` is not a legal
+  filename component: joined onto a directory it resolves to the parent.
+  Both built-in callers were incidentally safe (upload names get a
+  `uuid_` prefix, downloads require prior registration), but the
+  sanitizer's contract was a lie. Both now map to `untitled`.
 
 ### Changed
 

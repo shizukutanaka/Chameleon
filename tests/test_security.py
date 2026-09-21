@@ -303,6 +303,15 @@ class TestSanitizeFilename:
     def test_empty_name_falls_back_to_untitled(self):
         assert SecurityValidator.sanitize_filename("") == "untitled"
 
+    def test_dot_components_cannot_survive_sanitization(self):
+        # '.' and '..' contain only legal characters but are not legal
+        # components -- joined onto a directory they resolve to it or
+        # its parent.
+        assert SecurityValidator.sanitize_filename("..") == "untitled"
+        assert SecurityValidator.sanitize_filename(".") == "untitled"
+        # Names merely containing dots stay untouched.
+        assert SecurityValidator.sanitize_filename("a..wav") == "a..wav"
+
 
 class TestSecurityConfigFromEnvironment:
     def test_invalid_max_file_size_falls_back_to_default(self, monkeypatch):

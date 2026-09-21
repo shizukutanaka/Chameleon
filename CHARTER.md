@@ -2471,3 +2471,19 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, audit 40): Can dangerous content survive
+sanitize_filename / the WAV writer?**
+**A:** Two small honesty gaps, both fixed. (1) sanitize_filename('..')
+returned '..' -- dots are legal characters but '..' is not a legal
+*component*: joined onto a directory it resolves to the parent. Both
+current callers happened to be safe (upload prefixes uuid_; download
+requires prior registration), but the sanitizer's contract was a lie.
+'.' and '..' now map to 'untitled'. (2) save_audio's over-range warning
+counted |x|>1.0 but not NaN -- NaN passed np.clip unchanged and wrote
+as 0 with no warning. The count now includes all non-finite samples
+and nan_to_num makes the write deterministic (nan->0, +-inf->+-1).
+Verified honest: write path validates the path, warns on unsupported
+bit depth and falls back to 16, empty audio writes a valid empty WAV,
+(2,N) stereo writes correctly, sanitize_filename truncates at 255
+keeping the extension.

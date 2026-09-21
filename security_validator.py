@@ -298,6 +298,10 @@ class SecurityValidator:
         if len(sanitized) > 255:
             name, ext = os.path.splitext(sanitized)
             sanitized = name[:255 - len(ext)] + ext
+        # '.' and '..' are legal characters but not legal *components* --
+        # joined onto a directory they resolve to it or its parent.
+        if sanitized in ('.', '..'):
+            return 'untitled'
         return sanitized or "untitled"
 
     @_hybridmethod

@@ -2013,16 +2013,20 @@ class AudioProcessor:
         if audio.dtype != np.float32:
             audio = audio.astype(np.float32)
 
-        # Values beyond [-1, 1] hard-clip on int PCM write -- report the
-        # count so an overdriven effects chain surfaces as a warning
-        # instead of silent distortion.
-        over = int(np.count_nonzero(np.abs(audio) > 1.0))
+        # Values beyond [-1, 1] hard-clip on int PCM write, and non-finite
+        # samples (NaN/inf) cannot be represented at all -- report the
+        # count so an overdriven or NaN-producing effects chain surfaces
+        # as a warning instead of silent distortion.
+        over = int(np.count_nonzero(~np.isfinite(audio)
+                                    | (np.abs(audio) > 1.0)))
         if over and self.logger:
             self.logger.warning(
-                "%d samples exceed [-1, 1] and will hard-clip on write to %s",
+                "%d samples exceed [-1, 1] or are non-finite and will "
+                "hard-clip/sanitize on write to %s",
                 over, file_path,
             )
-        audio = np.clip(audio, -1.0, 1.0)
+        audio = np.nan_to_num(np.clip(audio, -1.0, 1.0),
+                              nan=0.0, posinf=1.0, neginf=-1.0)
 
         target_bit_depth = bit_depth if bit_depth in {16, 24, 32} else 16
         if bit_depth not in {16, 24, 32} and self.logger:
