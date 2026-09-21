@@ -2522,6 +2522,20 @@ served nothing -- the same class as the import-time
 still applies to directories that already exist
 (`tests/test_plugins_no_mkdir.py`).
 
+**Q: When does `midi compose --length N` actually stop generating?**
+A (2026-09-20): Now at `min(N, last_chord_end)` — it used to never stop.
+`generate_melody` emitted notes only where a chord covered
+`current_time`; past the last chord every iteration produced nothing,
+so `--length 2000000000` was a genuine unbounded spin (2 billion
+iterations that emit nothing) — and even at sane values the reported
+"melody length" exceeded the actual note span. The generator now stops
+at the progression's end, and the CLI prints a stderr note when the
+requested `--length` exceeds it instead of silently short-capping
+(`tests/test_compose_length_bound.py`). The general lesson: a loop
+whose body can emit nothing must prove termination by something other
+than "the counter increments" — bound it by the data it consumes
+(the chord list), not by the user's requested duration.
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
