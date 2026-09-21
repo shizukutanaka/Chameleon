@@ -3252,3 +3252,20 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21):** `midi compose --tempo` is documented as a BPM for the
+output file's tempo meta event. What does the CLI emit when the requested
+tempo can't be represented in the 24-bit us-per-quarter field -- and does
+the answer differ between "too slow" and "too fast"?
+**A:** Too slow was already an honest refusal; too fast was a silent lie.
+The us/qn field is 24-bit: `tempo < ~3.6` overflowed it and was rejected,
+but `tempo 1e9` was accepted and wrote `round(60e6/1e9) = 0` -- a zero
+tempo event, i.e. *infinite* tempo, which breaks any player/parser that
+divides by it. Worse, the upper boundary couldn't even agree with itself:
+`--tempo 120000000` passed the CLI gate (`60e6/1.2e8 = 0.5`) and then the
+writer rejected it, because Python's round-half-even turns 0.5 into 0.
+Both layers now enforce the same contract: `us_per_quarter` must be in
+[1, 0xFFFFFF] -- the CLI reports INPUT(3) naming the encodable range
+(~3.6 <= BPM <= 120,000,000), and `generate_midi_file` raises the same
+constraint for library callers (before its catch-all, so it isn't
+flattened into False).
