@@ -294,8 +294,14 @@ def _load_effects(effects_path: str) -> Dict[str, Any]:
                             f"got {params[key]}"
                         )
         if name not in known:
-            print(f"Warning: unknown effect '{name}' in effects file will be ignored "
-                  f"(known effects: {', '.join(sorted(known))})", file=sys.stderr)
+            # An unknown effect name is almost always a typo, and proceeding
+            # writes a "_processed" file containing none of what was asked --
+            # apply_effects' own contract is to raise in exactly this case
+            # (same class as BatchJobRequest rejecting unknown option keys).
+            raise ValueError(
+                f"Unknown effect '{name}' in effects file "
+                f"(known effects: {', '.join(sorted(known))})"
+            )
 
     return effects
 
