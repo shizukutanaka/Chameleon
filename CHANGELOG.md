@@ -487,6 +487,19 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **Output writes were non-atomic and silently clobbered** — every WAV
+  writer funnelled through `open_secure`'s O_TRUNC path or a bare
+  `sf.write`, so a crash mid-render left a truncated file replacing the
+  previous good output, and re-running `process` overwrote an existing
+  result with no diagnostic (ffmpeg prompts; this did neither). All WAV
+  write sites now go through `open_secure_atomic` (sibling temp file,
+  `os.replace` on clean close, temp removed and destination preserved on
+  failure), the soundfile path writes its temp with an explicit
+  `format='WAV'`, and `_resolve_output_path` warns before overwriting an
+  existing destination.
+- **Silent overwrite of existing outputs** — `_resolve_output_path` now
+  logs "Overwriting existing file: …" when the resolved destination
+  already exists.
 
 ### Changed
 

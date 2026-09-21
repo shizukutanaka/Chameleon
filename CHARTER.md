@@ -3252,3 +3252,21 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** External convention (ffmpeg prompts before
+overwrite, every serious writer temp+renames) -- when `process` writes its
+output over a path that already holds a finished file, or dies mid-write,
+what survives?
+**A:** Before this fix: the truncate happened first and the bytes after.
+Every WAV write funnelled through `open_secure`/`secure_open`'s O_TRUNC
+path or a bare `sf.write`, so a crash mid-render left a truncated corpse
+in place of the previous output, and re-running a command silently
+replaced the prior result (verified: a pre-seeded output file was
+overwritten with zero diagnostics). Now every WAV writer goes through
+`open_secure_atomic` -- sibling temp file, `os.replace` on clean close,
+temp removed and destination preserved on failure; the soundfile path
+writes its temp with an explicit `format='WAV'` because the .tmp suffix
+carries no format hint (without it, sf.write failed and silently fell
+back to 16-bit). `_resolve_output_path` warns before clobbering an
+existing destination. Uploads were already honest -- `_persist_upload`
+unlinks partial files on failure -- verified, unchanged.

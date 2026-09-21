@@ -18,6 +18,7 @@ import sys
 import time
 import json
 import datetime
+import contextlib
 import struct
 import shutil
 import tempfile
@@ -159,6 +160,46 @@ def _paths_refer_to_same_file(input_path: str, output_path: str) -> bool:
         return os.path.samefile(input_path, output_path)
     except OSError:
         return False
+
+
+def open_secure_atomic(path: Union[str, Path], mode: str = "wb", *, encoding: Optional[str] = None):
+    """open_secure that lands atomically: writes go to a sibling temp file,
+    renamed over the destination on clean close.
+
+    Truncate-then-write turns an interrupted render into a corrupt file
+    *replacing* whatever previously sat at the path -- ffmpeg/sox-style
+    crash safety means the destination is only swapped in once the bytes
+    are complete. On exception the temp file is removed and the previous
+    destination is untouched.
+    """
+
+    target = Path(path)
+    # mkstemp for uniqueness: two tasks writing 'same_normalized.wav' outputs
+    # in one batch must not share the temp name.
+    fd, tmp_name = tempfile.mkstemp(dir=target.parent,
+                                    prefix=f".{target.name}.", suffix=".tmp")
+    os.close(fd)
+    tmp = Path(tmp_name)
+
+    @contextlib.contextmanager
+    def _atomic():
+        f = open_secure(tmp, mode, encoding=encoding)
+        try:
+            yield f
+            f.close()
+            os.replace(tmp, target)
+        except BaseException:
+            try:
+                f.close()
+            except Exception:
+                pass
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+            raise
+
+    return _atomic()
 
 
 @dataclass
@@ -1138,7 +1179,7 @@ class WAVProcessor:
         # size fields written up front are exact.
         new_data_size = (info.data_size // frame_size) * frame_size
 
-        with open(input_path, 'rb') as src, open_secure(output_path, 'wb') as dst:
+        with open(input_path, 'rb') as src, open_secure_atomic(output_path, 'wb') as dst:
             self._copy_patched_header(src, dst, info, new_data_size)
 
             processed_samples = 0
@@ -1198,7 +1239,7 @@ class WAVProcessor:
         frames = info.data_size // frame_size
         new_data_size = frames * bytes_per_sample
 
-        with open(input_path, 'rb') as src, open_secure(output_path, 'wb') as dst:
+        with open(input_path, 'rb') as src, open_secure_atomic(output_path, 'wb') as dst:
             self._copy_patched_header(src, dst, info, new_data_size, channels=1)
 
             to_consume = frames * frame_size
@@ -1319,7 +1360,7 @@ class WAVProcessor:
         new_data_size = min(sample_count * frame_size,
                             max(0, info.data_size - start_byte))
 
-        with open(input_path, 'rb') as src, open_secure(output_path, 'wb') as dst:
+        with open(input_path, 'rb') as src, open_secure_atomic(output_path, 'wb') as dst:
             self._copy_patched_header(src, dst, info, new_data_size)
 
             src.seek(info.data_offset + start_byte)
