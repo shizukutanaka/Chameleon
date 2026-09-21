@@ -26,6 +26,7 @@ import warnings
 import gc
 import contextlib
 import itertools
+import threading
 from pathlib import Path
 import asyncio
 from typing import Union, Optional, Dict, List, Any, Tuple, Callable, Iterator
@@ -403,24 +404,30 @@ class MemoryManager:
                 pass
 
 class PerformanceTracker:
-    """Lightweight performance tracking - Carmack style."""
+    """Lightweight performance tracking - Carmack style.
+
+    start_time is per-thread: process_directory_async drives one shared
+    AudioProcessor from run_in_executor worker threads, and a single
+    shared start_time made every thread report the last starter's
+    duration (or 0 when an interleaved end() had already cleared it)."""
 
     def __init__(self):
-        self.start_time = 0
+        self._local = threading.local()
         self.operations = {}
 
     def start(self):
         """Start timing."""
-        self.start_time = time.perf_counter()
+        self._local.start_time = time.perf_counter()
 
     def end(self, operation: str = "operation") -> int:
         """End timing, return milliseconds."""
-        if self.start_time == 0:
+        start_time = getattr(self._local, "start_time", 0)
+        if start_time == 0:
             return 0
 
-        duration_ms = int((time.perf_counter() - self.start_time) * 1000)
+        duration_ms = int((time.perf_counter() - start_time) * 1000)
         self.operations[operation] = duration_ms
-        self.start_time = 0
+        self._local.start_time = 0
         return duration_ms
 
     def record(self, operation: str, duration_ms: int):
