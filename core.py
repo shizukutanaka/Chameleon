@@ -463,6 +463,18 @@ class WAVProcessor:
         self.perf = PerformanceTracker()
         self.memory_manager = MemoryManager()
         self.logger = logging.getLogger(__name__)
+        # Per-call rejection reason must be thread-local: a shared WAVProcessor
+        # is used by every worker under batch --parallel, and a plain attribute
+        # would let one thread's failure carry another's message.
+        self._local = threading.local()
+
+    @property
+    def _header_rejection_reason(self) -> Optional[str]:
+        return getattr(self._local, "header_rejection_reason", None)
+
+    @_header_rejection_reason.setter
+    def _header_rejection_reason(self, value: Optional[str]) -> None:
+        self._local.header_rejection_reason = value
 
     @staticmethod
     def _decode_sample_bytes(sample_bytes: bytes, bit_depth: int) -> Optional[int]:
