@@ -2483,6 +2483,20 @@ announced with another file's reason or the generic fallback. Same
 shape as `PerformanceTracker.start_time`; same fix -- the field is
 `threading.local` (`tests/test_header_reason_isolation.py`).
 
+**Q: What does a sample-count cap protect?**
+A (2026-09-20): Nothing -- memory was already bounded by chunked reads,
+work was already bounded by `data_size`, and the data in between was
+real audio. `_calculate_levels_safe` silently stopped reading after 1M
+channel-samples (~5.7s stereo): a peak anywhere later in the file was
+invisible, so `normalize` computed gain from a prefix and could clip the
+peak it never saw. `_apply_gain_safe` then hard-failed at 10M
+channel-samples ("possible corruption") -- any stereo song longer than
+~113 seconds, well under the declared 500MB size limit. Meanwhile
+`_convert_to_mono` had no cap at all, so the "safety" rationale was
+incoherent between sibling transforms. A limit that doesn't bound a
+real resource is not protection; it's a wrong answer with better
+marketing. Both caps removed (`tests/test_full_file_processing.py`).
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
