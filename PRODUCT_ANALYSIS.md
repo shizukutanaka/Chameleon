@@ -358,6 +358,7 @@ here because they need a user decision first.
 | ~~P2~~ | ~~Shared `PerformanceTracker.start_time` raced under parallel batch — every file reported the last starter's duration (or 0)~~ | Low | XS | Med | **DONE 2026-09-20** — `start_time` is `threading.local()` (`tests/test_perf_tracker.py`) |
 | ~~P2~~ | ~~`save_audio` fallback wrote RIFF WAV under a foreign suffix (`output_path="out.mp3"`)~~ | Med | XS | Low | **DONE 2026-09-20** — fallback restricted to `""`/`.wav`/`.wave` destinations, else `ValueError` (`tests/test_output_integrity.py`) |
 | ~~P3~~ | ~~`BatchProcessor` pre-flight accepted `target_peak=0`/`threshold∈{0,1}` that every per-file op then rejected~~ | Low | XS | Low | **DONE 2026-09-20** — gate now uses the ops' ranges `(0,1]` / `(0,1)`, matching CLI + API (`tests/test_batch_param_bounds.py`) |
+| ~~P1~~ | ~~`CHAMELEON_TRUSTED_ROOTS` silently inert: core's singleton used a bare `SecurityConfig()` (empty roots), and `batch`/`--export`/`midi --output` skipped containment entirely~~ | High | S | High | **DONE 2026-09-20** — singleton reads `from_environment()`; `batch` input dir goes through `validate_directory` (SECURITY), `--export`/`midi --output` through `validate_path` (`tests/test_trusted_roots.py`) |
 | P4 | Plugin sandbox runtime boundary (restricted builtins for `exec_module`) | High (security) | L | High | Architectural; leaky if done partially — design first |
 | P4 | Surround-channel loudness weighting | Low | M | Low | Only if a real multichannel use case appears |
 

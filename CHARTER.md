@@ -2411,6 +2411,19 @@ CLI (`0 < peak <= 1`, `0 < threshold < 1`) and the API validator `(0,
 1.0]` already enforced the ops' real ranges; the gate now matches them
 (`tests/test_batch_param_bounds.py`).
 
+**Q: Is `CHAMELEON_TRUSTED_ROOTS` actually enforced?**
+A (2026-09-20): Only where the call site happened to spell it right. The
+module-level `security_validator = SecurityValidator(SecurityConfig())`
+carried an explicit bare config -- empty roots, default size -- while
+class-level `SecurityValidator.validate_path(...)` resolved through the
+env-aware `_default()` instance. The same named policy applied or not by
+spelling: `batch`'s input directory was never containment-checked, and
+`analyze --export` / `midi --output` had no `validate_path` at all --
+each wrote outside the declared boundary. The singleton now reads
+`from_environment()`; `batch` runs `validate_directory` on its input
+dir (SECURITY exit), and export/midi-output pass `validate_path` like
+every other write (`tests/test_trusted_roots.py`).
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
