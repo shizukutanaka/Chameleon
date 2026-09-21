@@ -465,6 +465,7 @@
   like `Bb` accepted, unknown keys rejected as INPUT), and `compose`
   uses a real minor-mode progression (i-v-VI-iv) under `--mode minor`
   so chord tones stay inside the requested scale.
+<<<<<<< HEAD
 - **`core.batch_process_async` silently returned a different contract than
   the documented batch API** — the README advertises "one ProcessingResult
   per file, plus a trailing batch-summary result", but the asyncio variant
@@ -487,6 +488,20 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+||||||| parent of 109a1d49 (core: stop 'import core' from creating ~/.chameleon_state)
+=======
+- **`import core` created `~/.chameleon_state` in the user's home** — the
+  module-level `_batch_processor = BatchProcessor()` constructed
+  `StateRecoveryManager` at import time, whose `__init__` mkdir'd the
+  state directory: a filesystem side effect inside a library import.
+  `_batch_processor` is now built lazily on first use and the manager
+  defers `mkdir` to `record_state`. Bonus: the test suite no longer drops
+  ~2.8MB state snapshots into the developer's real HOME on every run.
+- **`StateRecoveryManager` advertised "recovery" that nothing
+  implements** — `load_last_state` has zero callers; the files were
+  write-only. Docstring now says diagnostic snapshots, not automatic
+  resume.
+>>>>>>> 109a1d49 (core: stop 'import core' from creating ~/.chameleon_state)
 
 ### Changed
 
