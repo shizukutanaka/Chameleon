@@ -407,11 +407,22 @@ class ParametricEQ:
         """Add EQ band"""
         if not HAS_SCIPY:
             return
+        if self.sample_rate <= 0:
+            return
 
         nyquist = self.sample_rate / 2
-        freq_norm = band.frequency / nyquist
+        try:
+            freq_norm = band.frequency / nyquist
+        except (TypeError, ZeroDivisionError):
+            return
 
-        if freq_norm >= 1.0:
+        # NaN slips the old `freq_norm >= 1.0` guard (NaN comparisons are
+        # all False) and designs an all-NaN biquad whose application turns
+        # the entire signal NaN. Reject non-finite and out-of-(0, Nyquist)
+        # frequencies the same way: skip the band.
+        if not (math.isfinite(freq_norm) and 0.0 < freq_norm < 1.0):
+            return
+        if not math.isfinite(band.gain):
             return
 
         # Bell and shelving bands use RBJ biquads, whose coefficients already
@@ -423,7 +434,11 @@ class ParametricEQ:
             if abs(band.gain) > 0.1:  # Only add if significant gain
                 b, a = design_peaking_eq(band.frequency, self.sample_rate,
                                          band.gain, band.q_factor)
-                self.filters.append((b, a, band.filter_type))
+                # An extreme but finite gain (e.g. 10^6 dB) yields
+                # non-finite coefficients; never register a filter that
+                # would poison the signal.
+                if all(math.isfinite(c) for c in b + a):
+                    self.filters.append((b, a, band.filter_type))
 
         elif band.filter_type == "highpass":
             b, a = signal.butter(2, freq_norm, 'high')
@@ -437,13 +452,15 @@ class ParametricEQ:
             if abs(band.gain) > 0.1:
                 b, a = design_shelf_eq(band.frequency, self.sample_rate,
                                        band.gain, high=True)
-                self.filters.append((b, a, band.filter_type))
+                if all(math.isfinite(c) for c in b + a):
+                    self.filters.append((b, a, band.filter_type))
 
         elif band.filter_type == "lowshelf":
             if abs(band.gain) > 0.1:
                 b, a = design_shelf_eq(band.frequency, self.sample_rate,
                                        band.gain, high=False)
-                self.filters.append((b, a, band.filter_type))
+                if all(math.isfinite(c) for c in b + a):
+                    self.filters.append((b, a, band.filter_type))
 
     def process(self, audio: np.ndarray) -> np.ndarray:
         """Apply EQ to audio"""
