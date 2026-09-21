@@ -3252,3 +3252,17 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** The "deep" file inspector walks every
+chunk and detects "Missing data chunk" -- does a WAV with zero chunks
+fail its verdict?
+**A:** No -- until this cycle it did not. `_validate_wav_structure`
+wrote the error into metadata, but `inspect_file` computed
+`is_valid` from `errors` alone, so a 12-byte RIFF/WAVE stub reported
+is_valid=True while its own inspection had already named the defect.
+The structural error is now promoted into errors (and `metadata`
+still records it). `validate_for_processing` is unchanged on purpose:
+its docstring scopes `is_valid` to magic-number identification only.
+Also verified honest: the 8-bit unsigned decode/encode are symmetric,
+`generate_melody` returns [] on empty chords or zero length, and
+`process` refuses with USAGE when no operation flag is given.

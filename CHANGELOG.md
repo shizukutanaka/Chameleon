@@ -487,6 +487,13 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`DeepFileInspector.inspect_file` approved WAVs with no audio** —
+  `_validate_wav_structure` detected the missing `fmt`/`data` chunks
+  and wrote the error into metadata, but the verdict counted only
+  `errors`, so a 12-byte RIFF/WAVE stub returned `is_valid=True`.
+  Structural errors are now promoted into `errors` (`metadata` still
+  records them). `validate_for_processing` is unchanged: its documented
+  contract scopes `is_valid` to magic-number identification only.
 
 ### Changed
 

@@ -258,3 +258,17 @@ def test_sanitize_to_same_path_refuses_and_preserves_input(tmp_path):
     with _pt.raises(ValueError, match="same file"):
         SanitizationEngine.sanitize_wav_metadata(src, src)
     assert src.read_bytes() == before
+
+
+def test_inspect_file_rejects_wav_header_with_no_chunks(tmp_path):
+    """The deep inspector's verdict must reflect the structure it
+    detected: a RIFF/WAVE stub with no fmt or data chunk is not a
+    playable WAV, and _validate_wav_structure already writes the
+    "Missing data chunk" error into metadata -- but inspect_file used to
+    leave that in metadata while reporting is_valid=True."""
+    stub = tmp_path / "header_only.wav"
+    stub.write_bytes(b"RIFF" + struct.pack("<I", 4) + b"WAVE")
+
+    result = DeepFileInspector().inspect_file(stub)
+    assert result.is_valid is False
+    assert any("data" in e or "fmt" in e for e in result.errors)
