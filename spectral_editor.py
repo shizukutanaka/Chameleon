@@ -299,9 +299,12 @@ class SpectralEditor:
         """Delete spectral content in selection"""
         try:
             # Save current state for undo
-            self._save_state()
-
             mask = self.get_selection_mask(selection)
+            if not mask.any():
+                self.logger.error("%s selection is empty; nothing to do", "delete")
+                return False
+
+            self._save_state()
 
             if fade_edges and self.config.edge_smoothing:
                 # Apply smooth edges to avoid artifacts
@@ -374,9 +377,12 @@ class SpectralEditor:
                          gain_db: float = 6.0) -> bool:
         """Enhance (boost) spectral content in selection"""
         try:
-            self._save_state()
-
             mask = self.get_selection_mask(selection)
+            if not mask.any():
+                self.logger.error("%s selection is empty; nothing to do", "enhance")
+                return False
+
+            self._save_state()
             gain_linear = 10**(gain_db / 20)
 
             if self.config.edge_smoothing:
@@ -406,9 +412,12 @@ class SpectralEditor:
                               strength: float = 0.8) -> bool:
         """Apply noise reduction to selection using spectral subtraction"""
         try:
-            self._save_state()
-
             mask = self.get_selection_mask(selection)
+            if not mask.any():
+                self.logger.error("%s selection is empty; nothing to do", "noise-reduce")
+                return False
+
+            self._save_state()
 
             # Estimate noise from selection
             noise_stft = self.stft[mask]
@@ -440,9 +449,12 @@ class SpectralEditor:
                                   harmonic_strength: float = 0.5) -> bool:
         """Enhance harmonics in selection"""
         try:
-            self._save_state()
-
             mask = self.get_selection_mask(selection)
+            if not mask.any():
+                self.logger.error("%s selection is empty; nothing to do", "harmonic enhance")
+                return False
+
+            self._save_state()
 
             # Simple harmonic enhancement by boosting harmonic frequencies
             magnitude = np.abs(self.stft)
@@ -482,9 +494,12 @@ class SpectralEditor:
     def interpolate_selection(self, selection: SpectralSelection) -> bool:
         """Interpolate missing spectral content"""
         try:
-            self._save_state()
-
             mask = self.get_selection_mask(selection)
+            if not mask.any():
+                self.logger.error("%s selection is empty; nothing to do", "interpolate")
+                return False
+
+            self._save_state()
 
             if HAS_SCIPY:
                 # Use scipy for advanced interpolation
