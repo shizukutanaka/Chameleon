@@ -3252,3 +3252,16 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21):** A disk-pressure retry calls _cleanup_temp_files.
+What exactly does it delete, and what does ErrorAnalyzer call a
+rejected path?
+**A:** The cleanup globbed chameleon_* in the shared temp dir and wiped
+directories too -- including 'chameleon_state', the very
+StateRecoveryManager fallback that holds batch_state_*.json, so the
+recovery path could destroy the state it exists to protect (plus any
+user directory sharing the prefix). It now unlinks regular files only.
+And ErrorAnalyzer's ROOT_CAUSE_MAP knew MemoryError and TimeoutError but
+not SecurityError -- a deliberate path-validation rejection reported
+itself as root_cause='unknown_error', severity 'medium'. It reports
+'security_violation'/'high'.

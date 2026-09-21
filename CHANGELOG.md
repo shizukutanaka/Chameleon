@@ -487,6 +487,14 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **Disk-pressure recovery wiped its own state directory** —
+  `_cleanup_temp_files` emptied every `chameleon_*` directory in the
+  shared temp dir, including `chameleon_state`, the fallback holding
+  the `batch_state_*.json` files recovery exists to protect — plus any
+  user directory sharing the prefix. It now unlinks regular files only.
+- **`ErrorAnalyzer` reported `SecurityError` as 'unknown_error'** — a
+  deliberate path-validation rejection was diagnosed as an unknown
+  medium-severity failure instead of `security_violation`/`high`.
 
 ### Changed
 

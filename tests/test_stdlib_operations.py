@@ -229,3 +229,44 @@ def test_a_batch_of_mixed_channel_counts_all_succeeds(blocker_dir, tmp_path):
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "2/2" in result.stdout
+
+
+def test_cleanup_temp_files_never_empties_directories(tmp_path, monkeypatch):
+    """A disk-pressure retry used to wipe every 'chameleon_*' directory in
+    the shared temp dir -- including StateRecoveryManager's own fallback
+    'chameleon_state' holding the batch_state_*.json files recovery
+    relies on, plus any user directory with the same prefix."""
+    import tempfile
+    from core import RecoveryManager
+
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+    state = tmp_path / "chameleon_state"
+    state.mkdir()
+    (state / "batch_state_1.json").write_text("{}")
+    stray_dir = tmp_path / "chameleon_userdir"
+    stray_dir.mkdir()
+    (stray_dir / "keep.bin").write_bytes(b"x")
+    own_tmp = tmp_path / "chameleon_tmp_123"
+    own_tmp.write_bytes(b"partial output")
+    other = tmp_path / "unrelated.txt"
+    other.write_text("keep me")
+
+    RecoveryManager()._cleanup_temp_files()
+
+    assert not own_tmp.exists(), "plain chameleon_* temp file should be cleaned"
+    assert state.is_dir() and (state / "batch_state_1.json").exists(), (
+        "recovery wiped its own fallback state directory")
+    assert (stray_dir / "keep.bin").exists()
+    assert other.exists()
+
+
+def test_error_analyzer_names_security_violations():
+    """A SecurityError (path traversal rejected, etc.) used to report
+    root_cause='unknown_error' at severity 'medium' -- understating the
+    security layer's deliberate rejection."""
+    from core import ErrorAnalyzer
+    from security_validator import SecurityError
+
+    report = ErrorAnalyzer().analyze(SecurityError("path escapes root"))
+    assert report["root_cause"] == "security_violation"
+    assert report["severity"] == "high"
