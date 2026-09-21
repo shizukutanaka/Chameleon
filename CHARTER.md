@@ -2471,3 +2471,22 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, audit 31): Is `create_plugin_template`'s plugin_name
+sanitized before it becomes a filename?**
+**A:** No -- `PluginManager.create_plugin_template("../../evil_escape",
+"effect", dir)` joined the raw name into the output path and wrote
+`/evil_escape_plugin.py` outside the directory entirely (verified live:
+the file landed two levels up from the output dir). The loader already
+enforces `_NAME_PATTERN` on plugin *metadata* names for exactly this
+reason; the template writer just never applied it to its own input.
+`create_plugin_template` now validates plugin_name against the same
+`PluginLoader._NAME_PATTERN` and raises ValueError on traversal, empty,
+slash-containing, or dot-prefixed names -- legitimate names unchanged.
+Also verified honest this cycle: `TaskExecutor` honors per-task
+`timeout` via `future.result(timeout=...)` and records a TimeoutError
+result; `docs/en/performance_benchmarks.md` makes no fabricated numbers
+(its "streams in 64KB chunks" claim matches `_apply_gain_safe`'s actual
+loop); `docs/en/error_recovery.md`'s remaining env vars
+(CHAMELEON_TRUSTED_ROOTS, CHAMELEON_LOG_DIR, CHAMELEON_ALLOWED_ORIGINS)
+are all genuinely read.

@@ -743,6 +743,13 @@ class PluginManager:
 
     def create_plugin_template(self, plugin_name: str, category: str, output_dir: str = "plugins"):
         """Create a plugin template for development"""
+        # The name becomes a filename below; reuse the metadata-name rule so a
+        # traversal payload ("../../x") cannot escape output_dir.
+        if not PluginLoader._NAME_PATTERN.match(plugin_name or ""):
+            raise ValueError(
+                f"Invalid plugin name {plugin_name!r}: must match "
+                f"{PluginLoader._NAME_PATTERN.pattern}"
+            )
         template = self._generate_plugin_template(plugin_name, category)
 
         output_path = Path(output_dir) / f"{plugin_name.lower()}_plugin.py"
