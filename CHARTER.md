@@ -3252,3 +3252,18 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** `plugins audit` promises a per-file
+passed/errors verdict. A `.py` plugin that is not UTF-8, or contains a
+NUL byte, is neither valid syntax nor parseable -- what does the audit
+do with it?
+**A:** Before this fix: crashed the whole run. `_check_module_safety`
+only converted `SyntaxError` to `SecurityError`; `UnicodeDecodeError`
+(non-UTF-8 source) and `ValueError` (ast.parse's "source code string
+cannot contain null bytes") propagated out of the per-file loop, so one
+unreadable plugin aborted the audit with a bare "Error:" -- `plugins
+audit --json` emitted no JSON at all and exited 1 (generic ERROR, not
+SECURITY). Verified live. Read and parse failures are now both converted
+to `SecurityError`, so the audit records the file FAILED, keeps going,
+reports structured results, and exits SECURITY(4). The same conversion
+fixes `load_plugin`'s failure reason for such files.
