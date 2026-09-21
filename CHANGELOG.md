@@ -487,6 +487,9 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`detect_chords` hung forever on `window_size <= 0`** — the loop
+  advanced by `window_size / 2`, so a zero or negative window never
+  reached the end time. Non-positive sizes now raise `ValueError`.
 
 ### Changed
 

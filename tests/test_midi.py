@@ -1,3 +1,4 @@
+import pytest
 """Tests for MIDI musical analysis (chord and key detection)."""
 
 from midi_analysis import MIDIAnalyzer, MIDINote
@@ -459,3 +460,14 @@ def test_generate_melody_still_generates_for_valid_length():
     chord = Chord(root=0, chord_type="major", notes=[0, 4, 7],
                   start_time=0.0, duration=8.0)
     assert len(composer.generate_melody([chord], key, length=8.0)) == 16
+
+
+def test_detect_chords_rejects_nonpositive_window():
+    # window_size <= 0 made `current_time += window_size / 2` never
+    # advance: detect_chords hung forever on any non-empty note list.
+    from midi_analysis import MIDIAnalyzer, MIDINote
+    analyzer = MIDIAnalyzer()
+    note = MIDINote(pitch=60, start_time=0.0, duration=1.0, velocity=80)
+    for bad in (0.0, -1.0, -0.001):
+        with pytest.raises(ValueError, match="window_size"):
+            analyzer.detect_chords([note], window_size=bad)

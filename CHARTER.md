@@ -3252,3 +3252,8 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** `detect_chords` -- can a caller hang it?
+**A:** Yes -- `window_size <= 0` made `current_time += window_size / 2`
+never advance, so the while loop ran forever on any non-empty note list.
+Non-positive sizes now raise ValueError up front.
