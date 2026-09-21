@@ -489,3 +489,31 @@ def test_execute_with_limits_restores_memory_off_main_thread(monkeypatch):
     assert result == [42]
     assert (state.soft, state.hard) == (4 << 30, 8 << 30)
 
+
+
+def test_plugins_list_discovers_a_valid_plugin(tmp_path):
+    """Happy path: a plugin that passes the sandbox must be instantiated and
+    listed with its metadata -- otherwise 'no plugins discovered' hides the
+    success the command exists to report."""
+    import subprocess
+    import sys
+    main_py = str(Path(__file__).resolve().parent.parent / "main.py")
+
+    (tmp_path / "gain.py").write_text(
+        "from plugin_system import AudioEffectPlugin, PluginMetadata\n"
+        "class GainPlugin(AudioEffectPlugin):\n"
+        "    def get_metadata(self):\n"
+        "        return PluginMetadata(name='gain', version='1.0.0',\n"
+        "                              author='t', description='unity',\n"
+        "                              category='effect')\n"
+        "    def initialize(self, config): return True\n"
+        "    def cleanup(self): pass\n"
+        "    def process_audio(self, audio_data, sample_rate, **params):\n"
+        "        return audio_data\n")
+
+    out = subprocess.run(
+        [sys.executable, main_py, "plugins", "list",
+         "--directory", str(tmp_path)],
+        capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0, out.stderr
+    assert "gain" in out.stdout and "1.0.0" in out.stdout
