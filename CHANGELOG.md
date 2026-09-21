@@ -55,6 +55,12 @@
 
 ### Fixed
 
+- **Plugin scan/execute check-use window** -- `load_plugin` read the plugin
+  file three times (cache hash, AST safety scan, `exec_module`), so a file
+  swapped between the scan and execution would run unscanned code. The file
+  is now read once and the same bytes feed the hash, the scan, and
+  `compile()` + `exec()`. A regression test swaps the file mid-scan and
+  verifies the scanned version is what loads.
 - **`--convert-bit-depth 32` wrote an IEEE-float WAV that Chameleon
   itself cannot read** -- `save_audio` mapped bit depth 32 to
   soundfile's `FLOAT` subtype (format tag 3), so the converted artifact
