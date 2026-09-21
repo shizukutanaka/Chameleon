@@ -512,17 +512,29 @@ class SanitizationEngine:
 
                 # Only keep essential chunks
                 if chunk_id in KEEP_CHUNKS:
-                    outfile.write(chunk_header)
                     chunk_data = infile.read(chunk_size)
+                    # chunk_size is the file's claim; the bytes read are
+                    # the truth. A truncated final chunk must not be
+                    # copied forward as a size the output doesn't hold.
+                    actual_size = len(chunk_data)
+                    if actual_size != chunk_size:
+                        logger.warning(
+                            "Chunk %r declares %d bytes but only %d remain; "
+                            "writing the actual size", chunk_id,
+                            chunk_size, actual_size)
+                    outfile.write(chunk_id + struct.pack('<I', actual_size))
                     outfile.write(chunk_data)
-                    total_size += 8 + chunk_size
+                    total_size += 8 + actual_size
 
-                    # Pad to even boundary -- and consume the source's pad
-                    # byte too: leaving it unread makes the next header
-                    # start one byte early, desyncing the chunk walk the
-                    # same way an unconsumed pad on the skip path did.
+                    # Consume the source's pad byte: the source pads to
+                    # even on its declared size, so leaving it unread makes
+                    # the next header start one byte early and desyncs the
+                    # chunk walk the same way an unconsumed pad on the
+                    # skip path did.
                     if chunk_size % 2:
                         infile.read(1)
+                    # Pad the output to even on the size actually written.
+                    if actual_size % 2:
                         outfile.write(b'\x00')
                         total_size += 1
                 else:

@@ -3252,3 +3252,16 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, audit 46): Does the sanitizer tell the truth about
+sizes it copies forward?**
+**A:** No -- one defect fixed. SanitizationEngine.sanitize_wav_metadata
+copied a kept chunk's *claimed* size into both the chunk header and
+the RIFF total, so a truncated data chunk (claims 1 MB, holds 4 bytes)
+produced output declaring 1,000,044 bytes while containing 48. The
+claimed size is now replaced by the bytes actually read (with a
+warning), so the output's RIFF length matches its contents. DeepFile-
+Inspector's content scan was verified honest meanwhile: executable
+signatures only count at offset 0, text patterns only in non-data
+chunks, non-RIFF files get the whole prefix scanned. (The module is
+library-only -- no CLI calls sanitize_wav_metadata.)
