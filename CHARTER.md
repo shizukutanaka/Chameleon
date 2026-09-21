@@ -3252,3 +3252,15 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**2026-09-21 (Socratic audit 122, external-source pass):** validation_test.py --
+the script the gate itself trusts -- validated only its *own* helpers: its own
+WAV writer (circular), its own inline path-blocklist (never touching
+SecurityValidator), and a "core modules" test that imported only stdlib + pip
+packages, never `main`/`core`/`security_validator`. "The core Chameleon system
+is ready for use" was therefore unfounded -- the file imported zero Chameleon
+code. Rewritten to exercise the real product: WAVProcessor.analyze on its
+fixtures, BatchProcessor.process_directory, SecurityValidator containment +
+null-byte + missing-file contracts, and real module imports. Verified in both
+full and bare stdlib-only interpreters -- 6/6 pass where it genuinely means
+something now.
