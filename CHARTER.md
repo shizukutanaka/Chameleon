@@ -2766,6 +2766,24 @@ that is -inf in truth is fine — the defect is reaching it through a path
 that warns; and an entry-point guard beats N per-stage guards when every
 stage would fail on the same input.
 
+**Q: Do the "lightweight" spectral helpers meet the contracts their own
+module sets?**
+A (2026-09-20): Three did not. `sliding_window_rms([], n)` clamped
+`window_size` to `len(buffer)` = 0 and the loop divided `0/0` — a crash
+on the input every sibling (`normalize_peak`, `linear_resample`,
+`apply_spectral_mask`) returns `[]` for; empty now returns `[]` and
+non-integral window sizes (float, NaN) get a `ValueError` via
+`operator.index` instead of a `TypeError` deep in `range()`.
+`normalize_peak`/`apply_spectral_mask`/`linear_resample` had
+bare-comparison guards that NaN defeats — `target_peak=nan` scaled every
+sample to NaN; all three now require `math.isfinite` (the same defect
+family as round 13's `normalize`/`trim`, confirmed to still be finding
+homes). And `analyze_spectrum(max_peaks=-1)` evaluated `peaks[:-1]` —
+silently dropping the *strongest* peak; negative counts now raise
+(`tests/test_spectral_utils_edges.py`). General lesson: a slice bound is
+not a count bound — `xs[:n]` with negative `n` is a *filter*, not a
+limit, and it filters out exactly what you most wanted.
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
