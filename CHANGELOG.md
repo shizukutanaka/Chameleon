@@ -487,6 +487,10 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **Batch summaries double-counted failures** — a raised error appended
+  its analysis to `summary["errors"]` in the `except` block and again in
+  the result handler, inflating the list the service-degradation level
+  reads. Each failure is now recorded once.
 
 ### Changed
 

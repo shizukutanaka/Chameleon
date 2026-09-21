@@ -2471,3 +2471,11 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** `process_directory`'s error list -- is one
+failure one entry?
+**A:** No -- a raised failure appended its analysis to
+`summary["errors"]` in the except block AND again in the result handler
+(`"analysis" in result.data`), so every exception-path failure counted
+twice in the data the service-degradation level is computed from. The
+except block no longer appends; the result handler is the single funnel.

@@ -1702,7 +1702,8 @@ class BatchProcessor:
                     "operation": operation,
                     "analysis": analysis,
                 }
-                summary["errors"].append(analysis)
+                # summary["errors"] is appended once below in the result
+                # handling -- appending here too double-counted every failure.
 
             if result.message:
                 result.message = self._sanitize_message(result.message, Path(file_path))
