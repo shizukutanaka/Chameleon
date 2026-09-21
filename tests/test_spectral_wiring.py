@@ -214,3 +214,26 @@ def test_sliding_window_rms_values():
     assert spectral_utils.sliding_window_rms([2.0] * 8, 4) == [2.0] * 5
     # A window wider than the signal clamps to one full-length window.
     assert spectral_utils.sliding_window_rms([3.0, -3.0], 10) == [3.0]
+
+
+def test_apply_spectral_mask_rejects_nonpositive_sample_rate():
+    # apply_spectral_mask accepted sample_rate <= 0, which mis-mapped every
+    # bin to the low band (negative/zero bin_width) instead of failing.
+    for bad in (0, -44100):
+        try:
+            spectral_utils.apply_spectral_mask([0.1] * 64, bad)
+        except ValueError:
+            continue
+        raise AssertionError(f"sample_rate={bad} was silently accepted")
+
+
+def test_analyze_spectrum_rejects_negative_max_peaks():
+    # peaks[:max_peaks] with a negative count sliced from the end instead of
+    # being rejected -- max_peaks=-1 silently meant "all but the last peak".
+    src = [0.5 * math.sin(2 * math.pi * 440 * i / 44100) for i in range(2000)]
+    try:
+        spectral_utils.analyze_spectrum(src, 44100, max_peaks=-1)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("max_peaks=-1 was silently accepted")

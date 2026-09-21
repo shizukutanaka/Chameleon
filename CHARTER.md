@@ -3252,3 +3252,22 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** `spectral_utils.py` is the last un-audited
+numeric module (the bs1770 sweep found it clean). Its entry points validate
+`sample_rate` and `samples` -- do the scalar knobs that come after them get
+the same scrutiny?
+**A:** No -- two were accepted silently. `apply_spectral_mask` never checked
+`sample_rate`, so `sample_rate <= 0` produced a non-positive bin spacing
+and every bin mapped into the low band -- a real signal processed through
+a nonsense spectrum and returned as if filtered. `analyze_spectrum`
+checked `sample_rate` but not `max_peaks`, and `peaks[:-1]` is legal
+Python: `max_peaks=-1` meant "all but the smallest peak", `max_peaks=-100`
+meant "no peaks" -- neither raises, both lie. Both now raise `ValueError`,
+which is what `linear_resample`, `normalize_peak`, `sliding_window_rms`
+and the same file's own sample_rate check already did. The sibling
+functions were the spec; these two diverged from it. Verified honest this
+cycle: the BS.1770 module in full (K-weighting, two-stage gating, M/S/LRA
+windows, true-peak polyphase, channel-mask weighting, all documented
+limits stated where the code states them), plus `_to_float_sequence`'s
+TypeError contract and `linear_resample`/`normalize_peak` bounds.
