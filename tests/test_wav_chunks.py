@@ -186,3 +186,53 @@ def test_load_wav_basic_8bit_unsigned_offset(tmp_path):
     audio, sr = main.AudioProcessor()._load_wav_basic(str(wav))
     assert audio[0] == pytest.approx(0.0, abs=0.01)
     assert audio[2] == pytest.approx(-1.0, abs=0.01)
+
+
+def test_oversized_chunk_field_is_rejected(tmp_path):
+    # A JUNK chunk claiming 2 GiB in a tiny file used to be trusted; the
+    # parser now rejects chunk_size > file_size instead of seeking into
+    # the void.
+    import struct as st
+    blob = (b'RIFF' + st.pack('<I', 36) + b'WAVE'
+            + b'JUNK' + st.pack('<I', 0x7FFFFFFF) + b'x')
+    p = tmp_path / "huge.wav"
+    p.write_bytes(blob)
+    assert core.WAVProcessor()._read_wav_header(str(p)) is None
+
+
+def test_data_chunk_before_fmt_is_parsed(tmp_path):
+    # Legal but unusual ordering: the walk must not assume fmt precedes
+    # data.
+    import struct as st
+    fmt = st.pack('<HHIIHH', 1, 1, 8000, 16000, 2, 16)
+    body = (b'data' + st.pack('<I', 4) + b'\x00' * 4
+            + b'fmt ' + st.pack('<I', 16) + fmt)
+    blob = b'RIFF' + st.pack('<I', 4 + len(body)) + b'WAVE' + body
+    p = tmp_path / "datafirst.wav"
+    p.write_bytes(blob)
+    info = core.WAVProcessor()._read_wav_header(str(p))
+    assert info is not None and info.sample_rate == 8000
+    assert abs(info.duration - 4 / 16000) < 1e-6
+
+
+def test_separate_channels_interleave_is_exact(tmp_path):
+    # The per-channel decode must split interleaved frames, not just
+    # bound them.
+    import wave as wave_mod
+    p = tmp_path / "stereo.wav"
+    with wave_mod.open(str(p), 'wb') as w:
+        w.setnchannels(2)
+        w.setsampwidth(2)
+        w.setframerate(8000)
+        w.writeframes(b''.join(struct.pack('<hh', 1000, -2000)
+                               for _ in range(500)))
+    proc = core.WAVProcessor()
+    r = proc.get_samples_for_analysis(str(p), max_samples=100,
+                                      separate_channels=True)
+    ch = r.data["channels"]
+    assert [len(c) for c in ch] == [100, 100]
+    assert ch[0][0] == pytest.approx(1000 / 32768)
+    assert ch[1][0] == pytest.approx(-2000 / 32768)
+    mono = proc.get_samples_for_analysis(str(p), max_samples=100)
+    assert len(mono.data["samples"]) == 100
+    assert mono.data["samples"][0] == pytest.approx((1000 - 2000) / 32768 / 2)
