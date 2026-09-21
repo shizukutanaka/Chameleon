@@ -46,6 +46,13 @@
 
 ### Added
 
+- **Characterization tests for security and plugin paths the audit
+  re-verified** (2026-09-21): a symlink inside a trusted root pointing
+  outside is rejected (`Path.resolve` + `commonpath`), while a symlink
+  whose target also lives inside the root stays accepted; `plugins list`
+  discovers, instantiates, and displays a valid plugin end-to-end
+  (load -> `get_metadata` -> name/version/category in output) -- the
+  failure paths were pinned but the success path was not.
 - **Noise-shaped (`"shaped"`) dither** in `mastering_chain` -- the
   advertised-but-unimplemented `dither_type` now works via a
   first-order error-feedback quantizer on the 16-bit grid (quantization

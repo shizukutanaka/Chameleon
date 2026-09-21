@@ -2274,6 +2274,14 @@ json.loads accepts the literals NaN/Infinity by default, so a JSON config
 file can smuggle them into any "numeric" field. The check is
 isinstance(x, (int, float)) AND math.isfinite(x), in that order, before
 any range assertion.
+**Q: Failure paths pinned, success path untested -- is the audit done?**
+A (2026-09-21): No. `plugins list` had tests for every way a file could
+fail (sandbox rejection, init timeout, missing metadata) and none for
+the load succeeding: 'no plugins discovered' would hide a broken happy
+path behind a plausible empty directory. The same asymmetry hid the
+symlink case in the path validator -- escapes-in tested, escapes-out
+via `resolve()` not. A feature is verified when its success is proved,
+not just when its failures are contained.
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented

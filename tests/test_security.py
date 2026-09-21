@@ -330,3 +330,28 @@ class TestSecurityConfigFromEnvironment:
         with pytest.warns(UserWarning, match="does not exist"):
             cfg = SecurityConfig.from_environment()
         assert str(tmp_path / "ghost") in cfg.trusted_roots
+
+
+class TestSymlinkEscape:
+    def test_symlink_inside_root_pointing_outside_rejected(self, tmp_path):
+        """Path.resolve() in validate_path collapses symlink escapes: a link
+        whose address sits inside the trusted root but whose target lives
+        outside must fail the commonpath check."""
+        trusted = tmp_path / "trusted"
+        trusted.mkdir()
+        outside = _write_wav(tmp_path / "outside.wav")
+        link = trusted / "link.wav"
+        link.symlink_to(outside)
+        v = _validator(trusted_roots={str(trusted)})
+        assert v.validate_path(str(link)) is False
+
+    def test_symlinked_file_inside_root_accepted(self, tmp_path):
+        """The resolve must not over-block: a link inside the root pointing
+        at a file also inside the root is legitimate."""
+        trusted = tmp_path / "trusted"
+        trusted.mkdir()
+        real = _write_wav(trusted / "real.wav")
+        link = trusted / "alias.wav"
+        link.symlink_to(real)
+        v = _validator(trusted_roots={str(trusted)})
+        assert v.validate_path(str(link)) is True
