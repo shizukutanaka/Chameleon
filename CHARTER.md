@@ -2274,6 +2274,47 @@ json.loads accepts the literals NaN/Infinity by default, so a JSON config
 file can smuggle them into any "numeric" field. The check is
 isinstance(x, (int, float)) AND math.isfinite(x), in that order, before
 any range assertion.
+
+**Q: Does `batch <dir> analyze` analyze anything?**
+A (2026-09-21): It computed per-file metadata, printed "Processed N/M
+files successfully", and dropped every result -- an analysis command
+whose entire output was a count, on a flag (`--output-dir`) that was
+silently ignored. An operation whose product is information must deliver
+the information: batch analyze now prints the same fields `analyze` does
+and, when --output-dir is given, writes <stem>_analysis.json per file.
+
+**Q: Does a verdict stored in `metadata` gate anything?**
+A (2026-09-21): Nothing did. `_validate_wav_structure` wrote "Missing
+data chunk"/"Missing fmt chunk" into `metadata["error"]` and "Non-PCM
+format" into `metadata["warning"]` -- keys with zero readers, so a WAV
+with no data chunk passed `validate_for_processing` with is_valid=True.
+A check that records its verdict where nobody looks is the §4 sin moved
+one layer down: not the absence of a gate, but a gate wired to a field
+that isn't the gate. Structural verdicts now live in
+structural_errors/structural_warnings and are promoted into the result's
+real errors/warnings. Same sweep added the check the file format itself
+demands: a chunk's declared size vs the bytes actually present (seek past
+EOF "succeeds", so the old walk ended quietly) and RIFF declared size vs
+file size -- a file holding 0.25% of its declared audio now warns
+"truncated audio" at intake instead of producing a 50-sample "Processed"
+output with no comment.
+
+**Q: Is an OSError from a user-supplied path still a traceback?**
+A (2026-09-21): In one place, yes -- `plugins list/audit --directory`
+caught ValueError but not the mkdir OSError family, so `--directory
+/unwritable` dumped a traceback. An uncreatable user path is INPUT(3),
+same class as the export path; the handler now catches OSError too.
+Audit rule: `except ValueError` around filesystem code is a lie by
+omission -- path errors are OSError.
+
+**Q: What does `--convert` with no target convert to?**
+A (2026-09-21): Nothing -- it wrote a byte-identical copy named
+`*_converted_16bit.wav` and reported "Processed". Same defect class as
+the flag-coupling fixes, in reverse: there we rejected flags without an
+operation; here the operation ran without a target. `process --convert`
+and `batch convert` now require at least one of the target flags
+(sample-rate, bit-depth, or format). An explicit same-value conversion
+(16->16) stays allowed: the user named the target, the name is honest.
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
