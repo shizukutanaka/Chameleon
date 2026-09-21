@@ -170,7 +170,9 @@ Positional: `directory` then one of
 
 ### `midi`
 
-MIDI analysis and composition (pure standard library).
+MIDI analysis and composition. `compose`/`generate` are pure standard
+library; `extract`/`analyze` read audio into arrays and need **numpy**
+(the `[audio]` extra).
 
 ```bash
 chameleon midi extract --input song.wav --output song.mid
@@ -209,6 +211,7 @@ files for sandbox compliance).
 |------|---------|
 | `--directory DIR` | Absolute plugin directory to inspect (repeatable) |
 | `--json` | Emit structured JSON output |
+| `--fail-fast` | Stop the audit on the first plugin failure |
 
 Writing a plugin: subclass one of the interfaces in `plugin_system.py`
 (`AudioEffectPlugin`, `AudioAnalyzerPlugin`, `AudioGeneratorPlugin`,

@@ -1036,6 +1036,28 @@
   `config_manager` (deleted this cycle), which would have broken the workflow
   the moment a maintainer adopted it verbatim; corrected to the current
   stdlib-core module list.
+- `analyze --spectrum` / `--loudness` on non-PCM WAVs (float32, μ-law, …)
+  printed "install the audio extra" even when the extra was installed — the
+  PCM-only reader's refusal surfaced verbatim on full installs, and the
+  suggested fix could not change anything. The CLI now retries format-family
+  rejections through the installed decode backend (soundfile/librosa); only
+  dependency-free installs still see the install hint. Security and size
+  rejections are never retried.
+- `analyze --export` and batch recovery-state writes are now atomic
+  (sibling temp file + `os.replace`): a kill mid-write no longer leaves a
+  truncated JSON the next run misattributes as user corruption.
+- `analyze --spectrum` dominant-frequency list included noise-floor bins
+  ~110 dB below the peak — a 16-bit sine reported its quantization noise as
+  "dominant". A peak now survives only within 40 dB of the top component
+  (a −20 dB second tone is still reported).
+- `plugins audit` printed one `setrlimit` warning per plugin on platforms
+  that reject `RLIMIT_AS` (e.g. macOS); it now warns once per run and says
+  plainly that the memory cap is not enforced there.
+- `process --dry-run` printed "Processed … [dry-run]" — it now says
+  "Would process", so the verb no longer claims a write that did not happen.
+- docs: the bilingual command references now state that `midi extract` /
+  `midi analyze` need numpy (only `compose`/`generate` are pure stdlib),
+  and document `plugins audit --fail-fast`.
 
 ### Changed (honesty)
 

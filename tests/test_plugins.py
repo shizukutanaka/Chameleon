@@ -304,3 +304,25 @@ def test_load_plugin_limits_all_plugin_code_sites(tmp_path, hang_site):
     with pytest.raises(TimeoutError, match="timed out"):
         loader.load_plugin(plugin)
     assert time.monotonic() - t0 < 10
+
+
+def test_memory_limit_warns_once_when_platform_rejects_it(monkeypatch, caplog):
+    """macOS (and others) can reject RLIMIT_AS: that must be one clear
+    warning per sandbox, not one line of noise per plugin audited."""
+    import logging
+
+    import plugin_system
+
+    def _raise(*_args):
+        raise ValueError("current limit exceeds maximum limit")
+
+    monkeypatch.setattr(plugin_system.resource, "setrlimit", _raise)
+
+    sandbox = PluginSandbox(PluginConfig())
+    with caplog.at_level(logging.WARNING, logger="plugin_sandbox"):
+        sandbox.execute_with_limits(lambda: 1)
+        sandbox.execute_with_limits(lambda: 2)
+
+    warnings = [r for r in caplog.records if "memory" in r.getMessage().lower()]
+    assert len(warnings) == 1
+    assert "not enforced" in warnings[0].getMessage()

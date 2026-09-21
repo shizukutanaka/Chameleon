@@ -25,6 +25,7 @@ from dataclasses import dataclass, asdict, is_dataclass
 from concurrent.futures import ThreadPoolExecutor
 import logging
 import signal as _signal
+import tempfile
 import warnings
 from collections import Counter
 from logging.handlers import RotatingFileHandler
@@ -67,6 +68,28 @@ class ExitCode(IntEnum):
 
 _CONTROL_CHAR_PATTERN = re.compile(r"[\x00-\x1f\x7f]")
 _WILDCARD_PATTERN = re.compile(r"[\*\?]")
+
+
+def _write_json_atomic(path: str, payload: Any) -> None:
+    """Write JSON via a sibling temp file + os.replace.
+
+    A kill or failure mid-write must leave the old file or the new one,
+    never a truncated export that the next reader reports as user
+    corruption -- same convention as the config/library state files.
+    """
+    directory = os.path.dirname(os.path.abspath(path))
+    fd, tmp_path = tempfile.mkstemp(dir=directory, prefix=".chameleon-",
+                                    suffix=".tmp")
+    try:
+        with os.fdopen(fd, 'w') as handle:
+            json.dump(payload, handle, indent=2, default=_json_export_default)
+        os.replace(tmp_path, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def _json_export_default(obj):
@@ -784,6 +807,51 @@ class AudioProcessor:
                     f.seek(1, 1)  # RIFF pad byte after odd-sized chunks
 
         raise ValueError("Could not parse WAV file")
+
+    def _get_analysis_samples(self, file_path: str, max_samples: int = 65536,
+                              separate_channels: bool = False) -> core.ProcessingResult:
+        """Samples for the stdlib meters, decoding through the audio extra
+        when the dependency-free reader cannot.
+
+        core.get_samples_for_analysis reads PCM WAV only. On a file it
+        rejects purely on encoding grounds -- a float WAV, or a FLAC the
+        basic analyze path already decoded via load_audio -- telling the
+        user to install the audio extra is wrong when the extra is
+        installed. Decode through it instead; that is the extra's reason
+        to exist. Security/size rejections pass through untouched: those
+        are not format problems and must not be retried around.
+        """
+        result = core.get_samples_for_analysis(
+            file_path, max_samples, separate_channels)
+        if result.success or not (HAS_SOUNDFILE or HAS_LIBROSA):
+            return result
+        message = result.message or ""
+        if not message.startswith(("Unsupported WAV encoding",
+                                  "Invalid WAV file format",
+                                  "Invalid or corrupted WAV file")):
+            return result
+        try:
+            audio, sample_rate = self.load_audio(file_path)
+            if getattr(audio, "ndim", 1) > 1:
+                channels = [row[:max_samples].tolist() for row in audio]
+                samples = audio.mean(axis=0)[:max_samples].tolist()
+            else:
+                channels = [audio[:max_samples].tolist()]
+                samples = channels[0]
+            if not any(channels):
+                raise ValueError("no decodable samples")
+        except Exception:
+            detail = message.split(";")[0]
+            return core.ProcessingResult(
+                False, f"{detail}; no installed backend could decode it")
+        if separate_channels:
+            return core.ProcessingResult(
+                True, "Samples extracted",
+                {"channels": channels, "sample_rate": int(sample_rate),
+                 "channel_mask": 0})
+        return core.ProcessingResult(
+            True, "Samples extracted",
+            {"samples": samples, "sample_rate": int(sample_rate)})
 
     def analyze_audio(self, audio: np.ndarray, sr: int) -> AudioMetadata:
         """Comprehensive audio analysis with ML features"""
@@ -2411,7 +2479,7 @@ async def main():
                     if not HAS_SPECTRAL_UTILS:
                         print("  Spectrum: unavailable (spectral_utils not importable)")
                     else:
-                        samples_result = core.get_samples_for_analysis(result['file'])
+                        samples_result = processor._get_analysis_samples(result['file'])
                         if not samples_result.success:
                             print(f"  Spectrum: {samples_result.message}")
                         else:
@@ -2436,7 +2504,7 @@ async def main():
                         # stereo content by 3-6 LU (see bs1770_loudness.py). This is
                         # exact for mono too (a single-channel list), so it's used
                         # unconditionally rather than branching on channel count.
-                        samples_result = core.get_samples_for_analysis(
+                        samples_result = processor._get_analysis_samples(
                             result['file'], max_samples=LOUDNESS_MAX_SAMPLES,
                             separate_channels=True,
                         )
@@ -2523,8 +2591,7 @@ async def main():
             # the whole family (missing dir, directory-as-file, permissions).
             try:
                 export_path = _sanitize_cli_input(args.export, "export path")
-                with open(export_path, 'w') as f:
-                    json.dump(results, f, indent=2, default=_json_export_default)
+                _write_json_atomic(export_path, results)
             except (OSError, ValueError) as exc:
                 print(f"Error: cannot write analysis export: {exc}",
                       file=sys.stderr)
@@ -2697,8 +2764,6 @@ async def main():
                     lra_after = result.get("loudness_range_after_lu")
                     if is_bs1770 and lra_after is not None and math.isfinite(lra_after):
                         converted_details.append(f"{lra_after:.1f} LU range")
-                if result.get("dry_run"):
-                    converted_details.append("dry-run")
                 detail_suffix = f" [{', '.join(converted_details)}]" if converted_details else ""
 
                 if args.json:
@@ -2708,7 +2773,8 @@ async def main():
                     }, default=str))
                 else:
                     output_path = result.get("output") or result.get("planned_output") or "done"
-                    print(f"Processed {result['file']} -> {output_path} ({result['time']:.2f}s){detail_suffix}")
+                    verb = "Would process" if result.get("dry_run") else "Processed"
+                    print(f"{verb} {result['file']} -> {output_path} ({result['time']:.2f}s){detail_suffix}")
 
             if had_error:
                 exit_code = ExitCode.ERROR

@@ -169,6 +169,9 @@ class PluginSandbox:
         }
         self.allowed_modules = set(config.allowed_imports)
         self.logger = logging.getLogger("plugin_sandbox")
+        # Platforms where RLIMIT_AS was rejected once will reject it every
+        # time -- remember and skip the syscall + warning on later calls.
+        self._memory_limit_unsupported = False
 
     @contextlib.contextmanager
     def _apply_memory_limit(self):
@@ -194,10 +197,21 @@ class PluginSandbox:
             yield
             return
 
+        if self._memory_limit_unsupported:
+            yield
+            return
+
         try:
             resource.setrlimit(resource.RLIMIT_AS, (target_limit, target_limit))
         except (ValueError, resource.error, OSError) as exc:  # pragma: no cover - platform dependent
-            self.logger.warning("Failed to apply memory limit: %s", exc)
+            # macOS rejects RLIMIT_AS outright; other platforms may too.
+            # Warn once per sandbox -- a per-call warning printed once per
+            # plugin is noise the user cannot act on, and retrying a syscall
+            # that already failed buys nothing.
+            self._memory_limit_unsupported = True
+            self.logger.warning(
+                "Memory limit cannot be applied on this platform (%s); "
+                "the plugin memory cap is not enforced", exc)
             yield
             return
 

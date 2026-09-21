@@ -16,9 +16,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 import core
 import spectral_utils
-from tests._helpers import write_sine_wave
+from tests._helpers import write_sine_wave, write_wav_raw
 
 MAIN_PY = str(Path(__file__).resolve().parent.parent / "main.py")
 
@@ -110,3 +112,106 @@ def test_apply_spectral_mask_does_not_renormalize():
         src, 44100, low_gain=0.5, mid_gain=0.5, high_gain=0.5
     )
     assert max(abs(x) for x in out) < 0.3
+
+
+def test_dominant_peaks_exclude_the_noise_floor(tmp_path):
+    """'Dominant' must mean significant relative to the top component: a
+    16-bit sine's quantization floor sits ~110 dB down and used to fill the
+    dominant-frequencies list with Nyquist-adjacent noise bins."""
+    wav = write_sine_wave(tmp_path / "tone.wav", duration=0.5, frequency=440.0)
+
+    result = core.get_samples_for_analysis(str(wav))
+    report = spectral_utils.analyze_spectrum(
+        result.data["samples"], result.data["sample_rate"]
+    )
+
+    assert report.dominant_peaks
+    # Every surviving peak must hug the fundamental -- window sidelobes a few
+    # bins off are fine, noise-floor bins at 6 kHz/21 kHz are not.
+    assert all(abs(peak.frequency_hz - 440.0) < 10.0
+               for peak in report.dominant_peaks), report.dominant_peaks
+
+
+def test_dominant_peaks_keep_a_real_secondary_tone(tmp_path):
+    """The significance gate must not eat real content: a -20 dB second tone
+    is legitimately dominant-adjacent and must still be reported."""
+    import struct as _struct
+    import wave as _wave
+    count = 22050
+    frames = [
+        int(12000 * math.sin(2 * math.pi * 440 * i / 44100)
+            + 1200 * math.sin(2 * math.pi * 2000 * i / 44100))
+        for i in range(count)
+    ]
+    wav = tmp_path / "two_tone.wav"
+    with _wave.open(str(wav), "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(44100)
+        handle.writeframes(_struct.pack("<" + "h" * count, *frames))
+
+    result = core.get_samples_for_analysis(str(wav))
+    report = spectral_utils.analyze_spectrum(
+        result.data["samples"], result.data["sample_rate"]
+    )
+
+    frequencies = [peak.frequency_hz for peak in report.dominant_peaks]
+    assert any(abs(f - 440.0) < 10.0 for f in frequencies), frequencies
+    assert any(abs(f - 2000.0) < 20.0 for f in frequencies), frequencies
+
+
+def _extras_installed() -> bool:
+    import main
+    return bool(main.HAS_SOUNDFILE or main.HAS_LIBROSA)
+
+
+@pytest.mark.skipif(not _extras_installed(),
+                    reason="covers the installed-extra decode path")
+def test_cli_spectrum_and_loudness_decode_float_wav_via_audio_extra(tmp_path):
+    """On an install with the audio extra, a float WAV must not print
+    'install the audio extra' -- it is installed. Decode through it."""
+    frames = [0.5 * math.sin(2 * math.pi * 440 * i / 44100)
+              for i in range(22050)]
+    wav, _ = write_wav_raw(tmp_path / "float.wav", frames=frames,
+                           format_tag=3)
+
+    result = _run("analyze", str(wav), "--spectrum", "--loudness",
+                  cwd=str(tmp_path))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Dominant Frequencies:" in result.stdout
+    assert "440." in result.stdout
+    assert "Loudness:" in result.stdout
+    assert "pip install" not in result.stdout
+    assert "pip install" not in result.stderr
+
+
+@pytest.mark.skipif(_extras_installed(),
+                    reason="covers the dependency-free refusal")
+def test_cli_spectrum_names_pcm_only_reader_on_bare_install(tmp_path):
+    """On the dependency-free build the refusal is the right answer -- and it
+    names the real limitation instead of pointing at an installed extra."""
+    frames = [0.5 * math.sin(2 * math.pi * 440 * i / 44100)
+              for i in range(22050)]
+    wav, _ = write_wav_raw(tmp_path / "float.wav", frames=frames,
+                           format_tag=3)
+
+    result = _run("analyze", str(wav), "--spectrum", cwd=str(tmp_path))
+
+    combined = result.stdout + result.stderr
+    assert "PCM" in combined  # the reader's actual limitation
+
+
+def test_cli_analyze_export_leaves_no_partial_or_temp_files(tmp_path):
+    """--export goes through a sibling temp file + os.replace: after success
+    the directory must hold exactly the export, not temp debris."""
+    import json as _json
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    export = tmp_path / "report.json"
+
+    result = _run("analyze", str(wav), "--export", str(export),
+                  cwd=str(tmp_path))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _json.loads(export.read_text())
+    assert not list(tmp_path.glob(".chameleon-*.tmp"))

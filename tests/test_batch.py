@@ -78,3 +78,16 @@ def test_batch_skips_unsupported_file_types(tmp_path):
     # Only the WAV should be processed; non-audio files are silently skipped.
     assert len(results) == 1
     assert results[0].success is True
+
+
+def test_record_state_writes_atomically_and_roundtrips(tmp_path):
+    """State files go through temp-file + os.replace: no torn JSON for the
+    next load, and no temp debris left behind."""
+    recovery = core.StateRecoveryManager(state_dir=tmp_path)
+
+    path = recovery.record_state({"processed": 3, "failed": 1})
+
+    assert path is not None
+    assert not list(tmp_path.glob("*.tmp"))
+    loaded = recovery.load_last_state()
+    assert loaded["summary"] == {"processed": 3, "failed": 1}

@@ -176,6 +176,13 @@ def _detect_peaks(magnitudes: Sequence[float], sample_rate: int, max_peaks: int)
             peaks.append(SpectrumPeak(frequency_hz=frequency, magnitude=centre))
 
     peaks.sort(key=lambda peak: peak.magnitude, reverse=True)
+    # "Dominant" means significant relative to the strongest component, not
+    # merely a local maximum: without a floor, a 16-bit sine reported bins
+    # 112 dB down (quantization noise near Nyquist) as its 2nd-5th dominant
+    # frequencies. Keep only peaks within 40 dB of the top one.
+    if peaks:
+        floor = peaks[0].magnitude * 0.01
+        peaks = [peak for peak in peaks if peak.magnitude >= floor]
     return peaks[:max_peaks]
 
 

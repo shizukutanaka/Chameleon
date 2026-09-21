@@ -168,7 +168,8 @@ chameleon batch ./audio denoise --recursive --output-dir out/
 
 ### `midi`
 
-MIDI 解析・作曲（純粋な標準ライブラリ実装）。
+MIDI 解析・作曲。`compose`/`generate` は標準ライブラリのみで動作。
+`extract`/`analyze` は音声を配列に読み込むため **numpy**（`[audio]` extra）が必要。
 
 ```bash
 chameleon midi extract --input song.wav --output song.mid
@@ -205,6 +206,7 @@ chameleon plugins list --directory /abs/path/to/plugins --json
 |-----------|------|
 | `--directory DIR` | 検査対象の絶対パス（複数指定可） |
 | `--json` | 構造化 JSON で出力 |
+| `--fail-fast` | 最初のプラグイン失敗で監査を打ち切る |
 
 プラグインの書き方: `plugin_system.py` のインターフェース
 （`AudioEffectPlugin` など）を継承し、全抽象メソッド（例: effect は

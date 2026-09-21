@@ -1529,8 +1529,21 @@ class StateRecoveryManager:
         }
 
         try:
-            with target_path.open("w", encoding="utf-8") as handle:
-                json.dump(payload, handle, ensure_ascii=False, indent=2)
+            # Sibling temp file + os.replace: a crash mid-write must leave
+            # the previous state file or the new one, never a truncated JSON
+            # that load_last_state then reports as user corruption.
+            fd, tmp_path = tempfile.mkstemp(
+                dir=str(self.state_dir), prefix=".batch_state_", suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    json.dump(payload, handle, ensure_ascii=False, indent=2)
+                os.replace(tmp_path, target_path)
+            except BaseException:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
         except OSError:
             return None
 

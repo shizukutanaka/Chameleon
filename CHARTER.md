@@ -2274,6 +2274,41 @@ json.loads accepts the literals NaN/Infinity by default, so a JSON config
 file can smuggle them into any "numeric" field. The check is
 isinstance(x, (int, float)) AND math.isfinite(x), in that order, before
 any range assertion.
+
+**Q: "Install the audio extra" -- what if the extra is installed?**
+A (2026-09-21): Then the message is a false instruction, not guidance.
+`analyze --spectrum`/`--loudness` fed the PCM-only reader to every file
+and surfaced its refusal verbatim, so a float32 WAV on a full install was
+told to install what it already had -- the user runs it, nothing changes.
+An error that prescribes an action must be checked against whether the
+action can still help; when it cannot, either do the work or say the real
+limitation. The CLI now retries format-family rejections ("Unsupported
+WAV encoding", "Invalid WAV file format") through the installed decode
+backend, so the hint only ever prints where it is true -- bare installs.
+Security and size rejections are never retried: retrying a refusal whose
+point was *not reading the file* would void it.
+
+**Q: Does "Dominant Frequencies" mean tall, or tall relative to the
+top?**
+A (2026-09-21): Relative. A 16-bit sine's quantization floor produced FFT
+bins ~110 dB below the peak, and a top-N sort listed Nyquist-adjacent
+noise as "dominant". An absolute-amplitude list names whatever the floor
+happens to hold; dominance is a claim about *this signal*. Peaks now need
+to be within 40 dB of the top component -- tight enough to drop the
+floor, loose enough that a real -20 dB second tone still reports.
+
+**Q: Did the earlier atomic-write sweep cover every writer?**
+A (2026-09-21): No -- it fixed config, library db, and generated scripts,
+and missed two it didn't enumerate: `analyze --export` (open('w'),
+truncates-first) and `StateRecoveryManager.record_state` (same), both of
+which turn a mid-write kill into truncated JSON the next run reads as
+user corruption. A sweep that fixes a defect class must enumerate all
+sites of the class, not stop at the ones the first grep found. Both write
+through a sibling temp file + os.replace now. Same session, two adjacent
+honesty fixes: `plugins audit` emitted one setrlimit warning per plugin
+on platforms that reject RLIMIT_AS (nine lines of noise for one fact --
+warn once, and say the cap is unenforced), and `process --dry-run` said
+"Processed" for a file it did not touch (now "Would process").
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
