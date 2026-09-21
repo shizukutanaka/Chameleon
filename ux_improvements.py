@@ -210,7 +210,26 @@ class TableFormatter:
         if not rows:
             return ""
 
-        align = align or ['left'] * len(headers)
+        # zip() silently truncates at the shorter side, so a short `align`
+        # used to drop whole columns from the output -- a table that hides
+        # data is worse than one that misaligns it. Pad with 'left', the
+        # declared default.
+        align = align or []
+        if len(align) < len(headers):
+            align = list(align) + ['left'] * (len(headers) - len(align))
+
+        # A row wider than the headers used to IndexError on widths[i].
+        # Normalise shorter rows to the header width; reject wider ones
+        # outright rather than silently discarding cells the caller passed.
+        n_cols = len(headers)
+        normalised = []
+        for idx, row in enumerate(rows):
+            if len(row) > n_cols:
+                raise ValueError(
+                    f"row {idx} has {len(row)} cells for {n_cols} headers"
+                )
+            normalised.append(list(row) + [''] * (n_cols - len(row)))
+        rows = normalised
 
         # Calculate column widths
         widths = [len(h) for h in headers]
