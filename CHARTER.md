@@ -3252,3 +3252,10 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**2026-09-21 (Socratic audit 124, external-source pass):** `/batch/submit`
+reported `estimated_duration = files * 5.0` -- a flat guess exposed as a
+measurement (API consumers can't distinguish it from a computed value). The
+endpoint's own model allows null, and the API's contract for unmeasured
+numbers is already None (audit-58's /system/status). Now returns
+`estimated_duration=None`. Regression test pins it.
