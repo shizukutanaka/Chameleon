@@ -3252,3 +3252,19 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** The mastering chain's enhancement knobs --
+`harmonic_enhancement`, `StereoConfig.mono_freq`, `StereoProcessor` fed
+multichannel audio. What happens off the documented ranges?
+**A:** Three silent failures. `harmonic_enhancement=2.0` (documented 0-1)
+made the blend `audio*(1-2.0)` -- the dry term goes negative, so the mix
+is a phase-flipped subtraction (measured: a 0.3-amplitude sine came back
+at 0.082 RMS, ~8 dB down and inverted, reported as enhancement). It is now
+clamped by validation to [0.0, 1.0]. `mono_freq >= Nyquist` skipped our
+check entirely and leaked scipy's internal 'Digital filter critical
+frequencies must be 0 < Wn < 1' -- a raw ValueError naming neither the
+knob nor the bound; `setup_filters` now names `mono_freq` and the valid
+range. And `StereoProcessor` standalone truncated >2-channel input to
+`audio[:2]` -- the same silent channel drop Limiter/Compressor were
+taught to refuse in audit-73; it now names the channel count and says
+'Downmix first'.
