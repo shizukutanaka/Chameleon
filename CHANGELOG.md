@@ -487,6 +487,10 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`open_secure` accepted `w+`/`a+` but opened them `O_WRONLY`** —
+  the read-back those modes promise raised `io.UnsupportedOperation`.
+  `'+'` now selects `O_RDWR`. Pure-read modes (`r`, `r+`, `x`) still
+  raise `ValueError` — an honest refusal rather than a silent misroute.
 
 ### Changed
 
