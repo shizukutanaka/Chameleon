@@ -304,3 +304,35 @@ def test_load_plugin_limits_all_plugin_code_sites(tmp_path, hang_site):
     with pytest.raises(TimeoutError, match="timed out"):
         loader.load_plugin(plugin)
     assert time.monotonic() - t0 < 10
+
+
+def test_load_plugin_executes_the_bytes_it_scanned(tmp_path):
+    """The AST scan and module execution must see identical bytes -- a file
+    swapped between the scan's read and exec's re-read would run unscanned
+    code."""
+    plugin = tmp_path / "swapped.py"
+    plugin.write_text(
+        "from plugin_system import AudioEffectPlugin, PluginMetadata\n"
+        "MARKER = 'scanned-version'\n"
+        "class P(AudioEffectPlugin):\n"
+        "    def get_metadata(self):\n"
+        "        return PluginMetadata(name='p', version='1.0.0', author='t',\n"
+        "                              description='d', category='effect')\n"
+        "    def initialize(self, config): return True\n"
+        "    def cleanup(self): pass\n"
+        "    def process_audio(self, a, sr, **kw): return a\n"
+        "    def analyze_audio(self, a, sr, **kw): return {}\n"
+    )
+    loader = PluginLoader(PluginConfig(plugin_directories=[str(tmp_path)]))
+
+    # Swap in hostile content between the scan and any second read; with a
+    # single read the executed module is still the scanned version.
+    real_check = loader._check_module_safety
+    def swap_then_check(source, path=None):
+        plugin.write_text("import os\nMARKER = 'swapped-version'\n")
+        return real_check(source, path or plugin)
+    loader._check_module_safety = swap_then_check
+
+    p = loader.load_plugin(plugin)
+    assert p is not None
+    assert p.process_audio.__globals__['MARKER'] == 'scanned-version'

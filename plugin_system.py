@@ -358,8 +358,14 @@ class PluginLoader:
         try:
             validated_path = self._validate_plugin_path(plugin_path)
 
+            # Read the plugin exactly once and use the same bytes for the
+            # cache hash, the AST scan, and execution -- a scan that reads
+            # the file and an exec that re-reads it leave a check/use window
+            # where a swapped file would run unscanned code.
+            source_bytes = validated_path.read_bytes()
+
             # Calculate plugin hash for caching
-            plugin_hash = self._calculate_file_hash(validated_path)
+            plugin_hash = hashlib.sha256(source_bytes).hexdigest()
 
             # Check cache
             if self.config.cache_plugins and plugin_hash in self.plugin_cache:
@@ -373,12 +379,15 @@ class PluginLoader:
 
             # Security check for imports
             if self.config.sandbox_mode:
-                self._check_module_safety(validated_path)
+                self._check_module_safety(source_bytes, validated_path)
 
             # Module top-level code runs the same unbounded-host risk as a
             # plugin method -- a `while True:` at module scope hung `plugins
-            # list` forever before the limits wrapped this call.
-            self.sandbox.execute_with_limits(spec.loader.exec_module, module)
+            # list` forever before the limits wrapped this call. exec() on
+            # the already-read bytes keeps scan and execution on identical
+            # content.
+            code = compile(source_bytes, str(validated_path), 'exec')
+            self.sandbox.execute_with_limits(exec, code, module.__dict__)
 
             # Find plugin classes
             plugin_classes = []
@@ -487,8 +496,12 @@ class PluginLoader:
         ("importlib.util", "module_from_spec"),
     })
 
-    def _check_module_safety(self, plugin_path: Path):
-        """Check if plugin uses safe imports.
+    def _check_module_safety(self, source_or_path, plugin_path: Path = None):
+        """Check plugin *source* bytes for unsafe imports.
+
+        Accepts either the already-read source ``bytes`` (the load path,
+        which then executes those same bytes) or a path to read -- the
+        path form re-reads the file and is for direct/audit use only.
 
         This is static AST analysis, not a runtime sandbox: exec_module()
         below runs the plugin with normal, unrestricted Python builtins.
@@ -499,10 +512,14 @@ class PluginLoader:
         misuse, not as a hard security boundary against a determined
         adversary — do not claim otherwise.
         """
-        try:
-            with open(plugin_path, 'r', encoding='utf-8') as f:
+        if isinstance(source_or_path, (bytes, bytearray)):
+            source = bytes(source_or_path)
+        else:
+            plugin_path = Path(source_or_path)
+            with open(plugin_path, 'rb') as f:
                 source = f.read()
-                parsed = ast.parse(source, filename=str(plugin_path))
+        try:
+            parsed = ast.parse(source, filename=str(plugin_path))
         except SyntaxError as exc:
             raise SecurityError(f"Plugin contains invalid syntax: {exc}") from exc
 

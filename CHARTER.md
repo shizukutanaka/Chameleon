@@ -2471,3 +2471,23 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+### 2026-09-21 (audit 126) — plugin scan/execute check-use window
+
+**Q:** `load_plugin` reads the plugin file three times — `_calculate_file_hash`,
+`_check_module_safety` (AST scan), and `exec_module` (execution). If the file
+is swapped between the scan and the re-read, does the loader execute
+unscanned code?
+
+**A:** **Yes.** Demonstrated: overwriting the plugin with `import os` inside
+`_check_module_safety` ran the *swapped* bytes, because `exec_module` opened
+the path again after the scan had already passed a clean version. This is the
+textbook check/use (TOCTOU) window. `load_plugin` now reads the file once —
+`source_bytes` feeds the SHA-256 cache hash, the AST scan
+(`_check_module_safety` accepts bytes; `ast.parse` handles bytes directly,
+including `# coding:` cookies), and execution via `compile()` + `exec()` into
+the module's `__dict__`. Scan and execute cannot diverge.
+`_check_module_safety` still accepts a bare path for direct/audit callers.
+Regression test: swap the file inside the scan hook; the loaded module's
+marker remains the scanned version. `_calculate_file_hash` stays (unused
+internally now, but it is a public-ish helper — no unconfirmed deletions).
