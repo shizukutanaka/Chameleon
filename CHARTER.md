@@ -2572,6 +2572,17 @@ a FILE_EVICTED audit event. An evicted name returns a normal 404.
 element is not a cap on the set — check the aggregate bound on every
 append-only structure.
 
+**Q: The in-memory audit deque is bounded — what about the file it
+mirrors?**
+A (2026-09-20): It wasn't. `log_audit_event` appended one JSON line to
+`api-audit.log` for every event with no size bound — a slow, silent
+disk leak on any long-running server. `CHAMELEON_MAX_AUDIT_LOG_BYTES`
+(default 50MB, 0 disables) now rotates the live file to
+`api-audit.log.1` (one generation) before each write once over the cap,
+bounding disk at ~2×cap; history older than the rotation is dropped by
+design — the bounded in-memory tail is what `/audit/log` serves anyway
+(`tests/test_audit_log_rotation.py`).
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
