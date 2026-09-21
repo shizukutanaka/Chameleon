@@ -105,3 +105,35 @@ def test_format_table_rejects_row_wider_than_headers():
     # Short rows and exact rows still format.
     out = TableFormatter.format_table(["A", "B"], [["1"], ["2", "3"]])
     assert "A" in out and "B" in out
+
+
+def test_progress_bar_clamps_overshoot_and_negative(capsys):
+    # update()/set_progress() trusted the caller: update(10) on total=3
+    # rendered "333.3%" and a bar wider than bar_width.
+    from ux_improvements import ProgressBar
+
+    bar = ProgressBar(total=3, description="t")
+    bar.last_update = 0  # bypass the render rate limiter
+    bar.update(10)
+    assert bar.current == 3
+    assert "100.0%" in capsys.readouterr().out
+    assert "333" not in capsys.readouterr().out
+
+    bar2 = ProgressBar(total=3)
+    bar2.set_progress(-5)
+    assert bar2.current == 0
+
+
+def test_color_text_honors_no_color(monkeypatch):
+    # The NO_COLOR convention: any presence of the variable means plain
+    # output, even on a TTY.
+    from ux_improvements import ColorText
+
+    monkeypatch.setenv("NO_COLOR", "1")
+    monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+    assert not ColorText.enabled()
+    assert ColorText.colorize("x", ColorText.RED) == "x"
+
+    monkeypatch.delenv("NO_COLOR")
+    assert ColorText.enabled()
+    assert ColorText.colorize("x", ColorText.RED) != "x"

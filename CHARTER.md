@@ -3252,3 +3252,16 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, audit 42): Are the UX helpers honest when inputs lie?**
+**A:** Two small gaps, both fixed. (1) ProgressBar trusted the caller:
+update(10) on total=3 rendered "333.3%" with a bar wider than bar_width
+-- a progress display that reports impossible progress. update() and
+set_progress() now clamp current to [0, total]. (2) ColorText.enabled()
+checked isatty() and platform but ignored the NO_COLOR convention --
+users who set NO_COLOR still got ANSI. enabled() now returns False when
+NO_COLOR is present with any value. Verified honest: format_file_size /
+format_duration handle negatives and magnitudes sanely, TableFormatter
+aligns per-column and tolerates ragged rows, the module is wired via
+batch_process(show_progress) opt-in (isatty at the CLI), and the
+remaining __main__ demo writes nothing to disk.
