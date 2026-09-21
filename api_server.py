@@ -110,8 +110,10 @@ async def normalize_audio_fast(input_path, output_path, target_peak: float = 0.9
         response['error'] = result.message
     return response
 
-# API metadata
-API_VERSION = "1.0.0"
+# API metadata -- the product's single version source is main.VERSION
+# (pyproject declares it); a second literal drifted to 1.0.0 while the
+# CLI reported 1.1.0. The API is the same product, not a different one.
+from main import VERSION as API_VERSION
 
 # Security configuration
 SECURITY_CONFIG = {

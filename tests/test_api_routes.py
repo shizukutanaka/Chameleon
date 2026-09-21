@@ -582,3 +582,12 @@ def test_audit_log_is_bounded():
     for i in range(cap + 50):
         api_server.log_audit_event("u", "OP", "res", "SUCCESS", "", "ip", "")
     assert len(api_server.api_state.audit_log) == cap
+
+
+def test_api_version_matches_product_version():
+    """pyproject declares main.VERSION the single source of truth; the API
+    is the same product and must not report a different release."""
+    import main
+    assert api_server.API_VERSION == main.VERSION
+    response = api_server.app.routes  # touching app keeps fixture parity
+    assert response is not None

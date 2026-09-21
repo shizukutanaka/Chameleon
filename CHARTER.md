@@ -2432,3 +2432,14 @@ any range assertion.
   the artifact was rejected by the dependency-free parser it ships with.
   Verify writer output against the first-party reader, not just the
   library's subtype list.
+
+**Q: Can a product have two version numbers?**
+
+A (2026-09-21): No. `pyproject.toml` declares `main.VERSION` the single
+source of truth and `--version` printed 1.1.0, while `api_server.py`
+carried its own literal `API_VERSION = "1.0.0"` — the API reported a
+different release than the product serving it on `/` and
+`/system/status`. A second literal will always drift; `API_VERSION` now
+imports `main.VERSION`, and a test asserts the two can never disagree.
+The doc-fix that prevented a repeat of *this* class is not "update both"
+— it is "have only one".

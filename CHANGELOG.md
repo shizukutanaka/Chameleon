@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+
+- **The API reported a different version than the product** --
+  `API_VERSION` was a second literal that drifted to `1.0.0` while
+  `--version` and `pyproject` (which declares `main.VERSION` the single
+  source of truth) said 1.1.0. The API now imports `main.VERSION`; a
+  test asserts they can never disagree.
+
 ### Security
 
 - **Plugin sandbox escaped via builtins needing no import** -- the AST
