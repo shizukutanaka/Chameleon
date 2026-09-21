@@ -582,3 +582,17 @@ def test_audit_log_is_bounded():
     for i in range(cap + 50):
         api_server.log_audit_event("u", "OP", "res", "SUCCESS", "", "ip", "")
     assert len(api_server.api_state.audit_log) == cap
+
+
+def test_security_log_dir_env_actually_relocates_audit_log(tmp_path, monkeypatch):
+    """CHAMELEON_SECURITY_LOG_DIR is listed in docs/api_documentation.md as a
+    deploy-time knob, but nothing read it -- an operator who set it believed
+    the security log moved while it stayed in ~/.chameleon/logs. Now it is
+    honored when absolute, warned-and-ignored when relative."""
+    monkeypatch.setenv("CHAMELEON_SECURITY_LOG_DIR", str(tmp_path))
+    resolved = api_server._resolve_audit_log_path()
+    assert resolved.parent == tmp_path.resolve() or resolved.parent == tmp_path
+
+    monkeypatch.setenv("CHAMELEON_SECURITY_LOG_DIR", "relative/logs")
+    resolved = api_server._resolve_audit_log_path()
+    assert ".chameleon" in str(resolved) or "chameleon" in str(resolved)

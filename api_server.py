@@ -17,7 +17,7 @@ import contextvars
 from collections import deque
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional, Any, Deque
+from typing import Dict, List, Optional, Any, Deque, Tuple
 import uuid
 
 # Core frameworks
@@ -703,22 +703,37 @@ def _get_allowed_origins() -> list[str]:
 
 def _resolve_audit_log_path() -> Path:
     """Return secure audit log path with directory validation."""
-    preferred_dir = Path.home() / '.chameleon' / 'logs'
+    # CHAMELEON_SECURITY_LOG_DIR is listed in docs/api_documentation.md as a
+    # deploy-time knob to review -- but nothing read it, so an operator who
+    # set it believed the security log moved while it stayed in
+    # ~/.chameleon/logs (verified). Resolve the value absolutely: a relative
+    # entry would drift with the server process's cwd.
+    candidates: List[Tuple[Path, str]] = []
+    env_dir = os.environ.get("CHAMELEON_SECURITY_LOG_DIR")
+    if env_dir:
+        env_path = Path(env_dir).expanduser()
+        if env_path.is_absolute():
+            candidates.append((env_path, "CHAMELEON_SECURITY_LOG_DIR"))
+        else:
+            logging.warning(
+                "CHAMELEON_SECURITY_LOG_DIR=%r is not an absolute path; "
+                "ignoring it", env_dir)
+    candidates.append((Path.home() / '.chameleon' / 'logs', "default"))
+    candidates.append((Path(tempfile.gettempdir()) / 'chameleon' / 'logs',
+                       "temporary fallback"))
 
-    try:
-        log_dir = _AUDIT_VALIDATOR.validate_directory(
-            preferred_dir,
-            require_exists=False,
-            allow_create=True,
-        )
-    except ChameleonSecurityError:
-        fallback = Path(tempfile.gettempdir()) / 'chameleon' / 'logs'
-        log_dir = _AUDIT_VALIDATOR.validate_directory(
-            fallback,
-            require_exists=False,
-            allow_create=True,
-        )
+    for candidate, source in candidates[:-1]:
+        try:
+            log_dir = _AUDIT_VALIDATOR.validate_directory(
+                candidate, require_exists=False, allow_create=True)
+            return log_dir / 'api-audit.log'
+        except ChameleonSecurityError as exc:
+            logging.warning(
+                "Audit log directory from %s rejected (%s); trying next "
+                "location", source, exc)
 
+    log_dir = _AUDIT_VALIDATOR.validate_directory(
+        candidates[-1][0], require_exists=False, allow_create=True)
     return log_dir / 'api-audit.log'
 
 # FastAPI app initialization

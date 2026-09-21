@@ -2471,3 +2471,21 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**2026-09-21 (Socratic audit 111, external-source pass):** Cross-checked the
+WAV container edge cases that real-world tools hit (RIFF/WAVE_FORMAT_
+EXTENSIBLE per Microsoft RFC guidance, IEEE-float WAVs from DAWs) and the
+docs' env-var table against the code:
+
+- `CHAMELEON_SECURITY_LOG_DIR` is documented in api_documentation.md as a
+  deploy-time knob to review -- and nothing read it. An operator who set it
+  believed the security log relocated while it stayed in
+  ~/.chameleon/logs (verified). `_resolve_audit_log_path` now honors it
+  when absolute (a relative value drifts with the server cwd, so it is
+  warned-and-ignored), then falls back home -> tempdir, warning on each
+  rejection instead of silently landing somewhere else.
+- Verified honest: the stdlib header walker resolves WAVE_FORMAT_EXTENSIBLE
+  (0xFFFE) through its SubFormat GUID to PCM or float, and rejects non-PCM
+  with a named 'Unsupported WAV encoding (format tag N)' that points at the
+  [audio] extra instead of a generic 'invalid file'. All other env vars in
+  the docs resolve to readers; requirements.txt pins nothing.

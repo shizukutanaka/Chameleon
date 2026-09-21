@@ -487,6 +487,10 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- `CHAMELEON_SECURITY_LOG_DIR` was documented as a deploy-time audit-log
+  override but nothing read it — setting it changed nothing. It is now
+  honored when absolute (relative values are warned and ignored so the log
+  cannot drift with the server cwd), with the home/tempdir fallbacks kept.
 
 ### Changed
 
