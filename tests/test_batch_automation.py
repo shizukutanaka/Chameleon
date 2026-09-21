@@ -93,3 +93,19 @@ def test_scheduler_fails_loudly_without_schedule_package():
     scheduler = BatchScheduler()
     with pytest.raises(ImportError):
         scheduler.start()
+
+
+def test_workflow_loader_names_non_mapping_configs(tmp_path):
+    # Empty/scalar/list YAML and null/list JSON used to crash with bare
+    # AttributeError inside from_dict; the loader now names the bad shape.
+    builder = ba.WorkflowBuilder()
+    cases = [("null.json", "null"), ("list.json", "[1, 2]")]
+    if ba.HAS_YAML:
+        cases += [("empty.yaml", ""), ("scalar.yaml", "just a string"),
+                  ("list.yaml", "- a\n- b\n")]
+    for name, content in cases:
+        p = tmp_path / name
+        p.write_text(content)
+        loader = builder.from_yaml if name.endswith(".yaml") else builder.from_json
+        with pytest.raises(ValueError, match="must be a mapping"):
+            loader(str(p))

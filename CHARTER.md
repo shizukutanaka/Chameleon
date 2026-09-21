@@ -2471,3 +2471,12 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** `WorkflowBuilder.from_yaml`/`from_json` on
+a document that parses but is not a mapping -- clean error?
+**A:** No. An empty YAML file (loads as None), a scalar string, or a JSON
+list/null all reached `config.get('tasks')` and died on bare
+`AttributeError`. `from_dict` now rejects non-mapping input with
+ValueError naming the actual type. (The missing-*field* checks are a
+separate concern handled in the audit-69 PR; this guard covers the
+shape of the whole document.)

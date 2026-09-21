@@ -888,6 +888,13 @@ class WorkflowBuilder:
 
     def from_dict(self, config: Dict[str, Any]) -> Workflow:
         """Build workflow from dictionary"""
+        # A YAML/JSON document that parses but is not a mapping (empty file,
+        # scalar, list) reached `.get` on a non-dict and crashed with a bare
+        # AttributeError -- the loader's contract is to name bad input.
+        if not isinstance(config, dict):
+            raise ValueError(
+                "workflow config must be a mapping, found "
+                f"{type(config).__name__}")
         tasks = []
 
         for task_config in config.get('tasks', []):
