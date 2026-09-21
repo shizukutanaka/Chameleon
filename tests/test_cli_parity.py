@@ -627,3 +627,27 @@ def test_direct_api_normalize_rejects_out_of_range_target_peak(tmp_path):
         output_dir=str(out_dir), target_peak=0.5)
     assert "error" not in results[0], results
     assert 0.49 < _peak(out_file) < 0.51
+
+
+def test_batch_accepts_tuning_flags_after_the_subcommand(tmp_path):
+    """--max-workers/--no-parallel lived only on the top-level parser, so
+    `chameleon batch dir op --max-workers 2` -- the position every user
+    reaches for, and the one docs/en/performance_benchmarks.md implies --
+    died on 'unrecognized arguments'. They are shared flags now, merged
+    onto the same dests with a batch-scoped dest."""
+    write_sine_wave(tmp_path / "a.wav")
+
+    result = _run("batch", str(tmp_path), "analyze", "--max-workers", "2",
+                  cwd=str(tmp_path))
+    assert result.returncode == 0, result.stderr
+    assert "1/1" in result.stdout
+
+    result = _run("batch", str(tmp_path), "analyze", "--no-parallel",
+                  cwd=str(tmp_path))
+    assert result.returncode == 0, result.stderr
+
+    # The shared flag keeps the parent's validation and exit-code contract.
+    result = _run("batch", str(tmp_path), "analyze", "--max-workers", "0",
+                  cwd=str(tmp_path))
+    assert result.returncode == 3
+    assert "--max-workers must be positive" in result.stdout

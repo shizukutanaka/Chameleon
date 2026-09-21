@@ -3252,3 +3252,24 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**2026-09-21 (Socratic audit 110):** Checked the documentation's own claims
+against reality -- docs/en/performance_benchmarks.md tells users to tune
+batch parallelism with `--max-workers` / `--no-parallel`:
+
+- Both flags lived only on the top-level parser, so the position every user
+  reaches for -- `chameleon batch dir op --max-workers 2` -- died on
+  'unrecognized arguments' (verified). They are now shared flags on the
+  batch subparser with distinct dests (`batch_max_workers` /
+  `batch_no_parallel`), merged onto the canonical args right after parse --
+  the same convention `plugins list|audit` already uses for `--directory` /
+  `--json`. The more specific spelling wins when both are given, and the
+  subcommand spelling inherits the top-level validation
+  (`--max-workers 0` -> INPUT).
+- Verified honest: every other claim on that page -- `CHAMELEON_CHUNK_SIZE`
+  (with invalid-value warning), `CHAMELEON_MAX_WORKERS`, `CHAMELEON_PARALLEL`,
+  `CHAMELEON_PERFORMANCE_MODE` auto/fast/safe, `min(4, cpu_count)` default
+  workers, psutil metrics -- resolves to real code, and requirements.txt
+  pins nothing while pointing at the extras. All `process` flags validate
+  (--target-peak requires --normalize, --threshold requires --trim + range,
+  convert-* require --convert, sample-rate range, extras gating).
