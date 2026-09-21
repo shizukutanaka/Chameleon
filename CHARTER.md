@@ -3252,3 +3252,17 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, audit 47): Does a batch job honor its per-file results
+contract when a file vanishes mid-flight?**
+**A:** No -- one defect fixed. In process_batch_job the per-file loop
+called _resolve_uploaded_path outside any per-file guard: a file that
+disappeared between submit-time validation and processing raised
+HTTPException, hit the job-level except, marked the whole job 'failed',
+counted a circuit-breaker failure, and left every later file
+unprocessed -- while earlier results already sat in the results list.
+The resolve now lands in a try/except that records a per-file failure
+(success=False, the 404 detail) and continues, matching how
+per-operation failures are already reported. MemoryManager was also
+probed: its mmap/LRU machinery has zero callers (a documented §2
+orphan), so its claims are dead code, not live risk.
