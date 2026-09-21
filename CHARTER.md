@@ -3252,3 +3252,18 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, audit 35): Do LOOP and CONDITIONAL workflows honor the
+honest-failure rule the DAG fix applied?**
+**A:** Two defects of the same class. _execute_loop read
+metadata['iterations'] unchecked: 0, -2, and True silently produced {}
+(a workflow reporting success having run nothing), and '3' crashed with
+TypeError. It now requires a positive int and raises ValueError naming
+the bad value. _execute_conditional's 'simple' condition returned True
+when its task_id had no result -- a guard on a nonexistent or unreached
+task was treated as satisfied. It now returns False unless the task ran
+and completed; conditions can only look backward. Verified honest:
+IntegrityVerifier verify_manifest catches intact/tampered/missing
+correctly (note create_manifest always appends .json -- 'x.json' yields
+'x.json.json'), --master validates its preset via argparse choices,
+verify_manifest round-trips sha256+size.
