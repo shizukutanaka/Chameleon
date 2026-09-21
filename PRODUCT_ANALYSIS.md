@@ -353,7 +353,9 @@ you nothing and costs you the feeling of having checked. They are replaced
 with commands that produce a *number to compare*, not a hit to hope for.
 
 ```bash
-# 1. The three dependency configurations. Header says 324 / 365 / 454.
+# 1. The three dependency configurations. Compare against the header
+#    counts above — do not copy them here; that is exactly the drift the
+#    header-single-source rule exists to prevent.
 python -m pytest -q                       # numpy + scipy present
 #   ...and with numpy/scipy made unimportable, and with only scipy blocked:
 #   see tests/test_stdlib_operations.py for the sitecustomize blocker pattern.

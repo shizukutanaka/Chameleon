@@ -2471,3 +2471,21 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**2026-09-21 (Socratic audit 118, external-source pass):** Probed the
+living-status document against current code — PROJECT_STATUS.md §3 still
+listed `BatchProcessor.process_directory` as "calls a nonexistent method"
+even though `_execute_operation` was implemented in a6101a3 and the sync
+path is exercised by tests (verified on-device: 1 wav -> per-file + summary
+results, both successful). §5 likewise still described `audio_restoration.py`
+as unwired/needs-a-subcommand even though `process --dehum/--declip` and
+`batch <dir> restore` route through `repair_audio`. Both entries now record
+their actual state. Also removed a stale test-count echo in
+PRODUCT_ANALYSIS §4 ("Header says 324 / 365 / 454") that duplicated the
+header's single-source-of-truth numbers.
+
+Verified honest: `midi extract`/`analyze` paths (.mid input rejection,
+density warning, tempo mapping), the auto_gain target-LUFS heuristic
+(measures post-chain and reports `lufs_after` rather than claiming the
+target), mastering dither's warn-then-tpdf fallback, and batch
+`--dry-run` (no writes).
