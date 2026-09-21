@@ -2658,6 +2658,26 @@ already-blocked `getattr`/regex/exec payloads) carry their own attribute
 syntax; every such mini-language needs its own check against the shared
 deny set, not just the node walk.
 
+**Q: A limit knob with two enforcement paths — do both honor it, and do
+they honor *the number* or an integerized version of it?**
+A (2026-09-20): Neither fully. `execute_with_limits` ran the plugin
+in-thread under `signal.alarm(int(max_time))` on POSIX: `int(0.5)` is 0
+and `alarm(0)` *disarms* the timer — a configured sub-second bound ran
+the plugin unbounded (verified: a 3 s sleep returned normally under a
+0.2 s limit). Two more failures hid beside it: `signal.signal` raises
+ValueError off the main thread, so any embedding that executed a plugin
+from a worker crashed instead of running it; and on the worker-thread
+path a timed-out daemon thread *keeps running* — the join bounds the
+wait, not the plugin, while the log said "continuing with failure" as if
+contained. Fixed: `setitimer(ITIMER_REAL, max_time)` keeps sub-second
+precision; the SIGALRM path only engages on the main thread, other
+threads take the worker path that enforces the same bound; the timeout
+log now says the thread cannot be stopped
+(`tests/test_plugin_time_limits.py`). General lesson: converting a float
+limit to int before passing it to the enforcer is itself a limit —
+`alarm(int(x))` turned "0.5 s" into "no limit"; and a timeout on a
+thread joins the *caller* out of the wait — it never stops the work.
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
