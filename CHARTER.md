@@ -2472,6 +2472,17 @@ hardest kind to catch. And `_hz_to_midi` on a non-positive estimate hit
 False with a clear error; extraction skips pitches MIDI cannot encode
 (`tests/test_midi_note_validation.py`).
 
+**Q: Who does an error message belong to?**
+A (2026-09-20): Whichever thread wrote it last.
+`WAVProcessor._header_rejection_reason` is a per-call out-parameter
+stored on `self` -- set inside `_read_wav_header_optimized`, read by the
+caller. One `WAVProcessor` is shared across every `batch --parallel`
+worker, so thread B's reset (or its specific reason) overwrote what
+thread A was about to report: a file rejected for format tag 3 could be
+announced with another file's reason or the generic fallback. Same
+shape as `PerformanceTracker.start_time`; same fix -- the field is
+`threading.local` (`tests/test_header_reason_isolation.py`).
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
