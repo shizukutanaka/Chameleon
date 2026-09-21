@@ -2471,3 +2471,17 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21):** `PluginConfig.cache_plugins=True` is on by default.
+When `load_plugin` is called twice on an unchanged file, does the
+second call actually skip the module execution -- or does the cache
+just exist on paper?
+**A:** On paper only. The cache lookup read the hash entry, logged
+"Loading cached plugin", and then fell through to `exec_module`
+anyway -- every repeated load re-ran the plugin's top-level code
+(repeating whatever side effects it carries) and produced a fresh
+instance (verified: `p1 is p2` was False while the cache claimed the
+load). A cache that never short-circuits is a knob that does nothing.
+The lookup now returns the already-loaded instance on a hit; misses
+(file changed -> different hash, plugin unloaded -> no live instance)
+still load fresh. `cache_plugins=False` behavior unchanged.

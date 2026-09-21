@@ -361,11 +361,20 @@ class PluginLoader:
             # Calculate plugin hash for caching
             plugin_hash = self._calculate_file_hash(validated_path)
 
-            # Check cache
+            # Check cache -- a hit short-circuits the whole load. Before
+            # this the lookup only logged "Loading cached plugin" and then
+            # re-executed the module anyway: every load re-ran the plugin's
+            # top-level code and produced a second instance, so
+            # cache_plugins=True was a knob that did nothing (verified:
+            # p1 is p2 was False on a repeated load).
             if self.config.cache_plugins and plugin_hash in self.plugin_cache:
                 cached_info = self.plugin_cache[plugin_hash]
                 if cached_info.get("valid", False):
-                    self.logger.info(f"Loading cached plugin: {cached_info['name']}")
+                    existing = self.plugins.get(cached_info["name"])
+                    if existing is not None:
+                        self.logger.info(
+                            "Returning cached plugin: %s", cached_info["name"])
+                        return existing
 
             # Load module
             spec = importlib.util.spec_from_file_location("plugin_module", str(validated_path))
