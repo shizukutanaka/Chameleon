@@ -2203,13 +2203,13 @@ def create_cli():
     process.add_argument("files", nargs="+", help="Audio files to process")
     process.add_argument("--normalize", action="store_true", help="Normalize audio")
     process.add_argument("--target-peak", type=float,
-                         help="Target peak level for --normalize, 0.0-1.0 (default 0.95)")
+                         help="Target peak level for --normalize, (0.0, 1.0] (default 0.95)")
     process.add_argument("--mono", action="store_true",
                          help="Downmix to mono (standard library only)")
     process.add_argument("--trim", action="store_true",
                          help="Trim leading/trailing silence (standard library only)")
     process.add_argument("--threshold", type=float,
-                         help="Silence threshold for --trim, 0.0-1.0 (default 0.01)")
+                         help="Silence threshold for --trim, (0.0, 1.0) (default 0.01)")
     process.add_argument("--denoise", action="store_true", help="Remove noise")
     process.add_argument("--dehum", action="store_true",
                          help="Remove 50/60 Hz mains hum and its harmonics, if present "
@@ -2254,7 +2254,7 @@ def create_cli():
                             "accepted but equivalent to 'standard' -- they never had "
                             "separate behavior.")
     batch.add_argument("--target-peak", type=float,
-                       help="Target peak level for the normalize operation, 0.0-1.0 (default 0.95)")
+                       help="Target peak level for the normalize operation, (0.0, 1.0] (default 0.95)")
     batch.add_argument("--sample-rate", type=int, help="Target sample rate for conversion")
     batch.add_argument("--bit-depth", type=int, choices=[16, 24, 32], help="Target bit depth for conversion")
     batch.add_argument("--effects", help="Effects configuration for the effects operation (JSON file)")
@@ -2606,7 +2606,7 @@ async def main():
         if args.normalize:
             operations.append("normalize")
             if args.target_peak is not None:
-                # Help advertises 0.0-1.0; enforce it. A target above 1.0
+                # Help advertises (0.0, 1.0]; enforce it. A target above 1.0
                 # cannot be reached without clipping, so silently clamping
                 # it would lie about what happened to the audio.
                 if not 0.0 < args.target_peak <= 1.0:

@@ -582,3 +582,17 @@ def test_audit_log_is_bounded():
     for i in range(cap + 50):
         api_server.log_audit_event("u", "OP", "res", "SUCCESS", "", "ip", "")
     assert len(api_server.api_state.audit_log) == cap
+
+
+def test_system_status_error_rate_is_over_jobs_not_requests(client, monkeypatch):
+    """error_rate must be failed/(finished jobs), not failed/total_requests --
+    under the old denominator 10k requests hid 2-of-3 failed jobs as 0.0002."""
+    token = _login(client).json()["token"]
+    monkeypatch.setitem(api_server.api_state.stats, "completed_jobs", 3)
+    monkeypatch.setitem(api_server.api_state.stats, "failed_jobs", 1)
+    monkeypatch.setitem(api_server.api_state.stats, "total_requests", 10000)
+    response = client.get(
+        "/system/status", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert response.status_code == 200
+    assert response.json()["error_rate"] == pytest.approx(0.25)

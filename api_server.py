@@ -1500,7 +1500,13 @@ async def get_system_status(http_request: Request, user: dict = Depends(require_
         active_jobs=len([j for j in api_state.active_jobs.values() if j['status'] == 'processing']),
         queued_jobs=len(api_state.job_queue),
         completed_jobs=api_state.stats['completed_jobs'],
-        error_rate=api_state.stats['failed_jobs'] / max(1, api_state.stats['total_requests']),
+        # failed_jobs over total_requests mixed units: 10k requests hiding
+        # 2/3 failed jobs would report a "0.0002 error rate". The rate is
+        # over finished jobs -- the only thing failed_jobs can be a rate of.
+        error_rate=(
+            api_state.stats['failed_jobs']
+            / max(1, api_state.stats['completed_jobs'] + api_state.stats['failed_jobs'])
+        ),
         memory_usage=memory_usage,
         cpu_usage=cpu_usage,
         # Derived, not a constant: a hardcoded "secure" would keep

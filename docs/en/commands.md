@@ -109,7 +109,7 @@ chameleon process input.wav --normalize --json
 | Flag | Needs | Meaning |
 |------|-------|---------|
 | `--normalize` | stdlib | Normalize audio |
-| `--target-peak F` | stdlib | Target peak for `--normalize`, 0.0–1.0 (default 0.95) |
+| `--target-peak F` | stdlib | Target peak for `--normalize`, strictly above 0.0 up to 1.0 (default 0.95) |
 | `--mono` | stdlib | Downmix to a single channel |
 | `--trim` | stdlib | Trim leading and trailing silence |
 | `--threshold F` | stdlib | Silence threshold for `--trim`, strictly between 0.0 and 1.0 (default 0.01) |
