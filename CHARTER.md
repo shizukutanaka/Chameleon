@@ -3252,3 +3252,19 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, audit 34): Can a DAG workflow express an impossible
+schedule -- and what happens when it does?**
+**A:** Two defects, one root cause (the graph was never validated).
+A cyclic workflow (a<->b) returned {} -- every task silently skipped,
+the workflow reporting completion having run nothing. A dependency on
+an undefined task id crashed with a bare KeyError at schedule time. A
+self-dependency is the same cycle of one. _execute_dag now rejects
+unknown dep ids up front (ValueError naming them) and, after the
+scheduling loop, raises ValueError naming any tasks that never became
+ready (cycle / unsatisfiable). Valid DAGs unchanged: a->b still runs
+in dependency order. Also verified honest this cycle: _execute_parallel
+genuinely ignores dependencies (its contract is all-at-once; DAG is the
+type that honors ordering), the plugin AST gate's expression evaluator
+caps oversized results, and IntegrityVerifier manifests write
+atomically (tmp+rename).

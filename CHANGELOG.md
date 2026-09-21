@@ -487,6 +487,12 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **DAG workflows no longer silently skip or crash on impossible
+  dependencies** — a cyclic `WorkflowType.DAG` (a↔b) returned `{}`,
+  reporting completion having run zero tasks, and a dependency on an
+  undefined task id crashed with a bare `KeyError`. `_execute_dag` now
+  rejects undefined dep ids up front and raises `ValueError` naming any
+  tasks left unscheduled (cycle or unsatisfiable deps).
 
 ### Changed
 
