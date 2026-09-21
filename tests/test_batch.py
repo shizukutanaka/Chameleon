@@ -2,9 +2,20 @@
 
 import asyncio
 
+import pytest
+
 from tests._helpers import write_sine_wave
 
 import core
+
+
+@pytest.fixture(autouse=True)
+def _isolated_state_dir(tmp_path, monkeypatch):
+    """Batch runs used to write ~2.8MB snapshots into the real
+    ~/.chameleon_state on every suite run. Point them at tmp_path instead;
+    the singleton is reset so each test's env dir actually takes effect."""
+    monkeypatch.setenv("CHAMELEON_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setattr(core, "_batch_processor", None)
 
 
 def _run_batch(directory, operation, **kwargs):
@@ -78,3 +89,22 @@ def test_batch_skips_unsupported_file_types(tmp_path):
     # Only the WAV should be processed; non-audio files are silently skipped.
     assert len(results) == 1
     assert results[0].success is True
+
+
+def test_state_dir_created_on_record_not_on_construction(tmp_path, monkeypatch):
+    """import core / BatchProcessor() must not create ~/.chameleon_state --
+    the dir is made when a batch actually records state. Covers the
+    module-level `_batch_processor = BatchProcessor()` side effect."""
+    state_dir = tmp_path / "state"
+    monkeypatch.setenv("CHAMELEON_STATE_DIR", str(state_dir))
+
+    proc = core.BatchProcessor()
+    assert not state_dir.exists()
+
+    src = tmp_path / "in"
+    src.mkdir()
+    write_sine_wave(src / "a.wav", duration=0.3)
+    results = proc.process_directory(str(src), "analyze")
+
+    assert all(r.success for r in results)
+    assert list(state_dir.glob("batch_state_*.json"))

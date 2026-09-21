@@ -1489,7 +1489,12 @@ class ServiceDegradationManager:
 
 
 class StateRecoveryManager:
-    """Persist batch state snapshots for recovery and diagnostics."""
+    """Persist batch state snapshots for diagnostics.
+
+    Snapshots are append-only records of what a batch run did. No command
+    consumes ``load_last_state`` today, so they are evidence to inspect,
+    not an automatic resume.
+    """
 
     def __init__(self, state_dir: Optional[Union[str, Path]] = None, max_backups: int = 10) -> None:
         candidate = state_dir or os.getenv("CHAMELEON_STATE_DIR")
@@ -1499,6 +1504,13 @@ class StateRecoveryManager:
             self.state_dir = Path.home() / ".chameleon_state"
 
         self.max_backups = max(1, max_backups)
+        # Deliberately no mkdir here: StateRecoveryManager is constructed by
+        # BatchProcessor, which core.py instantiates at module level, so an
+        # eager mkdir would create ~/.chameleon_state on `import core`.
+        # The directory is created on the first record_state() instead --
+        # when a batch has actually run and there is something to keep.
+
+    def _ensure_state_dir(self) -> None:
         try:
             self.state_dir.mkdir(parents=True, exist_ok=True)
         except OSError:
@@ -1521,6 +1533,7 @@ class StateRecoveryManager:
         return None
 
     def record_state(self, summary: Dict[str, Any]) -> Optional[Path]:
+        self._ensure_state_dir()
         timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
         target_path = self.state_dir / f"batch_state_{timestamp}.json"
         payload = {
@@ -2133,7 +2146,16 @@ class EnhancedSecurityValidator:
 # resolve their dependencies.)
 # ---------------------------------------------------------------------------
 _processor = WAVProcessor()
-_batch_processor = BatchProcessor()
+# Lazy: constructing BatchProcessor() at import made `import core` touch the
+# filesystem (the state dir under $HOME). Built on first batch use instead.
+_batch_processor: Optional["BatchProcessor"] = None
+
+
+def _get_batch_processor() -> "BatchProcessor":
+    global _batch_processor
+    if _batch_processor is None:
+        _batch_processor = BatchProcessor()
+    return _batch_processor
 
 
 def analyze(input_path: str) -> ProcessingResult:
@@ -2183,7 +2205,7 @@ async def trim_silence_async(input_path: str, output_path: str, threshold: float
 
 async def batch_process_async(directory: str, operation: str, **kwargs) -> List[ProcessingResult]:
     """Asynchronously process directory - main API."""
-    return await _batch_processor.process_directory_async(directory, operation, **kwargs)
+    return await _get_batch_processor().process_directory_async(directory, operation, **kwargs)
 
 
 def record_operation(operation: str, duration_ms: int) -> None:

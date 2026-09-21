@@ -2432,3 +2432,20 @@ any range assertion.
   the artifact was rejected by the dependency-free parser it ships with.
   Verify writer output against the first-party reader, not just the
   library's subtype list.
+
+**Q (2026-09-21, continued):** `CHAMELEON_STATE_DIR` was set but a batch
+run wrote nothing there -- and `~/.chameleon_state` held ~8MB of stale
+snapshots the CLI never reads. What is the "state recovery" feature
+actually doing?
+**A:** Two defects in one apparatus. First, `import core` constructed
+`BatchProcessor` at module level, and `StateRecoveryManager.__init__`
+mkdir'd `~/.chameleon_state` eagerly: a library import that touches the
+user's filesystem (and every pytest run dropped ~2.8MB snapshots into
+the developer's real HOME). Second, `load_last_state` has no caller --
+the "recovery" files are write-only; nothing resumes from them. Fixes:
+`_batch_processor` is built lazily on first use, the manager defers
+mkdir to `record_state`, tests pin the no-side-effect construction and
+isolate the dir via `CHAMELEON_STATE_DIR`, and the class docstring now
+says diagnostic snapshots rather than recovery. The write itself is kept
+-- a post-run record is still useful evidence; the label was the lie.
+Corollary: a library module's import must not mutate the user's home.

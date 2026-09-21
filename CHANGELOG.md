@@ -465,6 +465,17 @@
   like `Bb` accepted, unknown keys rejected as INPUT), and `compose`
   uses a real minor-mode progression (i-v-VI-iv) under `--mode minor`
   so chord tones stay inside the requested scale.
+- **`import core` created `~/.chameleon_state` in the user's home** — the
+  module-level `_batch_processor = BatchProcessor()` constructed
+  `StateRecoveryManager` at import time, whose `__init__` mkdir'd the
+  state directory: a filesystem side effect inside a library import.
+  `_batch_processor` is now built lazily on first use and the manager
+  defers `mkdir` to `record_state`. Bonus: the test suite no longer drops
+  ~2.8MB state snapshots into the developer's real HOME on every run.
+- **`StateRecoveryManager` advertised "recovery" that nothing
+  implements** — `load_last_state` has zero callers; the files were
+  write-only. Docstring now says diagnostic snapshots, not automatic
+  resume.
 
 ### Changed
 

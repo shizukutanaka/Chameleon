@@ -12,8 +12,16 @@ import asyncio
 import wave
 from pathlib import Path
 
+import pytest
+
 import core
 from tests._helpers import write_sine_wave
+
+
+@pytest.fixture(autouse=True)
+def _isolated_state_dir(tmp_path, monkeypatch):
+    monkeypatch.setenv("CHAMELEON_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setattr(core, "_batch_processor", None)
 
 
 def _write_wav_with_payload(path: Path, payload: bytes) -> Path:
