@@ -2832,6 +2832,27 @@ lesson: when a container can't physically delete, the removal is
 wherever the reader looks — the map delete without the queue tombstone
 half-applied the operation and each half broke differently.
 
+**Q: What does a limiter emit for the last `lookahead_samples` of a
+buffer?**
+A (2026-09-20): Nothing — the delay-line `Limiter` emitted
+`extended_audio[i]` from `[delay_buffer, audio]`, so every call's output
+started with `lookahead_samples` of zeros and *dropped the same number
+of tail samples*, and because the delay buffer persisted, a second
+`process()` call emitted the previous buffer's tail audio as this one's
+head. Cross-call leak and per-call truncation from one mechanism.
+Lookahead needs no delay line: zero-pad the *end* and apply the forward
+window's gain to `audio[i]` — identical gain schedule, no shift, no
+dropped tail (`tests/test_processor_state_reset.py`). The Compressor's
+envelope likewise reset only at construction, so buffer N's release
+shaped buffer N+1's attack — `process()` now resets both. Config
+validation added (`ratio >= 1` — `1/ratio` divided by zero;
+`release` rounding to 0 samples divided by zero; NaN sailed through
+every naked comparison). General lesson: stateful DSP written for
+streaming, called per-buffer, silently misbehaves twice — once carrying
+state it shouldn't, once dropping output it should emit. Ask what a
+processor emits for its final samples and what it remembers for its
+first.
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
