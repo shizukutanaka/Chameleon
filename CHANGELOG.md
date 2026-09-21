@@ -487,6 +487,10 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`sliding_window_rms` crashed on empty input** — the window size
+  collapsed to `len(buffer)` = 0 and the first step divided by it
+  (`ZeroDivisionError` from a statistics helper). Empty input now
+  returns `[]`.
 
 ### Changed
 

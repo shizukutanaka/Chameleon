@@ -16,6 +16,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 import core
 import spectral_utils
 from tests._helpers import write_sine_wave
@@ -214,3 +216,16 @@ def test_sliding_window_rms_values():
     assert spectral_utils.sliding_window_rms([2.0] * 8, 4) == [2.0] * 5
     # A window wider than the signal clamps to one full-length window.
     assert spectral_utils.sliding_window_rms([3.0, -3.0], 10) == [3.0]
+
+
+def test_sliding_window_rms_returns_empty_for_empty_input():
+    # window_size collapsed to len(buffer)=0 and the loop divided by it --
+    # a statistics helper raising ZeroDivisionError on the empty case.
+    assert spectral_utils.sliding_window_rms([], 4) == []
+    assert spectral_utils.sliding_window_rms([], 1) == []
+
+
+def test_analyze_spectrum_finds_a_known_tone():
+    sig = [0.5 * math.sin(2 * math.pi * 440 * i / 44100) for i in range(8192)]
+    report = spectral_utils.analyze_spectrum(sig, 44100)
+    assert report.dominant_peaks[0].frequency_hz == pytest.approx(440, abs=2)
