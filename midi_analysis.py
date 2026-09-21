@@ -311,6 +311,10 @@ class MIDIAnalyzer:
 
     def detect_chords(self, notes: List[MIDINote], window_size: float = 1.0) -> List[Chord]:
         """Detect chords from MIDI notes"""
+        if window_size <= 0:
+            # The loop advances by window_size/2; a non-positive size never
+            # advanced and hung forever.
+            raise ValueError(f"window_size must be positive, got {window_size}")
         chords = []
         current_time = 0.0
 

@@ -2471,3 +2471,8 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** `detect_chords` -- can a caller hang it?
+**A:** Yes -- `window_size <= 0` made `current_time += window_size / 2`
+never advance, so the while loop ran forever on any non-empty note list.
+Non-positive sizes now raise ValueError up front.
