@@ -138,3 +138,26 @@ def test_stereo_width_rejects_non_finite_and_negative():
     proc = mc.StereoProcessor(mc.StereoConfig(width=1.0, bass_mono=False), 44100)
     sig = np.stack([np.ones(1000), -np.ones(1000)]) * 0.2
     assert np.isfinite(proc.process(sig)).all()
+
+
+def test_auto_gain_generated_eq_bands_are_applied():
+    # auto_adjust() computed EQ bands into adjusted_config but process()
+    # used self.eq -- built in __init__ from the ORIGINAL empty eq_bands.
+    # The generated bands were discarded: a 50 Hz tone through the
+    # auto-generated 80 Hz high-pass measured 0.212 -> 0.212 RMS.
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("scipy")
+    import mastering_chain
+
+    sr = 44100
+    t = np.arange(sr) / sr
+    tone_50hz = 0.3 * np.sin(2 * np.pi * 50 * t)
+    cfg = mastering_chain.MasteringConfig(
+        auto_gain=True, eq_enabled=True, eq_bands=[],
+        compressor_enabled=False, limiter_enabled=False,
+        stereo_enabled=False, dither_enabled=False,
+        harmonic_enhancement=0.0,
+    )
+    chain = mastering_chain.MasteringChain(cfg, sr)
+    out, _ = chain.process(tone_50hz)
+    assert float(np.sqrt(np.mean(out**2))) < 0.15 * 0.3

@@ -3252,3 +3252,19 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, audit 41): Does auto_gain's "suggest EQ adjustments"
+suggestion ever reach the audio?**
+**A:** No -- it was dead computation. auto_adjust() generated EQ bands
+into adjusted_config (deepcopy), but process() ran self.eq, which
+__init__ had built from the ORIGINAL empty eq_bands. Compressor
+adjustments were applied (self.compressor.config = adjusted) -- EQ was
+not: 50 Hz through the auto 80 Hz HPF measured 0.212 -> 0.212 RMS.
+process() now builds the EQ stage from the adjusted bands when
+auto_gain produced them; the same tone now lands 0.212 -> 0.029.
+Verified honest: the CLI --effects eq path warns on bands beyond
+Nyquist; ParametricEQ correctly uses single-pass lfilter for RBJ bands
+(filtfilt would double the gain); stereo width 0/2/-1 all behave
+mathematically (mono collapse, widening, M/S inversion, all finite);
+auto_gain skips the -inf LUFS makeup adjustment rather than producing
+NaN audio.
