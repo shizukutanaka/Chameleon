@@ -13,6 +13,7 @@ import sys
 import time
 import json
 import struct
+import tempfile
 import argparse
 import asyncio
 import math
@@ -30,7 +31,7 @@ from collections import Counter
 from logging.handlers import RotatingFileHandler
 
 import core
-from core import open_secure, SecurityValidator
+from core import open_secure, open_secure_atomic, SecurityValidator
 from plugin_system import PluginManager, PluginConfig, SecurityError
 
 if TYPE_CHECKING:
@@ -2028,19 +2029,32 @@ class AudioProcessor:
         if bit_depth not in {16, 24, 32} and self.logger:
             self.logger.warning("Unsupported bit depth %s requested; defaulting to 16-bit PCM.", bit_depth)
 
-        # Try soundfile first
+        # Try soundfile first. Written to a sibling temp + renamed, same as
+        # _save_wav_basic -- a crashed sf.write must not leave a truncated
+        # file where a finished one used to be.
         if HAS_SOUNDFILE:
             subtype_map = {16: "PCM_16", 24: "PCM_24", 32: "PCM_32"}
             subtype = subtype_map.get(target_bit_depth)
+            fd, tmp_name = tempfile.mkstemp(
+                dir=Path(file_path).parent,
+                prefix=f".{Path(file_path).name}.", suffix=".tmp")
+            os.close(fd)
+            tmp = Path(tmp_name)
             try:
                 sf.write(
-                    file_path,
+                    str(tmp),
                     audio.T if audio.ndim > 1 else audio,
                     sr,
+                    format='WAV',   # the tmp suffix carries no format hint
                     subtype=subtype
                 )
+                os.replace(tmp, file_path)
                 return target_bit_depth
             except Exception as e:
+                try:
+                    tmp.unlink()
+                except OSError:
+                    pass
                 self.logger.warning(f"Soundfile save failed: {e}")
 
         # Fallback to basic WAV writing
@@ -2084,6 +2098,10 @@ class AudioProcessor:
 
         if create_dirs:
             destination.parent.mkdir(parents=True, exist_ok=True)
+        if destination.exists() and self.logger:
+            # Re-running the same command otherwise replaces a finished
+            # output with no trace -- ffmpeg prompts, we at least say it.
+            self.logger.warning("Overwriting existing file: %s", destination)
         return destination
 
     def _save_wav_basic(self, audio: np.ndarray, file_path: str, sr: int, *, bit_depth: int = 16):
@@ -2122,7 +2140,7 @@ class AudioProcessor:
 
         channels = 1 if pcm_audio.ndim == 1 else pcm_audio.shape[0]
 
-        with open_secure(file_path, 'wb') as f:
+        with open_secure_atomic(file_path, 'wb') as f:
             # RIFF header
             f.write(b'RIFF')
             f.write(struct.pack('<I', 0))  # File size (will update later)

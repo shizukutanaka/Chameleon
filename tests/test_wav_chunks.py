@@ -12,6 +12,7 @@ external files, stdlib only.
 
 import os
 import struct
+from pathlib import Path
 
 import pytest
 
@@ -186,3 +187,45 @@ def test_load_wav_basic_8bit_unsigned_offset(tmp_path):
     audio, sr = main.AudioProcessor()._load_wav_basic(str(wav))
     assert audio[0] == pytest.approx(0.0, abs=0.01)
     assert audio[2] == pytest.approx(-1.0, abs=0.01)
+
+
+def test_open_secure_atomic_leaves_existing_file_on_write_error(tmp_path):
+    # A failed render must not replace a finished file with a truncated
+    # corpse -- the temp sibling is removed and the destination untouched.
+    from core import open_secure_atomic
+    dest = tmp_path / "out.wav"
+    dest.write_bytes(b"PREVIOUS-GOOD-OUTPUT")
+    try:
+        with open_secure_atomic(dest, 'wb') as f:
+            f.write(b"partial-bytes")
+            raise OSError("simulated write failure")
+    except OSError:
+        pass
+    assert dest.read_bytes() == b"PREVIOUS-GOOD-OUTPUT"
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
+def test_open_secure_atomic_writes_on_clean_exit(tmp_path):
+    from core import open_secure_atomic
+    dest = tmp_path / "out.wav"
+    with open_secure_atomic(dest, 'wb') as f:
+        f.write(b"payload")
+    assert dest.read_bytes() == b"payload"
+
+
+def test_process_warns_before_overwriting_existing_output(tmp_path):
+    wav, _ = _plain(tmp_path)
+    existing = tmp_path / f"{Path(wav).stem}_normalized.wav"
+    existing.write_bytes(b"OLD")
+    import io
+    import logging
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    processor = main.AudioProcessor()
+    # setup_logging replaces logger.handlers, so attach after construction.
+    processor.logger.addHandler(handler)
+    try:
+        processor.batch_process([str(wav)], "normalize")
+    finally:
+        processor.logger.removeHandler(handler)
+    assert "Overwriting existing file" in stream.getvalue()
