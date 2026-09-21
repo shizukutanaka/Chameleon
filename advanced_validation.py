@@ -409,7 +409,14 @@ class IntegrityVerifier:
 
         # Save manifest atomically: a torn write leaves a corrupt JSON that
         # would fail every future verify for a reason the user cannot see.
-        manifest_path = self.manifest_dir / f"{manifest_name}.json"
+        manifest_path = (self.manifest_dir / f"{manifest_name}.json").resolve()
+        # manifest_name must be a bare name: separators or traversal used to
+        # write (or crash trying) outside manifest_dir.
+        if (manifest_path.parent != self.manifest_dir.resolve()
+                or not manifest_name or not manifest_name.strip('.')):
+            raise ValueError(
+                f"manifest_name must be a bare file name under "
+                f"{self.manifest_dir}; got {manifest_name!r}")
         import json
         tmp_path = manifest_path.with_suffix(manifest_path.suffix + ".tmp")
         with open(tmp_path, 'w') as f:

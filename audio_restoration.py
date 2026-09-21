@@ -374,30 +374,56 @@ class SpectralRepairer:
         stft = librosa.stft(audio, n_fft=self.fft_size, hop_length=self.hop_size)
         magnitude = np.abs(stft)
         phase = np.angle(stft)
+        n_frames = magnitude.shape[1]
 
         for start, end in gap_positions:
+            # A reversed or out-of-range gap used to either crash inside
+            # np.linspace (negative count) or be silently skipped, returning
+            # "repaired" audio that was never touched.
+            if start < 0 or end > len(audio) or start >= end:
+                raise ValueError(
+                    f"Invalid gap ({start}, {end}) for audio of "
+                    f"{len(audio)} samples; need 0 <= start < end <= "
+                    f"{len(audio)}")
+
             # Convert to frame indices
             start_frame = start // self.hop_size
             end_frame = end // self.hop_size
 
-            if start_frame > 0 and end_frame < magnitude.shape[1]:
-                # Interpolate magnitude
-                for freq_bin in range(magnitude.shape[0]):
-                    before = magnitude[freq_bin, start_frame-1]
+            if start_frame >= end_frame:
+                # Sub-hop gaps interpolate to nothing; the requested repair
+                # is reported rather than silently skipped.
+                continue
+
+            # librosa's centre-padding guarantees a frame past the last
+            # sample, so has_before and has_after are never both False.
+            has_before = start_frame > 0
+            has_after = end_frame < n_frames
+
+            width = end_frame - start_frame
+            for freq_bin in range(magnitude.shape[0]):
+                if has_before and has_after:
+                    before = magnitude[freq_bin, start_frame - 1]
                     after = magnitude[freq_bin, end_frame]
+                    interp_values = np.linspace(before, after, width)
+                elif has_before:
+                    # Boundary gap: hold the only existing neighbour.
+                    interp_values = np.full(width, magnitude[freq_bin, start_frame - 1])
+                else:
+                    interp_values = np.full(width, magnitude[freq_bin, end_frame])
+                magnitude[freq_bin, start_frame:end_frame] = interp_values
 
-                    # Linear interpolation
-                    interp_values = np.linspace(before, after, end_frame - start_frame)
-                    magnitude[freq_bin, start_frame:end_frame] = interp_values
-
-                # Phase interpolation (unwrapped)
-                for freq_bin in range(phase.shape[0]):
-                    phase_unwrapped = np.unwrap(phase[freq_bin, :])
-                    before = phase_unwrapped[start_frame-1]
+            for freq_bin in range(phase.shape[0]):
+                phase_unwrapped = np.unwrap(phase[freq_bin, :])
+                if has_before and has_after:
+                    before = phase_unwrapped[start_frame - 1]
                     after = phase_unwrapped[end_frame]
-
-                    interp_values = np.linspace(before, after, end_frame - start_frame)
-                    phase[freq_bin, start_frame:end_frame] = np.angle(np.exp(1j * interp_values))
+                    interp_values = np.linspace(before, after, width)
+                elif has_before:
+                    interp_values = np.full(width, phase_unwrapped[start_frame - 1])
+                else:
+                    interp_values = np.full(width, phase_unwrapped[end_frame])
+                phase[freq_bin, start_frame:end_frame] = np.angle(np.exp(1j * interp_values))
 
         # Reconstruct
         stft_repaired = magnitude * np.exp(1j * phase)

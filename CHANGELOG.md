@@ -487,6 +487,15 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`SpectralRepairer.repair_gaps` silently skipped boundary gaps** —
+  gaps at frame 0 or the last frame returned bit-identical audio while
+  claiming repair; reversed/out-of-range gaps crashed inside
+  `np.linspace`. Gaps are validated (`0 <= start < end <= len`) and
+  boundary gaps get a one-sided fill.
+- **`IntegrityVerifier.create_manifest` allowed path traversal** —
+  `manifest_name="../x"` wrote outside `manifest_dir` and `"a/b"`
+  crashed on missing subdirs. The name must now be a bare file name or
+  `ValueError`.
 
 ### Changed
 
