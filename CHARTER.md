@@ -2784,6 +2784,20 @@ silently dropping the *strongest* peak; negative counts now raise
 not a count bound — `xs[:n]` with negative `n` is a *filter*, not a
 limit, and it filters out exactly what you most wanted.
 
+**Q: Does the display layer die on the data it exists to show?**
+A (2026-09-20): Yes, three ways. `TableFormatter.format_table` indexed
+`widths[i]` per *row* cell while `widths` was sized to *headers* — a
+ragged row with extra cells raised `IndexError`, and a short row
+silently rendered misaligned; rows are now normalized to the header
+count (extras dropped, missing rendered empty). `format_duration(nan)`
+fell through every `<` comparison into the hours branch's `int()` —
+`ValueError` — and `format_file_size(nan)` returned the string
+"nan PB"; both now return "unknown" for non-finite or negative input
+(`tests/test_ux_formatting_edges.py`). General lesson: a formatting
+helper's job is to degrade — the moment a *display* layer can crash,
+every caller that logs or prints under failure inherits the crash at
+exactly the wrong moment.
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented

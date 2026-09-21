@@ -2,9 +2,9 @@
 
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
 **Version:** 1.1.0 · **Tests:** re-run 2026-09-20 on Python 3.12, green in
-all three configurations — **561 passed** on a bare install (stdlib only,
-49 skipped), **669** with numpy (scipy/librosa/soundfile blocked, 44
-skipped), **788** with numpy + scipy + librosa + soundfile + fastapi
+all three configurations — **568 passed** on a bare install (stdlib only,
+49 skipped), **676** with numpy (scipy/librosa/soundfile blocked, 44
+skipped), **795** with numpy + scipy + librosa + soundfile + fastapi
 (5 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
@@ -385,6 +385,7 @@ here because they need a user decision first.
 | ~~P2~~ | ~~`_rate_limit_windows` cleanup only removed already-empty deques — one-shot identifiers left expired entries forever; dict grew unboundedly per unique identifier~~ | Med | XS | Med | **DONE 2026-09-20** — drops every window whose newest entry aged out, not just emptied ones (`tests/test_rate_limit_cleanup.py`) |
 | ~~P2~~ | ~~`AudioRestorer.restore` on silent/empty input — `log10(0)` RuntimeWarning (DSP-gate error) on silence; hard crash on empty~~ | Med | XS | Med | **DONE 2026-09-20** — `-inf` set explicitly, empty input returns empty metrics, `hf_preservation` omitted on silent originals (`tests/test_restoration_metrics_edges.py`) |
 | ~~P2~~ | ~~`spectral_utils` edge inputs — `sliding_window_rms([])` → 0/0 crash; NaN target_peak/gains/rates slipped comparison guards; `max_peaks=-1` silently dropped the strongest peak~~ | Med | XS | Med | **DONE 2026-09-20** — empty → `[]`, `operator.index` window check, `isfinite` on all numeric params, negative `max_peaks` raises (`tests/test_spectral_utils_edges.py`) |
+| ~~P3~~ | ~~`ux_improvements` display layer — ragged table rows crashed (`IndexError`) or misaligned; `format_duration(nan)` → `ValueError`; `format_file_size(nan)` → "nan PB"~~ | Low | XS | Med | **DONE 2026-09-20** — rows normalized to header count, non-finite/negative → "unknown" (`tests/test_ux_formatting_edges.py`) |
 | P4 | Plugin sandbox runtime boundary (restricted builtins for `exec_module`) | High (security) | L | High | Architectural; leaky if done partially — design first |
 | P4 | Surround-channel loudness weighting | Low | M | Low | Only if a real multichannel use case appears |
 
