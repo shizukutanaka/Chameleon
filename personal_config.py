@@ -7,6 +7,7 @@ Simplified setup with maximum security and features
 import sys
 import os
 import json
+import shlex
 from pathlib import Path
 from typing import Dict, Any, Optional
 from dataclasses import dataclass, asdict, fields
@@ -219,24 +220,38 @@ class PersonalSetup:
         # the new shell) a literal `python` does not resolve and every alias
         # fails with "command not found". sys.executable is also venv-aware,
         # so the aliases keep working without `chameleon-activate` first.
+        # Every interpolated path goes through shlex.quote: an
+        # apostrophe or '$(' in a directory name would otherwise break
+        # the alias file or execute as shell. Each alias body is built
+        # from quoted parts, then the whole body is quoted once.
+        _exe = shlex.quote(sys.executable)
+        _main = shlex.quote(str(Path.cwd() / 'main.py'))
+        _activate = f'source {shlex.quote(str(Path.cwd() / ".venv" / "bin" / "activate"))}'
+        _lib = str(config.audio_library)
+        _out = str(config.output_directory)
+        _analyze = f'{_exe} {_main} analyze'
+        _normalize = f'{_exe} {_main} process --normalize'
+        _denoise = f'{_exe} {_main} process --denoise'
+        _batch = f'{_exe} {_main} batch {shlex.quote(_lib)}'
+        _server = f'{_exe} {_main} server --host 127.0.0.1 --port 8080'
         aliases = f"""#!/bin/bash
 # Chameleon Audio - Personal Quick Commands
 
 # Activate virtual environment
-alias chameleon-activate='source {Path.cwd()}/.venv/bin/activate'
+alias chameleon-activate={shlex.quote(_activate)}
 
 # Quick operations
-alias audio-analyze='"{sys.executable}" "{Path.cwd()}/main.py" analyze'
-alias audio-normalize='"{sys.executable}" "{Path.cwd()}/main.py" process --normalize'
-alias audio-denoise='"{sys.executable}" "{Path.cwd()}/main.py" process --denoise'
-alias audio-batch='"{sys.executable}" "{Path.cwd()}/main.py" batch "{config.audio_library}"'
+alias audio-analyze={shlex.quote(_analyze)}
+alias audio-normalize={shlex.quote(_normalize)}
+alias audio-denoise={shlex.quote(_denoise)}
+alias audio-batch={shlex.quote(_batch)}
 
 # Personal library management
-alias audio-lib='cd {config.audio_library}'
-alias audio-processed='cd {config.output_directory}'
+alias audio-lib={shlex.quote('cd ' + _lib)}
+alias audio-processed={shlex.quote('cd ' + _out)}
 
 # Server
-alias audio-server='"{sys.executable}" "{Path.cwd()}/main.py" server --host 127.0.0.1 --port 8080'
+alias audio-server={shlex.quote(_server)}
 """
 
         _atomic_write_text(aliases_file, aliases)
@@ -273,11 +288,11 @@ function Audio-Batch {{
 
 # Directory shortcuts
 function Audio-Lib {{
-    Set-Location "{config.audio_library}"
+    Set-Location '{str(config.audio_library).replace(chr(39), chr(39)*2)}'
 }}
 
 function Audio-Processed {{
-    Set-Location "{config.output_directory}"
+    Set-Location '{str(config.output_directory).replace(chr(39), chr(39)*2)}'
 }}
 """
 

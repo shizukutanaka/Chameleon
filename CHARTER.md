@@ -2471,3 +2471,21 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, audit 45): Do the generated shell aliases survive a
+hostile path, and is the session lifecycle honest?**
+**A:** One defect fixed. quick_setup interpolated audio_library,
+output_directory, Path.cwd() and sys.executable into bash aliases
+inside single quotes -- a path containing an apostrophe or $(...) broke
+the file's syntax ('unexpected EOF') or executed as shell on source.
+All interpolated paths now go through shlex.quote and each alias body
+is quoted once. Verified live: audio_library="/tmp/it's \$(evil)/lib"
+produces a file bash -n accepts and whose alias resolves without
+executing 'evil'. The matching PowerShell Set-Location lines escape
+single quotes by doubling. One existing test pinned the old quoting
+*style* ("sys.executable" literally double-quoted) rather than the
+intent (invoke the running interpreter); updated to assert the path.
+Verified honest: session lifecycle (absolute expiry + idle timeout +
+per-request signature verify + logout removes token index),
+_cleanup_expired_sessions, capacity -> 503, ErrorAnalyzer severity
+mapping, StructuredLogger's real JSON formatter.
