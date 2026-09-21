@@ -2274,6 +2274,23 @@ json.loads accepts the literals NaN/Infinity by default, so a JSON config
 file can smuggle them into any "numeric" field. The check is
 isinstance(x, (int, float)) AND math.isfinite(x), in that order, before
 any range assertion.
+Q: `batch` prints "Processed 1/2 files successfully" — is that the output
+   of a batch operation? Could a user reconstruct what was written where,
+   or why a file failed, from what the terminal shows?
+A (2026-09-21): No — the results loop only counted `successful`; every
+   result's `output`, `planned_output` and `error` fields were computed
+   and then discarded, for EVERY operation, so a failing file's error
+   message never reached the user and a dry run named nothing it planned.
+   `batch` now prints one line per result — `Processed/​Would process
+   <file> -> <output> (<time>)` on stdout (convert carries its
+   sample-rate/bit-depth detail like `process` does) and `Error: <file>:
+   <reason>` on stderr — and `analyze` prints the same Duration/Sample
+   Rate/Channels/Peak/RMS block as the single-file command, writing
+   `<stem>_analysis.json` when `--output-dir` is given (the flag's first
+   consumer for an op that produces reports, not audio). The regression
+   tests assert a bad file is *named with a reason* on stderr and that a
+   dry run names its planned outputs, because a tally alone proved
+   nothing about which inputs produced what.
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented

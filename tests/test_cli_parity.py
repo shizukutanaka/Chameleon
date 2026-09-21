@@ -598,3 +598,54 @@ def test_convert_bit_depth_32_writes_pcm_not_float(tmp_path):
     assert fmt_off > 0
     format_tag = int.from_bytes(body[fmt_off + 8:fmt_off + 10], "little")
     assert format_tag == 1  # PCM, not IEEE float (3)
+
+
+def test_batch_names_every_output_and_every_failure(tmp_path):
+    """A tally with no per-file lines leaves the user unable to tell what
+    was written where -- or why a file failed. batch must name outputs on
+    stdout and failures (file + reason) on stderr."""
+    write_sine_wave(tmp_path / "a.wav")
+    (tmp_path / "bad.wav").write_bytes(b"not a wav" * 8)
+    out_dir = tmp_path / "out"
+
+    result = _run("batch", str(tmp_path), "normalize",
+                  "--output-dir", str(out_dir), cwd=str(tmp_path))
+
+    assert result.returncode == 3  # partial failure -> INPUT
+    assert "a.wav" in result.stdout
+    assert "a_normalized.wav" in result.stdout
+    assert "bad.wav" in result.stderr
+    assert "1/2" in result.stdout  # tally: 1 success of 2 inputs
+
+
+def test_batch_dry_run_names_planned_outputs(tmp_path):
+    write_sine_wave(tmp_path / "a.wav")
+
+    result = _run("batch", str(tmp_path), "normalize", "--dry-run",
+                  "--output-dir", str(tmp_path / "out"), cwd=str(tmp_path))
+
+    assert result.returncode == 0
+    assert "Would process" in result.stdout
+    assert "a_normalized.wav" in result.stdout
+    assert not (tmp_path / "out").exists() or not list(
+        (tmp_path / "out").glob("*.wav"))
+
+
+def test_batch_analyze_reports_instead_of_discarding(tmp_path):
+    """`batch analyze` computed per-file metadata then printed only the
+    tally -- an analysis command whose output was a count. It now prints
+    the same fields `analyze` does and writes <stem>_analysis.json when
+    --output-dir is given."""
+    src = tmp_path / "in"
+    src.mkdir()
+    write_sine_wave(src / "tone.wav")
+    out = tmp_path / "reports"
+
+    result = _run("batch", str(src), "analyze", "--output-dir", str(out))
+
+    assert result.returncode == 0, result.stderr
+    assert "Duration:" in result.stdout
+    assert "Peak Level:" in result.stdout
+    report = out / "tone_analysis.json"
+    assert report.exists()
+    assert json.loads(report.read_text())["sample_rate"] == 44100

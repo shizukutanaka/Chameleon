@@ -3003,6 +3003,64 @@ async def main():
             print(f"Error: {results[0]['error']}", file=sys.stderr)
             return results[0]["exit_code"]
 
+        # Every result must reach the user: batch used to print only the
+        # tally, so per-file outputs went unnamed, per-file failures never
+        # said why, and `analyze` discarded the analysis it computed.
+        # One line (analyze: a stats block) per result.
+        if output_dir and args.operation == "analyze" and not args.dry_run:
+            # analyze produces reports, not audio -- give --output-dir a
+            # consumer for this operation instead of ignoring it.
+            try:
+                Path(output_dir).mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                print(f"Error: cannot create output directory "
+                      f"{output_dir}: {exc}", file=sys.stderr)
+                return ExitCode.INPUT
+        wrote_reports = False
+        for result in results:
+            if "error" in result:
+                print(f"Error: {result.get('file', '<input>')}: "
+                      f"{result['error']}", file=sys.stderr)
+                continue
+            if args.operation == "analyze":
+                if args.dry_run:
+                    print(f"Would analyze {result['file']}")
+                    continue
+                metadata = result["metadata"]
+                print(f"\n{result['file']}:")
+                print(f"  Duration: {metadata.duration:.2f}s")
+                print(f"  Sample Rate: {metadata.sample_rate}Hz")
+                print(f"  Channels: {metadata.channels}")
+                print(f"  Peak Level: {metadata.peak_level:.3f}")
+                print(f"  RMS Level: {metadata.rms_level:.3f}")
+                if output_dir:
+                    report_path = (Path(output_dir)
+                                   / f"{Path(result['file']).stem}_analysis.json")
+                    try:
+                        with open(report_path, 'w') as fh:
+                            json.dump(_serialize_result(metadata), fh,
+                                      indent=2, default=str)
+                        wrote_reports = True
+                    except OSError as exc:
+                        print(f"Error: cannot write analysis report "
+                              f"{report_path}: {exc}", file=sys.stderr)
+                        exit_code = ExitCode.INPUT
+                continue
+            details = []
+            if args.operation == "convert":
+                if "sample_rate" in result:
+                    details.append(f"{result['sample_rate']}Hz")
+                if "bit_depth" in result:
+                    details.append(f"{result['bit_depth']}bit")
+            output = (result.get("output") or result.get("planned_output")
+                      or "done")
+            verb = "Would process" if result.get("dry_run") else "Processed"
+            detail_suffix = f" [{', '.join(details)}]" if details else ""
+            print(f"{verb} {result['file']} -> {output} "
+                  f"({result['time']:.2f}s){detail_suffix}")
+        if wrote_reports:
+            print(f"\nAnalysis reports written to {output_dir}")
+
         successful = sum(1 for r in results if "error" not in r)
         verb = "Would process" if args.dry_run else "Processed"
         summary = f"{verb} {successful}/{len(results)} files successfully"
