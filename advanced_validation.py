@@ -468,6 +468,8 @@ class SanitizationEngine:
         # module level, so a top-level core import here would be circular.
         from core import atomic_output
 
+        file_size = file_path.stat().st_size
+
         with open(file_path, 'rb') as infile, atomic_output(output_path) as outfile:
             # Read and write RIFF header
             riff_header = infile.read(12)
@@ -489,6 +491,17 @@ class SanitizationEngine:
 
                 chunk_id = chunk_header[:4]
                 chunk_size = struct.unpack('<I', chunk_header[4:8])[0]
+
+                # A declared chunk that runs past EOF is a malformed
+                # input: read() would return fewer bytes than the header
+                # claims, and writing them under the declared size makes
+                # the sanitized output's own header lie. The same check
+                # also caps the read at what the file actually holds.
+                if chunk_size > file_size - infile.tell():
+                    raise ValueError(
+                        f"declared chunk size {chunk_size} exceeds remaining "
+                        f"file bytes in {file_path}"
+                    )
 
                 # Only keep essential chunks
                 if chunk_id in KEEP_CHUNKS:
