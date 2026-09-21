@@ -1448,7 +1448,8 @@ class AudioProcessor:
             return {"error": str(e)}
 
     def generate_midi(self, notes: List[MIDINote], output_path: str,
-                      tempo_bpm: float = 120.0) -> bool:
+                      tempo_bpm: float = 120.0,
+                      key_signature=None) -> bool:
         """Generate MIDI file from notes"""
         if not HAS_MIDI:
             self.logger.warning("MIDI generation not available")
@@ -1457,7 +1458,8 @@ class AudioProcessor:
         try:
             analyzer = MIDIAnalyzer()
             success = analyzer.generate_midi_file(notes, output_path,
-                                                  tempo_bpm=tempo_bpm)
+                                                  tempo_bpm=tempo_bpm,
+                                                  key_signature=key_signature)
 
             if success:
                 self.logger.info(f"MIDI file generated: {output_path}")
@@ -3253,7 +3255,12 @@ async def main():
             if melody:
                 print(f"Generated melody with {len(melody)} notes")
                 if output_path:
-                    success = processor.generate_midi(melody, output_path, tempo_bpm=tempo)
+                    # Without an FF 59 key-signature event every player
+                    # assumes C major -- write the key the user asked for.
+                    sf, mi = MIDIAnalyzer.key_signature_meta(tonic, mode)
+                    success = processor.generate_midi(
+                        melody, output_path, tempo_bpm=tempo,
+                        key_signature=(sf, mi))
                     if success:
                         print(f"Composition saved to {args.output}")
                     else:
@@ -3298,7 +3305,10 @@ async def main():
                     demo_notes.append(note)
 
             if demo_notes:
-                success = processor.generate_midi(demo_notes, output_path, tempo_bpm=tempo)
+                sf, mi = MIDIAnalyzer.key_signature_meta(tonic, mode)
+                success = processor.generate_midi(
+                    demo_notes, output_path, tempo_bpm=tempo,
+                    key_signature=(sf, mi))
                 if success:
                     print(f"Demo MIDI file generated: {args.output}")
                 else:

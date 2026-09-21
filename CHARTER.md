@@ -2471,3 +2471,25 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**2026-09-21 (Socratic audit 114, external-source pass):** Probed against
+external references: PEP 594 round two (cgi/cgitb/crypt/imghdr/sndhdr/
+pipes/... -- none used), Content-Disposition header injection on the
+/audio/download route (safe: upload names go through sanitize_filename,
+which scrubs '"'/control bytes before registration), the EBU fact-chunk
+requirement for non-PCM WAV (N/A -- no write path emits float WAV), and
+the SMF meta-event table:
+
+- `midi compose --key G` generated a melody in G but the file carried no
+  FF 59 key-signature meta event, so every DAW opened it as C major --
+  the key request only shaped the notes, not the file's own declaration
+  (verified end-to-end). The writer now emits FF 59 02 sf mi when given
+  a key_signature, with sf/mi range-checked (sf in [-7,7], mi in {0,1});
+  other diatonic modes write their parent-major signature per
+  key_signature_meta(). FF 58 time signature (4/4 by default) is written
+  too, and a non-power-of-two denominator is refused rather than masked
+  into a byte.
+
+Verified honest: upload/download filename injection path (scrubbed at
+registration), deprecated-stdlib surface beyond `wave` (clean), fact
+chunk requirement scope, Content-Disposition quoting.

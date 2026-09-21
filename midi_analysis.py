@@ -556,13 +556,41 @@ class MIDIAnalyzer:
 
         return "Original progression"
 
+    # Mode tonic's scale degree inside its parent major scale -- used to
+    # recover the key signature a mode implies (D dorian -> C major -> 0).
+    _MODE_DEGREE_OFFSET = {
+        "major": 0, "ionian": 0, "dorian": 2, "phrygian": 4, "lydian": 5,
+        "mixolydian": 7, "minor": 9, "aeolian": 9, "locrian": 11,
+    }
+    # Sharps/flats (FF 59 sf byte) for a major key by tonic pitch class.
+    _MAJOR_SF_BY_TONIC = {0: 0, 7: 1, 2: 2, 9: 3, 4: 4, 11: 5, 6: 6,
+                        1: 7, 5: -1, 10: -2, 3: -3, 8: -4}
+
+    @classmethod
+    def key_signature_meta(cls, tonic: int, mode: str) -> Tuple[int, int]:
+        """Return the FF 59 (sf, mi) meta-event payload for a key.
+
+        ``sf`` counts sharps (positive) or flats (negative); ``mi`` is 0 for
+        major and 1 for minor -- the only two values the SMF spec defines,
+        so the other modes report the parent-major signature with mi=0."""
+        offset = cls._MODE_DEGREE_OFFSET.get(mode, 0)
+        parent_tonic = (tonic - offset) % 12
+        sf = cls._MAJOR_SF_BY_TONIC[parent_tonic]
+        mi = 1 if mode in ("minor", "aeolian") else 0
+        return sf, mi
+
     def generate_midi_file(self, notes: List[MIDINote], filename: str,
-                           tempo_bpm: float = 120.0) -> bool:
+                           tempo_bpm: float = 120.0,
+                           key_signature: Optional[Tuple[int, int]] = None,
+                           time_signature: Tuple[int, int] = (4, 4)) -> bool:
         """Generate a basic MIDI file from notes.
 
         ``tempo_bpm`` is written as the FF 51 03 meta event -- without it
         every player defaults to 120 BPM and a requested tempo would have no
-        effect on the produced file."""
+        effect on the produced file. ``key_signature`` is an ``(sf, mi)``
+        pair (see :meth:`key_signature_meta`) written as FF 59 02 so a DAW
+        opens the file in the key it was composed in; ``time_signature`` is
+        written as FF 58 04."""
         try:
             # Basic MIDI file structure
             midi_data = bytearray()
@@ -582,6 +610,25 @@ class MIDIAnalyzer:
             us_per_quarter = int(round(60_000_000 / tempo_bpm))
             track_data.extend(b'\x00\xff\x51\x03')
             track_data.extend(us_per_quarter.to_bytes(3, 'big'))
+
+            # Time signature FF 58 04 nn dd cc bb -- dd is log2 of the
+            # denominator (4 -> 2), cc=24 MIDI clocks per metronome click,
+            # bb=8 32nds per quarter (the conventional defaults).
+            nn, dd = time_signature
+            if dd & (dd - 1) or dd < 1:
+                raise ValueError(
+                    f"MIDI time signature denominator must be a power of "
+                    f"two, got {dd}")
+            track_data.extend(b'\x00\xff\x58\x04')
+            track_data.extend(bytes([nn & 0xFF, (dd - 1).bit_length(), 24, 8]))
+
+            if key_signature is not None:
+                sf, mi = key_signature
+                if not -7 <= sf <= 7 or mi not in (0, 1):
+                    raise ValueError(
+                        f"Invalid key signature meta (sf={sf}, mi={mi})")
+                track_data.extend(b'\x00\xff\x59\x02')
+                track_data.extend(bytes([sf & 0xFF, mi & 0xFF]))
 
             # Sort notes by start time
             sorted_notes = sorted(notes, key=lambda n: n.start_time)

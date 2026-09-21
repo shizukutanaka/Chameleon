@@ -247,3 +247,38 @@ def test_analyze_harmony_names_the_key_not_a_pitch_class():
     harmony = analyzer.analyze_harmony(chords, key)
 
     assert harmony["key"] == "C major"
+
+
+def test_written_file_carries_key_and_time_signature_meta(tmp_path):
+    """generate_midi_file used to emit only the tempo meta event, so every
+    file opened in a DAW as C major / 4-4 regardless of the key the user
+    composed in -- `--key G` shaped the notes but the file itself claimed
+    nothing. The writer now emits FF 58 (time signature) always and FF 59
+    (key signature) when key_signature=(sf, mi) is passed; sf/mi are
+    range-checked per the SMF spec."""
+    from midi_analysis import MIDIAnalyzer, MIDINote
+
+    a = MIDIAnalyzer()
+    note = MIDINote(pitch=60, velocity=80, start_time=0.0, duration=0.5)
+    out = tmp_path / "in_g.mid"
+    assert a.generate_midi_file([note], str(out), tempo_bpm=120.0,
+                                key_signature=(1, 0))
+    data = out.read_bytes()
+    # G major: sf=1 sharp, mi=0 major.
+    assert b"\xff\x59\x02\x01\x00" in data
+    # 4/4: nn=4, dd=log2(4)=2, cc=24, bb=8.
+    assert b"\xff\x58\x04\x04\x02\x18\x08" in data
+
+    # Key-signature derivation: D minor -> sf=-1/mi=1, D dorian -> its
+    # parent C major signature (sf=0, mi=0 -- SMF defines only major/minor).
+    assert MIDIAnalyzer.key_signature_meta(2, "minor") == (-1, 1)
+    assert MIDIAnalyzer.key_signature_meta(7, "major") == (1, 0)
+    assert MIDIAnalyzer.key_signature_meta(2, "dorian") == (0, 0)
+
+    # Nonsense meta values are refused, not masked into bytes.
+    assert not a.generate_midi_file(
+        [note], str(tmp_path / "bad.mid"),
+        key_signature=(8, 0))
+    assert not a.generate_midi_file(
+        [note], str(tmp_path / "bad2.mid"),
+        time_signature=(3, 6))
