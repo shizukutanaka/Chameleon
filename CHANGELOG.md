@@ -52,6 +52,13 @@
   error gets a (1 - z^-1) high-pass response; measured LF suppression
   ~11x vs flat TPDF on a sub-LSB input). Output lands exactly on the
   int16 grid so the PCM write stays transparent.
+- **Characterization tests pinning verified-honest CLI behavior** --
+  surfaces swept clean this cycle now can't silently regress:
+  unsigned 8-bit PCM decodes as offset-binary (peak ~60/128), trimming
+  an all-silence file refuses with INPUT instead of writing an empty
+  WAV, `batch --recursive` descends only when asked, `plugins audit
+  --fail-fast` reports exactly one FAILED verdict, and `midi compose
+  --key D --mode minor` emits only D-natural-minor pitch classes.
 
 ### Fixed
 

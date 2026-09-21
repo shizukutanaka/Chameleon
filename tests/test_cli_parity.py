@@ -598,3 +598,101 @@ def test_convert_bit_depth_32_writes_pcm_not_float(tmp_path):
     assert fmt_off > 0
     format_tag = int.from_bytes(body[fmt_off + 8:fmt_off + 10], "little")
     assert format_tag == 1  # PCM, not IEEE float (3)
+
+
+# -- characterized-honesty pinning: surfaces verified clean by hand -----------
+
+def test_analyze_8bit_pcm_decodes_unsigned_offset(tmp_path):
+    """8-bit WAV PCM is *unsigned* offset-binary (128 = silence). Decoding
+    it as signed would report peak ~1.0 on near-silence; a 60-unit sine
+    around 128 must report peak ~60/128."""
+    import math as _math
+    import wave as _wave
+    target = tmp_path / "s8.wav"
+    with _wave.open(str(target), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(1)
+        w.setframerate(44100)
+        w.writeframes(bytes(
+            int(128 + 60 * _math.sin(2 * _math.pi * 440 * i / 44100))
+            for i in range(4410)))
+
+    result = _run("analyze", str(target))
+
+    assert result.returncode == 0, result.stderr
+    assert "Peak Level: 0.4" in result.stdout
+
+
+def test_trim_all_silence_is_input_not_crash(tmp_path):
+    """Trimming a file that is all silence has no correct answer; it must
+    refuse with INPUT, not emit an empty WAV."""
+    import wave as _wave
+    target = tmp_path / "silence.wav"
+    with _wave.open(str(target), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(44100)
+        w.writeframes(b"\x00\x00" * 4410)
+
+    result = _run("process", str(target), "--trim",
+                  "--output-dir", str(tmp_path / "out"))
+
+    assert result.returncode == 3
+    assert "No audio content" in result.stderr
+
+
+def test_batch_recursive_descends_only_when_asked(tmp_path):
+    src = tmp_path / "in"
+    src.mkdir()
+    write_sine_wave(src / "top.wav")
+    (src / "sub").mkdir()
+    write_sine_wave(src / "sub" / "inner.wav")
+
+    flat = _run("batch", str(src), "normalize",
+                "--output-dir", str(tmp_path / "out"))
+    assert flat.returncode == 0
+    assert sorted(p.name for p in (tmp_path / "out").glob("*.wav")) == [
+        "top_normalized.wav"]
+
+    deep = _run("batch", str(src), "normalize", "--recursive",
+                "--output-dir", str(tmp_path / "out2"))
+    assert deep.returncode == 0
+    assert sorted(p.name for p in (tmp_path / "out2").glob("*.wav")) == [
+        "inner_normalized.wav", "top_normalized.wav"]
+
+
+def test_plugins_audit_fail_fast_stops_at_first_failure(tmp_path):
+    """--fail-fast must not audit past the first failure -- a security
+    gate that keeps scanning after finding evil code reports more than
+    one verdict. Two bad plugins, one reported FAILED."""
+    (tmp_path / "a_bad.py").write_text("import os\n")
+    (tmp_path / "b_bad.py").write_text("import subprocess\n")
+
+    result = _run("plugins", "audit", "--directory", str(tmp_path),
+                  "--fail-fast")
+
+    assert result.returncode == 4
+    assert result.stdout.count("FAILED") == 1
+
+
+def test_midi_compose_honors_key_and_mode(tmp_path):
+    """--key/--mode must change the generated scale, not just print the
+    name. D natural minor is pitch classes {0,2,4,5,7,9,10}; the .mid's
+    note-on bytes must stay inside that set and include D."""
+    out = tmp_path / "dm.mid"
+    result = _run("midi", "compose", "--key", "D", "--mode", "minor",
+                  "--output", str(out))
+    assert result.returncode == 0, result.stderr
+
+    data = out.read_bytes()
+    pitches = set()
+    i = 0
+    while True:
+        i = data.find(b"\x90", i + 1)
+        if i < 0 or i + 2 >= len(data):
+            break
+        pitches.add(data[i + 1] % 12)
+    d_minor = {0, 2, 4, 5, 7, 9, 10}
+    assert pitches, "no note-on events in generated MIDI"
+    assert pitches <= d_minor
+    assert 2 in pitches
