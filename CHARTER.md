@@ -2698,6 +2698,23 @@ the first operation that needs it
 not just the gated — a security check that reads attacker-controlled
 structure is itself an attack surface.
 
+**Q: An operation whose *source* is the complement of the selection —
+what happens when the selection is everything?**
+A (2026-09-20): Nothing happened, but it said otherwise.
+`interpolate_selection` fills each selected bin from its *unselected*
+neighbors; select the whole spectrogram and there is no source. The
+scipy branch found no neighbors and copied the magnitude back
+unchanged; the cubic branch had zero points for griddata; the numpy
+branch blurred selected bins against themselves. All three returned
+True, pushed an undo frame, and rewrote `current_audio` — a no-op
+wearing a success report (the same dishonesty class as the empty-mask
+fix, one level deeper: the mask was full, not empty). The op now fails
+with "nothing to interpolate from" when `mask.all()`
+(`tests/test_empty_selection.py`). General lesson: checking the mask
+is non-empty is not checking it is *usable* — an op whose input is the
+complement must verify the complement is non-empty too; ask what the
+operation reads, not just what it writes.
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented

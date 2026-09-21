@@ -25,6 +25,24 @@ def _editor():
     return ed
 
 
+def test_interpolate_rejects_full_spectrogram_selection():
+    """Interpolation needs unselected bins as its source. With the whole
+    spectrogram selected there is nothing to interpolate from: the op
+    used to copy the magnitude back unchanged, report True, and push an
+    undo frame for a no-op."""
+    ed = _editor()
+    everything = spectral_editor.SpectralSelection(
+        time_start=float(ed.times[0]), time_end=float(ed.times[-1]) + 1.0,
+        freq_start=0.0, freq_end=float(ed.freqs[-1]) + 1.0)
+
+    undo_depth = len(ed.undo_stack)
+    audio_before = ed.current_audio.copy()
+
+    assert ed.interpolate_selection(everything) is False
+    assert len(ed.undo_stack) == undo_depth
+    assert np.array_equal(ed.current_audio, audio_before)
+
+
 def test_mutations_reject_selection_outside_the_clip(recwarn):
     ed = _editor()
     # A 0.5 s clip; this region starts after the audio ends.
