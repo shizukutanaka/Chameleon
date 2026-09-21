@@ -45,6 +45,15 @@ except ImportError:
     HAS_LIBROSA = False
 
 
+def _dynamic_range_db(audio: "np.ndarray") -> float:
+    """20*log10(peak/std). Silence has no dynamic range: -inf, set
+    explicitly so log10(0) never emits a RuntimeWarning."""
+    peak = float(np.max(np.abs(audio)))
+    if peak <= 0:
+        return float("-inf")
+    return float(20 * np.log10(peak / (np.std(audio) + 1e-10)))
+
+
 def _require_restoration_deps() -> None:
     """Raise a clear error if a restoration entry point is used without numpy/scipy."""
     missing = [name for name, present in (("NumPy", HAS_NUMPY), ("SciPy", HAS_SCIPY)) if not present]
@@ -592,6 +601,11 @@ class AudioRestorer:
             "quality_metrics": {}
         }
 
+        # Nothing to restore: every stage's FFT/convolution would raise
+        # on zero samples, and the metrics are undefined on nothing.
+        if audio.size == 0:
+            return audio.copy(), info
+
         result = audio.copy()
 
         if mode == "vinyl":
@@ -634,6 +648,11 @@ class AudioRestorer:
         """Calculate restoration quality metrics"""
         metrics = {}
 
+        # Nothing to compare: reductions on an empty array either warn or
+        # raise, and the metrics are meaningless on no samples anyway.
+        if original.size == 0 or restored.size == 0:
+            return metrics
+
         # How much of the output is *not* what came in. This is a
         # signal-to-change ratio, not an SNR: it is large when restoration
         # barely touched the audio and small when it intervened heavily, and
@@ -642,22 +661,25 @@ class AudioRestorer:
         signal_power = np.mean(restored ** 2)
         change_power = np.mean((original - restored) ** 2)
         if change_power > 0:
-            metrics["signal_to_change_db"] = float(
-                10 * np.log10(signal_power / change_power))
+            # Restored-to-silence: the ratio is 0 and log10 would warn;
+            # -inf is the honest value, set explicitly instead.
+            ratio = signal_power / change_power
+            metrics["signal_to_change_db"] = (
+                float(10 * np.log10(ratio)) if ratio > 0
+                else float("-inf"))
 
-        # Dynamic range
-        metrics["dynamic_range_original"] = 20 * np.log10(
-            np.max(np.abs(original)) / (np.std(original) + 1e-10)
-        )
-        metrics["dynamic_range_restored"] = 20 * np.log10(
-            np.max(np.abs(restored)) / (np.std(restored) + 1e-10)
-        )
+        # Dynamic range -- silence has none; report -inf directly rather
+        # than letting log10(0) emit a RuntimeWarning the DSP gate fails on.
+        metrics["dynamic_range_original"] = _dynamic_range_db(original)
+        metrics["dynamic_range_restored"] = _dynamic_range_db(restored)
 
-        # Clarity (high-frequency preservation)
+        # Clarity (high-frequency preservation). A silent original has no
+        # high frequencies to preserve -- the metric is undefined, not 0.
         if HAS_LIBROSA:
             orig_hf = np.sum(np.abs(np.fft.rfft(original)[len(original)//4:]))
             rest_hf = np.sum(np.abs(np.fft.rfft(restored)[len(restored)//4:]))
-            metrics["hf_preservation"] = rest_hf / (orig_hf + 1e-10)
+            if orig_hf > 0:
+                metrics["hf_preservation"] = rest_hf / orig_hf
 
         return metrics
 
