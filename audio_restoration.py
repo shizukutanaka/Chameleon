@@ -580,8 +580,15 @@ class AudioRestorer:
         Args:
             audio: Input audio
             sample_rate: Sample rate
-            mode: "auto", "vinyl", "digital", "voice", "music"
+            mode: "auto" runs the config-selected repairs in order;
+                "vinyl" runs the dedicated VinylRestorer pipeline. No other
+                modes exist -- accepting a name that selects no distinct
+                behavior would report a label for work that never ran.
         """
+        if mode not in ("auto", "vinyl"):
+            raise ValueError(
+                f"Unknown restoration mode: {mode!r}. "
+                "Valid modes are 'auto' and 'vinyl'.")
         info = {
             "mode": mode,
             "applied_processes": [],

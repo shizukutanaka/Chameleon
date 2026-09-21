@@ -224,3 +224,17 @@ def test_auto_mode_does_not_run_unvetted_detectors():
         audio_restoration.RestorationConfig(click_removal=True))
     _, opt_in = restorer.restore(noise, SAMPLE_RATE)
     assert "click_removal" in opt_in["applied_processes"]
+
+
+def test_restore_rejects_modes_that_select_nothing():
+    # The docstring once advertised "digital", "voice" and "music" alongside
+    # "auto" and "vinyl", but every non-vinyl name ran the identical
+    # config-driven pipeline -- a mode label that selected no behavior while
+    # `info["mode"]` reported it as if it had. Unknown modes now raise.
+    restorer = audio_restoration.AudioRestorer()
+    for phantom in ("digital", "voice", "music", "dolby"):
+        with pytest.raises(ValueError, match="Unknown restoration mode"):
+            restorer.restore(_sine(440), SAMPLE_RATE, mode=phantom)
+
+    _, auto_info = restorer.restore(_sine(440), SAMPLE_RATE, mode="auto")
+    assert auto_info["mode"] == "auto"
