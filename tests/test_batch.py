@@ -166,3 +166,16 @@ def test_async_normalize_rejects_nan_target_peak(tmp_path):
     assert not results[0].success
     assert "target peak" in results[0].message.lower()
     assert not (src / "a.normalized.wav").exists()
+
+
+def test_record_state_writes_atomically_and_roundtrips(tmp_path):
+    """State files go through temp-file + os.replace: no torn JSON for the
+    next load, and no temp debris left behind."""
+    recovery = core.StateRecoveryManager(state_dir=tmp_path)
+
+    path = recovery.record_state({"processed": 3, "failed": 1})
+
+    assert path is not None
+    assert not list(tmp_path.glob("*.tmp"))
+    loaded = recovery.load_last_state()
+    assert loaded["summary"] == {"processed": 3, "failed": 1}
