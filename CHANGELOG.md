@@ -487,6 +487,12 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`PluginManager.create_plugin_template` let the plugin name escape
+  `output_dir`** — `plugin_name="../../evil_escape"` was joined verbatim
+  into the output path and wrote a file two directories up (verified
+  live). The name now passes the same `PluginLoader._NAME_PATTERN` the
+  loader already applies to plugin metadata; traversal, empty, slash-
+  and dot-prefixed names raise `ValueError`.
 
 ### Changed
 

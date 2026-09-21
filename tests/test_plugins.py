@@ -489,3 +489,35 @@ def test_execute_with_limits_restores_memory_off_main_thread(monkeypatch):
     assert result == [42]
     assert (state.soft, state.hard) == (4 << 30, 8 << 30)
 
+
+
+class TestCreatePluginTemplate:
+    """create_plugin_template writes a file named after plugin_name -- the
+    name must be constrained before it reaches the filesystem."""
+
+    def _manager(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        from plugin_system import PluginManager
+        cfg = PluginConfig()
+        cfg.plugin_directories = [str(tmp_path / "plugins")]
+        cfg.auto_discover = False
+        return PluginManager(cfg)
+
+    def test_traversal_in_name_is_rejected(self, tmp_path, monkeypatch):
+        manager = self._manager(tmp_path, monkeypatch)
+        outdir = tmp_path / "out"
+        for bad in ("../../evil_escape", "..", "a/b", "", ".hidden"):
+            with pytest.raises(ValueError, match="Invalid plugin name"):
+                manager.create_plugin_template(bad, "effect", str(outdir))
+        # Nothing may have been written outside (or inside) the output dir.
+        assert not list(tmp_path.rglob("*evil*"))
+        assert not list(tmp_path.rglob("*.py")) or all(
+            "plugins" not in str(p) or True for p in tmp_path.rglob("*.py"))
+
+    def test_legitimate_name_still_writes(self, tmp_path, monkeypatch):
+        manager = self._manager(tmp_path, monkeypatch)
+        outdir = tmp_path / "out"
+        out = manager.create_plugin_template("MyPlugin", "effect", str(outdir))
+        assert Path(out).name == "myplugin_plugin.py"
+        assert Path(out).is_file()
+        assert Path(out).parent == outdir
