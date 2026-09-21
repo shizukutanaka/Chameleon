@@ -111,7 +111,15 @@ def test_a_missing_file_prints_a_message_not_a_traceback(tmp_path):
     )
 
     assert "Traceback" not in result.stdout + result.stderr
-    assert result.returncode == 1
+    # INPUT(3): a missing file is input validation, not a processing
+    # failure -- same classification _error_kind applies on batch paths.
+    # On a numpy-less install the dependency check fires first and stays
+    # ERROR(1) -- the environment, not the input, is what is missing.
+    try:
+        import numpy  # noqa: F401
+        assert result.returncode == 3
+    except ImportError:
+        assert result.returncode == 1
 
 
 def test_an_unsupported_file_type_prints_a_message(tmp_path):
@@ -124,7 +132,13 @@ def test_an_unsupported_file_type_prints_a_message(tmp_path):
     )
 
     assert "Traceback" not in result.stdout + result.stderr
-    assert result.returncode == 1
+    # INPUT(3): the file the user named is outside the supported envelope.
+    # (numpy-less install: the missing-dependency check fires first -> 1.)
+    try:
+        import numpy  # noqa: F401
+        assert result.returncode == 3
+    except ImportError:
+        assert result.returncode == 1
 
 
 def test_unexpected_exceptions_are_not_swallowed():

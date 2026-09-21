@@ -3342,16 +3342,22 @@ def cli() -> int:
         return ExitCode.INTERRUPTED
     except (ValueError, FileNotFoundError) as exc:
         # The errors this CLI raises deliberately to tell the user something
-        # they can act on -- an unsupported file type, a missing file, a
-        # missing optional dependency. They reached the terminal as tracebacks,
+        # they can act on -- an unsupported file type, a missing file, an
+        # out-of-domain value. They reached the terminal as tracebacks,
         # which buries the one line that mattered.
+        #
+        # Exit code follows _error_kind's convention: these are input
+        # complaints -> INPUT(3), not ERROR(1); a file the user named and
+        # got wrong is not a processing failure. UnsupportedOperationError
+        # (a ValueError subclass) means the install lacks an extra -- an
+        # environment gap, not bad input -- so it keeps ERROR.
         #
         # Deliberately not `except Exception`. A genuine bug should still show
         # its traceback: turning a crash into a tidy "Error:" line would make
         # the tool wrong about itself in a new way, which is the failure mode
         # this project keeps having to undo.
         print(f"Error: {exc}", file=sys.stderr)
-        return ExitCode.ERROR
+        return ExitCode.ERROR if isinstance(exc, UnsupportedOperationError) else ExitCode.INPUT
 
 
 if __name__ == "__main__":
