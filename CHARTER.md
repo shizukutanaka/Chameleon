@@ -3252,3 +3252,11 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21):** Plugin discovery is a read path -- does
+`plugins list --directory DIR` leave the filesystem as it found it?
+**A:** No. `_resolve_directory` ran `os.chmod(dir, 0o750)`
+unconditionally on POSIX, so pointing `plugins list` or `plugins audit`
+at a directory the user already owned silently stripped its group/other
+permissions. Now only a directory the loader creates itself receives
+the tightened mode; existing directories keep their permissions.
