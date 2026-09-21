@@ -217,3 +217,24 @@ def test_save_audio_silent_when_in_range(tmp_path):
         logger.removeHandler(handler)
 
     assert not any("hard-clip" in m for m in records)
+
+
+def test_save_audio_warns_on_nan_and_writes_deterministic(tmp_path):
+    # NaN bypassed the old |x|>1.0 count and passed np.clip unchanged,
+    # writing as 0 with no warning.
+    proc = _processor()
+    dirty = np.array([0.0, np.nan, 0.5, np.inf, -np.inf], dtype=np.float32)
+    records, logger, handler = _chameleon_messages()
+    try:
+        proc.save_audio(dirty, str(tmp_path / "dirty.wav"), SAMPLE_RATE)
+    finally:
+        logger.removeHandler(handler)
+
+    warnings = [m for m in records if "hard-clip" in m]
+    assert warnings, f"no sanitization warning surfaced: {records}"
+    assert warnings[0].startswith("3 ")  # nan + two infs counted
+
+    import wave
+    with wave.open(str(tmp_path / "dirty.wav")) as w:
+        vals = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16)
+    assert vals.tolist() == [0, 0, 16384, 32767, -32768]

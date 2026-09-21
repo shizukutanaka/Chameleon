@@ -392,6 +392,15 @@ class TestSecureOpen:
             with ops.secure_open(target, "x"):
                 pass
 
+    def test_dot_components_cannot_survive_sanitization(self):
+        # '.' and '..' contain only legal characters but are not legal
+        # components -- joined onto a directory they resolve to it or
+        # its parent.
+        assert SecurityValidator.sanitize_filename("..") == "untitled"
+        assert SecurityValidator.sanitize_filename(".") == "untitled"
+        # Names merely containing dots stay untouched.
+        assert SecurityValidator.sanitize_filename("a..wav") == "a..wav"
+
 
 class TestSecurityConfigFromEnvironment:
     def test_invalid_max_file_size_falls_back_to_default(self, monkeypatch):
