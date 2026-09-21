@@ -667,12 +667,26 @@ class WorkflowEngine:
 
     def _execute_dag(self, workflow: Workflow) -> Dict[str, TaskResult]:
         """Execute DAG workflow"""
+        # Create task map
+        task_map = {task.id: task for task in workflow.tasks}
+
+        # A dependency must name a task in this workflow -- before this
+        # check, depending on a ghost task name died on a bare KeyError,
+        # and a cycle or self-dependency left tasks permanently unready,
+        # so the workflow returned an empty results dict as "success".
+        for task in workflow.tasks:
+            for dep in task.dependencies:
+                if dep == task.id:
+                    raise ValueError(
+                        f"Task '{task.id}' depends on itself")
+                if dep not in task_map:
+                    raise ValueError(
+                        f"Task '{task.id}' depends on unknown task '{dep}'")
+
         # Build dependency graph
         for task in workflow.tasks:
             self.dep_graph.add_task(task)
 
-        # Create task map
-        task_map = {task.id: task for task in workflow.tasks}
         results = {}
         running_tasks = {}
 
@@ -715,6 +729,15 @@ class WorkflowEngine:
             if running_tasks:
                 import time
                 time.sleep(0.1)
+
+        # A cycle leaves every member permanently unready: the queue
+        # drains while they still wait, and the loop exits having run
+        # nothing -- an empty results dict dressed as success.
+        unscheduled = [tid for tid in task_map if tid not in results]
+        if unscheduled:
+            raise ValueError(
+                f"DAG workflow has a dependency cycle involving: "
+                f"{sorted(unscheduled)}")
 
         return results
 

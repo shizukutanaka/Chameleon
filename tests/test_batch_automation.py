@@ -93,3 +93,42 @@ def test_scheduler_fails_loudly_without_schedule_package():
     scheduler = BatchScheduler()
     with pytest.raises(ImportError):
         scheduler.start()
+
+
+def _dag_workflow(tasks):
+    return ba.Workflow(id="w", name="n", type=ba.WorkflowType.DAG,
+                       tasks=tasks, conditions={}, metadata={},
+                       max_parallel=2)
+
+
+def _task(task_id, deps=()):
+    return ba.BatchTask(id=task_id, name=task_id, function=lambda: task_id,
+                        inputs={}, dependencies=list(deps))
+
+
+def test_dag_rejects_dependency_on_unknown_task():
+    """Depending on a task that isn't in the workflow used to die on a
+    bare KeyError mid-execution."""
+    wf = _dag_workflow([_task("a", ["ghost"])])
+    with pytest.raises(ValueError, match="unknown task 'ghost'"):
+        ba.WorkflowEngine().execute_workflow(wf)
+
+
+def test_dag_rejects_self_dependency_and_cycles():
+    """A self-dependency or cycle leaves every member permanently unready:
+    the queue drained and the workflow returned an empty results dict as
+    'success'. Both must raise instead of silently running nothing."""
+    self_dep = _dag_workflow([_task("a", ["a"])])
+    with pytest.raises(ValueError, match="depends on itself"):
+        ba.WorkflowEngine().execute_workflow(self_dep)
+
+    cyclic = _dag_workflow([_task("a", ["b"]), _task("b", ["a"])])
+    with pytest.raises(ValueError, match="dependency cycle"):
+        ba.WorkflowEngine().execute_workflow(cyclic)
+
+
+def test_dag_runs_ready_tasks_in_dependency_order():
+    wf = _dag_workflow([_task("a"), _task("b", ["a"]), _task("c", ["b"])])
+    results = ba.WorkflowEngine().execute_workflow(wf)
+    assert set(results) == {"a", "b", "c"}
+    assert all(r.status == ba.TaskStatus.COMPLETED for r in results.values())
