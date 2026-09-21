@@ -55,6 +55,14 @@
 
 ### Fixed
 
+- **`suggest_next_chord` mislabeled minor-key progressions** -- the Markov
+  table was keyed on absolute semitones and spelled with a fixed
+  major-scale numeral list, so in A minor the diatonic III chord (C major)
+  hit no row and fell back to `("I", 1.0)`, while the suggested roots were
+  chromatic to the key spelled as plain diatonic numerals. Transitions are
+  now keyed on the scale-degree index inside `key.scale_notes`, with
+  separate tables for minor-third and major-quality modes; a root chromatic
+  to the key falls back honestly to the tonic.
 - **`--convert-bit-depth 32` wrote an IEEE-float WAV that Chameleon
   itself cannot read** -- `save_audio` mapped bit depth 32 to
   soundfile's `FLOAT` subtype (format tag 3), so the converted artifact
