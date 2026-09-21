@@ -487,6 +487,11 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`_resample_audio` validated only the target rate** — `source_sr=0`
+  died on a bare `ZeroDivisionError`, and in the numpy-only windowed-sinc
+  fallback a negative source rate collapsed the output to a single zeroed
+  sample (a silent "success" on impossible input). Both rates are now
+  validated before any backend runs.
 
 ### Changed
 

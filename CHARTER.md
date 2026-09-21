@@ -3252,3 +3252,14 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** `_resample_audio` validates `target_sr`.
+What about `source_sr`?
+**A:** It validated only one side. `source_sr=0` died on a bare
+ZeroDivisionError (`ratio = target_sr / source_sr`), and a negative
+source rate was worse: in the numpy-only windowed-sinc fallback,
+`ratio < 0` collapsed `n_out` to 1 and returned a single zeroed sample —
+a "successful" resample of nothing. With librosa installed the same call
+raised its own error, so the honest behavior depended on which extras
+happened to be installed. Both rates are now validated before any backend
+is consulted.
