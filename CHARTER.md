@@ -2471,3 +2471,16 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21):** MemoryManager ships on every WAVProcessor. Do its
+bounds and caches actually work -- and does "clear" clear?
+**A:** Three cracks. `get_file_data(offset=-5)` leaked a raw OSError
+EINVAL and `size=-1` silently returned empty bytes as if the read
+succeeded; both are rejected with ValueError now. `_prepare_vectorized_data`
+referenced HAS_LIBROSA -- a name core.py never defines -- and the
+surrounding except swallowed the NameError, so get_vectorized_audio
+could never return data; the body only needs numpy, which is what it
+imports now. And the vectorized cache was immortal: _remove_from_cache
+and clear_cache never touched it, so entries would have outlived the
+file data they shadow. It is evicted and cleared in step with the main
+cache.

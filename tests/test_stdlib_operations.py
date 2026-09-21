@@ -229,3 +229,42 @@ def test_a_batch_of_mixed_channel_counts_all_succeeds(blocker_dir, tmp_path):
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "2/2" in result.stdout
+
+
+def test_memory_manager_rejects_negative_offset_and_size(tmp_path):
+    """`get_file_data(offset=-5)` leaked a raw OSError EINVAL, and
+    `size=-1` silently returned an empty bytes object as if the read
+    succeeded."""
+    import pytest
+    from core import MemoryManager
+
+    mm = MemoryManager()
+    f = tmp_path / "d.bin"
+    f.write_bytes(b"\x00" * 4096)
+
+    with pytest.raises(ValueError, match="offset"):
+        mm.get_file_data(str(f), offset=-5)
+    with pytest.raises(ValueError, match="size"):
+        mm.get_file_data(str(f), size=-1)
+
+
+def test_vectorized_cache_populates_and_dies_with_its_entry(tmp_path):
+    """_prepare_vectorized_data referenced HAS_LIBROSA, a name core.py
+    never defined -- the NameError was swallowed, so get_vectorized_audio
+    could never return data. Now the entry lives and dies with the file
+    cache entry that produced it."""
+    import pytest
+    np = pytest.importorskip("numpy")
+    from core import MemoryManager
+
+    mm = MemoryManager()
+    f = tmp_path / "d.bin"
+    f.write_bytes(bytes(range(256)) * 8)
+    mm.get_file_data(str(f), 0, 2048)
+    key = f"{f}:0:2048"
+
+    arr = mm.get_vectorized_audio(key)
+    assert arr is not None and len(arr) == 1024
+
+    mm._remove_from_cache(key)
+    assert mm.get_vectorized_audio(key) is None

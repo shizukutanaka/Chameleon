@@ -195,6 +195,10 @@ class MemoryManager:
 
     def get_file_data(self, file_path: str, offset: int = 0, size: int = None) -> bytes:
         """Get file data with intelligent caching and memory mapping."""
+        if offset < 0:
+            raise ValueError(f"offset must be >= 0, got {offset}")
+        if size is not None and size < 0:
+            raise ValueError(f"size must be >= 0, got {size}")
         cache_key = f"{file_path}:{offset}:{size}"
 
         # Check cache first
@@ -235,19 +239,20 @@ class MemoryManager:
     def _prepare_vectorized_data(self, data: bytes, cache_key: str):
         """ベクター化処理用にデータを準備"""
         try:
-            if HAS_LIBROSA and len(data) >= 1024:
-                # NumPy配列に変換してベクター化処理を準備
+            # This referenced HAS_LIBROSA, which core.py never defined --
+            # the NameError was swallowed by the except below, so the
+            # vectorized cache could never populate. numpy is what the
+            # body actually needs.
+            try:
                 import numpy as np
-
-                # 16ビットPCMを想定してデータを変換
-                if len(data) % 2 == 0:  # ステレオ16ビットの場合
-                    audio_array = np.frombuffer(data, dtype=np.int16)
-                    # ベクター化処理の準備（実際の処理は後で実行）
-                    self.vectorized_cache[cache_key] = {
-                        'array': audio_array,
-                        'ready': True,
-                        'channels': 2 if len(audio_array) % 2 == 0 else 1
-                    }
+            except ImportError:
+                return
+            if len(data) >= 1024 and len(data) % 2 == 0:
+                audio_array = np.frombuffer(data, dtype=np.int16)
+                self.vectorized_cache[cache_key] = {
+                    'array': audio_array,
+                    'ready': True,
+                }
         except Exception:
             # ベクター化準備に失敗しても通常処理を継続
             pass
@@ -339,12 +344,16 @@ class MemoryManager:
         """Clear memory cache."""
         self.cache.clear()
         self.cache_order.clear()
+        self.vectorized_cache.clear()
         self.current_cache_size = 0
         self.cache_hits = 0
         self.cache_misses = 0
 
     def _remove_from_cache(self, key: str):
         """Remove key from cache and update tracking."""
+        # The vectorized cache is keyed identically -- an evicted file
+        # entry must not leave a ghost numpy array behind.
+        self.vectorized_cache.pop(key, None)
         if key in self.cache:
             data = self.cache.pop(key)
             self.current_cache_size -= len(data)
