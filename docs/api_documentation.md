@@ -130,7 +130,7 @@ Authorization: Bearer <token>
 ```
 
 - 稼働状況、稼働時間、ジョブ統計などを取得します。
-- `memory_usage` や `cpu_usage` は `psutil` が導入されている場合に実測値を返します。
+- `memory_usage` や `cpu_usage` は `psutil` が導入されている場合に実測値を返し、未導入では `null` を返します（0.0 は実測値を装うため返しません）。
 - `active_sessions` は現在有効なセッション数、`last_request_timestamp` は直近の認証済みリクエスト時刻 (UTC) を示します。
 
 ### 3.7 監査ログ参照
