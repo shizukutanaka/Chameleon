@@ -598,3 +598,80 @@ def test_convert_bit_depth_32_writes_pcm_not_float(tmp_path):
     assert fmt_off > 0
     format_tag = int.from_bytes(body[fmt_off + 8:fmt_off + 10], "little")
     assert format_tag == 1  # PCM, not IEEE float (3)
+
+
+def test_analyze_detailed_adds_computed_fields(tmp_path):
+    """--detailed must show real extra measurements, not just a label."""
+    src = tmp_path / "tone.wav"
+    write_sine_wave(src)
+
+    plain = _run("analyze", str(src))
+    detailed = _run("analyze", str(src), "--detailed")
+
+    assert "Dynamic Range" not in plain.stdout
+    assert "Dynamic Range" in detailed.stdout
+    if main.HAS_LIBROSA:
+        for field in ("Frequency Range", "Spectral Centroid"):
+            assert field in detailed.stdout
+    else:
+        # stdlib/numpy-only path says what it can't do instead of fabricating it
+        assert "not measured" in detailed.stdout
+
+
+@pytest.mark.skipif(not main.HAS_NUMPY,
+                    reason="midi extract's pitch tracking needs numpy")
+def test_midi_extract_names_the_right_pitch(tmp_path):
+    """440 Hz must come out as A4 (MIDI 69) in the written .mid -- pitch
+    extraction is the whole claim of the command."""
+    src = tmp_path / "tone.wav"
+    write_sine_wave(src, duration=0.5)
+    out = tmp_path / "out.mid"
+
+    result = _run("midi", "extract", "--input", str(src),
+                  "--output", str(out))
+
+    assert result.returncode == 0, result.stderr
+    data = out.read_bytes()
+    note_ons = [data[i + 1] for i in range(len(data) - 2)
+                if data[i] == 0x90 and data[i + 2] > 0]
+    assert note_ons, "no note-on events written"
+    assert 69 in note_ons
+
+
+@pytest.mark.skipif(not (main.HAS_NUMPY and getattr(main, "HAS_SCIPY", False)),
+                    reason="declip needs the [audio] extra (numpy + scipy)")
+def test_process_declip_reconstructs_clipped_peaks(tmp_path):
+    """A hard-clipped sine has flat sample runs at the clip level; after
+    --declip the longest flat run collapses and the crest is rebuilt
+    above the clip level."""
+    import math as _math
+    import struct as _struct
+    import wave as _wave
+
+    src = tmp_path / "clip.wav"
+    with _wave.open(str(src), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(44100)
+        w.writeframes(b"".join(
+            _struct.pack("<h", int(32767 * max(-0.6, min(0.6,
+                _math.sin(2 * _math.pi * 440 * i / 44100)))))
+            for i in range(4410)))
+
+    out_dir = tmp_path / "out"
+    result = _run("process", str(src), "--declip",
+                  "--output-dir", str(out_dir))
+    assert result.returncode == 0, result.stderr
+
+    with _wave.open(str(out_dir / "clip_restored.wav"), "rb") as w:
+        vals = _struct.unpack(f"<{w.getnframes()}h",
+                              w.readframes(w.getnframes()))
+    longest_run = cur = 1
+    for i in range(1, len(vals)):
+        if vals[i] == vals[i - 1]:
+            cur += 1
+            longest_run = max(longest_run, cur)
+        else:
+            cur = 1
+    assert longest_run < 5
+    assert max(abs(v) for v in vals) / 32767 > 0.7
