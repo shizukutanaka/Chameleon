@@ -487,6 +487,13 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **Rate-limit bookkeeping grew without bound** — the "opportunistic
+  cleanup" in `_enforce_rate_limit` only deleted deques that were
+  already empty, but a deque only empties when its own identifier
+  hits again, so every one-shot IP/username left a permanent entry
+  (a 300-identifier flood left 301 live entries). The sweep now
+  expires aged timestamps inside other identifiers' windows before
+  dropping the empties.
 
 ### Changed
 
