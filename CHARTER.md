@@ -3252,3 +3252,18 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21):** External reference check (Airflow/Prefect DAG
+semantics): a DAG workflow whose dependencies are unsatisfiable should
+fail validation up front. What does _execute_dag actually do with a
+dependency on a task that doesn't exist, or a dependency cycle?
+**A:** Both were silent or crashed wrong. A dependency on a nonexistent
+task id died on a bare KeyError inside the scheduler loop. A cycle or
+self-dependency left every member permanently unready -- the queue
+drained, the loop exited, and the workflow returned an EMPTY results
+dict reported as success (verified: a->b->a ran zero tasks and returned
+{}). _execute_dag now validates up front: self-dependencies and unknown
+dependency targets raise ValueError naming both tasks, and after the
+execution loop any task that never ran is reported as a dependency
+cycle instead of being silently dropped. Verified honest: a well-formed
+a->b->c chain runs all three to COMPLETED.

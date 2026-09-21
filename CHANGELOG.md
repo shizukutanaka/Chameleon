@@ -487,6 +487,13 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **DAG workflows with unsatisfiable dependencies silently ran nothing** —
+  a dependency on a task id that doesn't exist died on a bare KeyError,
+  and a dependency cycle or self-dependency left every member permanently
+  unready, so the workflow returned an empty results dict as "success".
+  `_execute_dag` now raises a named ValueError for unknown targets and
+  self-deps up front, and reports leftover unscheduled tasks as a
+  dependency cycle after the run.
 
 ### Changed
 
