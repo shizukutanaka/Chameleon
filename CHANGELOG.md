@@ -487,6 +487,16 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`docs/en/error_recovery.md` and `docs/api_documentation.md` taught
+  phantom APIs** — the playbook's example code called
+  `SecurityValidator.audit_log()` (a deque on api_server's state object,
+  not a validator method) and blamed URL rejections on a `validate_url()`
+  that does not exist anywhere; the CLI makes no outbound requests to
+  validate. The playbook now uses `logging` (-> $CHAMELEON_LOG_DIR) and
+  documents the real surfaces: `CHAMELEON_ALLOWED_ORIGINS` is the API's
+  CORS allowlist, and an unregistered `file_name` gets 404 "File not
+  registered". `tests/test_docs_reference_reality.py` pins the phantom
+  names.
 
 ### Changed
 

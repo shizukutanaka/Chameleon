@@ -6,8 +6,8 @@ This guide documents practical recovery steps for CLI-based deployments. The foc
 
 ## Core Principles
 
-- **Fail Fast**: Detect invalid paths or URLs through `security_validator.py` before heavy processing begins.
-- **Recover Predictably**: Retry only idempotent operations and record all attempts through `SecurityValidator.audit_log()`.
+- **Fail Fast**: Detect invalid paths through `security_validator.py` before heavy processing begins.
+- **Recover Predictably**: Retry only idempotent operations and record all attempts through the standard `logging` framework, which lands in the configured log file (`$CHAMELEON_LOG_DIR/chameleon.log`).
 - **Protect Evidence**: Preserve logs and temporary artifacts required for post-incident review.
 
 ## Common Failure Scenarios
@@ -25,11 +25,11 @@ This guide documents practical recovery steps for CLI-based deployments. The foc
 - **Audit**: Rejections are logged to `~/.chameleon/logs/chameleon.log` (or
   `$CHAMELEON_LOG_DIR/chameleon.log`). Note the corrective action.
 
-### 2. Network URL Rejection
-- **Symptoms**: URL rejected by `validate_url()` due to scheme or host.
+### 2. API Origin Rejection
+- **Symptoms**: Browser clients calling the REST API see requests blocked by CORS policy — the `Origin` header is not in the server allowlist. (The CLI never makes outbound requests; `CHAMELEON_ALLOWED_ORIGINS` is a CORS control for `api_server` only, not an outbound URL allowlist.)
 - **Action**:
-  - Verify the domain is present in the allowlist controlled by `CHAMELEON_ALLOWED_ORIGINS`.
-  - Re-run the operation after updating the allowlist through change control.
+  - Check the server's configured origins (`CHAMELEON_ALLOWED_ORIGINS`, default `https://localhost:3000`) and add the client origin through change control.
+  - Re-run the client after the server picks up the updated allowlist.
 - **Audit**: Log the allowlist modification and attach change ticket identifiers.
 
 ### 3. Disk Capacity Exhaustion
@@ -52,10 +52,10 @@ This guide documents practical recovery steps for CLI-based deployments. The foc
 
 ```python
 import logging
-from datetime import datetime, timezone
 from security_validator import SecurityValidator, SecurityError
 
 validator = SecurityValidator()
+audit = logging.getLogger("chameleon.audit")  # lands in $CHAMELEON_LOG_DIR/chameleon.log
 
 def guarded_operation(operation_name, func, *args, **kwargs):
     attempts = 0
@@ -65,26 +65,16 @@ def guarded_operation(operation_name, func, *args, **kwargs):
         try:
             return func(*args, **kwargs)
         except SecurityError as exc:
-            validator.audit_log(
-                event="operation.security_error",
-                details={
-                    "operation": operation_name,
-                    "attempt": attempts,
-                    "error": str(exc)
-                },
-                level="WARNING"
+            audit.warning(
+                "security_error operation=%s attempt=%d error=%s",
+                operation_name, attempts, exc,
             )
             raise
         except OSError as exc:
             attempts += 1
-            validator.audit_log(
-                event="operation.retry",
-                details={
-                    "operation": operation_name,
-                    "attempt": attempts,
-                    "error": str(exc)
-                },
-                level="WARNING"
+            audit.warning(
+                "operation_retry operation=%s attempt=%d error=%s",
+                operation_name, attempts, exc,
             )
             if attempts >= max_attempts:
                 raise

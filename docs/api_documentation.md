@@ -63,7 +63,7 @@ Authorization: Bearer <token>
 }
 ```
 
-- `file_name` には `/audio/upload` の応答で受け取った `stored_name` を指定します。URL を指定した場合は `SecurityValidator.validate_url()` により拒否されます。
+- `file_name` には `/audio/upload` の応答で受け取った `stored_name` を指定します。登録されていない名前（URL を含む任意の文字列）は `404 File not registered` で拒否されます。
 - 成功応答はメタデータ (`duration`, `sample_rate`, `peak_level` など) を含む `AudioAnalysisResponse` です。
 
 ### 3.3 オーディオ正規化
