@@ -2471,3 +2471,16 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+---
+**2026-09-21 — Q: When an input legitimately contains nothing to analyze, is "crash" an honest answer?**
+*Probe:* feed the chord detector the note list a silent or unpitched file
+produces — `detect_chords([])`.
+**A:** It leaked `ValueError: max() iterable argument is empty` — the
+window loop evaluated `max(n.start_time + n.duration for n in notes)`
+with nothing to maximize. Every sibling in the same analyzer answers
+emptiness honestly: `detect_key([])` returns a zero-confidence key,
+`analyze_rhythm([])` returns tempo 0, `analyze_harmony([], key)` reports
+"No chords found". `detect_chords` now returns `[]` up front, matching
+the family contract — the empty chord list is the truthful report, not
+an internal error the caller has to know to expect.

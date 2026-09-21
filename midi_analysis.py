@@ -311,6 +311,11 @@ class MIDIAnalyzer:
 
     def detect_chords(self, notes: List[MIDINote], window_size: float = 1.0) -> List[Chord]:
         """Detect chords from MIDI notes"""
+        if not notes:
+            # No notes means no chords -- the honest answer, matching
+            # detect_key (confidence 0) and analyze_rhythm (tempo 0).
+            # max() over an empty sequence used to leak a bare ValueError.
+            return []
         chords = []
         current_time = 0.0
 
