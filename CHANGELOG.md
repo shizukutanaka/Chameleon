@@ -487,6 +487,19 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`EnhancedSecurityValidator` internals could not run** —
+  `_calculate_file_entropy` called `float.bit_length()` and crashed on
+  any non-empty file, and its formula was not Shannon entropy; the
+  entropy gate (`> 7.5` bits/byte) then flagged every ordinary WAV as
+  tampered because PCM is high-entropy by nature; and the permissions
+  check (`st_mode & 0o777 != st_mode`) was never true on POSIX, so
+  `check_file_integrity` could never return True. Entropy is now real
+  Shannon, the entropy gate is removed (documented why), and the
+  permission check tests only setuid/setgid/sticky bits.
+- **`EnhancedSecurityValidator.sanitize_filename` passed `'..'` through
+  unchanged** — dot components contain no scrubbed characters but
+  resolve to the parent directory when joined; they now return
+  `'untitled'`, matching the sibling validator's fix.
 
 ### Changed
 

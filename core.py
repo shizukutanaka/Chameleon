@@ -20,6 +20,7 @@ import json
 import datetime
 import struct
 import shutil
+import math
 import tempfile
 import logging
 import warnings
@@ -2257,16 +2258,17 @@ class EnhancedSecurityValidator:
             if stat.st_mtime > time.time():
                 return False  # Future modification time
 
-            # Check for suspicious file permissions
+            # Check for suspicious file permissions (setuid/setgid/sticky);
+            # st_mode carries the file-type bits too, so mask to the
+            # special bits rather than comparing against the raw mode.
             if os.name == 'posix':
-                mode = stat.st_mode
-                if mode & 0o777 != mode:  # Check for special permissions
+                if stat.st_mode & 0o7000:
                     return False
 
-            # Check file entropy for encrypted/compressed content
-            entropy = EnhancedSecurityValidator._calculate_file_entropy(file_path)
-            if entropy > 7.5:  # High entropy might indicate encryption
-                return False
+            # No entropy check: PCM audio is high-entropy by nature (a
+            # 1-second sine reads ~7.5 bits/byte), so an "encrypted-looking
+            # data" threshold flags ordinary WAVs as tampered. Entropy is
+            # still computed for callers via _calculate_file_entropy.
 
             return True
 
@@ -2287,13 +2289,14 @@ class EnhancedSecurityValidator:
                 for byte in data:
                     byte_counts[byte] += 1
 
-                # Calculate entropy
+                # Calculate entropy (Shannon, bits/byte: 0 = constant,
+                # ~8.0 = uniform random)
                 entropy = 0.0
                 length = len(data)
                 for count in byte_counts:
                     if count > 0:
                         p = count / length
-                        entropy -= p * (p.bit_length() if p > 0 else 0)  # Simplified
+                        entropy -= p * math.log2(p)
 
                 return entropy
 
