@@ -65,6 +65,11 @@ class DeepFileInspector:
     # Retained for callers that referenced the old flat list.
     SUSPICIOUS_PATTERNS = [pattern for pattern, _ in EXECUTABLE_SIGNATURES + TEXT_PATTERNS]
 
+    # Same bound as core's _MAX_WAV_CHUNKS: a hostile file can declare
+    # millions of empty chunks; without a cap the chunk list grows until
+    # the inspector itself exhausts memory.
+    _MAX_SCAN_CHUNKS = 256
+
     def __init__(self, max_scan_bytes: int = 10 * 1024 * 1024):
         self.max_scan_bytes = max_scan_bytes
 
@@ -280,7 +285,8 @@ class DeepFileInspector:
         offset = 12
         limit = len(mm)
 
-        while offset + 8 <= limit:
+        chunks_seen = 0
+        while offset + 8 <= limit and chunks_seen < self._MAX_SCAN_CHUNKS:
             chunk_id = mm[offset:offset + 4]
             try:
                 chunk_size = struct.unpack('<I', mm[offset + 4:offset + 8])[0]
@@ -296,6 +302,7 @@ class DeepFileInspector:
             if chunk_id != b'data':
                 regions.append(mm[body_start:body_end])
 
+            chunks_seen += 1
             offset = body_end + (chunk_size % 2)   # RIFF pads odd-sized chunks
             if chunk_size == 0 and chunk_id != b'data':
                 offset = body_start                # never stall on a zero-size chunk
@@ -319,9 +326,13 @@ class DeepFileInspector:
                 file_size = struct.unpack('<I', riff_header[4:8])[0]
                 metadata["declared_size"] = file_size
 
-                # Parse chunks
+                # Parse chunks. core's header walker stops at
+                # _MAX_WAV_CHUNKS; this scan must inherit that bound --
+                # a crafted file of zero-size chunks once made
+                # chunks_found grow unboundedly (memory + full-file scan).
                 chunks_found = []
-                while True:
+                too_many_chunks = False
+                for _ in range(self._MAX_SCAN_CHUNKS):
                     chunk_header = f.read(8)
                     if len(chunk_header) < 8:
                         break
@@ -367,10 +378,19 @@ class DeepFileInspector:
                     if chunk_size % 2 == 1:
                         f.seek(1, 1)  # RIFF pad byte after odd-sized chunks
 
+                else:
+                    too_many_chunks = True
+
                 metadata["chunks"] = chunks_found
+                metadata["chunks_truncated"] = too_many_chunks
 
                 # Verify required chunks
-                if 'fmt ' not in chunks_found:
+                if too_many_chunks:
+                    metadata["error"] = (
+                        f"Too many chunks (>{self._MAX_SCAN_CHUNKS}) -- "
+                        "likely crafted"
+                    )
+                elif 'fmt ' not in chunks_found:
                     metadata["error"] = "Missing fmt chunk"
                 if 'data' not in chunks_found:
                     metadata["error"] = "Missing data chunk"
@@ -386,7 +406,9 @@ class IntegrityVerifier:
 
     def __init__(self, manifest_dir: Optional[Path] = None):
         self.manifest_dir = manifest_dir or Path.home() / ".chameleon" / "manifests"
-        self.manifest_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        # Defer mkdir to first use -- importing/constructing a read-only
+        # object must not write to the filesystem (same rule as the
+        # ~/.chameleon_state fix and the PluginManager mkdir removal).
 
     def create_manifest(self, files: List[Path], manifest_name: str) -> Path:
         """Create integrity manifest for files"""
@@ -409,6 +431,7 @@ class IntegrityVerifier:
 
         # Save manifest atomically: a torn write leaves a corrupt JSON that
         # would fail every future verify for a reason the user cannot see.
+        self.manifest_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         manifest_path = self.manifest_dir / f"{manifest_name}.json"
         import json
         tmp_path = manifest_path.with_suffix(manifest_path.suffix + ".tmp")
