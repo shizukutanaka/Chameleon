@@ -2424,6 +2424,17 @@ each wrote outside the declared boundary. The singleton now reads
 dir (SECURITY exit), and export/midi-output pass `validate_path` like
 every other write (`tests/test_trusted_roots.py`).
 
+**Q: Does `True` mean the edit happened?**
+A (2026-09-20): No, when the selection named nothing. A region outside the
+clip produces an empty mask; every mutating spectral op returned True
+anyway -- wrote nothing, still pushed an undo frame, and
+`noise_reduce_selection` first ran `np.median` over the empty selection
+(RuntimeWarning + NaN). Reporting success on work that did not happen is
+the same dishonesty as the interpolate no-op: the call's verdict must
+match its effect. All five mutating ops now check `mask.any()` before
+saving state and return False on an empty selection
+(`tests/test_empty_selection.py`).
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
