@@ -330,3 +330,50 @@ class TestSecurityConfigFromEnvironment:
         with pytest.warns(UserWarning, match="does not exist"):
             cfg = SecurityConfig.from_environment()
         assert str(tmp_path / "ghost") in cfg.trusted_roots
+
+
+class TestIntegrityCheck:
+    """EnhancedSecurityValidator.check_file_integrity + _calculate_file_entropy.
+
+    audit-101: the entropy helper called ``p.bit_length()`` on a float --
+    AttributeError on every non-empty file. And the permission gate read
+    ``mode & 0o777 != mode`` -- st_mode carries file-type bits (0o100644),
+    so every regular file returned False before entropy was ever consulted.
+    """
+
+    def test_regular_file_passes_integrity(self, tmp_path):
+        from core import EnhancedSecurityValidator
+        f = tmp_path / "ok.bin"
+        f.write_bytes(b"plain data")
+        f.chmod(0o644)
+        assert EnhancedSecurityValidator.check_file_integrity(str(f)) is True
+
+    def test_setuid_file_fails_integrity(self, tmp_path):
+        from core import EnhancedSecurityValidator
+        f = tmp_path / "suid.bin"
+        f.write_bytes(b"x")
+        f.chmod(0o4644)
+        try:
+            assert EnhancedSecurityValidator.check_file_integrity(str(f)) is False
+        finally:
+            f.chmod(0o644)  # let tmp_path cleanup remove it
+
+    def test_entropy_is_shannon(self, tmp_path):
+        """Real Shannon entropy: flat file -> 0, uniform bytes -> 8.0."""
+        from core import EnhancedSecurityValidator
+        flat = tmp_path / "flat.bin"
+        flat.write_bytes(b"\x00" * 512)
+        uniform = tmp_path / "uniform.bin"
+        uniform.write_bytes(bytes(range(256)) * 4)
+        assert EnhancedSecurityValidator._calculate_file_entropy(str(flat)) == 0.0
+        assert abs(
+            EnhancedSecurityValidator._calculate_file_entropy(str(uniform)) - 8.0
+        ) < 1e-9
+
+    def test_entropy_empty_and_missing(self, tmp_path):
+        from core import EnhancedSecurityValidator
+        empty = tmp_path / "e.bin"
+        empty.write_bytes(b"")
+        assert EnhancedSecurityValidator._calculate_file_entropy(str(empty)) == 0.0
+        assert EnhancedSecurityValidator._calculate_file_entropy(
+            str(tmp_path / "ghost.bin")) == 0.0

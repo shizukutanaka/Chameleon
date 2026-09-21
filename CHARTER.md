@@ -2471,3 +2471,28 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** `EnhancedSecurityValidator` is the "suspicious
+file" gate behind `check_file_integrity`. Does its entropy check actually
+measure entropy, and does its permission check actually flag suspicious
+permissions?
+**A:** Neither. `_calculate_file_entropy` multiplied each byte's frequency
+by `p.bit_length()` -- a method floats do not have, so every non-empty file
+escaped the OSError/IOError guard and surfaced as a raw AttributeError
+(0.0 was only ever returned for empty or unreadable files). And the
+setuid/setgid check compared `mode & 0o777 != mode`: st_mode's file-type
+bits sit above 0o777, so a completely normal 0o644 file evaluated to
+"special permissions set" and check_file_integrity returned False for
+every regular file it was shown. Both are now correct: Shannon entropy via
+`math.log2`, and the permission gate tests `mode & 0o7000` directly.
+**Q (2026-09-21, continued):** `DeepFileInspector` accepts RIFX (big-endian
+WAV) as a valid container since audit-81. Does it actually *parse* RIFX,
+or just recognize the magic?
+**A:** Recognized the magic, then mis-parsed everything after it.
+`_validate_wav_structure` and the suspicious-content region splitter both
+unpacked chunk sizes little-endian, so a 40-byte RIFX reported
+declared_size=671 MB, format_tag 256, "Missing data chunk" on a file that
+had one -- and `_non_audio_regions`'s inflated chunk sizes made the "text
+region" swallow the PCM payload, scanning audio bytes for markup patterns.
+All three parses now pick '<' or '>' from the container magic, and the
+metadata reports which endianness it used.

@@ -19,6 +19,7 @@ import time
 import json
 import datetime
 import struct
+import math
 import shutil
 import tempfile
 import logging
@@ -2156,10 +2157,13 @@ class EnhancedSecurityValidator:
             if stat.st_mtime > time.time():
                 return False  # Future modification time
 
-            # Check for suspicious file permissions
+            # Check for suspicious file permissions. st_mode carries the
+            # file-type bits (S_IFREG etc.) above 0o777, so `mode & 0o777
+            # != mode` is true for every regular file -- the comparison must
+            # target the setuid/setgid/sticky bits specifically.
             if os.name == 'posix':
                 mode = stat.st_mode
-                if mode & 0o777 != mode:  # Check for special permissions
+                if mode & 0o7000:
                     return False
 
             # Check file entropy for encrypted/compressed content
@@ -2186,13 +2190,18 @@ class EnhancedSecurityValidator:
                 for byte in data:
                     byte_counts[byte] += 1
 
-                # Calculate entropy
+                # Shannon entropy. This used to call `p.bit_length()` on a
+                # float, which does not exist -- the check crashed with a raw
+                # AttributeError for every non-empty file, escaping the
+                # OSError/IOError guard below and propagating through
+                # check_file_integrity's own (OSError, ValueError) guard
+                # as a raw exception.
                 entropy = 0.0
                 length = len(data)
                 for count in byte_counts:
                     if count > 0:
                         p = count / length
-                        entropy -= p * (p.bit_length() if p > 0 else 0)  # Simplified
+                        entropy -= p * math.log2(p)
 
                 return entropy
 

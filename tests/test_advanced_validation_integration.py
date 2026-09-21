@@ -129,13 +129,13 @@ def test_sanitize_preserves_data_after_odd_sized_metadata(tmp_path):
     import struct as _st
     from advanced_validation import SanitizationEngine
 
-    fmt = _st.pack("<HHIIHH", 1, 1, 44100, 88200, 2, 16)
-    payload = _st.pack("<4h", 100, 200, 300, 400)
-    odd_list = b"LIST" + _st.pack("<I", 5) + b"INFAx" + b"\x00"
-    body = (b"fmt " + _st.pack("<I", 16) + fmt + odd_list
-            + b"data" + _st.pack("<I", len(payload)) + payload)
+    fmt = struct.pack("<HHIIHH", 1, 1, 44100, 88200, 2, 16)
+    payload = struct.pack("<4h", 100, 200, 300, 400)
+    odd_list = b"LIST" + struct.pack("<I", 5) + b"INFAx" + b"\x00"
+    body = (b"fmt " + struct.pack("<I", 16) + fmt + odd_list
+            + b"data" + struct.pack("<I", len(payload)) + payload)
     src = tmp_path / "meta.wav"
-    src.write_bytes(b"RIFF" + _st.pack("<I", 4 + len(body)) + b"WAVE" + body)
+    src.write_bytes(b"RIFF" + struct.pack("<I", 4 + len(body)) + b"WAVE" + body)
 
     dst = tmp_path / "clean.wav"
     SanitizationEngine.sanitize_wav_metadata(src, dst)
@@ -165,3 +165,25 @@ def test_main_block_self_test_writes_no_state_into_the_real_home(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "Verification: True" in result.stdout
     assert not (home / ".chameleon").exists()
+
+
+def test_rifx_big_endian_structure_parsed_correctly(tmp_path):
+    """audit-101: RIFX stores every field big-endian. The inspector used to
+    unpack them '<I' -- a 40-byte RIFX reported declared_size=671 MB,
+    format_tag 256, and "Missing data chunk" on a file that had one."""
+    fmt = struct.pack(">HHIIHH", 1, 1, 8000, 16000, 2, 16)
+    body = (
+        b"fmt " + struct.pack(">I", 16) + fmt
+        + b"data" + struct.pack(">I", 4) + b"\x00\x00\x00\x00"
+    )
+    rifx = tmp_path / "big.wav"
+    rifx.write_bytes(b"RIFX" + struct.pack(">I", 4 + len(body)) + b"WAVE" + body)
+
+    result = DeepFileInspector().inspect_file(rifx)
+    assert result.is_valid is True
+    assert result.metadata["endianness"] == "big"
+    assert result.metadata["declared_size"] == 4 + len(body)
+    assert result.metadata["format_tag"] == 1
+    assert result.metadata["sample_rate"] == 8000
+    assert result.metadata["channels"] == 1
+    assert "data" in result.metadata["chunks"]

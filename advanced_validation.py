@@ -276,6 +276,11 @@ class DeepFileInspector:
         if mm[:4] not in (b'RIFF', b'RIFX'):
             return [mm[:]]
 
+        # RIFX stores chunk sizes big-endian; reading them '<I' inflates a
+        # 16-byte fmt chunk into hundreds of MB, so the "text region" then
+        # swallowed the PCM payload and audio bytes were scanned for markup.
+        endian = '>' if mm[:4] == b'RIFX' else '<'
+
         regions = [mm[:12]]
         offset = 12
         limit = len(mm)
@@ -283,7 +288,7 @@ class DeepFileInspector:
         while offset + 8 <= limit:
             chunk_id = mm[offset:offset + 4]
             try:
-                chunk_size = struct.unpack('<I', mm[offset + 4:offset + 8])[0]
+                chunk_size = struct.unpack(endian + 'I', mm[offset + 4:offset + 8])[0]
             except struct.error:
                 break
 
@@ -316,7 +321,15 @@ class DeepFileInspector:
                 if len(riff_header) < 12:
                     return {"error": "Truncated RIFF header"}
 
-                file_size = struct.unpack('<I', riff_header[4:8])[0]
+                # RIFX (big-endian WAV) stores every size/count field
+                # big-endian -- the same '<I' unpack that is right for RIFF
+                # produced garbage metadata (a 40-byte RIFX "declared_size" of
+                # 671 MB, format_tag 256, "Missing data chunk" on a file that
+                # has one). Endianness follows the container magic.
+                endian = '>' if riff_header[:4] == b'RIFX' else '<'
+                metadata["endianness"] = "big" if endian == '>' else "little"
+
+                file_size = struct.unpack(endian + 'I', riff_header[4:8])[0]
                 metadata["declared_size"] = file_size
 
                 # Parse chunks
@@ -327,7 +340,7 @@ class DeepFileInspector:
                         break
 
                     chunk_id = chunk_header[:4]
-                    chunk_size = struct.unpack('<I', chunk_header[4:8])[0]
+                    chunk_size = struct.unpack(endian + 'I', chunk_header[4:8])[0]
 
                     chunks_found.append(chunk_id.decode('latin1', errors='ignore'))
 
@@ -336,7 +349,7 @@ class DeepFileInspector:
                         fmt_data = f.read(min(chunk_size, 40))
                         if len(fmt_data) >= 16:
                             format_tag, channels, sample_rate, _, _, bits_per_sample = \
-                                struct.unpack('<HHIIHH', fmt_data[:16])
+                                struct.unpack(endian + 'HHIIHH', fmt_data[:16])
 
                             metadata.update({
                                 "format_tag": format_tag,
