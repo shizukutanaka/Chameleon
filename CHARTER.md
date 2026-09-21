@@ -2274,6 +2274,13 @@ json.loads accepts the literals NaN/Infinity by default, so a JSON config
 file can smuggle them into any "numeric" field. The check is
 isinstance(x, (int, float)) AND math.isfinite(x), in that order, before
 any range assertion.
+**Q: When a hostile input is neutralized silently, is that security?**
+A (2026-09-21): Neutralization without refusal is safety without honesty.
+`/audio/upload` basename-stripped `../../etc/passwd.wav` into a stored
+`passwd.wav` and answered 200 -- safe, but the audit log recorded a
+success and the caller learned their traversal "worked". The route now
+uses the same `_sanitize_uploaded_name` the rest of the API uses: nested
+paths are a 400 the audit trail names as a denial.
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented

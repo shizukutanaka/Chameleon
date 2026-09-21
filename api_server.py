@@ -1167,7 +1167,10 @@ async def upload_audio_file(
     try:
         _validate_upload_extension(file.filename)
 
-        sanitized_name = _REQUEST_VALIDATOR.sanitize_filename(Path(file.filename).name)
+        # Reject nested/encoded path tricks rather than silently rewriting
+        # them: Path().name would turn "../../etc/passwd.wav" into a stored
+        # "passwd.wav" with a 200 -- the audit trail should show the denial.
+        sanitized_name = _sanitize_uploaded_name(file.filename)
         # The uuid prefix spends 33 bytes of the 255-byte per-component
         # limit filesystems enforce; sanitize_filename counts characters,
         # so a long multi-byte name can still overflow and os.open then
