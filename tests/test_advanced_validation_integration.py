@@ -165,3 +165,53 @@ def test_main_block_self_test_writes_no_state_into_the_real_home(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "Verification: True" in result.stdout
     assert not (home / ".chameleon").exists()
+
+
+def test_inspector_fails_structurally_broken_wavs(tmp_path):
+    """The chunk walk's structural 'error' previously landed only in
+    metadata, so is_valid stayed True for a WAV with NO data chunk at
+    all and for one whose data chunk declared more bytes than the file
+    holds (truncated download / corrupt export -- both verified).
+    Structural errors now propagate to is_valid; an overrun on a
+    non-data chunk stays a warning."""
+    import io
+    import struct
+    import wave
+    from advanced_validation import DeepFileInspector
+
+    inspector = DeepFileInspector()
+
+    # Header-only WAV: fmt present, no data chunk.
+    fmt = b"fmt " + struct.pack("<I", 16) + struct.pack(
+        "<HHIIHH", 1, 1, 44100, 88200, 2, 16)
+    nodata = tmp_path / "nodata.wav"
+    nodata.write_bytes(b"RIFF" + struct.pack("<I", 4 + len(fmt)) + b"WAVE" + fmt)
+    result = inspector.inspect_file(nodato if False else nodata)
+    assert not result.is_valid
+    assert any("data" in e for e in result.errors)
+
+    # data chunk declares more bytes than the file contains.
+    bio = io.BytesIO()
+    with wave.open(bio, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(44100)
+        w.writeframes(b"\x00\x00" * 100)
+    body = bytearray(bio.getvalue())
+    off = body.find(b"data")
+    body[off + 4:off + 8] = struct.pack("<I", 10000)
+    trunc = tmp_path / "truncated.wav"
+    trunc.write_bytes(bytes(body))
+    result = inspector.inspect_file(trunc)
+    assert not result.is_valid
+    assert any("declares" in e for e in result.errors)
+
+    # An overrunning trailing non-data chunk is a warning, not a
+    # rejection -- the audio payload is intact.
+    body2 = bytearray(bio.getvalue()) + b"JUNK" + struct.pack("<I", 5000)
+    body2[4:8] = struct.pack("<I", len(body2) - 8)
+    tail = tmp_path / "tail.wav"
+    tail.write_bytes(bytes(body2))
+    result = inspector.inspect_file(tail)
+    assert result.is_valid
+    assert any("JUNK" in w for w in result.warnings)

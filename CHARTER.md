@@ -2471,3 +2471,24 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**2026-09-21 (Socratic audit 115, external-source pass):** Probed against
+external references: chunked upload size enforcement (honest -- counts
+actual streamed bytes, deletes partials), Content-Disposition injection
+(safe -- upload names are scrubbed at registration), and truncated-file
+handling per the RIFF spec:
+
+- `_validate_wav_structure` wrote its structural verdicts into
+  `metadata["error"]` -- a field NOTHING promoted to `errors`. A WAV
+  with no data chunk at all reported `is_valid=True` (verified), and the
+  walk never compared a chunk's declared size against the bytes actually
+  remaining, so a truncated download passed inspection that the reader
+  itself then rejects. Structural errors now propagate: a `data` chunk
+  that declares more than remains is an integrity error, an overrun on
+  any other chunk is a warning, and the pre-existing 'Missing fmt/data
+  chunk' verdicts finally reach `is_valid`.
+
+Verified honest: the upload path streams through a byte-counted loop and
+unlinks partial files; upload filenames are scrubbed before registration
+so download-time Content-Disposition can't be poisoned; no write path
+emits float WAV so the EBU fact-chunk requirement does not apply.

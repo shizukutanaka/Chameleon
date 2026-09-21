@@ -95,10 +95,17 @@ class DeepFileInspector:
                 warnings.extend([f"Suspicious pattern: {p.decode('latin1', errors='ignore')}"
                                for p in suspicious])
 
-            # Validate WAV structure
+            # Validate WAV structure. A structural 'error' (missing fmt
+            # or data chunk, a declared size that overruns the file) is a
+            # rejection, not a note -- it previously landed in metadata
+            # only, so a WAV with no data chunk reported is_valid=True.
             if file_type.startswith('WAV'):
                 wav_validation = self._validate_wav_structure(file_path)
                 metadata.update(wav_validation)
+                if wav_validation.get("error"):
+                    errors.append(wav_validation["error"])
+                for w in wav_validation.get("warnings", []):
+                    warnings.append(w)
 
             # Check file permissions
             if stats.st_mode & 0o111:  # Executable bit set
@@ -138,8 +145,10 @@ class DeepFileInspector:
         Identical to ``inspect_file`` except it skips the full-file SHA-256
         checksum (``checksum_sha256`` is left empty), so it does not impose a
         whole-file read on every file in a batch. ``is_valid`` carries the same
-        meaning as ``inspect_file``: it is False only when the magic number does
-        not identify a real WAV container (e.g. an executable renamed to .wav).
+        meaning as ``inspect_file``: it is False when the magic number does
+        not identify a real WAV container (e.g. an executable renamed to .wav)
+        or the container is structurally broken (missing fmt/data chunk, a
+        declared chunk size that overruns the file).
         Suspicious byte patterns inside the data are reported as *warnings*, not
         errors — a WAV's PCM payload can legitimately contain those byte
         sequences — so callers should log them, not reject on them.
@@ -164,7 +173,12 @@ class DeepFileInspector:
                                  for p in suspicious])
 
             if file_type.startswith('WAV'):
-                metadata.update(self._validate_wav_structure(file_path))
+                wav_validation = self._validate_wav_structure(file_path)
+                metadata.update(wav_validation)
+                if wav_validation.get("error"):
+                    errors.append(wav_validation["error"])
+                for w in wav_validation.get("warnings", []):
+                    warnings.append(w)
 
             if stats.st_mode & 0o111:
                 warnings.append("File has executable permissions")
@@ -310,6 +324,8 @@ class DeepFileInspector:
 
         try:
             with open(file_path, 'rb') as f:
+                actual_size = file_path.stat().st_size
+
                 # Read RIFF header
                 riff_header = f.read(12)
 
@@ -328,6 +344,20 @@ class DeepFileInspector:
 
                     chunk_id = chunk_header[:4]
                     chunk_size = struct.unpack('<I', chunk_header[4:8])[0]
+
+                    # A chunk that declares more than the bytes left in the
+                    # file means the file was truncated mid-write or its
+                    # header lies. On `data` that is lost audio -- an
+                    # integrity error; on any other chunk it is a warning.
+                    remaining = actual_size - f.tell()
+                    if chunk_size > remaining:
+                        msg = (f"Chunk '{chunk_id.decode('latin1', errors='ignore')}' "
+                               f"declares {chunk_size} bytes but only {remaining} remain")
+                        if chunk_id == b'data':
+                            metadata["error"] = msg
+                        else:
+                            metadata.setdefault("warnings", []).append(msg)
+                        break
 
                     chunks_found.append(chunk_id.decode('latin1', errors='ignore'))
 
@@ -369,11 +399,14 @@ class DeepFileInspector:
 
                 metadata["chunks"] = chunks_found
 
-                # Verify required chunks
-                if 'fmt ' not in chunks_found:
-                    metadata["error"] = "Missing fmt chunk"
-                if 'data' not in chunks_found:
-                    metadata["error"] = "Missing data chunk"
+                # Verify required chunks -- skip when the walk already
+                # recorded a structural error (an overrun on 'data' would
+                # otherwise be overwritten by 'Missing data chunk').
+                if "error" not in metadata:
+                    if 'fmt ' not in chunks_found:
+                        metadata["error"] = "Missing fmt chunk"
+                    elif 'data' not in chunks_found:
+                        metadata["error"] = "Missing data chunk"
 
         except Exception as e:
             metadata["error"] = str(e)

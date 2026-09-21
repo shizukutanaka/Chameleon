@@ -487,6 +487,11 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- The deep inspector's structural verdicts never reached `is_valid`: a
+  WAV with no `data` chunk passed inspection, and a chunk declaring more
+  bytes than the file holds was walked past silently. A `data` overrun
+  or missing required chunk is now an inspection error; an overrun on a
+  non-data chunk is a warning.
 
 ### Changed
 
