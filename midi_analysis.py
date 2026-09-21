@@ -736,19 +736,33 @@ class MIDIComposer:
         last_chord = current_progression[-1]
         last_degree = (last_chord.root - key.tonic) % 12
 
-        # Simple Markov chain based on common progressions
+        # Simple Markov chain on DIATONIC major-key degrees. The previous
+        # table keyed on chromatic indices 4 and 9 while its comments
+        # said IV and vi -- degree 4 is the mediant, so an actual IV
+        # chord (degree 5, e.g. F in C) fell through to the generic
+        # fallback and an actual V could suggest "V -> V".
         transition_probabilities = {
-            0: [(4, 0.4), (7, 0.3), (9, 0.2), (5, 0.1)],  # I -> V, IV, vi, etc.
-            4: [(0, 0.5), (7, 0.3), (2, 0.2)],  # V -> I, ii, etc.
-            7: [(0, 0.4), (4, 0.3), (9, 0.3)],  # V -> I, V, vi
-            9: [(4, 0.4), (0, 0.3), (5, 0.3)]   # vi -> V, I, IV
+            0: [(5, 0.4), (7, 0.3), (9, 0.2), (2, 0.1)],   # I  -> IV, V, vi, ii
+            5: [(0, 0.5), (7, 0.3), (2, 0.2)],             # IV -> I, V, ii
+            7: [(0, 0.4), (9, 0.3), (5, 0.3)],             # V  -> I, vi, IV
+            9: [(5, 0.4), (2, 0.3), (7, 0.3)],             # vi -> IV, ii, V
         }
+
+        # Diatonic numerals carry their chord quality in their case --
+        # the all-major numeral list used before labeled vi as "VI",
+        # suggesting A major where the key has A minor.
+        _diatonic_major_romans = {
+            0: "I", 2: "ii", 4: "iii", 5: "IV", 7: "V", 9: "vi", 11: "vii°",
+        }
+        _flat_romans = ["I", "♭II", "II", "♭III", "III", "IV",
+                        "♭V", "V", "♭VI", "VI", "♭VII", "VII"]
 
         suggestions = []
         if last_degree in transition_probabilities:
             for next_degree, prob in transition_probabilities[last_degree]:
-                roman_numerals = ["I", "♭II", "II", "♭III", "III", "IV", "♭V", "V", "♭VI", "VI", "♭VII", "VII"]
-                suggestions.append((roman_numerals[next_degree], prob))
+                roman = _diatonic_major_romans.get(next_degree,
+                                                 _flat_romans[next_degree])
+                suggestions.append((roman, prob))
 
         return suggestions or [("I", 1.0)]
 

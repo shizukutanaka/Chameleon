@@ -1,6 +1,6 @@
 """Tests for MIDI musical analysis (chord and key detection)."""
 
-from midi_analysis import MIDIAnalyzer, MIDINote
+from midi_analysis import MIDIAnalyzer, MIDINote, MIDIComposer, MusicalKey, Chord
 
 
 def _c_major_progression():
@@ -247,3 +247,23 @@ def test_analyze_harmony_names_the_key_not_a_pitch_class():
     harmony = analyzer.analyze_harmony(chords, key)
 
     assert harmony["key"] == "C major"
+
+
+def test_suggest_next_chord_knows_diatonic_degrees():
+    # The transition table keyed on chromatic indices 4 and 9 while its
+    # comments claimed IV and vi -- a real IV chord fell through to the
+    # generic I fallback, and vi suggestions were labeled major "VI".
+    composer = MIDIComposer()
+    key = MusicalKey(tonic=0, mode="major", confidence=1.0)
+
+    iv = Chord(root=65, chord_type="major", notes=[65, 69, 72],
+               start_time=0, duration=1, confidence=0.9)
+    suggestions = composer.suggest_next_chord([iv], key)
+    assert len(suggestions) > 1  # not the generic fallback
+
+    v = Chord(root=67, chord_type="major", notes=[67, 71, 74],
+              start_time=0, duration=1, confidence=0.9)
+    suggestions = composer.suggest_next_chord([v], key)
+    assert suggestions[0][0] == "I"           # V resolves to I
+    assert all(s[0] != "V" for s in suggestions)  # never V -> V
+    assert "vi" in [s[0] for s in suggestions]    # minor, not "VI"
