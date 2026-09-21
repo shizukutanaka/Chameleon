@@ -74,12 +74,10 @@ def _json_export_default(obj):
     numpy scalars become plain numbers, everything else falls back to str."""
     if is_dataclass(obj) and not isinstance(obj, type):
         d = asdict(obj)
-        # Exported defaults read as measurements: [0.0, 0.0] Hz on an
-        # install that never computes frequency_range, or 0.0 BPM for
-        # "not estimable". The stdlib path already reports null for
-        # unmeasured fields -- make the numpy path say the same.
-        if d.get("frequency_range") == (0.0, 0.0):
-            d["frequency_range"] = None
+        # 0.0 BPM on an install that never computes a tempo reads as a
+        # measurement rather than "not estimable"; the stdlib path already
+        # reports null for unmeasured fields -- make the numpy path say
+        # the same.
         if d.get("tempo") == 0.0:
             d["tempo"] = None
         return d
@@ -527,7 +525,7 @@ class AudioMetadata:
     peak_level: float = 0.0
     rms_level: float = 0.0
     dynamic_range: float = 0.0
-    frequency_range: Tuple[float, float] = (0.0, 0.0)
+    frequency_range: Optional[Tuple[float, float]] = None
     tempo: Optional[float] = None
     key: Optional[str] = None
     loudness_lufs: Optional[float] = None
@@ -823,9 +821,15 @@ class AudioProcessor:
                 if audio_mono.size < 2048:
                     return metadata
 
-                # Spectral features
-                spectral_centroids = librosa.feature.spectral_centroid(y=audio_mono, sr=sr)[0]
-                metadata.spectral_centroid = float(np.mean(spectral_centroids))
+                # On digital silence the centroid is 0/0: librosa guards
+                # the division and reports 0.0 Hz, which is a fabricated
+                # measurement, not one. Keep the field null, like the
+                # loudness fields on the same input.
+                if np.abs(audio_mono).max() > 0:
+                    spectral_centroids = librosa.feature.spectral_centroid(y=audio_mono, sr=sr)[0]
+                    mean_centroid = float(np.mean(spectral_centroids))
+                    if np.isfinite(mean_centroid):
+                        metadata.spectral_centroid = mean_centroid
 
                 # Zero crossing rate
                 zcr = librosa.feature.zero_crossing_rate(audio_mono)[0]
@@ -834,9 +838,11 @@ class AudioProcessor:
                 # Tempo detection -- librosa returns an ndarray, not a
                 # scalar; float() on a non-0-dim array raises and aborts the
                 # whole advanced block, losing the spectral fields too.
+                # beat_track reports 0.0 on silence, which is "not
+                # estimable", not a tempo -- store None for it.
                 tempo, _ = librosa.beat.beat_track(y=audio_mono, sr=sr)
                 tempo_values = np.asarray(tempo).ravel()
-                if tempo_values.size:
+                if tempo_values.size and tempo_values[0] > 0:
                     metadata.tempo = float(tempo_values[0])
 
                 # Frequency range estimation
@@ -2445,7 +2451,7 @@ async def main():
                     # printed as though it were a measurement of the audio.
                     # `--spectrum` measures the same thing for real, in pure
                     # Python, on every install.
-                    if metadata.frequency_range != (0.0, 0.0):
+                    if metadata.frequency_range is not None:
                         print(f"  Frequency Range: {metadata.frequency_range[0]:.1f}-{metadata.frequency_range[1]:.1f}Hz")
                     elif not args.spectrum:
                         print("  Frequency Range: not measured (use --spectrum)")
