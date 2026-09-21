@@ -2401,6 +2401,16 @@ cannot produce (`""`/`.wav`/`.wave` only) and raises ValueError; a bad
 destination is an INPUT error, not a mislabeled artifact
 (`tests/test_output_integrity.py`).
 
+**Q: Does pre-flight validation know the contract of the thing it
+validates?**
+A (2026-09-20): Two of them did not. `BatchProcessor` accepted
+`target_peak=0.0` and `threshold` of 0.0/1.0 at the batch gate -- then
+every per-file call failed inside `normalize()`/`trim_silence()`, so a
+batch "passed validation" and produced N identical per-file errors. The
+CLI (`0 < peak <= 1`, `0 < threshold < 1`) and the API validator `(0,
+1.0]` already enforced the ops' real ranges; the gate now matches them
+(`tests/test_batch_param_bounds.py`).
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
