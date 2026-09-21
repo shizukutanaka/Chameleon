@@ -304,3 +304,81 @@ def test_load_plugin_limits_all_plugin_code_sites(tmp_path, hang_site):
     with pytest.raises(TimeoutError, match="timed out"):
         loader.load_plugin(plugin)
     assert time.monotonic() - t0 < 10
+
+
+def test_execute_plugin_runs_only_public_operations(tmp_path):
+    # `hasattr` accepted any attribute: `cleanup` ran as an "operation" and
+    # silently destroyed plugin state, `metadata`/`__dict__` fetched
+    # non-callables that died inside the sandbox on 'not callable'
+    # TypeErrors, and `_private` names were reachable.
+    from plugin_system import PluginManager, AudioEffectPlugin, PluginMetadata
+
+    class P(AudioEffectPlugin):
+        def __init__(self):
+            super().__init__()
+            self.metadata = PluginMetadata(
+                name="p", version="1.0.0", author="a",
+                description="d", category="effect")
+            self.cleaned = False
+
+        def get_metadata(self):
+            return self.metadata
+
+        def initialize(self, config):
+            return True
+
+        def cleanup(self):
+            self.cleaned = True
+
+        def process_audio(self, audio_data, sample_rate, **params):
+            return audio_data
+
+    manager = PluginManager()
+    plugin = P()
+    manager.loader.plugins["p"] = plugin
+
+    # Lifecycle hooks and non-callables are not operations.
+    for op in ("cleanup", "initialize", "get_metadata", "get_parameters",
+               "validate_input", "metadata", "__dict__", "_private", ""):
+        with pytest.raises((ValueError, AttributeError), match="operation|method"):
+            manager.execute_plugin("p", op)
+    assert plugin.cleaned is False
+
+    # The real operation still runs through the sandbox.
+    assert manager.execute_plugin(
+        "p", "process_audio", audio_data=[1.0], sample_rate=8000) == [1.0]
+
+
+def test_loading_a_second_plugin_with_a_taken_name_is_rejected(tmp_path):
+    # `self.plugins[name] = instance` overwrote the earlier plugin silently:
+    # it left the registry without its cleanup() ever running, still holding
+    # whatever it had opened. Now the duplicate is refused and told to use
+    # reload_plugin.
+    src = (
+        "from plugin_system import AudioEffectPlugin, PluginMetadata\n"
+        "class DupPlugin(AudioEffectPlugin):\n"
+        "    def get_metadata(self):\n"
+        "        return PluginMetadata(name='dup', version='{ver}', author='t',\n"
+        "                              description='t', category='effect')\n"
+        "    def initialize(self, config):\n"
+        "        return True\n"
+        "    def cleanup(self):\n"
+        "        pass\n"
+        "    def process_audio(self, audio_data, sample_rate, **params):\n"
+        "        return audio_data\n"
+        "def create_plugin():\n"
+        "    return DupPlugin()\n"
+    )
+    a = tmp_path / "a_plugin.py"
+    a.write_text(src.format(ver="1.0.0"))
+    b = tmp_path / "b_plugin.py"
+    b.write_text(src.format(ver="2.0.0"))
+
+    loader = PluginLoader(PluginConfig())
+    loader.plugin_directories = []
+    first = loader.load_plugin(str(a))
+    assert first is not None
+    assert loader.load_plugin(str(b)) is None
+    # The original registration survived.
+    assert loader.plugins["dup"] is first
+    assert loader.plugins["dup"].metadata.version == "1.0.0"

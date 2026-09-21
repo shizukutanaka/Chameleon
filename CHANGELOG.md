@@ -487,6 +487,14 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- `PluginManager.execute_plugin` resolved operations with `hasattr`, which
+  accepts any attribute: a `cleanup` "operation" ran lifecycle teardown and
+  destroyed plugin state silently, `metadata`/`__dict__` fetched
+  non-callables that died inside the sandbox, and private names were
+  reachable. Only public callable, non-lifecycle methods are operations now.
+- `PluginLoader.load_plugin` silently displaced an already-loaded plugin when
+  a second file claimed the same name — evicted from the registry without
+  `cleanup()`. Duplicates are refused with a pointer to `reload_plugin`.
 
 ### Changed
 

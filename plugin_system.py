@@ -422,6 +422,22 @@ class PluginLoader:
                     "loaded_time": time.time()
                 }
 
+            # A second plugin claiming a name already loaded would silently
+            # displace the first -- evicted from the registry with no
+            # cleanup() call while still holding whatever it opened. Reloads
+            # go through reload_plugin, which unloads first.
+            if metadata.name in self.plugins:
+                self.logger.error(
+                    "Plugin name %s is already loaded; call reload_plugin to "
+                    "replace it", metadata.name)
+                try:
+                    plugin_instance.cleanup()
+                except Exception:
+                    self.logger.warning(
+                        "Cleanup failed for rejected duplicate plugin %s",
+                        metadata.name)
+                return None
+
             self.plugins[metadata.name] = plugin_instance
             load_duration = time.monotonic() - load_started
             self.logger.info(
@@ -721,12 +737,21 @@ class PluginManager:
         if not plugin.metadata.enabled:
             raise RuntimeError(f"Plugin is disabled: {plugin_name}")
 
-        # Get the operation method
-        if hasattr(plugin, operation):
-            method = getattr(plugin, operation)
-            return self.loader.sandbox.execute_with_limits(method, **params)
-        else:
+        # Get the operation method. `hasattr` alone accepted ANY attribute:
+        # `cleanup`/`initialize` ran as "operations" (verified: a cleanup call
+        # destroyed plugin state silently), `metadata`/`__dict__` fetched
+        # non-callables that died on 'not callable' TypeErrors inside the
+        # sandbox, and `_private` names were all reachable. Operations are
+        # public callables that are not lifecycle hooks.
+        lifecycle = {"initialize", "cleanup", "get_metadata", "get_parameters",
+                     "validate_input"}
+        if (not isinstance(operation, str) or operation.startswith("_")
+                or operation in lifecycle):
+            raise ValueError(f"Not an executable plugin operation: {operation}")
+        method = getattr(plugin, operation, None)
+        if not callable(method):
             raise AttributeError(f"Plugin {plugin_name} has no method: {operation}")
+        return self.loader.sandbox.execute_with_limits(method, **params)
 
     def install_plugin(self, plugin_source: str, plugin_name: Optional[str] = None) -> bool:
         """Install a plugin from source"""
