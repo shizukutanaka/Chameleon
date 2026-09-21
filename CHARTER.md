@@ -2471,3 +2471,16 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21):** A disk-pressure retry calls _cleanup_temp_files.
+What exactly does it delete, and what does ErrorAnalyzer call a
+rejected path?
+**A:** The cleanup globbed chameleon_* in the shared temp dir and wiped
+directories too -- including 'chameleon_state', the very
+StateRecoveryManager fallback that holds batch_state_*.json, so the
+recovery path could destroy the state it exists to protect (plus any
+user directory sharing the prefix). It now unlinks regular files only.
+And ErrorAnalyzer's ROOT_CAUSE_MAP knew MemoryError and TimeoutError but
+not SecurityError -- a deliberate path-validation rejection reported
+itself as root_cause='unknown_error', severity 'medium'. It reports
+'security_violation'/'high'.

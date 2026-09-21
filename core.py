@@ -28,7 +28,7 @@ from pathlib import Path
 import asyncio
 from typing import Union, Optional, Dict, List, Any, Tuple, Callable
 from dataclasses import dataclass
-from security_validator import SecurityValidator, SecurityConfig
+from security_validator import SecurityValidator, SecurityConfig, SecurityError
 
 # Module logger. Previously sourced from a separate "advanced_logging" module
 # that no longer exists; a standard logger keeps behaviour identical for the
@@ -1355,21 +1355,15 @@ class RecoveryManager:
 
     def _cleanup_temp_files(self) -> None:
         temp_root = Path(tempfile.gettempdir())
+        # Regular files only. The old code also emptied and removed whole
+        # directories matching chameleon_* -- including 'chameleon_state',
+        # StateRecoveryManager's fallback dir, so a disk-pressure recovery
+        # could delete the batch_state_*.json files recovery relies on --
+        # and any other same-prefixed directory a user kept in /tmp.
         for candidate in temp_root.glob("chameleon_*"):
             try:
                 if candidate.is_file():
                     candidate.unlink()
-                elif candidate.is_dir():
-                    for child in candidate.glob("**/*"):
-                        if child.is_file():
-                            try:
-                                child.unlink()
-                            except OSError:
-                                continue
-                    try:
-                        candidate.rmdir()
-                    except OSError:
-                        continue
             except OSError:
                 continue
 
@@ -1387,6 +1381,9 @@ class ErrorAnalyzer:
     ROOT_CAUSE_MAP = {
         MemoryError: ("insufficient_memory", "critical"),
         TimeoutError: ("operation_timeout", "high"),
+        # A path-validation rejection is not an "unknown_error" -- it is
+        # the security layer doing its job, and should be reported as such.
+        SecurityError: ("security_violation", "high"),
     }
 
     def analyze(self, error: BaseException, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
