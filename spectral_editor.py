@@ -298,10 +298,16 @@ class SpectralEditor:
                         fade_edges: bool = True) -> bool:
         """Delete spectral content in selection"""
         try:
+            mask = self.get_selection_mask(selection)
+            if not mask.any():
+                # An empty selection must not consume undo state or log a
+                # 'delete' that deleted nothing (same contract select_region
+                # enforces upstream of this method).
+                self.logger.error("Delete operation failed: empty selection")
+                return False
+
             # Save current state for undo
             self._save_state()
-
-            mask = self.get_selection_mask(selection)
 
             if fade_edges and self.config.edge_smoothing:
                 # Apply smooth edges to avoid artifacts
@@ -374,9 +380,13 @@ class SpectralEditor:
                          gain_db: float = 6.0) -> bool:
         """Enhance (boost) spectral content in selection"""
         try:
+            mask = self.get_selection_mask(selection)
+            if not mask.any():
+                self.logger.error("Enhance operation failed: empty selection")
+                return False
+
             self._save_state()
 
-            mask = self.get_selection_mask(selection)
             gain_linear = 10**(gain_db / 20)
 
             if self.config.edge_smoothing:
@@ -406,9 +416,16 @@ class SpectralEditor:
                               strength: float = 0.8) -> bool:
         """Apply noise reduction to selection using spectral subtraction"""
         try:
-            self._save_state()
-
             mask = self.get_selection_mask(selection)
+            if not mask.any():
+                # np.median of an empty selection is NaN, and NaN subtracted
+                # through spectral subtraction poisons the ENTIRE spectrogram
+                # -- the output audio comes back all-NaN while returning
+                # True. Reject before touching state or the undo stack.
+                self.logger.error("Noise reduction failed: empty selection")
+                return False
+
+            self._save_state()
 
             # Estimate noise from selection
             noise_stft = self.stft[mask]

@@ -2471,3 +2471,16 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** The spectral editor's operations take a
+`SpectralSelection`. What does each do when the mask selects nothing —
+a reversed or out-of-range region?
+**A:** `noise_reduce_selection` was actively destructive: `np.median` of
+an empty selection is NaN, and NaN carried through spectral subtraction
+poisoned the ENTIRE spectrogram — the reconstructed audio came back
+non-finite while the method returned True. `enhance_selection` and
+`delete_selection` returned True on the same empty selection, consuming
+an undo slot and writing a history entry for work they never did. All
+three now check `mask.any()` before saving undo state or touching the
+spectrogram, and return False with a named error — the same contract
+`select_region` has always enforced.

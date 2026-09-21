@@ -109,3 +109,38 @@ def test_harmonic_enhance_stays_inside_selection():
     assert changed.size > 0
     times = ed.times
     assert all(0.4 <= times[c[1]] <= 0.5 for c in changed)
+
+
+def _empty_selection():
+    # Reversed time bounds produce a mask that selects nothing.
+    return spectral_editor.SpectralSelection(0.5, 0.4, 100, 200)
+
+
+def test_noise_reduce_on_empty_selection_does_not_poison_the_stft():
+    # np.median of an empty selection is NaN; subtracting it through the
+    # spectral-subtraction path turned the WHOLE spectrogram NaN and the
+    # reconstructed audio non-finite -- while still returning True.
+    ed = spectral_editor.SpectralEditor()
+    ed.load_audio(_sine(440), SAMPLE_RATE)
+    before = ed.stft.copy()
+
+    assert not ed.noise_reduce_selection(_empty_selection(), 0.8)
+    assert np.array_equal(ed.stft, before)
+
+
+def test_enhance_and_delete_on_empty_selection_fail_without_undo():
+    # An empty selection used to return True, consume an undo slot, and
+    # log a history entry for work it never did.
+    ed = spectral_editor.SpectralEditor()
+    ed.load_audio(_sine(440), SAMPLE_RATE)
+    before = ed.stft.copy()
+    history_before = len(ed.history) if hasattr(ed, "history") else None
+
+    assert not ed.enhance_selection(_empty_selection(), 12.0)
+    assert not ed.delete_selection(_empty_selection())
+    assert np.array_equal(ed.stft, before)
+
+    # undo must not restore a no-op: popping it should yield the state
+    # before the rejected ops, i.e. still identical to `before`.
+    if history_before is not None:
+        assert len(ed.history) == history_before
