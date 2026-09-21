@@ -2509,6 +2509,19 @@ bounds), but the library contract is the contract: each layer that
 rechecks a parameter must include `math.isfinite`. Both guards now do
 (`tests/test_nan_param_validation.py`).
 
+**Q: What may a read-only command write?**
+A (2026-09-20): Nothing. `plugins list`/`plugins audit` are inspection
+commands, yet `PluginManager.initialize()` mkdir'd every configured
+plugin directory and `_resolve_directory()` mkdir'd + chmod'd each one
+again during discovery. `plugins list --directory /missing/dir` created
+the path it was asked to inspect; a directory under an unwritable
+parent died on a raw `OSError` traceback instead of a clean input
+error. Discovery already skips nonexistent directories, so the mkdirs
+served nothing -- the same class as the import-time
+`~/.chameleon_state` creation removed earlier. Both removed; chmod
+still applies to directories that already exist
+(`tests/test_plugins_no_mkdir.py`).
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented

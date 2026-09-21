@@ -2,9 +2,9 @@
 
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
 **Version:** 1.1.0 · **Tests:** re-run 2026-09-20 on Python 3.12, green in
-all three configurations — **527 passed** on a bare install (stdlib only,
-41 skipped), **619** with numpy (scipy/librosa/soundfile blocked, 36
-skipped), **728** with numpy + scipy + librosa + soundfile + fastapi
+all three configurations — **529 passed** on a bare install (stdlib only,
+41 skipped), **621** with numpy (scipy/librosa/soundfile blocked, 36
+skipped), **730** with numpy + scipy + librosa + soundfile + fastapi
 (5 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
@@ -368,6 +368,7 @@ here because they need a user decision first.
 | ~~P2~~ | ~~`WAVProcessor._header_rejection_reason` shared across `--parallel` workers — one thread's rejection reason could be reported on another's file~~ | Low | XS | Med | **DONE 2026-09-20** — field is `threading.local` (`tests/test_header_reason_isolation.py`) |
 | ~~P2~~ | ~~Phantom sample caps — `_calculate_levels_safe` measured only a 1M-sample prefix (silent wrong gain); `_apply_gain_safe` failed files >10M channel-samples (~113s stereo) well under the 500MB size limit~~ | High | S | Med | **DONE 2026-09-20** — caps removed; loops bounded by data_size and chunked reads (`tests/test_full_file_processing.py`) |
 | ~~P3~~ | ~~NaN slips past `x <= 0 or x > 1` guards — `normalize(nan)` crashed mid-transform, `trim_silence(nan)` reported a misleading 'no audio' failure~~ | Med | XS | Med | **DONE 2026-09-20** — `math.isfinite` added to both core guards (`tests/test_nan_param_validation.py`) |
+| ~~P3~~ | ~~`plugins list`/`audit` mkdir'd the inspected directories — a read command writing, and crashing with an OSError traceback on unwritable parents~~ | Med | XS | Med | **DONE 2026-09-20** — mkdir removed from `initialize`/`_resolve_directory`; chmod kept for existing dirs (`tests/test_plugins_no_mkdir.py`) |
 | P4 | Plugin sandbox runtime boundary (restricted builtins for `exec_module`) | High (security) | L | High | Architectural; leaky if done partially — design first |
 | P4 | Surround-channel loudness weighting | Low | M | Low | Only if a real multichannel use case appears |
 
