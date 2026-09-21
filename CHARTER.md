@@ -2715,6 +2715,24 @@ is non-empty is not checking it is *usable* — an op whose input is the
 complement must verify the complement is non-empty too; ask what the
 operation reads, not just what it writes.
 
+**Q: `detect_chords` walks a sliding window — what advances the loop,
+and does it accept the inputs its sibling methods accept?**
+A (2026-09-20): Two holes. `detect_chords([])` crashed in
+`max(n.start_time + n.duration for n in notes)` — `analyze_rhythm`,
+`detect_key`, and `analyze_harmony` all return an empty result on the
+same input, so the module's own contract said "empty means empty"
+everywhere except here (verified: `ValueError: max() iterable argument
+is empty`). Worse, `window_size <= 0` made
+`current_time += window_size / 2` never advance — an infinite loop, the
+same non-progressing-loop class as `compose --length` (verified: a
+subprocess call with `window_size=0` outlived a 15 s timeout; now a fast
+`ValueError`). Fixed: `if not notes: return []`, and
+`window_size <= 0` raises
+(`tests/test_detect_chords_bounds.py`). General lesson: every loop owes
+a proof of progress — the bound must be in what the loop *consumes*, and
+a parameter that controls the step size controls termination; also, one
+method accepting an edge case creates the contract the others must meet.
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented

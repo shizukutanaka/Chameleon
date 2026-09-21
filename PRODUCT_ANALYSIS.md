@@ -2,9 +2,9 @@
 
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
 **Version:** 1.1.0 · **Tests:** re-run 2026-09-20 on Python 3.12, green in
-all three configurations — **550 passed** on a bare install (stdlib only,
-47 skipped), **656** with numpy (scipy/librosa/soundfile blocked, 43
-skipped), **772** with numpy + scipy + librosa + soundfile + fastapi
+all three configurations — **553 passed** on a bare install (stdlib only,
+47 skipped), **659** with numpy (scipy/librosa/soundfile blocked, 43
+skipped), **775** with numpy + scipy + librosa + soundfile + fastapi
 (5 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
@@ -381,6 +381,7 @@ here because they need a user decision first.
 | ~~P1~~ | ~~`execute_with_limits` had three limit failures: `alarm(int(0.5))` = 0 *disarmed* sub-second timeouts on POSIX; `signal.signal` crashed off the main thread; and a timed-out worker thread kept running while the log implied containment~~ | High | S | High | **DONE 2026-09-20** — `setitimer` keeps sub-second precision, SIGALRM path gated to the main thread (worker path enforces the same bound elsewhere), timeout log now states the thread is unstoppable (`tests/test_plugin_time_limits.py`) |
 | ~~P1~~ | ~~`DeepFileInspector._validate_wav_structure` walked chunks unbounded — `chunks_found`/`_non_audio_regions` grew per crafted header (the security gate was the memory sink); `IntegrityVerifier.__init__` mkdir'd at construction~~ | High | S | High | **DONE 2026-09-20** — walk capped at `_MAX_SCAN_CHUNKS=256` with `chunks_truncated` flag + "Too many chunks" structure error; verifier creates `~/.chameleon/manifests` lazily in `create_manifest` (`tests/test_inspector_bounds.py`) |
 | ~~P2~~ | ~~`interpolate_selection` on a whole-spectrogram selection copied the magnitude back unchanged yet reported True and pushed an undo frame — no unselected source bins exist~~ | Med | XS | Med | **DONE 2026-09-20** — fails honestly with "nothing to interpolate from" when the mask covers every bin (`tests/test_empty_selection.py`) |
+| ~~P2~~ | ~~`detect_chords` crashed on `[]` (siblings return empty) and looped forever on `window_size<=0` — the step parameter controlled termination~~ | Med | XS | Med | **DONE 2026-09-20** — empty notes → `[]`, non-positive window → `ValueError` (`tests/test_detect_chords_bounds.py`) |
 | P4 | Plugin sandbox runtime boundary (restricted builtins for `exec_module`) | High (security) | L | High | Architectural; leaky if done partially — design first |
 | P4 | Surround-channel loudness weighting | Low | M | Low | Only if a real multichannel use case appears |
 
