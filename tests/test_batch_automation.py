@@ -93,3 +93,55 @@ def test_scheduler_fails_loudly_without_schedule_package():
     scheduler = BatchScheduler()
     with pytest.raises(ImportError):
         scheduler.start()
+
+
+@pytest.mark.parametrize("bad", [-3, 0, "abc", 2.0, True])
+def test_loop_workflow_rejects_impossible_iterations(bad):
+    """metadata.iterations drove range() unchecked: -3 returned zero
+    results as a silent success, "abc" died on a bare TypeError, True ran
+    once (bool is an int). A loop that cannot iterate is bad config --
+    name it."""
+    import pytest
+    cfg = {
+        "id": "w", "type": "loop",
+        "tasks": [{"id": "t1",
+                   "function": {"type": "lambda", "expression": "1"}}],
+        "metadata": {"iterations": bad},
+    }
+    workflow = ba.WorkflowBuilder().from_dict(cfg)
+    with pytest.raises(ValueError, match="iterations"):
+        ba.WorkflowEngine().execute_workflow(workflow)
+
+
+def test_loop_workflow_still_runs_positive_iterations():
+    res = _run_dict({
+        "id": "w", "type": "loop",
+        "tasks": [{"id": "t1",
+                   "function": {"type": "lambda", "expression": "1"}}],
+        "metadata": {"iterations": 3},
+    })
+    assert len(res) == 3
+    assert all(r.status is ba.TaskStatus.COMPLETED for r in res.values())
+
+
+@pytest.mark.parametrize("expr", ["every_0", "every_-5", "every_abc"])
+def test_scheduler_rejects_impossible_every_intervals(monkeypatch, expr):
+    """'every_<N>' fed int() straight into schedule.every(): every_0 and
+    every_-5 produced a nonsensical interval, every_abc a bare ValueError
+    with no naming. Reject before touching the scheduler."""
+    class FakeJob:
+        def do(self, fn, wf):
+            pass
+
+    fake_schedule = types.SimpleNamespace(
+        every=lambda *a: types.SimpleNamespace(
+            day=FakeJob(), hour=FakeJob(), minutes=FakeJob()))
+    monkeypatch.setattr(ba, "HAS_SCHEDULE", True)
+    monkeypatch.setattr(ba, "schedule", fake_schedule, raising=False)
+
+    scheduler = ba.BatchScheduler()
+    workflow = ba.Workflow(id="w", name="n", type=ba.WorkflowType.SEQUENTIAL,
+                           tasks=[])
+    with pytest.raises(ValueError, match="Unsupported schedule|interval"):
+        scheduler.schedule_workflow(workflow, expr)
+    assert not scheduler.scheduled_jobs  # never registered

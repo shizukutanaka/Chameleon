@@ -2471,3 +2471,16 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** A loop workflow's iteration count comes
+from config (`metadata.iterations`) and a schedule's interval from a
+string (`every_<minutes>`). What happens when the values are impossible?
+**A:** Before this fix: silent success or a raw crash. `iterations: -3`
+ran zero iterations and returned empty results -- a workflow that did
+nothing reported as completed; `iterations: "abc"` died on a bare
+TypeError; `iterations: true` ran once (bool is an int). `every_0` /
+`every_-5` were fed to `schedule.every()` unvalidated; `every_abc` died
+on `int()`'s raw ValueError without naming the expression. Loop now
+requires a positive int; `every_<N>` parses the number explicitly and
+rejects non-numeric and non-positive intervals before registering -- a
+job that cannot fire is never registered as scheduled.

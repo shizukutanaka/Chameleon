@@ -739,6 +739,13 @@ class WorkflowEngine:
         """Execute loop workflow"""
         results = {}
         iterations = workflow.metadata.get('iterations', 1)
+        if isinstance(iterations, bool) or not isinstance(iterations, int) \
+                or iterations < 1:
+            # -3 used to "succeed" with zero results; "abc" crashed with a
+            # bare TypeError. A loop that cannot iterate is bad config.
+            raise ValueError(
+                f"loop workflow requires metadata.iterations to be a "
+                f"positive integer, got {iterations!r}")
 
         for i in range(iterations):
             for task in workflow.tasks:
@@ -816,7 +823,16 @@ class BatchScheduler:
         elif cron_expression == "hourly":
             job = schedule.every().hour
         elif cron_expression.startswith("every_"):
-            interval = int(cron_expression.split("_")[1])
+            try:
+                interval = int(cron_expression.split("_")[1])
+            except ValueError:
+                raise ValueError(
+                    f"Unsupported schedule expression {cron_expression!r}: "
+                    "use 'daily', 'hourly', or 'every_<minutes>'") from None
+            if interval <= 0:
+                raise ValueError(
+                    f"Unsupported schedule expression {cron_expression!r}: "
+                    "interval must be a positive number of minutes")
             job = schedule.every(interval).minutes
         else:
             raise ValueError(
