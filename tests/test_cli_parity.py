@@ -627,3 +627,18 @@ def test_direct_api_normalize_rejects_out_of_range_target_peak(tmp_path):
         output_dir=str(out_dir), target_peak=0.5)
     assert "error" not in results[0], results
     assert 0.49 < _peak(out_file) < 0.51
+
+
+def test_master_output_is_byte_identical_across_runs(tmp_path):
+    # CHARTER §1 sells deterministic output, but MasteringConfig's dither
+    # defaulted on AND drew from the unseeded global RNG, so two --master
+    # runs of the same input wrote different bytes. The fixed dither_seed
+    # keeps the noise and restores the guarantee.
+    pytest.importorskip("numpy")
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    for name in ("a", "b"):
+        result = _run("process", str(wav), "--master", "default",
+                      "--output-dir", str(tmp_path / name))
+        assert result.returncode == 0, result.stderr
+    assert (tmp_path / "a" / "tone_mastered.wav").read_bytes() == \
+        (tmp_path / "b" / "tone_mastered.wav").read_bytes()

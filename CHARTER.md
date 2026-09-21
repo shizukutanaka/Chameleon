@@ -3252,3 +3252,24 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** §1 promises "deterministic, reproducible"
+output, and an earlier §9 entry declined a default-on dither for exactly
+that reason ("deterministic-by-default output is an explicit §9 decision").
+So why did two consecutive `process --master default` runs on the same
+file produce different bytes?
+**A:** Because the decision was enforced on the `process` quantization
+path (`apply_dither` opt-in) but never propagated to `mastering_chain`:
+`MasteringConfig.dither_enabled` defaults True and both `_apply_dither`
+and `_apply_shaped_dither` drew from the unseeded global `np.random`.
+The mastering path violated §1 by default while the process path honored
+it only by opt-in default -- the same defect class the project already
+fixed once for an unseeded `np.random.randn` elsewhere. Resolution keeps
+both properties instead of choosing: `MasteringConfig.dither_seed`
+(default 0) feeds `np.random.default_rng`, so dither keeps its
+quantization-decorrelating benefit and identical input+config yields
+identical bytes; `dither_seed=None` is the explicit entropy escape hatch.
+The e2e test compares two `--master` outputs byte-for-byte; a unit test
+pins identical output across chains and non-identical output under
+`dither_seed=None`. Corollary for future RNG features: a fixed default
+seed satisfies determinism without giving up the randomized algorithm.

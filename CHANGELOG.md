@@ -487,6 +487,16 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`--master` wrote different bytes on every run** — `MasteringConfig`
+  defaults `dither_enabled` on and `_apply_dither`/`_apply_shaped_dither`
+  drew from the unseeded global `np.random`, so identical input produced
+  different mastered WAVs. That breaks CHARTER §1's "deterministic,
+  reproducible output" and the recorded §9 decision that dither is opt-in
+  precisely because it is random. The chain now draws from
+  `np.random.default_rng(MasteringConfig.dither_seed)` (default 0):
+  dither keeps its quantization-decorrelating benefit while the same
+  input+config produces the same bytes. `dither_seed=None` opts into
+  entropy explicitly.
 
 ### Changed
 
