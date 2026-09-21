@@ -487,6 +487,21 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`personal_config` reported success for work that did not happen** —
+  `backup_workflow` on an empty or missing library printed "Backup
+  verified successfully!" over zero files, and wrote its integrity
+  manifest into `~/.chameleon/manifests` (a permanent leak, overwritten
+  every run) instead of inside the backup. It now refuses missing/empty
+  libraries by name and stores the manifest inside the backup so the
+  copy is self-describing. `scan_library` on a nonexistent
+  `audio_library` returned an all-zeros report indistinguishable from a
+  real empty library (now a named ValueError), and malformed
+  `supported_formats` entries like `"*"` are skipped with a warning
+  instead of making `rglob("**")` register directories as audio.
+  `create_playlist` stored whatever it was handed — empty names and
+  nonexistent absolute paths (`/etc/passwd` was accepted verbatim) —
+  now non-library entries are dropped with a warning and empty/blank
+  names refused.
 
 ### Changed
 
