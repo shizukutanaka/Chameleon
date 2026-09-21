@@ -3252,3 +3252,27 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, audit 27):** The docs name environment variables as
+deployment knobs (api_documentation.md). Is every documented knob actually
+read somewhere, and does the standalone harness the gate runs
+(`validation_test.py`) actually validate anything?
+**A:** Two knobs were inert and the harness lied twice.
+`CHAMELEON_SECURITY_LOG_DIR` was documented but read by nothing -- the
+audit file was hardcoded to ~/.chameleon/logs; it is now the first
+candidate in `_resolve_audit_log_path` (validated through the same
+_AUDIT_VALIDATOR, warned-and-falls-back on rejection).
+`CHAMELEON_BASE_URL` is not consumed by the server -- it describes the
+reverse-proxy endpoint, so the doc now says the server does not read it.
+`validation_test.py`'s "security validation" never called
+SecurityValidator: it classified paths against its own pattern list and
+printed "Correctly blocked" for 4 of 6 inputs the real validator accepts
+(under an empty policy -- permissive-by-default is the design; tests
+already pin it). It now exercises the real validator (shape rejection,
+trusted-root containment incl. shared-prefix siblings, size caps). And
+the harness always exited 0 -- even printing "Some tests failed" -- so a
+gate failure could never surface; __main__ now exits nonzero on failure.
+While probing, `validate_path` raised a raw OSError (ENAMETOOLONG) for a
+300-char filename instead of returning False: `process <overlong>.wav`
+crashed with a traceback. The stat block now catches OSError; the CLI
+reports "Skipping unsafe path" and exits SECURITY(4) cleanly.
