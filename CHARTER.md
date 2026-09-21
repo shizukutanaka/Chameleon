@@ -3252,3 +3252,17 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** `create_mastering_preset` knows four
+names. What happens for a name it does not know?
+**A:** It fell through to `return MasteringConfig()` -- a typo
+("streamin") or an empty string silently produced default mastering,
+a different result than asked for with zero complaint. Same defect
+class as restore()'s phantom modes (previous entry): accepted names
+selecting nothing. Unknown names now raise ValueError naming the four
+real presets; "default" is explicit. Verified honest this cycle:
+every advertised CLI preset (default/streaming/cd/vinyl) produces
+measurably different output, the compressor's soft-knee curve is
+continuous after the earlier centring fix, and the batch `master`
+path builds a fresh chain per file so compressor state cannot bleed
+between inputs.

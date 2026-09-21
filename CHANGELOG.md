@@ -487,6 +487,13 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **A typo'd mastering preset silently became `default`** —
+  `create_mastering_preset("streamin")` fell through to
+  `return MasteringConfig()`, producing completely different mastering
+  than requested with no complaint. Unknown names now raise
+  `ValueError` naming the four real presets
+  (`default`/`streaming`/`cd`/`vinyl`); `"default"` is now an explicit
+  branch rather than the catch-all.
 
 ### Changed
 
