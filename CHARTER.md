@@ -3252,3 +3252,14 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** `PluginSandbox.execute_with_limits`
+enforces a timeout via `signal.alarm(int(max_time))`. What does a
+sub-second limit actually do?
+**A:** `int(0.5)` is 0, and `alarm(0)` *disables* the timer -- a
+"sandbox for half a second" ran with no time limit at all on POSIX.
+The threaded fallback already honoured fractions (`join(max_time)`),
+so only the signal path was hollow. Switched to
+`setitimer(ITIMER_REAL, max_time)`, which takes a float; a 0.5s limit
+now interrupts a 5s sleep. The disarm call is `setitimer(..., 0)` --
+the only fix that keeps fractional semantics symmetric.
