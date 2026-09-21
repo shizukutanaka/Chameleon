@@ -12,6 +12,7 @@ import ast
 import queue
 import contextlib
 import re
+import string
 from abc import ABC, abstractmethod
 from typing import Dict, List, Any, Optional, Callable, FrozenSet
 from dataclasses import dataclass, field
@@ -498,6 +499,20 @@ class PluginLoader:
         ("importlib.util", "module_from_spec"),
     })
 
+    # Attribute names that reach interpreter internals; used both by the
+    # ast.Attribute walk and by the str.format field-spec scan.
+    _DANGEROUS_ATTR_NAMES = frozenset({
+        "__globals__", "__builtins__", "__subclasses__", "__mro__",
+        "__bases__", "__base__", "__dict__", "__class__",
+        "__code__", "__getattribute__", "__func__", "__self__",
+        # frame access: e.__traceback__.tb_frame.f_globals needs
+        # no import and reaches __builtins__ (verified: a probe
+        # plugin passed audit with exactly this chain)
+        "__traceback__", "__context__", "__cause__", "tb_frame",
+        "tb_next", "f_globals", "f_builtins", "f_locals",
+        "f_back", "gi_frame", "cr_frame", "ag_frame",
+    })
+
     def _check_module_safety(self, plugin_path: Path):
         """Check if plugin uses safe imports.
 
@@ -555,17 +570,19 @@ class PluginLoader:
                         raise SecurityError(
                             f"Unsafe call detected: {base}.{func.attr}() can bypass the import sandbox"
                         )
-            elif isinstance(node, ast.Attribute) and node.attr in (
-                "__globals__", "__builtins__", "__subclasses__", "__mro__",
-                "__bases__", "__base__", "__dict__", "__class__",
-                "__code__", "__getattribute__", "__func__", "__self__",
-                # frame access: e.__traceback__.tb_frame.f_globals needs
-                # no import and reaches __builtins__ (verified: a probe
-                # plugin passed audit with exactly this chain)
-                "__traceback__", "__context__", "__cause__", "tb_frame",
-                "tb_next", "f_globals", "f_builtins", "f_locals",
-                "f_back", "gi_frame", "cr_frame", "ag_frame",
-            ):
+                    # "{0.__class__.__mro__}".format(x) performs attribute
+                    # access inside a format string -- every step is plain
+                    # data in an ast.Constant, so the Attribute walk above
+                    # never sees it. Scan literal format fields for the
+                    # same dangerous names.
+                    if func.attr in ("format", "format_map") and isinstance(
+                            func.value, ast.Constant) and isinstance(func.value.value, str):
+                        for field_name in self._format_field_names(func.value.value):
+                            if field_name in self._DANGEROUS_ATTR_NAMES:
+                                raise SecurityError(
+                                    f"Unsafe format field detected: {field_name} can be used for sandbox escape"
+                                )
+            elif isinstance(node, ast.Attribute) and node.attr in self._DANGEROUS_ATTR_NAMES:
                 raise SecurityError(
                     f"Unsafe attribute access detected: .{node.attr} can be used for sandbox escape"
                 )
@@ -573,6 +590,25 @@ class PluginLoader:
                 raise SecurityError(
                     f"Unsafe reference detected: {node.id} can be used to bypass the import sandbox"
                 )
+
+    @staticmethod
+    def _format_field_names(template: str) -> List[str]:
+        """Attribute names referenced inside a literal str.format template.
+
+        ``{0.attr.sub}`` / ``{name.attr}`` field specs resolve attributes at
+        call time without producing any ast.Attribute node; return every
+        ``.attr`` segment found so the caller can match the dangerous set.
+        A malformed template is a runtime error, not an escape -- yield
+        nothing for it.
+        """
+        names: List[str] = []
+        try:
+            for _literal, field_name, _spec, _conv in string.Formatter().parse(template):
+                if field_name:
+                    names.extend(re.findall(r'\.([A-Za-z_][A-Za-z0-9_]*)', field_name))
+        except ValueError:
+            return []
+        return names
 
     @staticmethod
     def _dotted_name(node: ast.AST) -> Optional[str]:
