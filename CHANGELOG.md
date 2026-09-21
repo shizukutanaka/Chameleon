@@ -487,6 +487,12 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`SanitizationEngine.sanitize_wav_metadata` copied a lying chunk
+  size forward** — a kept chunk (e.g. `data`) whose size field
+  overclaimed the remaining file was written back with the claimed
+  size, so the output's RIFF length and chunk header described bytes
+  the file does not hold. The actual bytes read now determine the
+  written size, with a warning when they differ.
 
 ### Changed
 

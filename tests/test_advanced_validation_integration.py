@@ -165,3 +165,29 @@ def test_main_block_self_test_writes_no_state_into_the_real_home(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "Verification: True" in result.stdout
     assert not (home / ".chameleon").exists()
+
+
+def test_sanitize_does_not_copy_forward_a_lying_chunk_size(tmp_path):
+    # A kept chunk whose size field overclaims the remaining file was
+    # written back with the *claimed* size -- the output's RIFF length
+    # and chunk header then described bytes the file does not hold.
+    import struct
+    from advanced_validation import SanitizationEngine
+
+    fmt = struct.pack('<HHIIHH', 1, 1, 8000, 16000, 2, 16)
+    body = (b'fmt ' + struct.pack('<I', 16) + fmt
+            + b'data' + struct.pack('<I', 1_000_000) + b'\x00' * 4)
+    src = tmp_path / "lie.wav"
+    src.write_bytes(b'RIFF' + struct.pack('<I', 4 + len(body)) + b'WAVE' + body)
+    out = tmp_path / "out.wav"
+
+    SanitizationEngine.sanitize_wav_metadata(src, out)
+
+    blob = out.read_bytes()
+    declared_riff = struct.unpack('<I', blob[4:8])[0] + 8
+    assert declared_riff == len(blob)
+    # The data chunk now honestly declares the 4 bytes that exist.
+    assert blob.find(b'data') > 0
+    data_decl = struct.unpack(
+        '<I', blob[blob.find(b'data') + 4:blob.find(b'data') + 8])[0]
+    assert data_decl == 4
