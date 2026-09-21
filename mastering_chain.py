@@ -1037,9 +1037,13 @@ def create_mastering_preset(preset_name: str) -> MasteringConfig:
             stereo=StereoConfig(width=0.9, bass_mono=True, mono_freq=150.0)
         )
 
-    else:
+    elif preset_name == "default":
         # Default/gentle mastering
         return MasteringConfig()
+
+    raise ValueError(
+        f"Unknown mastering preset: {preset_name!r}. "
+        "Valid presets are 'default', 'streaming', 'cd' and 'vinyl'.")
 
 def demo_mastering():
     """Demonstrate mastering chain capabilities"""

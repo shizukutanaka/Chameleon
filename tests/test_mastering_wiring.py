@@ -117,3 +117,27 @@ def test_mastering_rejects_multichannel_instead_of_dropping_channels():
     )
     with pytest.raises(ValueError, match="mono or stereo"):
         chain.process(quad)
+
+
+@requires_numpy
+def test_unknown_mastering_preset_raises_instead_of_silently_defaulting():
+    # create_mastering_preset's fallthrough used to return the "default"
+    # config for ANY name -- a typo like "streamin" (or "") produced
+    # completely different mastering than requested with no complaint.
+    # Unknown names now refuse loudly.
+    import mastering_chain
+    for bad in ("streamin", "", "podcast", "loud"):
+        with pytest.raises(ValueError, match="Unknown mastering preset"):
+            mastering_chain.create_mastering_preset(bad)
+
+    # The real names still resolve to distinct configurations.
+    presets = {p: mastering_chain.create_mastering_preset(p)
+               for p in ("default", "streaming", "cd", "vinyl")}
+    # default and streaming legitimately share a -14 LUFS target; they
+    # still differ in the bands/ratios that make them separate presets.
+    signatures = {
+        p: (c.target_lufs, c.compressor.threshold, c.compressor.ratio,
+            tuple((b.frequency, b.gain) for b in c.eq_bands))
+        for p, c in presets.items()}
+    assert len(set(signatures.values())) == len(signatures), (
+        "the named presets should not collapse onto one configuration")

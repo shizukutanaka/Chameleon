@@ -2471,3 +2471,17 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** `create_mastering_preset` knows four
+names. What happens for a name it does not know?
+**A:** It fell through to `return MasteringConfig()` -- a typo
+("streamin") or an empty string silently produced default mastering,
+a different result than asked for with zero complaint. Same defect
+class as restore()'s phantom modes (previous entry): accepted names
+selecting nothing. Unknown names now raise ValueError naming the four
+real presets; "default" is explicit. Verified honest this cycle:
+every advertised CLI preset (default/streaming/cd/vinyl) produces
+measurably different output, the compressor's soft-knee curve is
+continuous after the earlier centring fix, and the batch `master`
+path builds a fresh chain per file so compressor state cannot bleed
+between inputs.
