@@ -487,6 +487,14 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`Limiter`/`Compressor` silently zeroed channels beyond stereo** —
+  used standalone (outside `MasteringChain`'s >2ch gate), a 3-channel
+  input returned with channels 2+ as silence. Both raise `ValueError`
+  now, matching the chain's contract.
+- **`Limiter` accepted degenerate time constants** — `lookahead <= 0`
+  built an empty (or negative) delay buffer that crashed mid-process
+  on an empty `.max()`, and `release <= 0` divided by zero in the
+  gain-smoothing loop. Both are rejected at construction.
 
 ### Changed
 

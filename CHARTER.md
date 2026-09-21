@@ -2471,3 +2471,13 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** `Limiter`/`Compressor` are public classes --
+does standalone use degrade honestly outside `MasteringChain`'s >2ch gate?
+**A:** No on both. The stereo loops only index channels 0 and 1, so a
+3-channel input returned with channels 2+ silently zeroed (verified: quad
+input -> ch3 all zeros, no error). Both now raise ValueError "mono or
+stereo" like the chain's own gate. Also `Limiter` accepted degenerate
+time constants: lookahead<=0 built an empty/negative delay buffer
+(numpy 'zero-size array to reduction' mid-process), release<=0 divided
+by zero in the gain-smoothing loop. Both rejected at construction.

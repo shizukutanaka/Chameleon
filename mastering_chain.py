@@ -485,6 +485,12 @@ class Compressor:
 
     def process(self, audio: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Process audio through compressor, return (audio, gain_reduction)"""
+        if audio.ndim == 2 and audio.shape[0] > 2:
+            # _process_stereo only reads/writes channels 0 and 1; anything
+            # beyond would come back as silence.
+            raise ValueError(
+                f"Compressor supports mono or stereo input; got "
+                f"{audio.shape[0]} channels. Downmix first.")
         if audio.ndim == 1:
             return self._process_mono(audio)
         else:
@@ -594,6 +600,17 @@ class Limiter:
     """Professional brick-wall limiter"""
 
     def __init__(self, config: LimiterConfig, sample_rate: int = 44100):
+        if config.lookahead <= 0:
+            # A zero or negative lookahead produces an empty (or negative-
+            # sized) delay buffer: the loop below would call .max() on an
+            # empty slice and leak a numpy internals error.
+            raise ValueError(
+                f"limiter lookahead must be positive, got {config.lookahead} ms")
+        if config.release <= 0:
+            # release_samples is a divisor in the gain-smoothing loop;
+            # zero would turn it into a ZeroDivisionError mid-stream.
+            raise ValueError(
+                f"limiter release must be positive, got {config.release} ms")
         self.config = config
         self.sample_rate = sample_rate
 
@@ -606,6 +623,12 @@ class Limiter:
 
     def process(self, audio: np.ndarray) -> np.ndarray:
         """Process audio through limiter"""
+        if audio.ndim == 2 and audio.shape[0] > 2:
+            # _process_stereo only writes channels 0 and 1; a wider input
+            # would return with its extra channels silently zeroed.
+            raise ValueError(
+                f"Limiter supports mono or stereo input; got "
+                f"{audio.shape[0]} channels. Downmix first.")
         if audio.ndim == 1:
             return self._process_mono(audio)
         else:
