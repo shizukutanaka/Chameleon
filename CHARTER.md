@@ -3252,3 +3252,21 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** `midi analyze --input missing.wav` exits
+1, `analyze missing.wav` exits 3, and the README table says 3 is "input
+validation rejected a supplied path". Two answers to one question --
+which is authoritative?
+**A:** The table and `_error_kind` (ValueError/FileNotFoundError ->
+"input") are the recorded convention; the top-level `except` mapping
+those same exceptions to ERROR(1) is the outlier. It predates the
+INPUT/ERROR distinction work and was never revisited once per-path
+classifiers existed. The handler now returns INPUT for the deliberate
+input complaints and keeps ERROR for `UnsupportedOperationError` -- a
+missing extra is an environment gap, not a user-supplied input. The two
+tests that pinned the wrong code now pin the convention (and its
+bare-env variant, where the numpy check fires before the file is even
+looked at -- the environment is missing, not the path). The ordering
+matters there: on a bare install "midi extract --input missing.wav" is
+ERROR, because the dependency check precedes the file check and the
+missing numpy is the more fundamental problem.

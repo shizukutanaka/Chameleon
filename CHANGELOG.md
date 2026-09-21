@@ -465,6 +465,7 @@
   like `Bb` accepted, unknown keys rejected as INPUT), and `compose`
   uses a real minor-mode progression (i-v-VI-iv) under `--mode minor`
   so chord tones stay inside the requested scale.
+<<<<<<< HEAD
 - **`core.batch_process_async` silently returned a different contract than
   the documented batch API** — the README advertises "one ProcessingResult
   per file, plus a trailing batch-summary result", but the asyncio variant
@@ -487,6 +488,18 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+||||||| parent of 9d68e1e5 (cli: input complaints exit INPUT(3), matching the documented table)
+=======
+- **Input complaints reached the exit code as ERROR(1), contradicting the
+  CLI's own table** — the top-level `except (ValueError, FileNotFoundError)`
+  mapped deliberate input errors ("File not found", "Unsupported file
+  type") to ERROR while `_error_kind` classifies the same exceptions as
+  "input" on every other path and the README's code 3 reads "input
+  validation rejected a supplied path". The handler now returns INPUT(3)
+  for them; `UnsupportedOperationError` (missing extra — an environment
+  gap, not bad input) keeps ERROR(1). Two tests that pinned the wrong
+  code now pin INPUT and its bare-env ERROR variant.
+>>>>>>> 9d68e1e5 (cli: input complaints exit INPUT(3), matching the documented table)
 
 ### Changed
 
