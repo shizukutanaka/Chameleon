@@ -123,3 +123,16 @@ def test_real_imports_are_not_flagged():
     for module in ("core", "main", "bs1770_loudness", "security_validator"):
         assert (PROJECT_ROOT / f"{module}.py").is_file()
     assert "numpy" in EXTERNAL and "pytest" in EXTERNAL
+
+
+def test_requires_python_covers_the_features_the_code_uses():
+    # Declared >=3.8 while main.py called Path.is_relative_to (added in 3.9)
+    # and api_server annotated `-> list[str]` (evaluated at def time on 3.8):
+    # on 3.8 the stdlib core crashed on `batch --output-dir`. The floor must
+    # cover every 3.9+ feature actually used, and pyproject/setup must agree.
+    pyproject = (PROJECT_ROOT / "pyproject.toml").read_text()
+    setup_py = (PROJECT_ROOT / "setup.py").read_text()
+    assert 'requires-python = ">=3.9"' in pyproject
+    assert 'python_requires=">=3.9"' in setup_py
+    assert '"Programming Language :: Python :: 3.8"' not in pyproject
+    assert '"Programming Language :: Python :: 3.8"' not in setup_py

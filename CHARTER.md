@@ -3252,3 +3252,15 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**2026-09-21 (Socratic audit 120, external-source pass):** Cross-checked the
+declared interpreter floor against the features the code actually uses.
+`requires-python = ">=3.8"` (pyproject + setup.py + README +
+PROJECT_STATUS §8) was false: `main.py` calls `Path.is_relative_to`
+(3.9+) on the stdlib `batch --output-dir` path and `api_server.py`
+annotates `-> list[str]` (evaluated at def time without `__future__`).
+On Python 3.8 the batch output-dir check would raise AttributeError.
+Floor raised to `>=3.9` (3.8 is also EOL upstream), classifiers synced,
+README/PROJECT_STATUS updated. No other post-3.8 features found
+(`zoneinfo` appears only as a plugin-whitelist string; `__future__
+annotations` covers the files that use builtin generics).

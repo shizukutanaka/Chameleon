@@ -210,7 +210,7 @@ Exit codes: 0 success, 1 processing error, 2 usage error, 3 input validation,
 
 ## 8. Dependencies
 
-**Core** (`pip install -e .`): Python 3.8+ standard library only — this now
+**Core** (`pip install -e .`): Python 3.9+ standard library only — this now
 includes `analyze --loudness` (pure-Python ITU-R BS.1770 loudness meter),
 not just `analyze`/`process`/`batch`/MIDI.
 **Optional extras**: `[audio]` (numpy/scipy/librosa/soundfile/pyaudio),
