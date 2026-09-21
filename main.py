@@ -403,7 +403,8 @@ except ImportError:
 
 # Import MIDI analysis module
 try:
-    from midi_analysis import MIDIAnalyzer, MIDIComposer, MIDIConfig, MIDINote
+    from midi_analysis import MIDIAnalyzer, MIDIComposer, MIDIConfig, MIDINote, \
+        MusicalKey
     HAS_MIDI = True
 except ImportError:
     HAS_MIDI = False
@@ -3284,9 +3285,12 @@ async def main():
             tempo = args.tempo if args.tempo is not None else 120.0
 
             # A one-octave scale in the requested key/mode starting at C4-ish
-            # (MIDI 60 + tonic). Major and natural minor intervals.
-            intervals = [0, 2, 4, 5, 7, 9, 11] if mode == "major" else [0, 2, 3, 5, 7, 8, 10]
-            scale_notes = [60 + tonic + i for i in intervals] + [60 + tonic + 12]
+            # (MIDI 60 + tonic). MusicalKey.scale_notes already carries the
+            # tonic, so every mode spelled on --mode produces its own scale
+            # instead of the major-or-minor collapse this used to apply.
+            scale_notes = [60 + n for n in MusicalKey(
+                tonic=tonic, mode=mode, confidence=1.0).scale_notes] \
+                + [60 + tonic + 12]
             demo_notes = []
 
             for i, pitch in enumerate(scale_notes):
