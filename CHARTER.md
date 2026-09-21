@@ -2748,6 +2748,24 @@ bound that only fires after the thing it bounds has already done its
 job binds nothing — eviction that requires the stale entry to visit
 again is eviction that never happens for the entries that matter.
 
+**Q: Does `restore()` survive the inputs `analyze` already tolerates —
+silence and nothing?**
+A (2026-09-20): No. `AudioRestorer.restore` on a silent file reached
+`np.log10(0/…)` twice in `_calculate_metrics`
+(`dynamic_range_*`, `signal_to_change_db`), emitting
+`RuntimeWarning: divide by zero` — which the DSP gate
+(`-W error::RuntimeWarning`) turns into an error — and empty audio
+crashed in `remove_hum`'s `rfft` before metrics were even reached.
+Silence's dynamic range *is* honestly -inf, but it must be set to -inf,
+not computed through a warned log; empty input now returns
+`(audio.copy(), info)` with empty metrics, and `hf_preservation` is
+omitted when the original carries no high-frequency energy rather than
+dividing by a floored epsilon
+(`tests/test_restoration_metrics_edges.py`). General lesson: a metric
+that is -inf in truth is fine — the defect is reaching it through a path
+that warns; and an entry-point guard beats N per-stage guards when every
+stage would fail on the same input.
+
 - Verify the gate is the gate: `advanced_validation.py` exiting 0 was treated
   as the third verification step for many cycles, but it is the production
   module (`DeepFileInspector`) whose `__main__` prints a demo — the documented
