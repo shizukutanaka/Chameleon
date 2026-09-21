@@ -3252,3 +3252,17 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** The RIFF spec requires `fmt ` before `data`,
+and Python's own `wave` module refuses the reverse order. Chameleon's
+chunk-walking parser accepted `data`-before-`fmt ` -- what did the
+writers do with it?
+**A:** Produced an invalid file. `_copy_patched_header` copies bytes
+[0, data_offset-8) then appends a fresh data chunk, so a `fmt ` chunk
+located *after* `data` never made it into the output -- `normalize`
+reported success on a WAV that `wave.open` itself rejects. The numpy
+loader (`main._load_wav_basic`) already named the case ("WAV data chunk
+before fmt chunk"); the stdlib header walk now rejects it too, with a
+`_header_rejection_reason` telling the user to re-mux with a conformant
+writer. Trailing chunks after `data` are still deliberately dropped on
+rewrite -- documented policy in `_copy_patched_header`, unchanged.
