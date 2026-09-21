@@ -468,36 +468,60 @@ class TaskQueue:
     def __init__(self):
         self.queue = queue.PriorityQueue()
         self.task_map = {}
+        # Entries invalidated by remove_task / a re-add of the same id.
+        # PriorityQueue cannot delete arbitrary items, so stale entries are
+        # skipped lazily when they surface from get_task.
+        self.cancelled = set()
         self.lock = threading.Lock()
+        # Monotonic counter makes every queue tuple unique: equal
+        # (-priority, id) pairs would otherwise fall through to comparing
+        # BatchTask objects, which are not orderable (TypeError).
+        self._seq = 0
 
     def add_task(self, task: BatchTask) -> None:
         """Add task to queue"""
         with self.lock:
+            old = self.task_map.pop(task.id, None)
+            if old is not None:
+                # Re-adding an id used to enqueue a second copy, so the same
+                # task could be returned (and executed) twice.
+                self.cancelled.add(id(old))
             # Priority queue uses negative priority for higher values first
-            self.queue.put((-task.priority, task.id, task))
+            self.queue.put((-task.priority, self._seq, task.id, task))
+            self._seq += 1
             self.task_map[task.id] = task
 
     def get_task(self) -> Optional[BatchTask]:
         """Get next task from queue"""
-        try:
-            _, _, task = self.queue.get_nowait()
+        while True:
+            try:
+                _, _, task_id, task = self.queue.get_nowait()
+            except queue.Empty:
+                return None
             with self.lock:
-                del self.task_map[task.id]
+                if id(task) in self.cancelled:
+                    # A stale entry: removed or superseded by a re-add.
+                    self.cancelled.discard(id(task))
+                    continue
+                if self.task_map.get(task_id) is not task:
+                    continue
+                del self.task_map[task_id]
             return task
-        except queue.Empty:
-            return None
 
     def remove_task(self, task_id: str) -> bool:
         """Remove task from queue"""
         with self.lock:
-            if task_id in self.task_map:
-                del self.task_map[task_id]
-                return True
-        return False
+            task = self.task_map.pop(task_id, None)
+            if task is None:
+                return False
+            # The queue entry cannot be deleted; mark it so get_task skips it.
+            self.cancelled.add(id(task))
+            return True
 
     def is_empty(self) -> bool:
         """Check if queue is empty"""
-        return self.queue.empty()
+        with self.lock:
+            return not self.task_map
 
 class DependencyGraph:
     """Manage task dependencies"""

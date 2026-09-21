@@ -2471,3 +2471,12 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, continued):** `TaskQueue.remove_task` -- does a removed
+task stay removed?
+**A:** No. It only deleted the `task_map` entry; the item stayed in the
+PriorityQueue and `get_task` still returned it, so a "removed" task
+executed anyway. Re-adding the same id double-enqueued (executed twice),
+and an identical (priority, id) pair made the heap compare `BatchTask`
+objects and crash with TypeError. Entries now carry a sequence counter
+and stale entries are skipped lazily; `is_empty` reflects `task_map`.

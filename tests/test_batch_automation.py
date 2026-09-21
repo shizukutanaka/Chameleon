@@ -93,3 +93,31 @@ def test_scheduler_fails_loudly_without_schedule_package():
     scheduler = BatchScheduler()
     with pytest.raises(ImportError):
         scheduler.start()
+
+
+def test_task_queue_remove_and_readd_actually_work():
+    # remove_task used to delete only the task_map entry -- the item stayed
+    # in the PriorityQueue and get_task still returned it, so "removed"
+    # tasks executed anyway. Re-adding the same id double-enqueued, and
+    # an identical (priority, id) pair made the queue compare BatchTask
+    # objects and crash with TypeError.
+    import batch_automation as ba
+    mk = lambda i, p: ba.BatchTask(id=i, name=i, function=lambda: 1,
+                                   inputs={}, priority=p)
+    q = ba.TaskQueue()
+    q.add_task(mk("a", 1)); q.add_task(mk("b", 9))
+    assert q.remove_task("b") is True
+    assert q.get_task().id == "a"
+    assert q.is_empty() and q.get_task() is None
+    assert q.remove_task("b") is False
+
+    q2 = ba.TaskQueue()
+    q2.add_task(mk("x", 1)); q2.add_task(mk("x", 1))  # same id and priority
+    got = q2.get_task()
+    assert got is not None and got.id == "x"
+    assert q2.get_task() is None and q2.is_empty()
+
+    q3 = ba.TaskQueue()
+    for i in range(5):
+        q3.add_task(mk(f"t{i}", i))
+    assert [q3.get_task().id for _ in range(5)] == ["t4", "t3", "t2", "t1", "t0"]
