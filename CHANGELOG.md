@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Fixed
+
+- **`process --effects` / `batch --effects` warned and still wrote output
+  for unknown effect names** -- `{"teleport": {}}` printed a warning then
+  produced `src_processed.wav` containing none of the requested
+  processing (a typo would ship an unprocessed file under a "processed"
+  name, the exact failure mode `apply_effects` is documented to refuse).
+  Unknown names now fail validation with INPUT(3) and list the real
+  effects, matching the batch API's unknown-option rejection.
+
 ### Security
 
 - **Plugin sandbox escaped via builtins needing no import** -- the AST

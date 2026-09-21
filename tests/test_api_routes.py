@@ -582,3 +582,19 @@ def test_audit_log_is_bounded():
     for i in range(cap + 50):
         api_server.log_audit_event("u", "OP", "res", "SUCCESS", "", "ip", "")
     assert len(api_server.api_state.audit_log) == cap
+
+
+def test_rate_limiter_rejects_beyond_configured_max(client, monkeypatch):
+    """The auth-side rate limit is keyed per client IP; requests beyond the
+    configured window max must 429, not be silently admitted."""
+    from collections import Counter
+    monkeypatch.setitem(api_server.SECURITY_CONFIG, "rate_limit_max_requests", 10)
+    monkeypatch.setitem(api_server.SECURITY_CONFIG, "rate_limit_window_seconds", 60)
+    token = _login(client).json()["token"]
+    codes = Counter(
+        client.get("/system/status",
+                   headers={"Authorization": f"Bearer {token}"}).status_code
+        for _ in range(15)
+    )
+    assert codes[200] == 10
+    assert codes[429] == 5

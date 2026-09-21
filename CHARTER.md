@@ -2282,6 +2282,34 @@ any range assertion.
 - A deleted command can survive in a doc's `{a,b,c}` usage synopsis because no
   fantasy-feature grep matches a comma-list token. Compare the docs' choice
   list to the parser's actual subcommands — pattern scans don't see lists.
+
+**Q: Should `--effects` warn and continue when a name in the JSON file is
+unknown to the engine?**
+
+A (2026-09-21): No — refuse. The effects spec `{"teleport": {}}` used to
+print "unknown effect ... will be ignored" to stderr and then write
+`src_processed.wav` containing none of what was requested. `apply_effects`'
+own contract says the failure mode that makes the tool untrustworthy is
+silently returning the input when an effect was asked for and cannot be
+applied; an unrecognised name is exactly that case — the most likely cause
+is a typo (`"eq"` misspelled), and the batch API already rejects unknown
+option keys for the same reason (accepted-but-ignored is dishonesty).
+`_load_effects` now raises, exiting INPUT(3) and naming the real effects.
+Verified live: `{"teleport": {}}` → rc 3, no output file; the documented
+`{"compression": ...}` still runs. The previous behavior was pinned by
+`test_unknown_effect_name_warns_but_still_runs` — a test asserting the
+defect; it now asserts the refusal.
+
+**Q: Is the rate limiter a bound or a decoration?**
+
+A (2026-09-21): A bound — verified live: requests 1..120 on an
+authenticated route return 200, request 121 returns 429, counted per
+client identity in a 60 s window (`auth:{ip}`). Two caveats the probe
+made visible: `/health` is deliberately unauthenticated and therefore
+unthrottled (it serves liveness probes), and the login path uses its own
+`login:{ip}:{username}` bucket — so a reader should not infer "the API
+limits every route." Pinned by a test that shrinks the window to 10 and
+asserts 10×200 then 5×429.
 - A loader that collapses exceptions to None loses the failure's *kind*: the
   sandbox's SecurityError reached stderr but `load_failures` could only store
   a generic string. Re-raise the exceptions whose type is the information

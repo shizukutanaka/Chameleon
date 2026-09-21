@@ -145,13 +145,18 @@ def test_effects_file_with_non_object_effect_is_input_error(tmp_path):
     assert "parameter object" in result.stderr
 
 
-def test_unknown_effect_name_warns_but_still_runs(tmp_path):
+def test_unknown_effect_name_refuses_instead_of_writing_unprocessed(tmp_path):
+    """An unknown effect name is almost always a typo; proceeding writes a
+    "_processed" file containing none of what was requested -- the failure
+    mode apply_effects' own docstring calls untrustworthy. Refuse (INPUT),
+    don't warn-and-run."""
     pytest.importorskip("numpy")
     wav = write_sine_wave(tmp_path / "tone.wav")
     fx = _write_effects(tmp_path, '{"nonexistent_fx": {"x": 1}}')
     result = _run("process", str(wav), "--effects", str(fx), cwd=str(tmp_path))
-    assert result.returncode == 0
+    assert result.returncode == 3  # ExitCode.INPUT
     assert "unknown effect" in result.stderr.lower()
+    assert "compression" in result.stderr  # names the real effects
 
 
 def test_eq_effect_accepts_list_of_bands(tmp_path):
