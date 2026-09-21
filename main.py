@@ -2260,6 +2260,14 @@ def create_cli():
     batch.add_argument("--effects", help="Effects configuration for the effects operation (JSON file)")
     batch.add_argument("--dry-run", action="store_true",
                        help="Preview planned operations without writing files")
+    # Shared tuning flags accepted after the subcommand too, matching the
+    # `plugins` convention: distinct dests keep the parent's already-parsed
+    # values safe; they are merged onto args.max_workers/args.no_parallel
+    # right after parse.
+    batch.add_argument("--max-workers", type=int, dest="batch_max_workers",
+                       metavar="N", help="Limit worker threads (same as the top-level flag)")
+    batch.add_argument("--no-parallel", action="store_true", dest="batch_no_parallel",
+                       help="Disable parallel execution (same as the top-level flag)")
 
     # The `ml` command was removed in 2026-08. Its one operation, `enhance`,
     # called remove_noise() then normalize_audio() -- two pieces of
@@ -2339,6 +2347,17 @@ async def main():
     if not args.command:
         parser.print_help()
         return ExitCode.USAGE
+
+    # `batch --max-workers` / `batch --no-parallel` are the same flags as the
+    # top-level ones, scoped to the subcommand position where users naturally
+    # put them (`chameleon batch dir normalize --max-workers 2` used to be an
+    # unrecognized-arguments usage error). The more specific spelling wins
+    # when both are given.
+    if args.command == "batch":
+        if getattr(args, "batch_max_workers", None) is not None:
+            args.max_workers = args.batch_max_workers
+        if getattr(args, "batch_no_parallel", False):
+            args.no_parallel = True
 
     exit_code = ExitCode.OK
 

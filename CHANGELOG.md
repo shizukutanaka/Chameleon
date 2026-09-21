@@ -487,6 +487,11 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- `--max-workers`/`--no-parallel` existed only on the top-level parser, so
+  `chameleon batch dir op --max-workers 2` — the position the performance
+  docs imply — died on 'unrecognized arguments'. They are now shared flags
+  on the `batch` subcommand too (distinct dests, merged after parse); the
+  batch-spelled `--max-workers` keeps the same positive-value validation.
 
 ### Changed
 

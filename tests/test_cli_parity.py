@@ -598,3 +598,27 @@ def test_convert_bit_depth_32_writes_pcm_not_float(tmp_path):
     assert fmt_off > 0
     format_tag = int.from_bytes(body[fmt_off + 8:fmt_off + 10], "little")
     assert format_tag == 1  # PCM, not IEEE float (3)
+
+
+def test_batch_accepts_tuning_flags_after_the_subcommand(tmp_path):
+    """--max-workers/--no-parallel lived only on the top-level parser, so
+    `chameleon batch dir op --max-workers 2` -- the position every user
+    reaches for, and the one docs/en/performance_benchmarks.md implies --
+    died on 'unrecognized arguments'. They are shared flags now, merged
+    onto the same dests with a batch-scoped dest."""
+    write_sine_wave(tmp_path / "a.wav")
+
+    result = _run("batch", str(tmp_path), "analyze", "--max-workers", "2",
+                  cwd=str(tmp_path))
+    assert result.returncode == 0, result.stderr
+    assert "1/1" in result.stdout
+
+    result = _run("batch", str(tmp_path), "analyze", "--no-parallel",
+                  cwd=str(tmp_path))
+    assert result.returncode == 0, result.stderr
+
+    # The shared flag keeps the parent's validation and exit-code contract.
+    result = _run("batch", str(tmp_path), "analyze", "--max-workers", "0",
+                  cwd=str(tmp_path))
+    assert result.returncode == 3
+    assert "--max-workers must be positive" in result.stdout
