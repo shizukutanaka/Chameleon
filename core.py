@@ -923,7 +923,6 @@ class WAVProcessor:
                 max_val = 0.0
                 sum_squares = 0.0
                 sample_count = 0
-                max_samples = 1000000  # Limit per-channel samples for safety
 
                 bytes_per_sample = max(1, info.bit_depth // 8) if info.bit_depth != 8 else 1
                 frame_size = bytes_per_sample * max(1, info.channels)
@@ -932,7 +931,7 @@ class WAVProcessor:
                     return 0.0, 0.0
 
                 carry = b''
-                while sample_count < max_samples and remaining > 0:
+                while remaining > 0:
                     data = f.read(min(CHUNK_SIZE, remaining))
                     if not data:
                         break
@@ -947,8 +946,6 @@ class WAVProcessor:
                     mv = memoryview(chunk[:available])
                     for frame_offset in range(0, available, frame_size):
                         for channel in range(info.channels):
-                            if sample_count >= max_samples:
-                                break
                             sample_offset = frame_offset + channel * bytes_per_sample
                             sample_bytes = mv[sample_offset:sample_offset + bytes_per_sample].tobytes()
                             sample_value = self._decode_sample_bytes(sample_bytes, info.bit_depth)
@@ -1148,12 +1145,13 @@ class WAVProcessor:
         with open(input_path, 'rb') as src, atomic_output(output_path) as dst:
             self._copy_patched_header(src, dst, info, new_data_size)
 
-            processed_samples = 0
-            max_samples = 10000000  # Safety limit per-channel
             to_consume = new_data_size
             carry = b''
 
-            while to_consume > 0 and processed_samples < max_samples:
+            # The loop is bounded by new_data_size and EOF; chunked reads keep
+            # memory flat, so no artificial sample cap (a former 10M-sample
+            # limit rejected ordinary stereo files longer than ~113s).
+            while to_consume > 0:
                 data = src.read(min(CHUNK_SIZE, to_consume))
                 if not data:
                     break
@@ -1183,9 +1181,6 @@ class WAVProcessor:
                             new_sample = int(round(sample_value * gain))
                             processed_chunk.extend(self._encode_sample_value(new_sample, info.bit_depth))
 
-                        processed_samples += 1
-                        if processed_samples >= max_samples:
-                            raise ValueError("Too many samples processed - possible corruption")
 
                 if processed_chunk:
                     dst.write(processed_chunk)
