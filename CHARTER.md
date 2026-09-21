@@ -2471,3 +2471,16 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-21, audit 42): Are the UX helpers honest when inputs lie?**
+**A:** Two small gaps, both fixed. (1) ProgressBar trusted the caller:
+update(10) on total=3 rendered "333.3%" with a bar wider than bar_width
+-- a progress display that reports impossible progress. update() and
+set_progress() now clamp current to [0, total]. (2) ColorText.enabled()
+checked isatty() and platform but ignored the NO_COLOR convention --
+users who set NO_COLOR still got ANSI. enabled() now returns False when
+NO_COLOR is present with any value. Verified honest: format_file_size /
+format_duration handle negatives and magnitudes sanely, TableFormatter
+aligns per-column and tolerates ragged rows, the module is wired via
+batch_process(show_progress) opt-in (isatty at the CLI), and the
+remaining __main__ demo writes nothing to disk.

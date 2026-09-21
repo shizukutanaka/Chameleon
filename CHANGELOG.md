@@ -487,6 +487,12 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **ProgressBar displayed impossible progress** — `update(10)` on
+  `total=3` rendered "333.3%" and a bar wider than `bar_width`;
+  `update`/`set_progress` now clamp `current` to `[0, total]`.
+- **`ColorText` ignored the NO_COLOR convention** — `enabled()` checked
+  only `isatty()` and platform; NO_COLOR is now honored (any set value
+  means plain output).
 
 ### Changed
 

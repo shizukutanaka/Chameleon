@@ -4,6 +4,7 @@ UX Improvements Module for Chameleon Audio System
 Provides progress indicators, better error messages, and user-friendly output
 """
 
+import os
 import sys
 import time
 import shutil
@@ -36,7 +37,7 @@ class ProgressBar:
 
     def update(self, amount: int = 1) -> None:
         """Update progress"""
-        self.current += amount
+        self.current = min(self.current + amount, self.total)
         current_time = time.time()
 
         if current_time - self.last_update < self.config.update_interval:
@@ -47,7 +48,7 @@ class ProgressBar:
 
     def set_progress(self, current: int) -> None:
         """Set absolute progress"""
-        self.current = current
+        self.current = min(max(current, 0), self.total)
         self._render()
 
     def _render(self) -> None:
@@ -271,8 +272,11 @@ class ColorText:
 
     @classmethod
     def enabled(cls) -> bool:
-        """Check if terminal supports colors"""
-        return sys.stdout.isatty() and sys.platform != 'win32'
+        """Check if terminal supports colors. Honors the NO_COLOR
+        convention (https://no-color.org): when the variable is present
+        with any value, output is plain."""
+        return (sys.stdout.isatty() and sys.platform != 'win32'
+                and 'NO_COLOR' not in os.environ)
 
     @classmethod
     def colorize(cls, text: str, color: str, style: Optional[str] = None) -> str:
