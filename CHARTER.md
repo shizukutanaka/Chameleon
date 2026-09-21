@@ -3252,3 +3252,14 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21, continued):** `suggest_next_chord`'s transition table
+is keyed on scale degrees -- do the keys match the comments?
+**A:** No. The table used chromatic indices {0,4,7,9} with comments
+claiming I, V, V, vi. Degree 4 is the mediant (iii), not the
+subdominant -- a real IV chord (F in C major) fell through to the
+generic ("I", 1.0) fallback, while a V chord could be suggested "V"
+(V->V). And the suggestion labels came from the all-major numeral
+list, so "vi" was offered as "VI" (A major where the key has A minor).
+The table now keys on the real diatonic degrees {I:0, IV:5, V:7, vi:9}
+and labels carry chord quality by case (ii/vi lowercase, vii° marked).

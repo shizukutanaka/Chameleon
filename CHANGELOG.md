@@ -487,6 +487,13 @@
   wrote `test_validation.wav`/`test_sanitized.wav` into the current
   directory, overwriting any same-named user file before deleting them.
   The self-test now runs entirely inside a TemporaryDirectory.
+- **`suggest_next_chord` used the wrong scale degrees** — the
+  transition table was keyed on chromatic indices 4 and 9 while its
+  comments claimed IV and vi, so a real IV chord hit the generic
+  fallback and a V could suggest "V". Suggestions also came from an
+  all-major numeral list, offering "VI" (A major) where the key has
+  A minor. The table now uses real diatonic degrees (I/IV/V/vi) and
+  labels carry quality by case (ii, vi, vii°).
 
 ### Changed
 

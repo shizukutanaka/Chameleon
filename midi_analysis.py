@@ -764,6 +764,15 @@ class MIDIComposer:
             "minor": {0, 5, 7},
         }.get(key.mode, set())
 
+        # Diatonic numerals carry their chord quality in their case --
+        # the all-major numeral list used before labeled vi as "VI",
+        # suggesting A major where the key has A minor.
+        _diatonic_major_romans = {
+            0: "I", 2: "ii", 4: "iii", 5: "IV", 7: "V", 9: "vi", 11: "vii°",
+        }
+        _flat_romans = ["I", "♭II", "II", "♭III", "III", "IV",
+                        "♭V", "V", "♭VI", "VI", "♭VII", "VII"]
+
         suggestions = []
         if last_degree in transition_probabilities:
             for next_degree, prob in transition_probabilities[last_degree]:
