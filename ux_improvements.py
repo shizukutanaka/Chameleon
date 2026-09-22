@@ -211,17 +211,35 @@ class TableFormatter:
         if not rows:
             return ""
 
+        # A row wider than the headers cannot be rendered honestly -- its
+        # extra cells have no column. It used to die on `widths[i]` with a
+        # bare IndexError; say which row is at fault instead.
+        for row_index, row in enumerate(rows):
+            if len(row) > len(headers):
+                raise ValueError(
+                    f"row {row_index} has {len(row)} cells but the table "
+                    f"only has {len(headers)} headers")
+        # A narrower row is just missing trailing cells; pad it so the
+        # remaining columns still line up under their headers.
+        padded_rows = [list(row) + [''] * (len(headers) - len(row)) for row in rows]
+
         align = align or ['left'] * len(headers)
 
         # Calculate column widths. A row wider than the headers used to
         # index past `widths` and die on a raw IndexError; short rows are
         # fine (zip stops at the shorter sequence).
         widths = [len(h) for h in headers]
+<<<<<<< HEAD
         for row in rows:
             if len(row) > len(headers):
                 raise ValueError(
                     f"table row has {len(row)} cells but only "
                     f"{len(headers)} headers")
+||||||| parent of 282f06e4 (Socratic audit 67: setup wizard created a literal '~' dir; library registered files it calls invalid)
+        for row in rows:
+=======
+        for row in padded_rows:
+>>>>>>> 282f06e4 (Socratic audit 67: setup wizard created a literal '~' dir; library registered files it calls invalid)
             for i, cell in enumerate(row):
                 widths[i] = max(widths[i], len(str(cell)))
 
@@ -245,7 +263,7 @@ class TableFormatter:
         lines.append("-" * len(header_line))
 
         # Format rows
-        for row in rows:
+        for row in padded_rows:
             row_line = " | ".join(
                 fmt.format(str(cell))
                 for fmt, cell in zip(formats, row)
