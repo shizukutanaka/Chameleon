@@ -473,6 +473,11 @@ class PluginLoader:
         # drops into pdb -- an interactive interpreter on the host;
         # exit()/quit() kill the host interpreter outright.
         "open", "input", "breakpoint", "exit", "quit", "help",
+        # setattr/delattr are getattr's write twin: setattr(mod, "f", g)
+        # mutates the shared module object exactly like `mod.f = g`, and
+        # the attribute name is a runtime string the audit cannot verify --
+        # rejected rather than trusted, same rule as computed getattr.
+        "setattr", "delattr",
     })
     _DANGEROUS_REF_NAMES = _DANGEROUS_CALL_NAMES | frozenset({
         # Referenced-but-not-called is the aliasing bypass: `e = eval` or
@@ -506,6 +511,23 @@ class PluginLoader:
         except SyntaxError as exc:
             raise SecurityError(f"Plugin contains invalid syntax: {exc}") from exc
 
+        # Names bound by import statements: `import a.b` binds `a`,
+        # `import a.b as c` binds `c`, `from m import x [as y]` binds the
+        # leaf name. Writing an attribute *through* one of these names
+        # (`math.sqrt = f`) mutates the shared, already-imported module
+        # object -- the plugin and the host run in one interpreter, so the
+        # poison persists after the plugin returns (verified: a passed
+        # plugin zeroed math.sqrt process-wide). self.x = 1 is untouched:
+        # `self` is never import-bound.
+        import_bound_names = set()
+        for node in ast.walk(parsed):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    import_bound_names.add(alias.asname or alias.name.split('.')[0])
+            elif isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    import_bound_names.add(alias.asname or alias.name)
+
         for node in ast.walk(parsed):
             if isinstance(node, ast.Import):
                 for alias in node.names:
@@ -516,6 +538,33 @@ class PluginLoader:
                 module_name = (node.module or '').split('.')[0]
                 if module_name and not self.sandbox.is_safe_import(module_name):
                     raise SecurityError(f"Unsafe import detected: {module_name}")
+            elif isinstance(node, (ast.Assign, ast.AugAssign, ast.AnnAssign,
+                                   ast.Delete, ast.For, ast.AsyncFor,
+                                   ast.With, ast.AsyncWith)):
+                targets = []
+                if isinstance(node, ast.Assign):
+                    targets = list(node.targets)
+                elif isinstance(node, (ast.AugAssign, ast.AnnAssign)):
+                    targets = [node.target]
+                elif isinstance(node, ast.Delete):
+                    targets = list(node.targets)
+                elif isinstance(node, (ast.For, ast.AsyncFor)):
+                    targets = [node.target]
+                else:
+                    targets = [item.optional_vars for item in node.items
+                               if item.optional_vars is not None]
+                for target in targets:
+                    for attr_node in ast.walk(target):
+                        if isinstance(attr_node, ast.Attribute):
+                            root = attr_node.value
+                            while isinstance(root, ast.Attribute):
+                                root = root.value
+                            if (isinstance(root, ast.Name)
+                                    and root.id in import_bound_names):
+                                raise SecurityError(
+                                    f"Unsafe attribute write detected: "
+                                    f"{root.id}.{attr_node.attr} mutates an "
+                                    f"imported object shared with the host")
             elif isinstance(node, ast.Call):
                 func = node.func
                 if isinstance(func, ast.Name) and func.id in self._DANGEROUS_CALL_NAMES:

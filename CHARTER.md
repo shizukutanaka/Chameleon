@@ -2471,3 +2471,19 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q106 (2026-09-22, audit 93):** `PluginLoader._check_module_safety` audited
+every *read* of dangerous names but nothing about *writes* through them. A
+plugin containing `math.sqrt = lambda x: 0` or `setattr(math, 'sqrt', ...)`
+passed the check, and because `exec_module` runs the plugin in the host
+interpreter with real builtins, the mutation persisted process-wide after
+the plugin returned (verified: host `math.sqrt(4)` went 2.0 -> 0.0). The
+check now rejects `setattr`/`delattr` outright (the attr name is a runtime
+string it cannot verify -- same "reject what it cannot read" rule the
+getattr check uses) and rejects attribute writes (`=`, `+=`, `del`, `for`,
+`with ... as`, tuple targets) whose root name is bound by an `import` /
+`from ... import` in the file. `self.x = 1`, writes through non-import
+locals, and plain reads are untouched; all committed plugin templates
+still pass. This still does not make the check a hard boundary -- writes
+through a *second-hand* reference (`x = math; x.sqrt = f`) are not caught,
+matching the documented "raise the bar, don't claim completeness" stance.

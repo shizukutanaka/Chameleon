@@ -304,3 +304,37 @@ def test_load_plugin_limits_all_plugin_code_sites(tmp_path, hang_site):
     with pytest.raises(TimeoutError, match="timed out"):
         loader.load_plugin(plugin)
     assert time.monotonic() - t0 < 10
+
+
+def test_check_module_safety_rejects_attribute_writes_on_import_bound_names(tmp_path):
+    # `math.sqrt = f` / `setattr(math, ...)` passed the audit and, because
+    # plugins exec in the host interpreter, permanently poisoned the shared
+    # module for the whole process (verified: math.sqrt(4) -> 0.0 after a
+    # passed plugin ran). Writes through import-bound names must be refused.
+    loader = PluginLoader(PluginConfig())
+
+    bad = {
+        "assign": "import math\nmath.sqrt = lambda x: 0\ndef process(): pass",
+        "setattr": "import math\nsetattr(math, 'sqrt', lambda x: 0)\ndef process(): pass",
+        "delattr": "import math\ndelattr(math, 'sqrt')\ndef process(): pass",
+        "del_stmt": "import math\ndel math.pi\ndef process(): pass",
+        "aug": "import math\nmath.pi += 1\ndef process(): pass",
+        "tuple": "import math\nmath.pi, y = 3, 2\ndef process(): pass",
+        "for_target": "import math\nfor math.x in [1]: pass\ndef process(): pass",
+    }
+    for name, src in bad.items():
+        p = tmp_path / f"evil_{name}.py"
+        p.write_text(src)
+        with pytest.raises(SecurityError):
+            loader._check_module_safety(p), name
+
+    # self.x = 1 and writes through non-import locals must stay legal.
+    good = {
+        "self": "import math\nclass P:\n    def __init__(self):\n        self.x = 1\ndef process(): pass",
+        "local": "import math\nclass A: pass\na = A()\na.b = 1\ndef process(): pass",
+        "read": "import math\nx = math.sqrt(2)\ndef process(): pass",
+    }
+    for name, src in good.items():
+        p = tmp_path / f"good_{name}.py"
+        p.write_text(src)
+        loader._check_module_safety(p)  # should not raise, name
