@@ -419,3 +419,45 @@ def test_backup_workflow_verifies_an_intact_copy(tmp_path, monkeypatch, capsys):
 
     assert (dest_dir / "a.wav").exists()
     assert "verified successfully" in capsys.readouterr().out
+
+
+def test_scan_library_picks_up_uppercase_extensions(manager):
+    # rglob("*.wav") is case-sensitive: a lone .WAV never entered the db.
+    from tests._helpers import write_sine_wave
+    write_sine_wave(Path(manager.library_path) / "UPPER.WAV", duration=0.01)
+    write_sine_wave(Path(manager.library_path) / "lower.wav", duration=0.01)
+
+    stats = manager.scan_library()
+
+    assert stats["total_files"] == 2
+    assert "UPPER.WAV" in manager.library_db["files"]
+
+
+def test_add_tags_preserves_insertion_order(manager):
+    # set() orders by hash seed, so the persisted tag order differed per
+    # session for identical input; dict.fromkeys keeps the order tags came in.
+    manager.library_db["files"] = {"a.wav": {"tags": ["rock"]}}
+    manager.add_tags("*", ["live", "fav", "jazz"])
+    assert manager.library_db["files"]["a.wav"]["tags"] == [
+        "rock", "live", "fav", "jazz"]
+    manager.add_tags("*", ["jazz", "new"])
+    assert manager.library_db["files"]["a.wav"]["tags"] == [
+        "rock", "live", "fav", "jazz", "new"]
+
+
+def test_backup_workflow_includes_uppercase_wav(tmp_path, monkeypatch, capsys):
+    # The manifest glob was "*.wav" too: a .WAV was silently left out of the
+    # backup manifest and never copied.
+    from tests._helpers import write_sine_wave
+    import personal_config as pc
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    library = tmp_path / "lib"
+    library.mkdir()
+    write_sine_wave(library / "a.WAV", duration=0.05)
+    dest_dir = tmp_path / "dest"
+
+    pc.PersonalWorkflow.backup_workflow(library, dest_dir)
+
+    assert (dest_dir / "a.WAV").exists()
+    assert "verified successfully" in capsys.readouterr().out

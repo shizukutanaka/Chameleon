@@ -332,8 +332,12 @@ class PersonalLibraryManager:
         new_files = []
         updated_files = []
 
-        for ext in self.config.supported_formats:
-            for file_path in self.library_path.rglob(f"*{ext}"):
+        # rglob's literal match is case-sensitive ("*.wav" misses ".WAV");
+        # gather once and let the lowered-suffix test decide, same as the
+        # CLI and core batch gathers.
+        supported = {e.lower() for e in self.config.supported_formats}
+        for file_path in self.library_path.rglob("*"):
+            if file_path.is_file() and file_path.suffix.lower() in supported:
                 file_key = str(file_path.relative_to(self.library_path))
 
                 # Check if file is new or modified
@@ -381,7 +385,11 @@ class PersonalLibraryManager:
         for file_key in self.library_db["files"]:
             if fnmatch.fnmatch(file_key, file_pattern):
                 current_tags = self.library_db["files"][file_key].get("tags", [])
-                self.library_db["files"][file_key]["tags"] = list(set(current_tags + tags))
+                # set() orders by hash seed, so the saved db got a different
+                # tag order every session for identical input. dict.fromkeys
+                # dedupes while keeping the existing order.
+                self.library_db["files"][file_key]["tags"] = list(
+                    dict.fromkeys(current_tags + tags))
 
         self._save_db()
 
@@ -455,7 +463,9 @@ class PersonalWorkflow:
         # 1. Create manifest
         print("  [1/3] Creating integrity manifest...")
         verifier = IntegrityVerifier()
-        files = list(library_path.rglob("*.wav"))
+        # Same case-sensitivity trap as scan_library: "*.wav" misses ".WAV".
+        files = [p for p in library_path.rglob("*")
+                 if p.is_file() and p.suffix.lower() in (".wav", ".wave")]
         manifest_path = verifier.create_manifest(files, "backup_manifest")
 
         # 2. Copy files

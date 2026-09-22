@@ -592,6 +592,14 @@ class AudioRestorer:
             "quality_metrics": {}
         }
 
+        # A 0-frame file is identity, as with the stage methods: there is
+        # nothing to restore AND nothing to measure -- _calculate_metrics
+        # calls np.fft.rfft/np.max on the input and crashes on it.
+        if audio.size == 0:
+            info["skipped_processes"].append(
+                {"process": "restoration", "reason": "empty input"})
+            return audio.copy(), info
+
         result = audio.copy()
 
         if mode == "vinyl":

@@ -224,3 +224,21 @@ def test_auto_mode_does_not_run_unvetted_detectors():
         audio_restoration.RestorationConfig(click_removal=True))
     _, opt_in = restorer.restore(noise, SAMPLE_RATE)
     assert "click_removal" in opt_in["applied_processes"]
+
+
+def test_empty_input_restores_to_empty():
+    # The stage methods return early on 0 frames, but AudioRestorer.restore
+    # ran _calculate_metrics on the input regardless -- np.fft.rfft([]) is a
+    # ValueError, and np.std([]) emits the RuntimeWarnings the DSP gate
+    # treats as errors. The facade now honours the same 0-frame identity.
+    restorer = audio_restoration.AudioRestorer()
+    empty = np.zeros(0)
+
+    restored, info = restorer.restore(empty, 44100)
+    assert restored.size == 0
+    assert info["quality_metrics"] == {}
+    assert any(step["reason"] == "empty input"
+               for step in info["skipped_processes"])
+
+    restored, info = restorer.restore(empty, 44100, mode="vinyl")
+    assert restored.size == 0

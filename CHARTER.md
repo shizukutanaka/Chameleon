@@ -2471,3 +2471,29 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** `AudioRestorer.restore` wraps the stage methods that were
+already guarded against 0-frame input, and `personal_config`'s library scan
+and tag db are the last un-audited persistence surface. Do they honour the
+same contracts?
+
+**A:** Four disagreements, all verified:
+(a) `AudioRestorer.restore` crashed on `np.zeros(0)` -- every *stage*
+returns identity on empty input (an earlier fix), but the facade's own
+`_calculate_metrics` runs `np.fft.rfft`/`np.max`/`np.std` on the input at
+the end of both the auto and vinyl branches: ValueError plus three
+RuntimeWarnings the DSP gate counts as errors. A 0-frame file is now the
+same identity it is at every stage (metrics empty, reason recorded).
+(b)(c) `scan_library` and `backup_workflow` both globbed a literal
+`"*.wav"` -- the third site of the same case-sensitivity defect (CLI batch
+and core batch got the fix already): a `.WAV` was invisible to the library
+scan and was left out of the backup manifest entirely. Both now gather
+`"*"` and decide by lowered suffix.
+(d) `add_tags` stored `list(set(current + new))` -- `set()` orders by hash
+seed, so the persisted tag order differed across sessions for identical
+input (verified: three PYTHONHASHSEED values, three orderings). A
+persistence format that reorders itself per run churns every diff;
+dict.fromkeys dedupes in insertion order.
+Lesson: fix the *whole call graph* of a guard, not just the leaf stages --
+the facade that aggregates guarded stages is itself a public entry point
+with its own unguarded tail (the metrics pass).
