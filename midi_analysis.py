@@ -311,6 +311,17 @@ class MIDIAnalyzer:
 
     def detect_chords(self, notes: List[MIDINote], window_size: float = 1.0) -> List[Chord]:
         """Detect chords from MIDI notes"""
+        if not notes:
+            # No chord content, same convention the empty-input paths in
+            # analyze_rhythm and _merge_overlapping_notes already use --
+            # the old code crashed on max() of an empty sequence.
+            return []
+        if window_size <= 0:
+            # A non-positive hop makes current_time never advance past the
+            # last note end -- the while below never terminates (verified:
+            # window_size=0 hangs).
+            raise ValueError("window_size must be positive")
+
         chords = []
         current_time = 0.0
 
@@ -601,10 +612,16 @@ class MIDIAnalyzer:
             # Sort all events by time
             events.sort(key=lambda e: e[0])
 
-            # Write events to track
-            last_time = 0
+            # Write events to track. Deltas must be computed from
+            # *cumulative* absolute ticks -- truncating each delta
+            # independently drops the fractional remainder of every event,
+            # so notes drift systematically early (verified: a 10-note
+            # arpeggio ended 12 ticks short). Round each event's absolute
+            # position and delta against the previous absolute position.
+            last_ticks = 0
             for event_time, event_type, pitch, velocity in events:
-                delta_ticks = int((event_time - last_time) * ticks_per_second)
+                event_ticks = int(round(event_time * ticks_per_second))
+                delta_ticks = event_ticks - last_ticks
 
                 # Write variable-length delta time
                 track_data.extend(self._write_variable_length(delta_ticks))
@@ -614,7 +631,7 @@ class MIDIAnalyzer:
                 else:  # note_off
                     track_data.extend([0x80, pitch, velocity])  # Note off, channel 0
 
-                last_time = event_time
+                last_ticks = event_ticks
 
             # End of track
             track_data.extend([0x00, 0xFF, 0x2F, 0x00])

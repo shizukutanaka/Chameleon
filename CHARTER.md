@@ -2471,3 +2471,33 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** `generate_midi_file` converts event times to delta
+ticks per event -- `int((event_time - last_time) * ticks_per_second)`.
+Does per-event truncation matter for anything but synthetic cases?
+**A:** Yes -- it accumulates. Each delta independently drops its
+fractional part, so a file's timeline drifts systematically early: a
+10-note arpeggio spaced 0.101 s apart (96.96-tick deltas at 480 tpq,
+120 BPM) ended its last note-on 12 ticks (~12.5 ms) short, and dense
+files drift proportionally more. Fixed by rounding each event's
+*absolute* tick and differencing against the previous absolute tick --
+the standard cumulative-delta technique; verified byte-level against a
+real MIDI delta parse. Lesson: any "small truncation inside a loop over
+a timeline" is a systematic drift, not a rounding nit -- convert to
+absolute coordinates, round once, difference.
+
+**Q (2026-09-22, continued):** `detect_chords` is the sibling of
+`analyze_rhythm` and `_merge_overlapping_notes`, both of which handle
+empty input gracefully. Does it hold the same contract?
+**A:** No -- two ways: `detect_chords([])` crashed on `max()` of an
+empty sequence while `analyze_rhythm([])` returns a result dict and
+`_merge_overlapping_notes([])` returns its input; and
+`window_size <= 0` made the scan loop's `current_time` never advance,
+hanging forever (verified with a 3 s alarm). Empty input now returns
+`[]`; a non-positive window raises `ValueError` naming the parameter.
+Also audited this cycle and found honest: `advanced_validation.py`
+end-to-end (offset-0 exec signatures, mmap pattern scan restricted to
+non-`data` chunk regions, bounded seeks, atomic manifest writes) and
+the rest of `midi_analysis.py` (Chord.notes are pitch classes so
+`+60` octave placement is correct; `analyze_rhythm`'s log-bucket tempo
+estimator and VLQ writer are byte-correct).

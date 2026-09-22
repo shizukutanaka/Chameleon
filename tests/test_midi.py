@@ -247,3 +247,54 @@ def test_analyze_harmony_names_the_key_not_a_pitch_class():
     harmony = analyzer.analyze_harmony(chords, key)
 
     assert harmony["key"] == "C major"
+
+
+def test_midi_events_use_cumulative_ticks(tmp_path):
+    """Delta times must be computed from cumulative absolute ticks:
+    truncating each delta independently drops fractional ticks per event
+    and notes drift early (audit 43)."""
+    from midi_analysis import MIDIAnalyzer, MIDINote
+    notes = [MIDINote(pitch=60 + i, velocity=80,
+                      start_time=i * 0.101, duration=0.05) for i in range(10)]
+    path = tmp_path / "t.mid"
+    assert MIDIAnalyzer().generate_midi_file(notes, str(path), tempo_bpm=120.0)
+    trk = path.read_bytes()[path.read_bytes().find(b"MTrk") + 8:]
+
+    def vl(b, p):
+        v = 0
+        while True:
+            v = (v << 7) | (b[p] & 0x7F)
+            c = b[p] & 0x80
+            p += 1
+            if not c:
+                return v, p
+
+    pos, abs_t, ons = 0, 0, []
+    while pos < len(trk):
+        d, pos = vl(trk, pos)
+        abs_t += d
+        st = trk[pos]
+        pos += 1
+        if st == 0xFF:
+            pos += 1
+            ln, pos = vl(trk, pos)
+            pos += ln
+            if trk[pos - ln - 2] == 0x2F:
+                break
+        elif st in (0x80, 0x90):
+            pos += 2
+            if st == 0x90:
+                ons.append(abs_t)
+    ideal = [round(i * 0.101 * 960) for i in range(10)]
+    assert ons == ideal
+
+
+def test_detect_chords_empty_and_bad_window():
+    import pytest
+    from midi_analysis import MIDIAnalyzer, MIDINote
+    analyzer = MIDIAnalyzer()
+    assert analyzer.detect_chords([]) == []
+    with pytest.raises(ValueError):
+        analyzer.detect_chords(
+            [MIDINote(pitch=60, velocity=80, start_time=0, duration=2)],
+            window_size=0)
