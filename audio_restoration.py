@@ -81,6 +81,9 @@ class ClickRemover:
 
     def detect_clicks(self, audio: np.ndarray, sample_rate: int) -> List[int]:
         """Detect click positions"""
+        # signal/np are optional imports -- a raw NameError ('signal' is not
+        # defined) is not the clear error the module docstring promises.
+        _require_restoration_deps()
         # Calculate local statistics
         window = signal.windows.hann(self.window_size)
 
@@ -113,6 +116,7 @@ class ClickRemover:
 
     def remove_clicks(self, audio: np.ndarray, sample_rate: int) -> np.ndarray:
         """Remove detected clicks"""
+        _require_restoration_deps()
         result = audio.copy()
         clicks = self.detect_clicks(audio, sample_rate)
 
@@ -147,6 +151,7 @@ class CrackleRemover:
 
     def remove_crackle(self, audio: np.ndarray, sample_rate: int) -> np.ndarray:
         """Remove crackle using median filtering"""
+        _require_restoration_deps()
         # Apply median filter to remove impulse noise
         filtered = median_filter(audio, size=self.median_filter_size)
 
@@ -197,6 +202,7 @@ class HumRemover:
 
     def remove_hum(self, audio: np.ndarray, sample_rate: int) -> np.ndarray:
         """Remove hum using notch filters"""
+        _require_restoration_deps()
         result = audio.copy()
 
         for base_freq in self.base_freqs:
@@ -298,6 +304,7 @@ class DeclippingProcessor:
         undetectable in principle: the plateau survives, but so does every
         innocent explanation for it.
         """
+        _require_restoration_deps()
         peak = np.max(np.abs(audio))
         if peak <= 0:
             return [], []
@@ -313,6 +320,7 @@ class DeclippingProcessor:
 
     def restore_clipped(self, audio: np.ndarray, sample_rate: int) -> np.ndarray:
         """Restore clipped regions using interpolation"""
+        _require_restoration_deps()
         result = audio.copy()
         starts, ends = self.detect_clipping(audio)
 
@@ -508,6 +516,7 @@ class VinylRestorer:
         one schema (vinyl mode previously left ``applied_processes`` empty
         and reported under ``steps_applied``/``steps_skipped`` instead).
         """
+        _require_restoration_deps()
         info: Dict[str, Any] = {"applied_processes": [], "skipped_processes": []}
         result = audio.copy()
 
