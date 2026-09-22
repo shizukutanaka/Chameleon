@@ -52,17 +52,24 @@ class ProgressBar:
 
     def _render(self) -> None:
         """Render progress bar"""
-        if self.total == 0:
+        if self.total <= 0:
+            # A zero or negative total renders as "never started" -- dividing
+            # by it cannot produce a meaningful fraction.
             return
 
+        # Clamp to the declared total -- a caller that miscounts (or a
+        # resumed run re-reporting items) otherwise renders 250% and a bar
+        # that overruns its width, which is a lie about progress.
+        shown = min(max(self.current, 0), self.total)
+
         # Calculate metrics
-        percentage = (self.current / self.total) * 100
+        percentage = (shown / self.total) * 100
         elapsed = time.time() - self.start_time
         speed = self.current / elapsed if elapsed > 0 else 0
-        eta = (self.total - self.current) / speed if speed > 0 else 0
+        eta = (self.total - shown) / speed if speed > 0 else 0
 
         # Build progress bar
-        filled = int(self.config.bar_width * self.current / self.total)
+        filled = int(self.config.bar_width * shown / self.total)
         bar = '█' * filled + '░' * (self.config.bar_width - filled)
 
         # Build status line

@@ -2471,3 +2471,14 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+### 2026-09-21 (audit 131) — progress bar could render past 100%
+
+**Q:** `ProgressBar.set_progress`/`update` store a raw `current` that
+_render divides by `total`. What does a miscounting caller see?
+
+**A:** **250.0% and a bar 2.5x its declared width** — verified with
+`set_progress(25)` on `total=10`. `_render` now clamps the *displayed*
+fraction to [0, total] (the raw `n/total` count stays truthful — hiding a
+miscount would be its own lie) and treats `total <= 0` as "never renders"
+instead of dividing by it. Regression test pins "100.0%" + raw "25/10".

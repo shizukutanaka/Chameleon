@@ -55,6 +55,10 @@
 
 ### Fixed
 
+- **Progress bar rendered past 100%** -- `ProgressBar.set_progress(25)` on
+  `total=10` printed "250.0%" and a bar 2.5x its declared width. The render
+  now clamps the displayed fraction to [0, total] (the raw count stays
+  honest) and treats `total <= 0` as never-rendering.
 - **`--convert-bit-depth 32` wrote an IEEE-float WAV that Chameleon
   itself cannot read** -- `save_audio` mapped bit depth 32 to
   soundfile's `FLOAT` subtype (format tag 3), so the converted artifact
