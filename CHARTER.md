@@ -3252,3 +3252,19 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+### 2026-09-21 (audit 132) — NaN target_peak defeated the range guard
+
+**Q:** `core.normalize`'s guard is `x <= 0 or x > 1.0`. Does `float('nan')`
+get rejected?
+
+**A:** **No** — every comparison against NaN is False, so NaN passed, the
+gain loop crashed on `int(round(nan))` AFTER `_copy_patched_header` had
+written the output header, leaving a 44-byte header-only WAV and a raw
+"cannot convert float NaN to integer" error. The batch-kwargs path used the
+`not (0 <= x <= 1)` chained form, which *does* catch NaN — only the `or`
+form leaks. Both `core.normalize` and the numpy-side
+`main.normalize_audio` now reject non-finite/non-numeric target_peak up
+front (float() + isfinite + range), before any output file is opened.
+Regression tests pin NaN/inf/negative/string rejection and no partial
+output.

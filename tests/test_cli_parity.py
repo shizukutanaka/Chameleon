@@ -627,3 +627,28 @@ def test_direct_api_normalize_rejects_out_of_range_target_peak(tmp_path):
         output_dir=str(out_dir), target_peak=0.5)
     assert "error" not in results[0], results
     assert 0.49 < _peak(out_file) < 0.51
+
+
+# -- target_peak=NaN defeated the <= guards and crashed mid-write ----------
+
+def test_core_normalize_rejects_nan_target_peak(tmp_path):
+    import core
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    out = tmp_path / "out.wav"
+    # float('nan'): the old `x <= 0 or x > 1` guard let NaN through, the gain
+    # loop then crashed on int(round(nan)) AFTER the output header had been
+    # written -- leaving a 44-byte header-only file and a raw
+    # "cannot convert float NaN to integer" error.
+    result = core.normalize(str(wav), str(out), float("nan"))
+    assert not result.success
+    assert "Invalid target peak" in result.message
+    assert not out.exists()
+
+
+def test_numpy_normalize_audio_rejects_nan_target_peak():
+    np = pytest.importorskip("numpy")
+    processor = main.AudioProcessor()
+    audio = np.ones(100, dtype=np.float32) * 0.5
+    for bad in (float("nan"), float("inf"), -0.5, 1.5, "x"):
+        with pytest.raises(ValueError, match="target_peak"):
+            processor.normalize_audio(audio, bad)

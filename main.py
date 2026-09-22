@@ -862,12 +862,14 @@ class AudioProcessor:
         # wrote an all-zero file, -1 a phase-inverted one, NaN a garbage
         # one, all reported as successful normalization. Same contract
         # here as at the CLI boundary.
-        if (not isinstance(target_peak, (int, float))
-                or not math.isfinite(target_peak)
-                or not 0.0 < target_peak <= 1.0):
-            raise ValueError(
-                f"target_peak must be a finite number in (0, 1], "
-                f"got {target_peak!r}")
+        try:
+            target_peak_value = float(target_peak)
+        except (TypeError, ValueError):
+            raise ValueError(f"target_peak must be a finite value in (0.0, 1.0], got {target_peak!r}") from None
+        if not math.isfinite(target_peak_value) or not 0.0 < target_peak_value <= 1.0:
+            raise ValueError(f"target_peak must be a finite value in (0.0, 1.0], got {target_peak!r}")
+        target_peak = target_peak_value
+
 
         if audio.size == 0:
             return audio

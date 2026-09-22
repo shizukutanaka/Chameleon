@@ -19,6 +19,7 @@ import time
 import json
 import datetime
 import struct
+import math
 import shutil
 import tempfile
 import logging
@@ -616,10 +617,13 @@ class WAVProcessor:
                 False, "Input and output paths are the same file; "
                 "in-place processing is not supported")
 
-        if (not isinstance(target_peak, (int, float))
-                or not math.isfinite(target_peak)
-                or not 0.0 < target_peak <= 1.0):
+        try:
+            target_peak_value = float(target_peak)
+        except (TypeError, ValueError):
             return ProcessingResult(False, "Invalid target peak (0-1.0)")
+        if not math.isfinite(target_peak_value) or not 0.0 < target_peak_value <= 1.0:
+            return ProcessingResult(False, "Invalid target peak (0-1.0)")
+        target_peak = target_peak_value
 
         try:
             if not security_validator.validate_file_size(input_path):
