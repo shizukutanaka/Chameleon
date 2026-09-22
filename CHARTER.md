@@ -3252,3 +3252,19 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22):** Do the deployment docs' `CHAMELEON_*` environment
+variables all exist -- and does the API audit log honour the documented
+log-directory knob?
+**A:** Two phantom variables and one unwired knob. `docs/api_documentation.md`
+told deployers to review `CHAMELEON_BASE_URL` and
+`CHAMELEON_SECURITY_LOG_DIR` -- neither is read by anything, so following
+the runbook changed nothing (the Base URL bullet also showed the wrong
+default port, 8080 vs the real 8000). The docs now describe the real
+mechanism: `chameleon server --host/--port` for binding, and
+`CHAMELEON_LOG_DIR` for logs. That exposed a real code gap in turn:
+`_resolve_audit_log_path` hardcoded `~/.chameleon/logs` while the CLI's
+`setup_logging` honours `CHAMELEON_LOG_DIR` -- a deployer who relocated
+logging still got the audit file in the old place. The audit path now
+reads the same variable. Guard added: every `CHAMELEON_*` name a doc
+mentions must appear in product code.

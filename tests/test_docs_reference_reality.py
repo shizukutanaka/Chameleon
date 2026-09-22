@@ -123,3 +123,37 @@ def test_real_imports_are_not_flagged():
     for module in ("core", "main", "bs1770_loudness", "security_validator"):
         assert (PROJECT_ROOT / f"{module}.py").is_file()
     assert "numpy" in EXTERNAL and "pytest" in EXTERNAL
+
+
+def test_no_doc_names_an_env_var_nothing_reads():
+    """Every CHAMELEON_* variable a doc names must be read by product code.
+
+    api_documentation.md once told deployers to review CHAMELEON_BASE_URL
+    and CHAMELEON_SECURITY_LOG_DIR -- variables nothing reads, so following
+    the runbook changed nothing.
+    """
+    code_tokens = set()
+    for py_file in PROJECT_ROOT.glob("*.py"):
+        code_tokens.update(re.findall(
+            r"CHAMELEON_[A-Z_]+",
+            py_file.read_text(encoding="utf-8", errors="replace")))
+    violations = []
+    for path in _documentation_files():
+        tokens = set(re.findall(
+            r"CHAMELEON_[A-Z_]+",
+            path.read_text(encoding="utf-8", errors="replace")))
+        for token in sorted(tokens - code_tokens):
+            violations.append(f"{_relative(path)}: {token}")
+    assert not violations, (
+        "docs name env vars no code reads: " + "; ".join(violations))
+
+
+def test_audit_log_path_honors_chameleon_log_dir(tmp_path, monkeypatch):
+    """CHAMELEON_LOG_DIR must steer the API audit log too: it is the
+    documented log-directory knob, but _resolve_audit_log_path hardcoded
+    ~/.chameleon/logs -- a deployer who relocated logging still got the
+    audit file in the old place."""
+    pytest.importorskip("fastapi")
+    monkeypatch.setenv("CHAMELEON_LOG_DIR", str(tmp_path))
+    import api_server
+    assert api_server._resolve_audit_log_path() == tmp_path / "api-audit.log"
