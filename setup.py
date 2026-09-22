@@ -106,8 +106,9 @@ setup(
         "api": [
             "fastapi>=0.75,<0.100",
             "uvicorn[standard]>=0.17",
-            # api_server.py's request models use pydantic v1 syntax
-            # (Field(regex=...)), which raises at import under pydantic 2.
+            # api_server.py tolerates pydantic v1 and v2 (it selects
+            # Field(regex=) vs pattern= per version); <2 is the pinned,
+            # conservative baseline -- same as pyproject.toml.
             "pydantic>=1.9,<2",
             # api_server.py's UploadFile/File routes need this at import time.
             "python-multipart>=0.0.6",

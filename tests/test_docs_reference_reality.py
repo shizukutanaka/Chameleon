@@ -123,3 +123,32 @@ def test_real_imports_are_not_flagged():
     for module in ("core", "main", "bs1770_loudness", "security_validator"):
         assert (PROJECT_ROOT / f"{module}.py").is_file()
     assert "numpy" in EXTERNAL and "pytest" in EXTERNAL
+
+
+def test_status_file_known_broken_list_names_only_missing_symbols():
+    # §3's "known-broken" list asserted `self._execute_operation` was a
+    # nonexistent method long after §2 recorded the fix -- the file
+    # contradicted itself. Any `self.<name>` named "nonexistent" there must
+    # actually be absent from core.BatchProcessor.
+    status = (PROJECT_ROOT / "PROJECT_STATUS.md").read_text(encoding="utf-8")
+    claims = re.findall(r"nonexistent method[^`]*`self\.(\w+)`", status)
+    if not claims:
+        return  # no method-absence claims currently on record
+    import core
+    present = [n for n in claims
+               if getattr(core.BatchProcessor, n, None) is not None]
+    assert not present, (
+        f"PROJECT_STATUS §3 calls {present} nonexistent but they exist -- "
+        "the known-broken list is stale")
+
+
+def test_status_file_carries_no_test_counts():
+    # By CLAUDE.md convention, test counts live ONLY in the dated header of
+    # PRODUCT_ANALYSIS.md -- four hand-carried copies once read 147/211/215/
+    # 443 simultaneously. PROJECT_STATUS carried "11 HTTP-level tests" for
+    # months after the suite grew past it.
+    status = (PROJECT_ROOT / "PROJECT_STATUS.md").read_text(encoding="utf-8")
+    counts = re.findall(r"\b\d+\s+(?:HTTP-level\s+)?tests?\b", status)
+    assert not counts, (
+        f"PROJECT_STATUS.md carries test count(s) {counts}; counts live in "
+        "PRODUCT_ANALYSIS.md's dated header only")

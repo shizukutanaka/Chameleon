@@ -9,7 +9,12 @@ fastapi-gated modules only run when the `[api]` extra is present, and
 configurations do not cover the `[audio]` extra's librosa path; installing
 it on 2026-09-19 exposed a denoiser that damaged stationary material, and
 e2e-driving the real CLI the same day exposed an exit-code crash on
-fully-rejected input (see CHARTER.md §9).
+fully-rejected input (see CHARTER.md §9). A packaging-floor audit on
+2026-09-22 then found the declared >=3.8 Python floor unresolvable in the
+dev extra (sphinx>=7.3 needs 3.9 — every CI 3.8 job died at dependency
+resolution), fixed with `python_version` markers verified against pip's own
+evaluator, plus a PROJECT_STATUS.md "known broken" claim that named a
+method the code actually has.
 
 > Every claim in this file was re-checked against the code on the snapshot
 > date. Eight were false — including four "fast checks" in §4 that could no
