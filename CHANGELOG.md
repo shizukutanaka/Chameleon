@@ -55,6 +55,12 @@
 
 ### Fixed
 
+- **A failed batch job leaked raw exception text to the API caller** --
+  `process_batch_job`'s top-level catch stored `str(e)` on the job, and
+  `GET /batch/status/{id}` returns it verbatim in `BatchJobStatus.error`,
+  so internal exception detail (paths, attribute names) reached the job's
+  owner. The job now reports the scrubbed "Batch job processing failed"
+  like the sibling endpoints; the full exception stays in the server log.
 - **`--convert-bit-depth 32` wrote an IEEE-float WAV that Chameleon
   itself cannot read** -- `save_audio` mapped bit depth 32 to
   soundfile's `FLOAT` subtype (format tag 3), so the converted artifact
