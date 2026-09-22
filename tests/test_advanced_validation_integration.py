@@ -165,3 +165,46 @@ def test_main_block_self_test_writes_no_state_into_the_real_home(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "Verification: True" in result.stdout
     assert not (home / ".chameleon").exists()
+
+
+def test_sanitize_wav_metadata_patches_size_for_truncated_declared_chunk(tmp_path):
+    """A `data` chunk whose declared size exceeds the file used to produce
+    output that *re-declared* the bogus size while writing nothing -- a WAV
+    claiming 4 GiB of audio that is not there. The copier now streams until
+    EOF and rewrites the header with the bytes it actually copied."""
+    import struct as _st
+    from advanced_validation import SanitizationEngine
+
+    fmt = _st.pack("<HHIIHH", 1, 1, 44100, 88200, 2, 16)
+    payload = _st.pack("<4h", 100, 200, 300, 400)
+    body = (b"fmt " + _st.pack("<I", 16) + fmt
+            + b"data" + _st.pack("<I", 0xFFFFFF00) + payload)
+    src = tmp_path / "meta.wav"
+    src.write_bytes(b"RIFF" + _st.pack("<I", 4 + len(body)) + b"WAVE" + body)
+
+    dst = tmp_path / "clean.wav"
+    SanitizationEngine.sanitize_wav_metadata(src, dst)
+
+    out = dst.read_bytes()
+    data_off = out.find(b"data")
+    # The data chunk now declares the 8 bytes actually copied, not 0xFFFFFF00
+    assert _st.unpack_from("<I", out, data_off + 4)[0] == len(payload)
+    assert out[data_off + 8:] == payload
+    # And the RIFF size agrees with the real output length
+    assert _st.unpack_from("<I", out, 4)[0] == len(out) - 8
+
+
+def test_validate_wav_structure_reports_every_missing_required_chunk(tmp_path):
+    """A container with neither fmt nor data used to report only "Missing
+    data chunk" -- the fmt gap was silently overwritten. All missing
+    required chunks are named now."""
+    import struct as _st
+    from advanced_validation import DeepFileInspector
+
+    body = b"JUNK" + _st.pack("<I", 4) + b"abcd"
+    src = tmp_path / "empty.wav"
+    src.write_bytes(b"RIFF" + _st.pack("<I", 4 + len(body)) + b"WAVE" + body)
+
+    error = DeepFileInspector()._validate_wav_structure(src)["error"]
+    assert "fmt" in error
+    assert "data" in error

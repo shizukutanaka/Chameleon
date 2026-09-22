@@ -18,6 +18,10 @@ import logging
 
 logger = logging.getLogger("chameleon.validation")
 
+# Bound on a single read during chunk copies -- a data chunk's declared
+# size can exceed memory (or the file itself), so payloads stream in blocks.
+_COPY_BLOCK = 1024 * 1024
+
 
 @dataclass
 class FileValidationResult:
@@ -369,11 +373,13 @@ class DeepFileInspector:
 
                 metadata["chunks"] = chunks_found
 
-                # Verify required chunks
-                if 'fmt ' not in chunks_found:
-                    metadata["error"] = "Missing fmt chunk"
-                if 'data' not in chunks_found:
-                    metadata["error"] = "Missing data chunk"
+                # Verify required chunks -- report all that are absent,
+                # not just the last one checked.
+                missing = [c for c in ('fmt ', 'data') if c not in chunks_found]
+                if missing:
+                    metadata["error"] = (
+                        "Missing " + " and ".join(c.strip() for c in missing)
+                        + " chunk")
 
         except Exception as e:
             metadata["error"] = str(e)
@@ -488,13 +494,32 @@ class SanitizationEngine:
 
                 # Only keep essential chunks
                 if chunk_id in KEEP_CHUNKS:
+                    header_pos = outfile.tell()
                     outfile.write(chunk_header)
-                    chunk_data = infile.read(chunk_size)
-                    outfile.write(chunk_data)
-                    total_size += 8 + chunk_size
+                    # Stream the payload in blocks rather than one
+                    # read(chunk_size): the declared size can exceed
+                    # memory -- or lie past EOF entirely.
+                    copied = 0
+                    while copied < chunk_size:
+                        block = infile.read(min(_COPY_BLOCK, chunk_size - copied))
+                        if not block:
+                            break
+                        outfile.write(block)
+                        copied += len(block)
+
+                    if copied != chunk_size:
+                        # Truncated payload: patch the header to the actual
+                        # size so the output's declared layout matches the
+                        # bytes it really holds.
+                        end_pos = outfile.tell()
+                        outfile.seek(header_pos + 4)
+                        outfile.write(struct.pack('<I', copied))
+                        outfile.seek(end_pos)
+
+                    total_size += 8 + copied
 
                     # Pad to even boundary
-                    if chunk_size % 2:
+                    if copied % 2:
                         outfile.write(b'\x00')
                         total_size += 1
                 else:

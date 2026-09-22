@@ -2471,3 +2471,67 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** `sanitize_filename` strips control characters and
+reserved glyphs, but dots and spaces are legal in real names. Can a
+sanitized name still address a directory?
+**A:** Yes -- `".."`, `"."`, `"..."`, `" .. "` came back verbatim: joined
+onto an output directory, `".."` resolves to its parent. The scrub cannot
+remove dots (they are legitimate) so a scrub result made *only* of dots
+and whitespace now falls back to `"untitled"`, the same fallback the
+empty string already took. Callers that uuid-prefix the name were safe
+already; callers that do not were one dot away from writing outside the
+output directory.
+
+**Q (2026-09-22):** What does `sanitize_wav_metadata` produce when a kept
+chunk's declared size exceeds the file?
+**A:** Output that *re-declared* the bogus size while writing the bytes
+actually present -- verified: a 144-byte source produced a WAV claiming a
+4 GiB data chunk. The copier did a single `infile.read(chunk_size)` (short
+read at EOF) and copied the size field verbatim, so the lie traveled
+through the "sanitized" file. It now streams in 1 MiB blocks until EOF
+and rewrites the chunk size -- and the RIFF size -- with the bytes really
+copied. While there: a container missing *both* required chunks reported
+only the last one checked (the first error was overwritten); all absent
+chunks are now named.
+
+**Q (2026-09-22):** Which public entry points still crashed or corrupted
+on inputs callers can legitimately hand them?
+**A:** Three verified gaps. `detect_chords([])` ran `max()` over an empty
+sequence -- `analyze_harmony` and `analyze_rhythm` guard empty input, the
+chord detector did not; it now returns `[]`. `generate_midi_file` wrote
+pitch/velocity bytes verbatim: a pitch of 200 emitted a byte whose high
+bit makes a parser read it as a new status byte -- one out-of-range note
+silently corrupted every event after it; both are now clamped to 0-127.
+And `suggest_next_chord`'s transition-table comments named chords the
+data did not produce ("I -> V" at degree 4, which is III); the comments
+now describe the degrees actually keyed.
+
+**Q (2026-09-22):** The load path wraps every plugin-defined callable in
+sandbox limits. Does every other path that invokes plugin code?
+**A:** Two missed it. `unload_plugin` called `cleanup()` directly -- a
+sleeping cleanup blocked unload for the full duration of the sleep
+(verified: 30 s), the same unbounded-plugin-code hole the load path was
+hardened against. `cleanup` now runs inside `execute_with_limits` like
+everything else plugin-defined. And `execute_plugin(name, operation)`
+dispatched *any* attribute name -- `"cleanup"`, `"initialize"`, dunders
+like `"__class__"` -- through the operation channel, so lifecycle
+internals the loader owns could be re-run mid-life and private members
+invoked by name. Operations starting with `_` or naming a lifecycle
+method are now rejected with `AttributeError`.
+
+- Fallbacks must cover the degenerate non-empty cases too: an empty name
+  became "untitled" while ".." sailed through the same function -- the
+  boundary to test is not empty/non-empty but "names a file"/"names
+  something else".
+- A copier that trusts the declared size forwards the lie: any passthrough
+  that can't verify a length must either check it or rewrite it. A short
+  read is an answer, not an error.
+- Data bytes < 128 is a hard boundary, not a style rule: in a framed
+  stream a byte with the high bit set is syntax, and one unvalidated
+  value corrupts everything after it. Clamp at the serializer, not at
+  every caller.
+- The rule "plugin code runs inside the sandbox" is only as strong as
+  its least-wrapped call site: load was hardened, unload and the op
+  dispatcher were not -- invariants have to be audited per path, not per
+  module.

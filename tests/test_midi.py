@@ -247,3 +247,23 @@ def test_analyze_harmony_names_the_key_not_a_pitch_class():
     harmony = analyzer.analyze_harmony(chords, key)
 
     assert harmony["key"] == "C major"
+
+
+def test_detect_chords_returns_empty_on_no_notes():
+    # max() over an empty note list used to raise ValueError out of the
+    # public API; every sibling analyzer guards empty input already.
+    assert MIDIAnalyzer().detect_chords([]) == []
+
+
+def test_generate_midi_file_clamps_out_of_range_data_bytes(tmp_path):
+    # MIDI data bytes must be < 128. A pitch of 200 used to be written
+    # verbatim -- its high bit makes a parser treat the byte as a new
+    # status byte and misparse every event after it.
+    analyzer = MIDIAnalyzer()
+    out = tmp_path / "o.mid"
+    notes = [MIDINote(pitch=200, velocity=300, start_time=0.0, duration=1.0)]
+    assert analyzer.generate_midi_file(notes, str(out)) is True
+
+    data = out.read_bytes()
+    assert b"\x90\x7f" in data      # note_on emitted with clamped pitch 127
+    assert bytes([0x90, 0xC8]) not in data  # no verbatim 0xC8 (200) pitch byte

@@ -634,7 +634,10 @@ class PluginLoader:
         """Unload a plugin"""
         if plugin_name in self.plugins:
             try:
-                self.plugins[plugin_name].cleanup()
+                # cleanup() is plugin code too: it runs inside the same
+                # sandbox limits every other plugin-defined callable gets,
+                # otherwise a hung cleanup blocks unload forever.
+                self.sandbox.execute_with_limits(self.plugins[plugin_name].cleanup)
                 del self.plugins[plugin_name]
                 self.logger.info(f"Unloaded plugin: {plugin_name}")
                 return True
@@ -721,7 +724,15 @@ class PluginManager:
         if not plugin.metadata.enabled:
             raise RuntimeError(f"Plugin is disabled: {plugin_name}")
 
-        # Get the operation method
+        # Get the operation method. The channel is for the plugin's
+        # declared operation entry points -- not lifecycle internals
+        # (initialize/cleanup belong to the loader, and re-running them
+        # mid-life corrupts plugin state) and not private/dunder names.
+        if (operation.startswith("_") or
+                operation in ("initialize", "cleanup")):
+            raise AttributeError(
+                f"Plugin {plugin_name} has no invocable operation: {operation}")
+
         if hasattr(plugin, operation):
             method = getattr(plugin, operation)
             return self.loader.sandbox.execute_with_limits(method, **params)

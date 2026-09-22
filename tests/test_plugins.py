@@ -304,3 +304,61 @@ def test_load_plugin_limits_all_plugin_code_sites(tmp_path, hang_site):
     with pytest.raises(TimeoutError, match="timed out"):
         loader.load_plugin(plugin)
     assert time.monotonic() - t0 < 10
+
+
+def test_execute_plugin_rejects_lifecycle_and_dunder_ops():
+    """execute_plugin(name, "cleanup") used to dispatch plugin lifecycle
+    internals through the operation channel: re-running initialize/cleanup
+    mid-life corrupts loaded state, and any attribute name -- including
+    dunders like "__class__" -- was invocable."""
+    from plugin_system import PluginManager, PluginMetadata
+
+    class _P:
+        def __init__(self):
+            self.metadata = PluginMetadata(name="p", version="1.0.0",
+                                           author="t", description="t",
+                                           category="effect")
+
+        def cleanup(self):
+            raise AssertionError("cleanup must not be invocable")
+
+        def initialize(self, config):
+            raise AssertionError("initialize must not be invocable")
+
+        def process_audio(self, audio_data, sample_rate, **params):
+            return audio_data
+
+    manager = PluginManager(PluginConfig(sandbox_mode=False))
+    manager.loader.plugins["p"] = _P()
+
+    for op in ("cleanup", "initialize", "__class__", "_private"):
+        with pytest.raises(AttributeError, match="invocable"):
+            manager.execute_plugin("p", op)
+
+    # the real operation path still works
+    assert manager.execute_plugin(
+        "p", "process_audio", audio_data=[1.0], sample_rate=44100) == [1.0]
+
+
+def test_unload_plugin_bounds_cleanup_inside_sandbox():
+    """cleanup() is plugin code: until it ran inside the sandbox limits a
+    sleeping cleanup blocked unload_plugin forever (the load path was
+    already wrapped; the unload path was missed)."""
+    import time
+    from plugin_system import PluginMetadata
+
+    class _P:
+        def __init__(self):
+            self.metadata = PluginMetadata(name="p", version="1.0.0",
+                                           author="t", description="t",
+                                           category="effect")
+
+        def cleanup(self):
+            time.sleep(30)
+
+    loader = PluginLoader(PluginConfig(max_execution_time=1))
+    loader.plugins["p"] = _P()
+
+    t0 = time.monotonic()
+    assert loader.unload_plugin("p") is False
+    assert time.monotonic() - t0 < 10

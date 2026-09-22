@@ -295,10 +295,15 @@ class SecurityValidator:
     def sanitize_filename(self, filename: str) -> str:
         """Strip dangerous characters from a filename component."""
         sanitized = _FILENAME_SCRUB.sub("_", filename)
+        # A scrub result that is only dots/whitespace names a special
+        # directory entry ('.', '..'), not a file -- the name would
+        # resolve to a different directory when joined into a path.
+        if not sanitized.strip(" ."):
+            return "untitled"
         if len(sanitized) > 255:
             name, ext = os.path.splitext(sanitized)
             sanitized = name[:255 - len(ext)] + ext
-        return sanitized or "untitled"
+        return sanitized
 
     @_hybridmethod
     def resolve_unique_paths(self, paths: Iterable) -> List[Path]:

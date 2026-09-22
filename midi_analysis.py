@@ -311,6 +311,9 @@ class MIDIAnalyzer:
 
     def detect_chords(self, notes: List[MIDINote], window_size: float = 1.0) -> List[Chord]:
         """Detect chords from MIDI notes"""
+        if not notes:
+            return []
+
         chords = []
         current_time = 0.0
 
@@ -586,17 +589,20 @@ class MIDIAnalyzer:
             # Sort notes by start time
             sorted_notes = sorted(notes, key=lambda n: n.start_time)
 
-            current_time = 0
-            active_notes = {}
-
             # Convert to MIDI events. start_time is in seconds; ticks are
-            # quarter-note units, so scale by tpq * beats-per-second.
+            # quarter-note units, so scale by tpq * beats-per-second. MIDI
+            # data bytes must be < 128 -- a pitch/velocity of 128+ used to
+            # be written verbatim, emitting a byte whose high bit makes a
+            # parser read it as a new status byte: one out-of-range note
+            # silently corrupted every event after it.
             ticks_per_second = 480.0 * tempo_bpm / 60.0
             events = []
             for note in sorted_notes:
-                events.append((note.start_time, 'note_on', note.pitch, note.velocity))
+                pitch = max(0, min(127, note.pitch))
+                velocity = max(0, min(127, note.velocity))
+                events.append((note.start_time, 'note_on', pitch, velocity))
                 events.append((note.start_time + note.duration, 'note_off',
-                               note.pitch, 0))
+                               pitch, 0))
 
             # Sort all events by time
             events.sort(key=lambda e: e[0])
@@ -738,10 +744,13 @@ class MIDIComposer:
 
         # Simple Markov chain based on common progressions
         transition_probabilities = {
-            0: [(4, 0.4), (7, 0.3), (9, 0.2), (5, 0.1)],  # I -> V, IV, vi, etc.
-            4: [(0, 0.5), (7, 0.3), (2, 0.2)],  # V -> I, ii, etc.
-            7: [(0, 0.4), (4, 0.3), (9, 0.3)],  # V -> I, V, vi
-            9: [(4, 0.4), (0, 0.3), (5, 0.3)]   # vi -> V, I, IV
+            # Keys are semitone offsets from the tonic; the roman emitted is
+            # roman_numerals[degree]. (Comments once described different
+            # targets than the data produced -- e.g. degree 4 is III, not V.)
+            0: [(4, 0.4), (7, 0.3), (9, 0.2), (5, 0.1)],  # I -> III, V, VI, IV
+            4: [(0, 0.5), (7, 0.3), (2, 0.2)],  # III -> I, V, II
+            7: [(0, 0.4), (4, 0.3), (9, 0.3)],  # V -> I, III, VI
+            9: [(4, 0.4), (0, 0.3), (5, 0.3)]   # VI -> III, I, IV
         }
 
         suggestions = []
