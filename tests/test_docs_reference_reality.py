@@ -123,3 +123,97 @@ def test_real_imports_are_not_flagged():
     for module in ("core", "main", "bs1770_loudness", "security_validator"):
         assert (PROJECT_ROOT / f"{module}.py").is_file()
     assert "numpy" in EXTERNAL and "pytest" in EXTERNAL
+
+
+# Parser variable name -> the subcommand users type. `plugins` registers
+# shared flags on the parent and on each list/audit subparser, so a doc
+# line like `plugins audit --fail-fast` may draw from all three.
+_SUBPARSERS = {
+    "analyze": "analyze",
+    "process": "process",
+    "stream": "stream",
+    "batch": "batch",
+    "midi": "midi",
+    "server": "server",
+    "plugins_cmd": "plugins",
+    "list_parser": "plugins",
+    "audit": "plugins",
+}
+
+
+def _cli_flags_by_command():
+    main_src = (PROJECT_ROOT / "main.py").read_text()
+    global_flags = set(re.findall(
+        r"(?<![\w.])parser\.add_argument\(\s*['\"](--[\w-]+)", main_src))
+    by_command = {}
+    for var, command in _SUBPARSERS.items():
+        flags = set(re.findall(
+            rf"(?<![\w.]){var}\.add_argument\(\s*['\"](--[\w-]+)", main_src))
+        by_command.setdefault(command, set()).update(flags)
+    for command in by_command:
+        by_command[command] |= global_flags
+        # argparse's built-in -h/--help is real on every parser.
+        by_command[command] |= {"-h", "--help"}
+    return by_command
+
+
+def test_no_doc_teaches_a_cli_flag_argparse_rejects():
+    # batch_processing.md described a `batch` that never existed -- a
+    # sequential analyze-only run with `--skip-errors`, `--max-files` and
+    # `--output` (all exit-2 in argparse). error_recovery.md suggested
+    # `--workers 2`. Scan every doc line invoking the CLI and check each
+    # flag against the invoked subcommand's registered arguments.
+    flags_by_command = _cli_flags_by_command()
+    assert all(flags_by_command.values()), (
+        "a subcommand has no registered flags -- is this guard stale?")
+
+    invoke = re.compile(
+        r"(?:python3?\s+main\.py|chameleon)\s+"
+        r"(analyze|process|stream|batch|midi|plugins|server)\b")
+    # DEPLOYMENT_GUIDE.md's TLS block still teaches `--cert`/`--key` on
+    # main -- a sibling remediation already rewrites that section, so this
+    # file's flag coverage resumes when that lands.
+    skip = {"DEPLOYMENT_GUIDE.md"}
+    violations = []
+    for path in _documentation_files():
+        if path.name in skip:
+            continue
+        # Flags may sit on `\`-continuations of the CLI line; join first.
+        text = re.sub(r"\\\n\s*", " ", path.read_text())
+        for line_no, line in enumerate(text.splitlines(), 1):
+            match = invoke.search(line)
+            if not match:
+                continue
+            allowed = flags_by_command[match.group(1)]
+            for flag in re.findall(r"--[\w-]+", line):
+                if flag not in allowed:
+                    violations.append(
+                        f"{_relative(path)}:{line_no}: `{flag}`")
+    assert not violations, (
+        "Documentation passes flag(s) the invoked subcommand does not accept:\n  "
+        + "\n  ".join(violations))
+
+
+def test_docs_call_only_security_validator_methods_that_exist():
+    # error_recovery.md's playbook called `validator.audit_log(...)` and
+    # described `validate_url()` -- neither method exists, so the example
+    # raised AttributeError on the first call. Every SecurityValidator
+    # method a doc invokes must be a real def in security_validator.py.
+    source = (PROJECT_ROOT / "security_validator.py").read_text()
+    methods = set(re.findall(r"def (\w+)\(", source))
+    methods |= {"secure_open"}  # SecureFileOperations context manager
+
+    violations = []
+    call_pattern = re.compile(
+        r"(?:\bvalidator|\bSecurityValidator|\bSecureFileOperations|\bops)\.(\w+)\s*\(")
+    for path in _documentation_files():
+        text = path.read_text()
+        for match in call_pattern.finditer(text):
+            method = match.group(1)
+            if method.startswith("_") or method in methods:
+                continue
+            line = text[:match.start()].count("\n") + 1
+            violations.append(f"{_relative(path)}:{line}: `.{method}()`")
+    assert not violations, (
+        "Documentation calls SecurityValidator method(s) that do not exist:\n  "
+        + "\n  ".join(violations))
