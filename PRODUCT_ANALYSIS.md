@@ -83,6 +83,12 @@ re-verified, not trusted.
   tests — no `assert True`, no `x == x`, nothing swallowing exceptions, and the
   only three assertion-free tests are "must not raise" checks where the call
   itself is the assertion.
+  On 2026-09-22 the same revert-and-rerun check was applied to audit-55's
+  fixes: restoring the unseeded dither fails the determinism test (it
+  previously pinned the opposite contract), and restoring the one-sided
+  EQ-band guard fails both low-frequency warning tests — three of five new
+  test cases bite (the above-Nyquist parametrization pins a contract the
+  old code already satisfied).
 - **DSP claims are checked against ground truth, not eyeballed.** The
   regression suite asserts measured quantities — a clean sine survives
   restoration bit-exactly, a clipped signal comes back 14.5 dB closer to the

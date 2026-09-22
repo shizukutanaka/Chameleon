@@ -155,3 +155,32 @@ def test_reverb_is_reproducible():
     second = processor.apply_effects(signal.copy(), SAMPLE_RATE, effects)
 
     assert np.array_equal(first, second)
+
+
+@pytest.mark.parametrize("bad_freq", [0.0, -50.0])
+def test_eq_band_outside_low_end_warns_instead_of_silently_skipping(capsys, bad_freq):
+    # The guard was one-sided: a band above Nyquist printed a skip warning
+    # while a band at or below 0 Hz dropped with no output at all -- the
+    # command then reported "Processed" for a no-op band.
+    processor = main.AudioProcessor(main.ProcessingConfig())
+    signal = _tone(1000, seconds=0.1)
+
+    processor.apply_effects(
+        signal.copy(), SAMPLE_RATE,
+        {"eq": [{"frequency": bad_freq, "gain": 3.0}]},
+    )
+
+    assert "skipped" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("bad_freq", [float(SAMPLE_RATE), SAMPLE_RATE * 2.0])
+def test_eq_band_above_nyquist_still_warns(capsys, bad_freq):
+    processor = main.AudioProcessor(main.ProcessingConfig())
+    signal = _tone(1000, seconds=0.1)
+
+    processor.apply_effects(
+        signal.copy(), SAMPLE_RATE,
+        {"eq": [{"frequency": bad_freq, "gain": 3.0}]},
+    )
+
+    assert "skipped" in capsys.readouterr().err
