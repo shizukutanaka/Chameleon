@@ -181,12 +181,15 @@ class SecurityValidator:
             return False
         if not self._extension_allowed(resolved):
             return False
-        if resolved.exists() and resolved.is_file():
-            try:
+        try:
+            if resolved.exists() and resolved.is_file():
                 if resolved.stat().st_size > self.config.max_file_size:
                     return False
-            except OSError:
-                return False
+        except OSError:
+            # exists()/stat() propagate e.g. ENAMETOOLONG (pathlib only
+            # swallows ENOENT-family errors): a name the filesystem cannot
+            # even look up is not a safe path.
+            return False
         return True
 
     @_hybridmethod
@@ -217,7 +220,13 @@ class SecurityValidator:
         if not self._is_within_trusted_roots(resolved):
             raise SecurityError(f"Directory outside trusted roots: {directory}")
 
-        if resolved.exists():
+        try:
+            exists = resolved.exists()
+        except OSError as exc:
+            # Same exists() propagation as validate_file_path (ENAMETOOLONG
+            # is not swallowed by pathlib).
+            raise SecurityError(f"Cannot stat directory: {directory}") from exc
+        if exists:
             if not resolved.is_dir():
                 raise SecurityError(f"Not a directory: {directory}")
         elif allow_create:
@@ -249,8 +258,14 @@ class SecurityValidator:
             raise SecurityError(f"Extension not allowed: {resolved.suffix}")
 
         if operation == "read":
-            if not resolved.exists() or not resolved.is_file():
-                raise SecurityError(f"File not found: {file_path}")
+            try:
+                if not resolved.exists() or not resolved.is_file():
+                    raise SecurityError(f"File not found: {file_path}")
+            except OSError as exc:
+                # ENAMETOOLONG/EIO propagate out of exists(): a path the
+                # filesystem cannot look up must reject as SecurityError,
+                # not leak a raw OSError past the contract.
+                raise SecurityError(f"Cannot stat file: {file_path}") from exc
             try:
                 if resolved.stat().st_size > self.config.max_file_size:
                     raise SecurityError(f"File too large: {file_path}")
