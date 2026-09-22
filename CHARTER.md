@@ -2074,6 +2074,79 @@ mention*. Pre-flight rejections are now appended to the results so the
 denominator is the input count and the exit code classifies them the
 same way the all-rejected sentinel already did.
 
+**Q (2026-09-22):** `midi compose --length` is documented "Length in
+seconds" and the command reference ships `--length 30`. Does the flag
+actually mean seconds?
+**A:** No -- `generate_melody` walks chord and melody time in *beats*
+(note_duration = 0.5 beats), and the handler passed the raw flag through:
+`--length 8` produced 8 beats = 4 s of music at 120 BPM and a duration that
+changed with `--tempo` instead of with the flag. The handler now converts
+`length * tempo / 60.0` before the call (the same tempo written into the
+file), verified end-to-end: `--length 4` renders exactly 4.0 s at both 120
+and 240 BPM. Two corollaries fixed in the same place: the 4-chord
+progression covered 8 beats and silently ended the melody for any request
+longer than one cycle (it now tiles), and the pre-existing eighth-notes
+test still pins deltas at 240 ticks because the fix preserves them by
+construction. `tests/test_midi.py::test_compose_length_measures_seconds_at_any_tempo`
+asserts the last event lands at ~length seconds at both tempos.
+
+**Q (2026-09-22, continued):** `spectral_utils._inverse_real_transform`'s
+pure-Python path mirrors `spectrum[1:-1]` conjugate bins -- the standard
+rfft packing for *even* N. Does odd N survive a round-trip?
+**A:** No. An N-point real transform yields N//2+1 bins for even N and
+(N+1)//2 for odd N, so the mirror must exclude the DC and Nyquist bins for
+even N but only DC for odd N (a Nyquist bin exists only when N is even).
+Mirroring `[1:-1]` dropped a real bin *and* divided the reconstruction by
+len(mirrored) = N-1. Measured: 999-sample round-trip max error 0.042 vs
+4.8e-14 for 1000 samples; after the fix (`mirror_count = length -
+len(spectrum)` bins from `spectrum[1:1+mirror_count]`), ~1e-13 at any
+length. Reachable in production through `apply_spectral_mask`'s tail block
+whenever `len(input) % 4096` is odd on the stdlib install -- the exactly-
+on-the-boundary tail the previous audit added a test for was even-length
+(904), so the odd case shipped uncovered.
+`tests/test_spectral_wiring.py::test_inverse_real_transform_odd_length_roundtrip`
+and `::test_apply_spectral_mask_odd_tail_roundtrips_stdlib` pin it.
+
+**Q (2026-09-22, continued):** Every `api_state` registry the §5 threat
+model relies on is bounded -- sessions by `max_active_sessions`, the queue
+by `max_job_queue_size`, the audit deque by maxlen, rate windows by
+cleanup. Is `uploaded_files` bounded?
+**A:** It was the one that wasn't -- entries and the WAV bytes behind them
+accumulated forever at authenticated-request speed (120/min, up to 100 MB
+each). `SECURITY_CONFIG` now carries `max_uploaded_files` (1000) and
+`max_uploaded_bytes` (5 GiB), `api_state.uploaded_bytes_total` tracks the
+registry's footprint, and `_enforce_uploaded_file_capacity` rejects new
+work with 503 (matching the session/queue capacity pattern) *before* the
+bytes hit disk: at upload time (count up front, bytes checked inside the
+streaming loop so a partial write is unlinked like the 413 path) and before
+normalize writes its server-side output. A bound that only fires after the
+write would be the audit-log lesson repeated -- verify the thing you
+produced, not the thing you planned to produce. Same audit, same loop:
+`process_batch_job` ran `_resolve_uploaded_path` outside any per-file
+guard, so one file that vanished between submit and processing killed the
+whole job through the outer `except` (which also referenced a possibly-
+unbound `job_data`) and every remaining file silently got no result.
+Per-file failures are now recorded per file -- data about that file, not a
+job abort -- with an "N of M files failed" job summary, and `files: []` is
+rejected at submit instead of creating a job that processes nothing and
+reports success. `tests/test_api_routes.py` pins all of it.
+
+- A flag's documented unit is part of its contract, and unit mismatches
+  hide behind a plausibly-shaped result: --length produced *a* composition
+  every time, just not the one requested. When a parameter crosses a unit
+  boundary (seconds -> beats), the conversion belongs next to the call,
+  and a test should pin the physical quantity -- wall-clock seconds -- not
+  the internal one.
+- Fallback algorithms carry the reference implementation's edge cases:
+  the pure-Python rfft mirror was written for the common even-N case and
+  silently shifted both data and divisor on odd N. Any "same as numpy"
+  fallback needs its own round-trip test at *every* parity of input length,
+  not just the lengths the examples happen to use.
+- Bound every registry-leak axis, not just the count: uploads are both a
+  dict (memory) and files (disk), and the correct bound is the one
+  enforced *before* the resource is consumed. A cap checked after writing
+  is an orphan-file generator.
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy
