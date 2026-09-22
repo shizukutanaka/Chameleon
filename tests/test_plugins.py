@@ -304,3 +304,66 @@ def test_load_plugin_limits_all_plugin_code_sites(tmp_path, hang_site):
     with pytest.raises(TimeoutError, match="timed out"):
         loader.load_plugin(plugin)
     assert time.monotonic() - t0 < 10
+
+
+import importlib.util
+import math
+
+
+def _load_demo_spectrum_analyzer():
+    path = (Path(__file__).resolve().parent.parent
+            / "demo_plugins" / "spectrum_analyzer.py")
+    spec = importlib.util.spec_from_file_location("demo_spectrum_analyzer", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_spectrum_analyzer_finds_peak_above_quarter_nyquist():
+    """The demo analyzer used to compute N//4 DFT bins and then report only
+    half of those, capping the analysed band at sr/8 (~5.5 kHz at 44.1 kHz):
+    a loud 15 kHz tone reported peak_frequency 0.0 (verified)."""
+    analyzer = _load_demo_spectrum_analyzer().SpectrumAnalyzerPlugin()
+    sr = 44100
+    tone = [0.5 * math.sin(2 * math.pi * 15000 * i / sr) for i in range(4410)]
+    result = analyzer.analyze_audio(tone, sr, window_size=1024)
+    assert result["peak_frequency"] == pytest.approx(15000, abs=100)
+
+
+def test_spectrum_analyzer_overlap_changes_window_count():
+    """`overlap` was accepted and ignored: overlap=0.0 and overlap=0.9
+    returned byte-identical results because only the first window was ever
+    analysed (verified). The parameter now drives the hop."""
+    analyzer = _load_demo_spectrum_analyzer().SpectrumAnalyzerPlugin()
+    sr = 44100
+    tone = [0.5 * math.sin(2 * math.pi * 440 * i / sr) for i in range(4096)]
+    dense = analyzer.analyze_audio(tone, sr, window_size=1024, overlap=0.9)
+    sparse = analyzer.analyze_audio(tone, sr, window_size=1024, overlap=0.0)
+    assert dense["analyzed_windows"] > sparse["analyzed_windows"]
+
+
+def test_spectrum_analyzer_flux_is_frame_to_frame_change():
+    """The old 'spectral_flux' reported the mean magnitude of a single
+    window -- a level, not a flux. A stationary tone has essentially no
+    frame-to-frame spectral change; a swept tone does."""
+    analyzer = _load_demo_spectrum_analyzer().SpectrumAnalyzerPlugin()
+    sr = 44100
+    steady = [0.5 * math.sin(2 * math.pi * 1000 * i / sr) for i in range(8192)]
+    chirp = [0.5 * math.sin(2 * math.pi * (1000 + 6000 * (i / sr)) * i / sr)
+             for i in range(8192)]
+    steady_flux = analyzer.analyze_audio(
+        steady, sr, window_size=1024, overlap=0.5)["spectral_flux"]
+    chirp_flux = analyzer.analyze_audio(
+        chirp, sr, window_size=1024, overlap=0.5)["spectral_flux"]
+    assert steady_flux < chirp_flux * 0.3
+
+
+def test_spectrum_analyzer_single_window_reports_zero_flux():
+    """With one analysed window there is no change to measure -- honest 0.0,
+    where the old code still returned the window's mean magnitude."""
+    analyzer = _load_demo_spectrum_analyzer().SpectrumAnalyzerPlugin()
+    sr = 44100
+    tone = [0.5 * math.sin(2 * math.pi * 440 * i / sr) for i in range(1024)]
+    result = analyzer.analyze_audio(tone, sr, window_size=1024)
+    assert result["analyzed_windows"] == 1
+    assert result["spectral_flux"] == 0.0
