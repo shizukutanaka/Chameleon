@@ -209,6 +209,7 @@ files for sandbox compliance).
 |------|---------|
 | `--directory DIR` | Absolute plugin directory to inspect (repeatable) |
 | `--json` | Emit structured JSON output |
+| `--fail-fast` | `audit` only: stop on the first plugin that fails the audit |
 
 Writing a plugin: subclass one of the interfaces in `plugin_system.py`
 (`AudioEffectPlugin`, `AudioAnalyzerPlugin`, `AudioGeneratorPlugin`,

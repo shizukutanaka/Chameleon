@@ -205,6 +205,7 @@ chameleon plugins list --directory /abs/path/to/plugins --json
 |-----------|------|
 | `--directory DIR` | 検査対象の絶対パス（複数指定可） |
 | `--json` | 構造化 JSON で出力 |
+| `--fail-fast` | `audit` のみ: 最初の失敗で検査を打ち切る |
 
 プラグインの書き方: `plugin_system.py` のインターフェース
 （`AudioEffectPlugin` など）を継承し、全抽象メソッド（例: effect は

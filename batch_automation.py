@@ -738,7 +738,17 @@ class WorkflowEngine:
     def _execute_loop(self, workflow: Workflow) -> Dict[str, TaskResult]:
         """Execute loop workflow"""
         results = {}
-        iterations = workflow.metadata.get('iterations', 1)
+        raw_iterations = workflow.metadata.get('iterations', 1)
+        try:
+            iterations = int(raw_iterations)
+        except (TypeError, ValueError):
+            raise ValueError(
+                "loop workflow metadata 'iterations' must be an integer, "
+                f"got {raw_iterations!r}") from None
+        if iterations < 0:
+            raise ValueError(
+                "loop workflow metadata 'iterations' must be >= 0, "
+                f"got {iterations}")
 
         for i in range(iterations):
             for task in workflow.tasks:

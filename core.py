@@ -1183,61 +1183,60 @@ class WAVProcessor:
         start_sample = 0
         end_sample = int(info.duration * info.sample_rate)
 
-        try:
-            with open(file_path, 'rb') as f:
-                f.seek(info.data_offset)
-                remaining = info.data_size
+        # No broad swallow here: a read error mid-scan must propagate to
+        # trim_silence's error path. Silently returning partial boundaries
+        # made a truncated output file look like a successful trim.
+        with open(file_path, 'rb') as f:
+            f.seek(info.data_offset)
+            remaining = info.data_size
 
-                bytes_per_sample = max(1, info.bit_depth // 8) if info.bit_depth != 8 else 1
-                frame_size = bytes_per_sample * max(1, info.channels)
-                sample_index = 0
-                found_start = False
-                last_audio_sample = 0
+            bytes_per_sample = max(1, info.bit_depth // 8) if info.bit_depth != 8 else 1
+            frame_size = bytes_per_sample * max(1, info.channels)
+            sample_index = 0
+            found_start = False
+            last_audio_sample = 0
 
-                if frame_size == 0 or remaining <= 0:
-                    return 0, 0
+            if frame_size == 0 or remaining <= 0:
+                return 0, 0
 
-                carry = b''
-                while remaining > 0:
-                    data = f.read(min(CHUNK_SIZE, remaining))
-                    if not data:
-                        break
-                    remaining -= len(data)
-                    chunk = carry + data
+            carry = b''
+            while remaining > 0:
+                data = f.read(min(CHUNK_SIZE, remaining))
+                if not data:
+                    break
+                remaining -= len(data)
+                chunk = carry + data
 
-                    available = (len(chunk) // frame_size) * frame_size
-                    carry = chunk[available:]
-                    if available == 0:
-                        continue
+                available = (len(chunk) // frame_size) * frame_size
+                carry = chunk[available:]
+                if available == 0:
+                    continue
 
-                    mv = memoryview(chunk[:available])
-                    for frame_offset in range(0, available, frame_size):
-                        frame_peak = 0.0
-                        for channel in range(info.channels):
-                            sample_offset = frame_offset + channel * bytes_per_sample
-                            sample_bytes = mv[sample_offset:sample_offset + bytes_per_sample].tobytes()
-                            sample_value = self._decode_sample_bytes(sample_bytes, info.bit_depth)
-                            if sample_value is None:
-                                continue
-                            frame_peak = max(frame_peak, self._normalize_amplitude(sample_value, info.bit_depth))
+                mv = memoryview(chunk[:available])
+                for frame_offset in range(0, available, frame_size):
+                    frame_peak = 0.0
+                    for channel in range(info.channels):
+                        sample_offset = frame_offset + channel * bytes_per_sample
+                        sample_bytes = mv[sample_offset:sample_offset + bytes_per_sample].tobytes()
+                        sample_value = self._decode_sample_bytes(sample_bytes, info.bit_depth)
+                        if sample_value is None:
+                            continue
+                        frame_peak = max(frame_peak, self._normalize_amplitude(sample_value, info.bit_depth))
 
-                        if frame_peak >= threshold:
-                            if not found_start:
-                                start_sample = sample_index
-                                found_start = True
-                            last_audio_sample = sample_index
+                    if frame_peak >= threshold:
+                        if not found_start:
+                            start_sample = sample_index
+                            found_start = True
+                        last_audio_sample = sample_index
 
-                        sample_index += 1
+                    sample_index += 1
 
-                    del mv
+                del mv
 
-                if found_start:
-                    end_sample = last_audio_sample + 1
-                else:
-                    start_sample = end_sample = 0
-
-        except Exception:
-            pass
+            if found_start:
+                end_sample = last_audio_sample + 1
+            else:
+                start_sample = end_sample = 0
 
         return start_sample, end_sample
 
