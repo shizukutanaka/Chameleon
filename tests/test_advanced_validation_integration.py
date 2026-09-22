@@ -165,3 +165,40 @@ def test_main_block_self_test_writes_no_state_into_the_real_home(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "Verification: True" in result.stdout
     assert not (home / ".chameleon").exists()
+
+
+def test_sanitize_truncated_source_writes_actual_sizes(tmp_path):
+    # A source whose data chunk declares more than it holds used to be
+    # copied out under the *declared* size: the sanitized file's data
+    # chunk claimed 1000 bytes over a 10-byte body inside a RIFF size
+    # that overran the file -- output more corrupt than input. The
+    # sanitizer now writes the sizes it actually stored.
+    import struct as _st
+    from advanced_validation import SanitizationEngine
+
+    fmt = _st.pack("<HHIIHH", 1, 1, 44100, 88200, 2, 16)
+    payload = b"\x01" * 10
+    body = (b"fmt " + _st.pack("<I", 16) + fmt
+            + b"data" + _st.pack("<I", 1000) + payload)
+    src = tmp_path / "trunc.wav"
+    src.write_bytes(b"RIFF" + _st.pack("<I", 4 + 8 + 16 + 8 + 1000) + b"WAVE" + body)
+    dst = tmp_path / "clean.wav"
+
+    SanitizationEngine.sanitize_wav_metadata(src, dst)
+
+    out = dst.read_bytes()
+    assert _st.unpack("<I", out[4:8])[0] == len(out) - 8   # RIFF size consistent
+    # data chunk declares what it actually contains
+    assert out[36:40] == b"data"
+    assert _st.unpack("<I", out[40:44])[0] == 10
+
+
+def test_sanitize_rejects_non_riff_input(tmp_path):
+    from advanced_validation import SanitizationEngine
+
+    src = tmp_path / "not-a-wav.wav"
+    src.write_bytes(b"\x00" * 64)
+
+    import pytest as _pt
+    with _pt.raises(ValueError):
+        SanitizationEngine.sanitize_wav_metadata(src, tmp_path / "out.wav")

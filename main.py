@@ -17,6 +17,7 @@ import argparse
 import asyncio
 import math
 import re
+import threading
 import multiprocessing as mp
 from enum import IntEnum
 from pathlib import Path
@@ -602,6 +603,14 @@ class AudioProcessor:
         self.max_workers = max(1, min(self.config.max_workers, os.cpu_count() or 1))
         self.cache = {} if self.config.cache_enabled else None
         self.logger = None
+        # Output names already handed out this batch. Derived output paths
+        # collide whenever two same-stem inputs share an output directory
+        # (dirA/mix.wav and dirB/mix.wav both want out/mix_normalized.wav):
+        # sequential runs silently overwrite, parallel runs interleave two
+        # writes into one corrupt file. Claims are atomic so parallel
+        # workers race on the name, not the bytes.
+        self._claimed_output_paths: set = set()
+        self._output_claim_lock = threading.Lock()
         self.setup_logging()
 
     def update_worker_limits(self, *, max_workers: Optional[int] = None) -> None:
@@ -1517,6 +1526,8 @@ class AudioProcessor:
         """
 
         results: List[Dict] = []
+        with self._output_claim_lock:
+            self._claimed_output_paths.clear()
         safe_files, rejections = self._filter_safe_files(files)
 
         dry_run = bool(kwargs.pop("dry_run", False))
@@ -2080,7 +2091,15 @@ class AudioProcessor:
                 destination_dir = source_path.parent
 
             sanitized_name = SecurityValidator.sanitize_filename(f"{source_path.stem}{suffix}")
-            destination = destination_dir / sanitized_name
+            stem_part = Path(sanitized_name).stem
+            ext_part = Path(sanitized_name).suffix
+            with self._output_claim_lock:
+                destination = destination_dir / sanitized_name
+                counter = 1
+                while destination in self._claimed_output_paths:
+                    counter += 1
+                    destination = destination_dir / f"{stem_part}_{counter}{ext_part}"
+                self._claimed_output_paths.add(destination)
 
         if create_dirs:
             destination.parent.mkdir(parents=True, exist_ok=True)

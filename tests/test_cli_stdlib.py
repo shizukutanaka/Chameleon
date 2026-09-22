@@ -6,6 +6,7 @@ verify that delegation directly (so they run with or without numpy installed).
 """
 
 import time
+from pathlib import Path
 
 import pytest
 
@@ -81,3 +82,40 @@ def test_missing_dependency_op_is_internal_not_input(tmp_path):
         pytest.skip("numpy present; the unsupported path does not trigger")
     except main.UnsupportedOperationError as exc:
         assert main._error_kind(exc) == "internal"
+
+
+def test_batch_same_stem_inputs_do_not_share_one_output(tmp_path):
+    # dirA/mix.wav and dirB/mix.wav under --output-dir both wanted
+    # out/mix_normalized.wav: sequential runs silently overwrote the first
+    # file with the second's audio, parallel runs interleaved two writers
+    # into one corrupt file. Names are now claimed atomically per batch.
+    dir_a = tmp_path / "a"
+    dir_b = tmp_path / "b"
+    dir_a.mkdir()
+    dir_b.mkdir()
+    wav_a = write_sine_wave(dir_a / "mix.wav", amplitude=9000)
+    wav_b = write_sine_wave(dir_b / "mix.wav", amplitude=3000)
+    out_dir = tmp_path / "out"
+
+    processor = _processor()
+    results = processor.batch_process(
+        [str(wav_a), str(wav_b)], "normalize", output_dir=str(out_dir)
+    )
+
+    outputs = {r["output"] for r in results if "error" not in r}
+    assert len(outputs) == 2, results
+    for path in outputs:
+        assert Path(path).is_file()
+
+
+def test_batch_output_claims_reset_between_batches(tmp_path):
+    src = write_sine_wave(tmp_path / "mix.wav")
+    out_dir = tmp_path / "out"
+    processor = _processor()
+
+    first = processor.batch_process([str(src)], "normalize", output_dir=str(out_dir))
+    second = processor.batch_process([str(src)], "normalize", output_dir=str(out_dir))
+
+    # Re-running a batch reuses the canonical name (and overwrites) rather
+    # than inventing _2 -- claims are per-batch, not cumulative.
+    assert first[0]["output"] == second[0]["output"]
