@@ -2471,3 +2471,21 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22, which twin drifted):** audit 41 said "diff the guards,
+not the signatures" -- so which way does `analyze_async` diverge from
+`analyze`, and is diverging always a defect?
+**A:** Two drifts, one defect. The validation drift was a defect:
+`analyze_async` skipped four of five checks (size, content, existence,
+readability), so async accepted files sync rejected -- now mirrors.
+The *shape* drift was NOT a defect: it returned a JSON-ready dict the
+api_server layer and tests explicitly consume, and an attempted
+"unification" to AudioInfo broke two real callers in one test run.
+Meanwhile `process_directory_parallel` ignored `output_dir` (verified:
+outputs landed beside inputs) and `StructuredLogger` registered a
+StreamHandler per instance on the shared module logger (verified: N
+instances -> N copies of every record; fixed with a name-matched
+dedup, since the formatter class is defined per call and isinstance()
+can never see an earlier instance's). Lesson: before calling a
+divergence a defect, find who consumes the difference -- a contract
+two callers rely on is a feature wearing a bug's clothes.

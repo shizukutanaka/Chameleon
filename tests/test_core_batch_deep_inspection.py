@@ -92,3 +92,52 @@ def test_disguised_executable_is_filtered_from_batch_process_async(tmp_path):
     # summary = 2 results.
     assert len(results) == 2
     assert results[0].success
+
+
+# ------------------------------------------------------- twin-API parity ----
+#
+# Audit 42: analyze_async skipped four of analyze's five validation checks
+# (async accepted files sync rejected); process_directory_parallel
+# silently ignored output_dir; StructuredLogger added a handler per
+# instance (N instances -> every record emitted N times). The async
+# result's dict `data` is the documented shape api_server consumes and
+# is intentionally kept.
+
+def test_analyze_async_applies_sync_validation(tmp_path):
+    write_sine_wave(tmp_path / "tone.wav")
+    processor = core.WAVProcessor()
+    # A nonexistent file: sync reports 'File does not exist'; async used to
+    # skip that check (and the size/content/readability checks) entirely.
+    missing = str(tmp_path / "gone.wav")
+    sync_result = processor.analyze(missing)
+    async_result = asyncio.run(processor.analyze_async(missing))
+    assert sync_result.success is False
+    assert async_result.success is False
+    assert async_result.message == sync_result.message
+    # Valid file: dict-shaped data (the API contract), values match sync's.
+    ok = asyncio.run(processor.analyze_async(str(tmp_path / "tone.wav")))
+    assert ok.success and ok.data["sample_rate"] == 44100
+    assert "peak_level" in ok.data and "rms_level" in ok.data
+
+
+def test_parallel_batch_honours_output_dir(tmp_path):
+    write_sine_wave(tmp_path / "tone.wav")
+    out = tmp_path / "out"
+    parallel = core.ParallelBatchProcessor(core.WAVProcessor())
+    results = parallel.process_directory_parallel(
+        str(tmp_path), "normalize", output_dir=str(out))
+    assert all(r.success for r in results)
+    assert (out / "tone.normalized.wav").exists()
+    assert not (tmp_path / "tone.normalized.wav").exists()
+
+
+def test_structured_logger_attaches_one_handler():
+    import logging
+    logger = logging.getLogger("core")
+    before = sum(1 for h in logger.handlers
+                 if type(getattr(h, "formatter", None)).__name__ == "StructuredFormatter")
+    core.StructuredLogger()
+    core.StructuredLogger()
+    after = sum(1 for h in logger.handlers
+                if type(getattr(h, "formatter", None)).__name__ == "StructuredFormatter")
+    assert after - before <= 1

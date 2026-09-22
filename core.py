@@ -514,13 +514,36 @@ class WAVProcessor:
         except OSError as e:
             return ProcessingResult(False, f"File system error: {str(e)}")
     async def analyze_async(self, file_path: str) -> ProcessingResult:
-        """Asynchronously analyze WAV file with enhanced performance and error handling."""
+        """Asynchronously analyze WAV file with enhanced performance and error handling.
+
+        Mirrors the synchronous ``analyze``'s *validation* (it previously
+        skipped four of the five checks, so async accepted files sync
+        rejected). ``data`` deliberately stays a dict of the info fields +
+        peak/rms -- that is the shape api_server's JSON layer and the
+        existing tests consume, unlike sync's AudioInfo object.
+        """
         start = time.perf_counter()
         try:
+            loop = asyncio.get_running_loop()
+
             # セキュリティチェックを非同期で実行
             security_check = await self._async_security_check(file_path)
             if not security_check:
                 return ProcessingResult(False, "Security validation failed")
+
+            if not await loop.run_in_executor(
+                    None, security_validator.validate_file_size, file_path):
+                return ProcessingResult(False, "File too large or empty")
+
+            if not await loop.run_in_executor(
+                    None, security_validator.validate_audio_content, file_path):
+                return ProcessingResult(False, "Invalid or corrupted WAV file")
+
+            if not await loop.run_in_executor(None, os.path.exists, file_path):
+                return ProcessingResult(False, "File does not exist")
+
+            if not await loop.run_in_executor(None, os.access, file_path, os.R_OK):
+                return ProcessingResult(False, "File is not readable")
 
             # 非同期でファイル情報を取得
             info = await self._async_read_wav_header(file_path)
@@ -528,8 +551,13 @@ class WAVProcessor:
                 return ProcessingResult(False, self._header_rejection_reason
                                     or "Invalid WAV file format")
 
-            # 非同期でレベル計算を実行
-            peak_level, rms_level = await self._async_calculate_levels(file_path, info)
+            # 非同期でレベル計算を実行 -- the sync path warns and continues
+            # without levels rather than failing the whole analysis.
+            try:
+                peak_level, rms_level = await self._async_calculate_levels(file_path, info)
+            except Exception as calc_error:
+                self.logger.warning(f"Level calculation failed: {calc_error}")
+                peak_level, rms_level = info.peak_level, info.rms_level
 
             duration_ms = int((time.perf_counter() - start) * 1000)
             return ProcessingResult(
@@ -2361,6 +2389,27 @@ class ParallelBatchProcessor:
         if not wav_files:
             return []
 
+        # Honour output_dir like BatchProcessor's twins: it was silently
+        # ignored before, so outputs landed beside the inputs. Validate and
+        # create it the same way.
+        output_dir = kwargs.get("output_dir")
+        output_root = None
+        if output_dir:
+            try:
+                SecurityValidator.validate_directory(output_dir)
+            except SecurityError:
+                return [ProcessingResult(False, "Invalid output directory provided")]
+            output_root = Path(output_dir)
+            parent = output_root.resolve().parent
+            if not parent.exists() or not parent.is_dir():
+                return [ProcessingResult(False, "Parent directory for output is invalid")]
+            output_root.mkdir(parents=True, exist_ok=True)
+
+        def _output_for(file_path: Path, tag: str) -> Path:
+            if output_root is not None:
+                return output_root / f"{file_path.stem}.{tag}.wav"
+            return file_path.with_suffix(f".{tag}.wav")
+
         # ファイルサイズに基づいて優先順位付け（大きいファイルから処理）
         files_with_size = []
         for file_path in wav_files:
@@ -2382,14 +2431,14 @@ class ParallelBatchProcessor:
                 if operation == "analyze":
                     return await self.processor.analyze_async(str(file_path))
                 elif operation == "normalize":
-                    output_path = file_path.with_suffix('.normalized.wav')
+                    output_path = _output_for(file_path, 'normalized')
                     target_peak = kwargs.get('target_peak', 0.95)
                     return await self.processor.normalize_async(str(file_path), str(output_path), target_peak)
                 elif operation == "mono":
-                    output_path = file_path.with_suffix('.mono.wav')
+                    output_path = _output_for(file_path, 'mono')
                     return await self.processor.convert_to_mono_async(str(file_path), str(output_path))
                 elif operation == "trim":
-                    output_path = file_path.with_suffix('.trimmed.wav')
+                    output_path = _output_for(file_path, 'trimmed')
                     threshold = kwargs.get('threshold', 0.01)
                     return await self.processor.trim_silence_async(str(file_path), str(output_path), threshold)
                 else:
@@ -2466,7 +2515,15 @@ class StructuredLogger:
 
                 return json.dumps(log_entry, ensure_ascii=False)
 
-        # 構造化ログハンドラ
+        # 構造化ログハンドラ -- each instance used to add another
+        # StreamHandler to the shared module logger, so N live instances
+        # emitted every record N times. Attach at most once. (Match by
+        # class name: StructuredFormatter is defined per call, so an
+        # isinstance() check against this call's class can never see an
+        # earlier instance's formatter.)
+        if any(type(getattr(h, "formatter", None)).__name__ == "StructuredFormatter"
+               for h in self.logger.handlers):
+            return
         structured_handler = logging.StreamHandler()
         structured_handler.setFormatter(StructuredFormatter())
         self.logger.addHandler(structured_handler)
