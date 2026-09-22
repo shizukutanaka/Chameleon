@@ -113,6 +113,10 @@ class ClickRemover:
 
     def remove_clicks(self, audio: np.ndarray, sample_rate: int) -> np.ndarray:
         """Remove detected clicks"""
+        if audio.size == 0:
+            # 0-frame input is identity here and in every sibling below --
+            # the same convention main.repair_audio documents.
+            return audio.copy()
         result = audio.copy()
         clicks = self.detect_clicks(audio, sample_rate)
 
@@ -147,6 +151,10 @@ class CrackleRemover:
 
     def remove_crackle(self, audio: np.ndarray, sample_rate: int) -> np.ndarray:
         """Remove crackle using median filtering"""
+        if audio.size == 0:
+            # np.std([]) emits a RuntimeWarning this project's DSP gate
+            # treats as an error; a 0-frame file is identity instead.
+            return audio.copy()
         # Apply median filter to remove impulse noise
         filtered = median_filter(audio, size=self.median_filter_size)
 
@@ -197,6 +205,9 @@ class HumRemover:
 
     def remove_hum(self, audio: np.ndarray, sample_rate: int) -> np.ndarray:
         """Remove hum using notch filters"""
+        if audio.size == 0:
+            # np.fft.rfft([]) raises; a 0-frame file is identity.
+            return audio.copy()
         result = audio.copy()
 
         for base_freq in self.base_freqs:
@@ -298,6 +309,9 @@ class DeclippingProcessor:
         undetectable in principle: the plateau survives, but so does every
         innocent explanation for it.
         """
+        if audio.size == 0:
+            # np.max([]) raises "reduction with no identity".
+            return [], []
         peak = np.max(np.abs(audio))
         if peak <= 0:
             return [], []
@@ -369,6 +383,8 @@ class SpectralRepairer:
             raise RuntimeError(
                 "SpectralRepairer needs librosa, which is not installed."
             )
+        if audio.size == 0:
+            return audio.copy()
 
         # STFT
         stft = librosa.stft(audio, n_fft=self.fft_size, hop_length=self.hop_size)
@@ -468,6 +484,8 @@ class AdaptiveDenoiser:
                 "Install it, or use the numpy/scipy denoiser reached through "
                 "`chameleon process --denoise`."
             )
+        if audio.size == 0:
+            return audio.copy()
 
         # Estimate noise
         noise_profile = self.estimate_noise_profile(audio, sample_rate)
@@ -510,6 +528,9 @@ class VinylRestorer:
         """
         info: Dict[str, Any] = {"applied_processes": [], "skipped_processes": []}
         result = audio.copy()
+        if audio.size == 0:
+            info["snr_improvement"] = 0.0
+            return result, info
 
         # Remove clicks
         result = self.click_remover.remove_clicks(result, sample_rate)
@@ -593,6 +614,10 @@ class AudioRestorer:
         }
 
         result = audio.copy()
+        if audio.size == 0:
+            # A 0-frame file is identity through every stage; several of them
+            # (np.max, np.fft.rfft, np.std) raise or warn on empty input.
+            return result, info
 
         if mode == "vinyl":
             # Use specialized vinyl restoration
