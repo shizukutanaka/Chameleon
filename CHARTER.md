@@ -2471,3 +2471,27 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** Does `AudioRestorer.restore`'s `mode` mean anything
+beyond "vinyl"? And do the `midi compose`/`generate` banners claim work
+before the input is even validated?
+**A:** Two small honesty defects on the same theme -- a claim outrunning
+its check. `restore(mode=...)` accepted any string: the docstring
+advertised five modes but only two pipelines exist -- "vinyl" runs
+VinylRestorer and every other value (including the advertised
+"digital"/"voice"/"music") silently ran the same
+RestorationConfig-driven path while `info["mode"]` echoed the requested
+name; `mode="garbage"` was accepted and reported verbatim (verified
+live). Unknown modes now raise ValueError naming the two real ones, and
+the docstring documents exactly those two. In `midi compose`/`generate`
+the "Generating..." banner printed before `--key` validation, so a
+refused input still claimed the operation was starting -- the same
+banner-before-check defect the stream/server handlers were fixed for;
+the banners now print only after every rejecting check has passed.
+Also investigated and deliberately left alone this round: the known
+`test_sigint_during_processing_exits_interrupted` flake (rc -2/0/130
+observed under load). Python 3.11+ asyncio.Runner translates its
+SIGINT-driven task cancellation back into KeyboardInterrupt at the top
+level, so every reachable window already maps to 130; the observed
+variance is a signal-delivery-vs-shutdown race in the test itself, not a
+pinnable product defect.

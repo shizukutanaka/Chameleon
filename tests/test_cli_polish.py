@@ -332,3 +332,22 @@ def test_batch_warns_when_output_dir_is_inside_the_scan(tmp_path):
 
     apart = _run("batch", str(src), "normalize", "--output-dir", str(outside))
     assert "re-processed as inputs" not in apart.stderr
+
+
+def test_midi_generate_banners_do_not_precede_refusal(tmp_path):
+    # "Generating MIDI demo..." claimed generation, then --key refused --
+    # the same banner-before-validation defect the stream/server banners
+    # were fixed for. A refused input must not print a doing-it claim.
+    result = _run("midi", "generate", "--key", "bogus",
+                  "--output", str(tmp_path / "x.mid"))
+    assert result.returncode == 3
+    assert "unknown key" in result.stderr
+    assert "Generating" not in result.stdout
+    assert not (tmp_path / "x.mid").exists()
+
+
+def test_midi_compose_banner_does_not_precede_refusal(tmp_path):
+    result = _run("midi", "compose", "--key", "bogus")
+    assert result.returncode == 3
+    assert "unknown key" in result.stderr
+    assert "Generating" not in result.stdout
