@@ -419,3 +419,67 @@ def test_backup_workflow_verifies_an_intact_copy(tmp_path, monkeypatch, capsys):
 
     assert (dest_dir / "a.wav").exists()
     assert "verified successfully" in capsys.readouterr().out
+
+
+# --- quick_setup expands the user's path before using it ------------------
+
+def test_quick_setup_expands_tilde_in_the_custom_library_path(tmp_path, monkeypatch):
+    # The prompt took "~/Music" verbatim: Path() does not resolve "~", so a
+    # literal directory named "~" was created in the CWD and the config
+    # pointed nowhere.
+    import builtins
+    from pathlib import Path as _P
+    from personal_config import PersonalSetup
+
+    home = tmp_path / "home"
+    cwd = tmp_path / "cwd"
+    cwd.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.chdir(cwd)
+
+    answers = iter(["~/Music/MyAudio", "2", "n"])
+    monkeypatch.setattr(builtins, "input", lambda prompt="": next(answers))
+    config = PersonalSetup.quick_setup()
+
+    assert config.audio_library == str(home / "Music" / "MyAudio")
+    assert not (cwd / "~").exists()
+    assert (home / "Music" / "MyAudio").is_dir()
+
+
+def test_quick_commands_quote_the_library_path_in_cd_aliases(tmp_path, monkeypatch):
+    # `alias audio-lib='cd /path with space'` dies with "too many arguments";
+    # the generated aliases must quote the path the user picked.
+    from personal_config import PersonalConfig, PersonalSetup
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    config = PersonalConfig(audio_library="/tmp/My Music/Library")
+    PersonalSetup.create_quick_commands(config)
+
+    aliases = (tmp_path / "home" / ".chameleon" / "aliases.sh").read_text()
+    assert 'cd "/tmp/My Music/Library"' in aliases
+
+
+# --- scan_library honours the same validity gate the batch pipeline does --
+
+def test_scan_library_does_not_register_a_file_the_inspector_rejects(tmp_path, monkeypatch):
+    # DeepFileInspector.is_valid is False for non-WAV content (e.g. a text
+    # file renamed .wav) -- the scan used to catalogue it anyway, so the
+    # library claimed files the tool itself refuses to process.
+    import json
+    from tests._helpers import write_sine_wave
+    from personal_config import PersonalConfig, PersonalLibraryManager
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    library = tmp_path / "lib"
+    library.mkdir()
+    write_sine_wave(library / "real.wav", duration=0.05)
+    (library / "impostor.wav").write_bytes(b"this is not audio")
+
+    manager = PersonalLibraryManager(
+        PersonalConfig(audio_library=str(library)))
+    summary = manager.scan_library()
+
+    assert "impostor.wav" not in manager.library_db["files"]
+    assert "real.wav" in manager.library_db["files"]
+    assert summary["rejected_files"] == 1
+    assert "impostor.wav" in summary["rejected"]

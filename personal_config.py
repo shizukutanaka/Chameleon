@@ -150,7 +150,10 @@ class PersonalSetup:
         print(f"   Default: {config.audio_library}")
         custom_path = input("   Custom path (or press Enter): ").strip()
         if custom_path:
-            config.audio_library = custom_path
+            # Expanduser: Path("~/Music") does not resolve "~" -- the old code
+            # created a literal directory named "~" inside the current working
+            # directory and stored a path that leads nowhere.
+            config.audio_library = str(Path(custom_path).expanduser())
 
         # Performance mode
         print(f"\n⚡ Performance Mode")
@@ -231,9 +234,11 @@ alias audio-normalize='"{sys.executable}" "{Path.cwd()}/main.py" process --norma
 alias audio-denoise='"{sys.executable}" "{Path.cwd()}/main.py" process --denoise'
 alias audio-batch='"{sys.executable}" "{Path.cwd()}/main.py" batch "{config.audio_library}"'
 
-# Personal library management
-alias audio-lib='cd {config.audio_library}'
-alias audio-processed='cd {config.output_directory}'
+# Personal library management. The paths are quoted: a library under, say,
+# "~/My Music" made `cd /Users/x/My Music/Chameleon` fail with
+# "too many arguments".
+alias audio-lib='cd "{config.audio_library}"'
+alias audio-processed='cd "{config.output_directory}"'
 
 # Server
 alias audio-server='"{sys.executable}" "{Path.cwd()}/main.py" server --host 127.0.0.1 --port 8080'
@@ -331,6 +336,7 @@ class PersonalLibraryManager:
         inspector = DeepFileInspector()
         new_files = []
         updated_files = []
+        rejected_files = []
 
         for ext in self.config.supported_formats:
             for file_path in self.library_path.rglob(f"*{ext}"):
@@ -340,6 +346,13 @@ class PersonalLibraryManager:
                 if file_key not in self.library_db["files"]:
                     # New file
                     result = inspector.inspect_file(file_path)
+
+                    # The inspector is the same gate the batch pipeline runs:
+                    # a file it declares invalid (e.g. a text file renamed
+                    # .wav) must not enter the library as a normal entry.
+                    if not result.is_valid:
+                        rejected_files.append(file_key)
+                        continue
 
                     self.library_db["files"][file_key] = {
                         "path": str(file_path),
@@ -354,6 +367,10 @@ class PersonalLibraryManager:
                     # Check if modified
                     current_checksum = self.library_db["files"][file_key].get("checksum")
                     result = inspector.inspect_file(file_path)
+
+                    if not result.is_valid:
+                        rejected_files.append(file_key)
+                        continue
 
                     if result.checksum_sha256 != current_checksum:
                         self.library_db["files"][file_key].update({
@@ -370,8 +387,10 @@ class PersonalLibraryManager:
             "total_files": len(self.library_db["files"]),
             "new_files": len(new_files),
             "updated_files": len(updated_files),
+            "rejected_files": len(rejected_files),
             "new": new_files[:10],  # Show first 10
-            "updated": updated_files[:10]
+            "updated": updated_files[:10],
+            "rejected": rejected_files[:10]
         }
 
     def add_tags(self, file_pattern: str, tags: list) -> None:

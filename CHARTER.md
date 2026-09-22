@@ -2471,3 +2471,31 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22, continued):** Does the onboarding layer do what it says
+-- does `personal_config.py setup` honour the path a user types, does the
+personal library register only real audio, and does `format_table`
+survive a ragged row?
+**A:** Three noes. `quick_setup` stored the custom library path verbatim:
+`Path("~/Music")` never resolves "~", so a user who answered the prompt
+with a tilde path got a literal directory named "~" created in the CWD, a
+config pointing nowhere, and aliases (`audio-lib`, `audio-batch`) baked
+with the bogus path. The path is now `expanduser()`-ed, and the `cd`
+aliases are quoted so a space in the library path no longer splits `cd`
+into "too many arguments". `PersonalLibraryManager.scan_library`
+catalogued every `*.wav` it found without reading
+`inspect_file().is_valid` -- the same magic-number gate the batch
+pipeline honours -- so a text file renamed `.wav` became a first-class
+library entry with a checksum and metadata. Files the inspector rejects
+are now skipped on both the new-file and re-scan paths and reported
+under `rejected`/`rejected_files` in the summary. And
+`TableFormatter.format_table` assumed every row matched the header
+count: a wider row died on a bare IndexError, a narrower one silently
+dropped the table's later columns. Wider rows now raise a ValueError
+naming the row; narrower ones are padded so the grid stays aligned.
+Also audited this cycle and found honest: `Path.rglob` does not recurse
+into symlinked directories in this environment (scan_library cannot be
+walked outside its root), `DeepFileInspector.inspect_file` correctly
+flags non-RIFF content as `is_valid=False`, and
+`IntegrityVerifier`-backed `backup_workflow` re-verifies the copies
+themselves rather than the sources.
