@@ -3252,3 +3252,25 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22):** `_enforce_rate_limit` gives each identifier its own
+deque and, past 200 keys, "opportunistically" deletes empty windows for
+other identifiers. A credential scan sprays unique
+`login:{ip}:{username}` identifiers -- does the dict actually stay
+bounded?
+**A:** No. A deque is trimmed only on that identifier's *own* call, so a
+one-shot caller's window is never emptied -- and the cleanup deleted only
+`not w` windows. Verified: 500 unique ids -> 500 windows; age every
+entry past the 60 s window, trigger cleanup -> still 501 (the window
+just pruned is the only live one removed... none were). Every expired
+window sat in the dict forever: the "bounded" limiter grew without
+bound on exactly the scan traffic it exists to resist. The cleanup now
+drops windows whose newest entry has expired (`w[-1] <= now - window`)
+-- such a window can never prune itself again, and live windows are
+untouched (501 -> 1 retained). Same audit: `_apply_band_gains` carried
+the even-N-only bin-width formula audit-66 fixed elsewhere --
+`sr/(2*(bins-1))` recovers the transform length only for even N. On an
+odd-length transform (the final partial block, or a whole odd numpy
+transform) every band boundary stretched by N/(N-1): at sr 44100, N
+1103, bin 50 (true 1999.1 Hz, mid band) was labelled 2000.9 Hz and got
+the *high* gain. The helper now takes the true transform length.
