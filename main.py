@@ -3356,18 +3356,30 @@ def cli() -> int:
     except KeyboardInterrupt:
         print("\nInterrupted", file=sys.stderr)
         return ExitCode.INTERRUPTED
+    except UnsupportedOperationError as exc:
+        # A required extra is missing -- an environment gap, deliberately
+        # not INPUT(3): the supplied path is not what is wrong.
+        print(f"Error: {exc}", file=sys.stderr)
+        return ExitCode.ERROR
+    except SecurityError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return ExitCode.SECURITY
     except (ValueError, FileNotFoundError) as exc:
         # The errors this CLI raises deliberately to tell the user something
-        # they can act on -- an unsupported file type, a missing file, a
-        # missing optional dependency. They reached the terminal as tracebacks,
-        # which buries the one line that mattered.
+        # they can act on -- an unsupported file type, a missing file, an
+        # out-of-domain value. They reached the terminal as tracebacks,
+        # which buries the one line that mattered. They exit INPUT(3), not
+        # ERROR(1): _error_kind already classifies these same exceptions
+        # "input" on the per-file paths, and a missing input file is the
+        # same user error whether it reaches us through `analyze` (3) or
+        # `midi extract` (was 1).
         #
         # Deliberately not `except Exception`. A genuine bug should still show
         # its traceback: turning a crash into a tidy "Error:" line would make
         # the tool wrong about itself in a new way, which is the failure mode
         # this project keeps having to undo.
         print(f"Error: {exc}", file=sys.stderr)
-        return ExitCode.ERROR
+        return ExitCode.INPUT
 
 
 if __name__ == "__main__":

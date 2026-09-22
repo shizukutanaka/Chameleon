@@ -321,12 +321,30 @@ class PluginLoader:
 
         if os.name == 'posix':
             try:
+                # Only chmod a directory this call created -- exist_ok=True
+                # means an existing directory's permissions must be left
+                # alone (listing plugins must not tighten a user's dir).
+                created = not resolved.exists()
                 resolved.mkdir(parents=True, exist_ok=True)
-                os.chmod(resolved, 0o750)
+                if created:
+                    os.chmod(resolved, 0o750)
             except PermissionError:
                 self.logger.warning(f"Insufficient permissions to secure directory {resolved}")
+            except OSError as exc:
+                # EROFS / ENOTDIR / ENOSPC: the directory cannot be created
+                # or secured, so it cannot be scanned -- a raw traceback is
+                # not an honest answer for a directory the caller supplied.
+                self.logger.warning(
+                    f"Unable to create or secure plugin directory "
+                    f"{resolved}: {exc}")
+                return None
         else:
-            resolved.mkdir(parents=True, exist_ok=True)
+            try:
+                resolved.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                self.logger.warning(
+                    f"Unable to create plugin directory {resolved}: {exc}")
+                return None
 
         return resolved
 
@@ -673,7 +691,14 @@ class PluginManager:
         # Create plugin directories if they don't exist
         for directory in self.config.plugin_directories:
             dir_path = Path(directory).expanduser()
-            dir_path.mkdir(parents=True, exist_ok=True)
+            try:
+                dir_path.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                # The loader's own resolver skips a directory it cannot
+                # create; a path that fails here (EROFS, ENOTDIR) must
+                # degrade the same way, not escape as a raw traceback.
+                self.logger.warning(
+                    f"Unable to create plugin directory {dir_path}: {exc}")
 
         # Auto-discover plugins if enabled
         if self.config.auto_discover:
