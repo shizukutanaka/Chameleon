@@ -410,8 +410,15 @@ class SpectralEditor:
 
             mask = self.get_selection_mask(selection)
 
-            # Estimate noise from selection
+            # Estimate noise from selection. An empty mask yields an empty
+            # sample set whose median is NaN -- and because the subtraction
+            # below runs over the WHOLE spectrogram, that NaN estimate
+            # would poison every bin, turning current_audio entirely NaN
+            # while the call reports success.
             noise_stft = self.stft[mask]
+            if noise_stft.size == 0:
+                self.logger.error("Noise reduction failed: empty selection")
+                return False
             noise_magnitude = np.median(np.abs(noise_stft))
 
             # Apply spectral subtraction to entire spectrogram

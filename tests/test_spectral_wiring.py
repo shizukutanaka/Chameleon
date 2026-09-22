@@ -110,3 +110,29 @@ def test_apply_spectral_mask_does_not_renormalize():
         src, 44100, low_gain=0.5, mid_gain=0.5, high_gain=0.5
     )
     assert max(abs(x) for x in out) < 0.3
+
+
+def test_noise_reduce_selection_refuses_an_empty_selection():
+    import pytest
+    # The noise estimate came from np.median over the selection's bins; an
+    # out-of-range selection produces an empty set whose median is NaN.
+    # The subtraction runs over the WHOLE spectrogram, so that NaN
+    # poisoned every bin -- current_audio came out entirely NaN and the
+    # call still returned True. An empty selection must be refused, like
+    # paste_selection's empty-target guard.
+    np = pytest.importorskip("numpy")
+    import spectral_editor
+
+    ed = spectral_editor.SpectralEditor()
+    t = np.linspace(0, 1, 44100)
+    ed.load_audio(0.3 * np.sin(2 * np.pi * 440 * t), 44100)
+
+    empty = spectral_editor.SpectralSelection(
+        time_start=99.0, time_end=100.0, freq_start=0.0, freq_end=100.0)
+    assert ed.noise_reduce_selection(empty) is False
+    assert np.isfinite(ed.current_audio).all()
+
+    real = spectral_editor.SpectralSelection(
+        time_start=0.1, time_end=0.2, freq_start=0.0, freq_end=2000.0)
+    assert ed.noise_reduce_selection(real) is True
+    assert np.isfinite(ed.current_audio).all()

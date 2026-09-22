@@ -2471,3 +2471,16 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+## Q103: noise_reduce_selection -- an empty selection NaN'd the whole file
+and still reported success?
+**A:** The noise estimate came from `np.median` over the selection's bins;
+an out-of-range selection yields an empty set whose median is NaN, and
+since the spectral subtraction runs over the *entire* spectrogram that
+NaN poisoned every bin -- current_audio came out 100% NaN while the call
+returned True and logged history. Now refuses like paste_selection's
+empty-target guard. Verified: empty -> False + audio stays finite; real
+selection -> True. Also confirmed honest siblings this cycle:
+enhance_selection / harmonic_enhance_selection / delete_selection are
+true no-ops on an empty mask (nothing mutated, True is honest);
+paste_selection's nonzero-support stamping is correct.
