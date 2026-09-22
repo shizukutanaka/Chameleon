@@ -283,3 +283,52 @@ def test_condition_expression_in_on_non_iterable_is_typed():
             _evaluate_condition_expression(bad, {})
 
     assert _evaluate_condition_expression('"x" in results["t"].status', {}) is False
+
+
+def _loop_workflow(iterations):
+    calls = []
+
+    def fn(**kwargs):
+        calls.append(1)
+        return "done"
+
+    cfg = {
+        "id": "w", "name": "loop", "type": "loop",
+        "metadata": {"iterations": iterations},
+        "tasks": [{
+            "id": "t", "name": "t",
+            "function": {"type": "lambda", "expression": "'done'"},
+            "inputs": {},
+        }],
+    }
+    workflow = ba.WorkflowBuilder().from_dict(cfg)
+    return workflow, calls, fn
+
+
+def test_loop_workflow_rejects_a_negative_iteration_count():
+    # Old behavior: range(-1) is empty, so the workflow reported success
+    # having executed nothing -- a silently zero-run job.
+    workflow, _, _ = _loop_workflow(-1)
+    with pytest.raises(ValueError, match="iterations"):
+        ba.WorkflowEngine().execute_workflow(workflow)
+
+
+def test_loop_workflow_accepts_a_numeric_string():
+    # Old behavior: range("2") crashed with TypeError. A numeric YAML value
+    # quoted by accident should still work.
+    workflow, _, _ = _loop_workflow("2")
+    res = ba.WorkflowEngine().execute_workflow(workflow)
+    assert sorted(res) == ["t_iter_0", "t_iter_1"]
+    assert all(r.status is ba.TaskStatus.COMPLETED for r in res.values())
+
+
+def test_loop_workflow_rejects_garbage_iterations():
+    workflow, _, _ = _loop_workflow("often")
+    with pytest.raises(ValueError, match="iterations"):
+        ba.WorkflowEngine().execute_workflow(workflow)
+
+
+def test_loop_workflow_zero_iterations_is_an_honest_noop():
+    # Contract pin: asking for zero iterations legitimately runs nothing.
+    workflow, _, _ = _loop_workflow(0)
+    assert ba.WorkflowEngine().execute_workflow(workflow) == {}

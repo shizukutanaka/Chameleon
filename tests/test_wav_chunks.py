@@ -294,3 +294,43 @@ def test_in_place_via_alias_and_symlink_also_refused(tmp_path):
         result = core.normalize(str(src), alias, 0.5)
         assert not result.success, alias
         assert src.read_bytes() == before
+
+
+# ------------------------------------------------- trim boundary scanning --
+
+def test_find_audio_boundaries_propagates_read_errors(tmp_path):
+    # Old behavior: `except Exception: pass` inside _find_audio_boundaries
+    # swallowed any read failure and returned whatever boundaries had been
+    # found so far -- so a mid-scan I/O error silently produced a shorter,
+    # "successful" trim. Failures now propagate to trim_silence's error path.
+    proc = core.WAVProcessor()
+    wav, _ = _plain(tmp_path)
+    info = proc._read_wav_header(str(wav))
+    assert info is not None
+
+    with pytest.raises(OSError):
+        proc._find_audio_boundaries(str(tmp_path / "deleted.wav"), info, 0.05)
+
+
+def test_trim_surfaces_mid_scan_failure_not_truncated_success(tmp_path, monkeypatch):
+    # The harm case: the scan already found audio above threshold when the
+    # read fails. The old `except Exception: pass` returned the partial
+    # boundaries, so trim wrote a shorter file and reported success. The
+    # exception must now surface through trim_silence's error path.
+    proc = core.WAVProcessor()
+    wav, _ = _plain(tmp_path)
+    out = tmp_path / "out.wav"
+
+    calls = {"n": 0}
+    real_decode = proc._decode_sample_bytes
+
+    def flaky_decode(data, bits):
+        calls["n"] += 1
+        if calls["n"] > 100:  # well past the first above-threshold frame
+            raise OSError("simulated mid-scan read failure")
+        return real_decode(data, bits)
+
+    monkeypatch.setattr(proc, "_decode_sample_bytes", flaky_decode)
+    result = proc.trim_silence(str(wav), str(out), 0.05)
+    assert not result.success
+    assert "mid-scan" in result.message

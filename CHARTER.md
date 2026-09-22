@@ -3252,3 +3252,33 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22):** Why can `except Exception: pass` never wrap a
+partial-progress loop, even when every inner failure mode is "handled"?
+
+**A:** Audit 56: `core._find_audio_boundaries` swallowed every exception in
+the scan loop and returned whatever boundaries it had found so far. A total
+failure failed closed -- (0,0) became "no audio content found" -- but a
+mid-scan failure returned *partial* boundaries, so `trim_silence` wrote a
+silently truncated output and reported success. That is the "success it did
+not earn" pattern: the fix is not a smarter except, it is no except -- the
+error propagates to `trim_silence`'s honest failure path. The shape to grep
+for is `except` around a loop that mutates a result the caller trusts:
+the swallow converts "I failed at 40%" into "the answer is 40% short".
+
+**Q (2026-09-22):** Why do numeric config fields need validation even when
+the failure mode is "only" a crash?
+
+**A:** Audit 56, same class as audit-28's `max_parallel: 0` busy-spin:
+`loop` workflows read `metadata.iterations` unchecked -- a string crashed
+with a bare `TypeError`, a negative silently ran zero tasks and reported
+success. `int()` coercion plus a `>= 0` check converts both into one clear
+`ValueError` naming the field. Config-file values are untrusted input in
+exactly the way CLI args are not (argparse validates types for free); every
+`config.get(...)` that feeds `range()`, slicing, or arithmetic deserves the
+same guard the parser would have applied. Also this cycle: the
+`--fail-fast` flag on `plugins audit` was real but invisible -- the
+docs-drift guard (`test_docs_reference_reality.py`) checks that documented
+imports/scripts exist, not that real flags are documented. Undocumented
+surface is a smaller dishonesty than undocumented failure, but the same
+kind.
