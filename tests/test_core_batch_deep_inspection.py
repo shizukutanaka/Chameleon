@@ -92,3 +92,66 @@ def test_disguised_executable_is_filtered_from_batch_process_async(tmp_path):
     # summary = 2 results.
     assert len(results) == 2
     assert results[0].success
+
+
+# ------------------------------------------------- sync/async contract drift --
+#
+# process_directory_async documents the same contract as process_directory,
+# but the two had drifted (audit 41): the async scan dispatched on the raw
+# operation string (so 'NORMALIZE' validated then failed every file),
+# followed symlinks the sync scan refuses, and never validated output_dir
+# or the numeric bounds. validate_directory also *raises* SecurityError
+# rather than returning a bool, so unsafe directories escaped as raw
+# exceptions on both paths instead of the documented error result.
+
+def test_async_batch_dispatches_normalized_operation(tmp_path):
+    write_sine_wave(tmp_path / "tone.wav")
+    out = tmp_path / "out"
+    processor = core.BatchProcessor()
+    results = asyncio.run(
+        processor.process_directory_async(str(tmp_path), "  NoRmAlIzE  ",
+                                          output_dir=str(out)))
+    per_file = results[:-1]
+    assert per_file and all(r.success for r in per_file)
+
+
+def test_async_scan_does_not_follow_symlinks(tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    write_sine_wave(outside / "target.wav")
+    inside = tmp_path / "inside"
+    inside.mkdir()
+    (inside / "linked.wav").symlink_to(outside / "target.wav")
+    processor = core.BatchProcessor()
+    results = asyncio.run(
+        processor.process_directory_async(str(inside), "analyze"))
+    # The dir contains only a symlink: the async scan must not follow it.
+    assert len(results) == 1
+    assert results[0].message == "No WAV files found"
+
+
+def test_unsafe_directory_returns_error_result_not_exception(tmp_path):
+    processor = core.BatchProcessor()
+    sync_result = processor.process_directory("/tmp/../bad\x00dir", "analyze")
+    async_result = asyncio.run(
+        processor.process_directory_async("/tmp/../bad\x00dir", "analyze"))
+    assert sync_result[0].success is False
+    assert async_result[0].success is False
+    assert "Invalid directory" in sync_result[0].message
+    assert "Invalid directory" in async_result[0].message
+
+
+def test_batch_bounds_match_per_op_bounds(tmp_path):
+    write_sine_wave(tmp_path / "tone.wav")
+    processor = core.BatchProcessor()
+    # normalize rejects target_peak <= 0 per file; the batch-level guard
+    # must reject the same value up front, not fail every file downstream.
+    result = processor.process_directory(
+        str(tmp_path), "normalize", target_peak=0.0)
+    assert result[0].success is False and "target_peak" in result[0].message
+    result = processor.process_directory(
+        str(tmp_path), "trim", threshold=1.0)
+    assert result[0].success is False and "threshold" in result[0].message
+    result = asyncio.run(processor.process_directory_async(
+        str(tmp_path), "trim", threshold=0.0))
+    assert result[0].success is False and "threshold" in result[0].message
