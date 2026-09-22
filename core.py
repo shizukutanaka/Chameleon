@@ -24,6 +24,7 @@ import tempfile
 import logging
 import warnings
 import gc
+import threading
 from pathlib import Path
 import asyncio
 from typing import Union, Optional, Dict, List, Any, Tuple, Callable
@@ -358,8 +359,21 @@ class PerformanceTracker:
     """Lightweight performance tracking - Carmack style."""
 
     def __init__(self):
-        self.start_time = 0
+        # Per-call state must live in thread-local storage: the shared
+        # module-level _processor runs analyze/normalize concurrently under
+        # main.py's ThreadPoolExecutor batch path, and a plain attribute
+        # made two parallel analyzes time each other's run -- the first
+        # end() reported ~0ms and the second the sum of both.
+        self._tls = threading.local()
         self.operations = {}
+
+    @property
+    def start_time(self):
+        return getattr(self._tls, 'start_time', 0)
+
+    @start_time.setter
+    def start_time(self, value):
+        self._tls.start_time = value
 
     def start(self):
         """Start timing."""
@@ -402,6 +416,19 @@ class WAVProcessor:
         self.perf = PerformanceTracker()
         self.memory_manager = MemoryManager()
         self.logger = logging.getLogger(__name__)
+        # _header_rejection_reason is per-call state on a shared singleton:
+        # two threads parsing different bad files at once bled each other's
+        # reasons (a float-WAV 'unsupported encoding' arriving as the
+        # generic 'invalid format' of the file in the other thread).
+        self._reason_tls = threading.local()
+
+    @property
+    def _header_rejection_reason(self):
+        return getattr(self._reason_tls, 'reason', None)
+
+    @_header_rejection_reason.setter
+    def _header_rejection_reason(self, value):
+        self._reason_tls.reason = value
 
     @staticmethod
     def _decode_sample_bytes(sample_bytes: bytes, bit_depth: int) -> Optional[int]:
@@ -775,8 +802,17 @@ class WAVProcessor:
                         body = f.read(min(chunk_size, 40))
                         if len(body) < 16:
                             return None
-                        format_tag, channels, sample_rate, _byte_rate, _block_align, bits_per_sample = \
+                        format_tag, channels, sample_rate, _byte_rate, block_align, bits_per_sample = \
                             struct.unpack('<HHIIHH', body[:16])
+                        if block_align != channels * (bits_per_sample // 8):
+                            # RIFF requires PCM block_align ==
+                            # channels * bits_per_sample/8. A file that
+                            # disagrees has padded or packed frames; we
+                            # used to decode it at the wrong stride and
+                            # report a wrong duration (verified: a 6-byte
+                            # alignment on 2ch/16bit read 6.8e-5s where
+                            # the real 2 frames are 4.5e-5s).
+                            return None
                         if format_tag == 0xFFFE:
                             if len(body) < 40:
                                 return None

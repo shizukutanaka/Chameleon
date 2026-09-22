@@ -150,3 +150,76 @@ class SecurityValidatorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestWavHeaderAndThreadState(unittest.TestCase):
+    """Per-call state on the shared WAVProcessor singleton must be
+    thread-local -- the parallel batch path runs core.analyze on it
+    concurrently."""
+
+    def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.tmp_path = Path(self.tmp_dir.name)
+
+    def tearDown(self):
+        self.tmp_dir.cleanup()
+
+    def test_block_align_mismatch_rejected(self):
+        # A fmt chunk whose block_align disagrees with channels*bits/8
+        # used to parse anyway, then get decoded at the wrong stride and
+        # report a wrong duration.
+        import core as _core
+        fmt = struct.pack("<HHIIHH", 1, 2, 44100, 44100 * 6, 6, 16)
+        data = b"\x00" * 12
+        wav = (b"RIFF" + struct.pack("<I", 4 + 8 + 16 + 8 + len(data)) + b"WAVE"
+               + b"fmt " + struct.pack("<I", 16) + fmt
+               + b"data" + struct.pack("<I", len(data)) + data)
+        bad = self.tmp_path / "bad_align.wav"
+        bad.write_bytes(wav)
+
+        processor = _core.WAVProcessor()
+        self.assertIsNone(processor._read_wav_header(str(bad)))
+
+    def test_header_rejection_reason_is_thread_local(self):
+        # Two threads parsing different bad files at once bled each
+        # other's rejection reasons through this shared attribute.
+        import threading
+        import core as _core
+
+        processor = _core.WAVProcessor()
+        processor._header_rejection_reason = "main-thread reason"
+
+        seen = []
+
+        def worker():
+            seen.append(processor._header_rejection_reason)
+
+        thread = threading.Thread(target=worker)
+        thread.start()
+        thread.join()
+
+        self.assertIsNone(seen[0])
+        self.assertEqual(processor._header_rejection_reason, "main-thread reason")
+
+    def test_performance_tracker_start_time_is_thread_local(self):
+        # A parallel worker's end() used to read the main thread's
+        # start_time and report a duration it never measured.
+        import threading
+        import time
+        import core as _core
+
+        tracker = _core.PerformanceTracker()
+        # Backdate: a worker reading this shared attribute reports ~10s it
+        # never measured; with thread-local storage it sees no start at all.
+        tracker.start_time = time.perf_counter() - 10
+
+        durations = []
+
+        def worker():
+            durations.append(tracker.end("op"))
+
+        thread = threading.Thread(target=worker)
+        thread.start()
+        thread.join()
+
+        self.assertEqual(durations, [0])

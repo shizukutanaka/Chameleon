@@ -2471,3 +2471,21 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22, shared-singleton state):** `core._processor` runs
+concurrently under the parallel batch path -- what lives on `self` that
+belongs to one call?
+**A:** Two things, and both bled. `_header_rejection_reason` is written
+inside `_read_wav_header` and read after it returns: two threads
+parsing different bad files at once delivered each other's rejection
+messages (a float WAV's 'unsupported encoding' arriving as the other
+thread's generic 'invalid format'). `PerformanceTracker.start_time`
+worked the same way: `start()`/`end()` on a shared tracker meant two
+parallel analyzes timed each other. Both are now thread-local behind
+identical property interfaces -- per-call state on a shared singleton
+is thread-local state or it is a race. In the same pass the header
+parser gained a `block_align == channels * bits_per_sample/8` check: a
+file that disagrees (verified: 6-byte alignment on 2ch/16bit) was
+decoded at the wrong stride and reported a duration 50% off the real
+frame count -- the parser already rejects what it cannot read
+honestly, and a lying alignment is exactly that.
