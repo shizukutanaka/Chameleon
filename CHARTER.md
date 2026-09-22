@@ -2471,3 +2471,23 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22, continued):** `k8s-deployment.yaml`'s header claimed it was
+"verified against the code" -- and the probes, port and env names were. Did
+the operator-facing config it ships actually reach the code?
+**A:** No, twice. The ConfigMap embedded a `production.yaml` blob (~40 keys:
+`enable_intrusion_detection`, `enable_simd`, `session_timeout`, a `backup:`
+section) mounted at /app/config -- a path no code opens; the app's entire
+config surface is CHAMELEON_* env vars. Editing it changed nothing, and the
+"verified" header made the fiction more believable, not less. The Secret
+committed base64 credentials under names nothing reads either
+(`api-token`, `master-key`, `encryption-key`) -- envFrom injected them, but
+the app reads CHAMELEON_API_KEY, so the optional API-key check the operator
+believed was configured was silently disabled. Deployments files are code:
+a key nobody consumes is the same defect as a flag nobody parses, and a
+secret committed to git is a defect even when it is ignored. The ConfigMap
+now carries only real CHAMELEON_* vars via envFrom configMapRef; the Secret
+lists the real names with REPLACE_WITH_* stringData placeholders; the
+vestigial /app/config mount is gone. tests/test_k8s_config_is_real.py guards:
+declared env names must appear in the source's os.environ reads, and no
+base64 data: creds may return.

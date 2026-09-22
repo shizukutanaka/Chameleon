@@ -8,6 +8,19 @@
 # It previously declared containerPort 8080 while the app listens on 8000, so
 # every probe would have failed and no pod would ever have become ready. It
 # also scraped a /metrics endpoint the API does not expose. See CHARTER.md §9.
+#
+# 2026-09-22: the ConfigMap carried a ~40-key `production.yaml` that nothing
+# reads -- `enable_intrusion_detection`, `enable_simd`, `session_timeout`,
+# a `backup:` section -- mounted at /app/config, which no code path opens.
+# An operator editing it changed nothing. The Secret held committed base64
+# placeholder credentials under names (`api-token`, `master-key`,
+# `encryption-key`) the app never reads either: it consults only
+# CHAMELEON_* env vars. `api-token` in particular gave the operator the
+# belief that the API-key layer was configured when CHAMELEON_API_KEY was
+# unset and that layer silently disabled (api_server.py get_current_user).
+# The ConfigMap now carries only real CHAMELEON_* variables (consumed via
+# envFrom configMapRef) and the Secret lists the real key names with
+# placeholder values the operator must replace.
 # Chameleon Audio Tool - Kubernetes Production Deployment
 # Enterprise-grade deployment with high availability and security
 
@@ -71,56 +84,25 @@ metadata:
   labels:
     app: chameleon
     version: v1.1.0
+# Only env variables the code actually reads -- verified against
+# `grep -rn 'os.environ' *.py`. Each entry below becomes a process env var
+# via `envFrom: configMapRef` on the Deployment.
 data:
-  production.yaml: |
-    version: "2.0.0"
-    environment: "production"
-    deployment_id: "k8s-cluster"
-
-    security:
-      enable_authentication: true
-      enable_encryption: true
-      enable_audit_logging: true
-      enable_rate_limiting: true
-      session_timeout: 1800
-      rate_limit_requests_per_minute: 1000
-      enable_intrusion_detection: true
-
-    performance:
-      enable_parallel_processing: true
-      enable_simd: true
-      enable_caching: true
-      max_concurrent_operations: 100
-      worker_threads: 0
-      max_memory_usage_mb: 4096
-      cache_size_mb: 1024
-
-    network:
-      bind_address: "0.0.0.0"
-      port: 8000
-      enable_tls: false
-      connection_timeout: 30
-
-    logging:
-      level: "INFO"
-      enable_console: true
-      enable_file: true
-      log_file: "/app/logs/chameleon.log"
-      enable_json_logging: true
-      enable_structured_logging: true
-
-    monitoring:
-      # /health is the only endpoint the API exposes for probing; there is no
-      # Prometheus exporter, so no metrics port is declared anywhere here.
-      enable_health_checks: true
-      health_check_interval: 15
-
-    backup:
-      enable_backups: true
-      backup_interval: 1800
-      backup_location: "/app/backups"
-      backup_retention_days: 30
-      enable_remote_backup: false
+  # Worker threads for batch operations (core/main).
+  CHAMELEON_MAX_WORKERS: "8"
+  # Per-file size cap, bytes (default 500 MiB).
+  CHAMELEON_MAX_FILE_SIZE: "524288000"
+  # CORS origin allowlist and Host-header allowlist (api_server).
+  CHAMELEON_ALLOWED_ORIGINS: "https://localhost:3000"
+  # Comma-separated hostnames; unset = localhost/127.0.0.1 only.
+  # CHAMELEON_ALLOWED_HOSTS: "audio.example.com"
+  # Highest clearance a login may claim (default TOP_SECRET).
+  # CHAMELEON_API_MAX_CLEARANCE: "SECRET"
+  # Upload staging dir (defaults under the system temp dir) and chunk size.
+  # CHAMELEON_UPLOAD_DIR: "/app/data/uploads"
+  # CHAMELEON_UPLOAD_CHUNK_SIZE: "8388608"
+  # Optional path to the markdown doc surfaced on /docs and /info.
+  # CHAMELEON_API_DOC: "/app/docs/api_documentation.md"
 
 ---
 # Secret for sensitive configuration
@@ -133,11 +115,20 @@ metadata:
     app: chameleon
     version: v1.1.0
 type: Opaque
-data:
-  # Base64 encoded values
-  master-key: Q0hhbWVsZW9uU2VjdXJlS2V5MjAyNQ==
-  api-token: Q0hhbWVsZW9uQVBJVG9rZW4yMDI1
-  encryption-key: Q0hhbWVsZW9uRW5jcnlwdGlvbktleTIwMjU=
+# The application reads only these env names (api_server.py). The previous
+# manifest committed base64 placeholders under names nothing reads --
+# `api-token` looked like it configured auth while CHAMELEON_API_KEY was
+# unset, silently disabling the optional API-key check. Replace every value
+# below (or better: generate the secret out-of-band with
+# `kubectl create secret generic chameleon-secrets --from-literal=...` and
+# delete this manifest's data section) -- real credentials must never be
+# committed to git, not even base64-encoded.
+stringData:
+  # Enables the optional X-API-Key check on top of session auth.
+  CHAMELEON_API_KEY: "REPLACE_WITH_A_LONG_RANDOM_KEY"
+  # Dev-login credential pair for /login (password is a SHA-256 hash).
+  CHAMELEON_DEV_USERNAME: "REPLACE_WITH_USERNAME"
+  CHAMELEON_DEV_PASSWORD_HASH: "REPLACE_WITH_SHA256_OF_PASSWORD"
 
 ---
 # Persistent Volume Claims
@@ -238,8 +229,6 @@ spec:
           containerPort: 8000
           protocol: TCP
         env:
-        - name: CHAMELEON_MAX_WORKERS
-          value: "8"
         - name: POD_NAME
           valueFrom:
             fieldRef:
@@ -253,12 +242,11 @@ spec:
             fieldRef:
               fieldPath: spec.nodeName
         envFrom:
+        - configMapRef:
+            name: chameleon-config
         - secretRef:
             name: chameleon-secrets
         volumeMounts:
-        - name: config-volume
-          mountPath: /app/config
-          readOnly: true
         - name: data-volume
           mountPath: /app/data
         - name: logs-volume
@@ -316,10 +304,6 @@ spec:
             drop:
             - ALL
       volumes:
-      - name: config-volume
-        configMap:
-          name: chameleon-config
-          defaultMode: 0444
       - name: data-volume
         persistentVolumeClaim:
           claimName: chameleon-data-pvc
