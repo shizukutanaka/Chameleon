@@ -3252,3 +3252,23 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22):** Why rewrite `demo_plugins/spectrum_analyzer.py`'s
+analysis instead of leaving demo code approximate?
+
+**A:** Because a demo is documentation that executes -- users copy it as the
+reference for writing their own plugins, so its parameters and metric names
+must mean what they say. Three defects were verified, not suspected: the
+declared `overlap` parameter was never used (overlap 0.0 and 0.9 returned
+byte-identical results -- the same decorative-parameter defect class as
+audit-52's `retry_count`); the DFT computed N//4 bins and then reported only
+half of those, capping the analysed band at sr/8 (~5.5 kHz at 44.1 kHz) so a
+loud 15 kHz tone reported `peak_frequency: 0.0`; and `"spectral_flux"`
+reported the mean magnitude of a single window -- a level, not a flux. The
+fix keeps the demo honest without pretending to be production code: N//2
+bins cover the real signal's whole unique band to Nyquist, overlap drives a
+real hop between windows capped at a documented bound (the O(N^2) DFT stays
+bounded), and flux is the RMS bin-magnitude difference between consecutive
+windows, honestly 0.0 when only one window exists. Example code is part of
+the plugin API's contract; a template that computes the wrong thing teaches
+the wrong thing.
