@@ -276,11 +276,17 @@ def linear_resample(samples: Sequence[float], source_rate: int, target_rate: int
 def _apply_band_gains(
     spectrum: Sequence[complex],
     sample_rate: int,
+    transform_length: int,
     low_gain: float,
     mid_gain: float,
     high_gain: float,
 ) -> List[complex]:
-    bin_width = sample_rate / (2 * max(len(spectrum) - 1, 1))
+    # Bin width is sample_rate / N where N is the transform length -- the
+    # number of *spectrum bins* is N//2+1, so sr/(2*(bins-1)) recovers N only
+    # when N is even. An odd-length transform (the final partial block, or a
+    # whole odd-length numpy transform) used to stretch every band boundary
+    # by N/(N-1).
+    bin_width = sample_rate / max(transform_length, 1)
     adjusted: List[complex] = []
     for index, value in enumerate(spectrum):
         frequency = index * bin_width
@@ -318,7 +324,8 @@ def apply_spectral_mask(
     for start in range(0, len(buffer), step):
         block = buffer[start:start + step]
         spectrum = _discrete_fourier_transform(block)
-        adjusted = _apply_band_gains(spectrum, sample_rate, low_gain, mid_gain, high_gain)
+        adjusted = _apply_band_gains(
+            spectrum, sample_rate, len(block), low_gain, mid_gain, high_gain)
         processed.extend(_inverse_real_transform(adjusted, len(block)))
     return processed
 

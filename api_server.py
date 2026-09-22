@@ -205,10 +205,15 @@ def _enforce_rate_limit(identifier: str) -> None:
 
     # Opportunistic cleanup: every identifier gets its own deque, and a
     # one-shot caller (e.g. a scanner hitting many usernames) would otherwise
-    # leave an empty entry behind forever. Drop stale, now-empty windows for
-    # other identifiers so this dict doesn't grow unboundedly.
+    # leave an entry behind forever. A deque is only trimmed on that
+    # identifier's own call, so entries from callers who never return stay
+    # forever -- pruning only empty windows used to leave every expired
+    # window in place (verified: 500 stale ids -> 501 retained). A window
+    # whose newest entry has expired will never prune itself; drop it.
     if len(windows) > max(200, max_requests):
-        for stale_id in [k for k, w in windows.items() if not w]:
+        cutoff = now - window_seconds
+        for stale_id in [k for k, w in windows.items()
+                         if not w or w[-1] <= cutoff]:
             del windows[stale_id]
 
 # API Models
