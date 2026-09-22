@@ -3252,3 +3252,16 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22):** Can `IntegrityVerifier`'s manifest paths escape their
+directory -- and does `verify_manifest` survive a malformed manifest?
+**A:** Two defects in the integrity layer. `create_manifest(files,
+"../escape")` wrote `manifest_dir/../escape.json` -- the name is joined
+verbatim into `<name>.json`, so separators and `..` resolve outside the
+configured directory (verified on disk). The name is now validated as a
+plain file name: separators, `..`, empty and NUL are rejected with
+ValueError. And `verify_manifest` trusted the manifest shape: a JSON
+list crashed on `.items()` (`AttributeError`) and a non-dict entry
+crashed on `expected["checksum"]` (`TypeError`) -- hand-editable input
+failing with bare exceptions. Malformed structure now fails verification
+with an explicit issue instead.
