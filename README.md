@@ -125,7 +125,7 @@ chameleon process --trim --threshold 0.02 audio.wav
 chameleon process --master streaming audio.wav
 
 # Batch process directory
-# (operations: analyze/normalize/mono/trim/denoise/convert/effects)
+# (operations: analyze/normalize/mono/trim/denoise/restore/convert/effects)
 chameleon batch /path/to/audio/ normalize --target-peak 0.9 --output-dir /output/
 chameleon batch /path/to/audio/ effects --effects chain.json --output-dir /output/
 
@@ -157,8 +157,9 @@ Diagnostics go to **stderr**; results and `--json` output go to **stdout**.
 # Build image
 docker build -t chameleon:latest .
 
-# Run container
-docker run -v /audio:/data chameleon:latest analyze /data/file.wav
+# Run a CLI command through the entrypoint's `cli` verb (bare `analyze`
+# would be exec'd as a system binary and fail); no args starts the API server
+docker run -v /audio:/data chameleon:latest cli analyze /data/file.wav
 ```
 
 ## Configuration
@@ -173,7 +174,7 @@ export CHAMELEON_MAX_FILE_SIZE=524288000  # 500MB
 # Performance (CLI/core)
 export CHAMELEON_MAX_WORKERS=8
 export CHAMELEON_CHUNK_SIZE=131072  # 128KB
-export CHAMELEON_PERFORMANCE_MODE=fast  # fast, balanced, safe
+export CHAMELEON_PERFORMANCE_MODE=fast  # fast, safe, or auto (default)
 
 # API Server (api_server.py) — a separate process with its own settings.
 # CHAMELEON_MAX_FILE_SIZE above does NOT apply to it; its upload limit is
@@ -294,8 +295,9 @@ pip install numpy scipy librosa soundfile
 # Real-time processing
 pip install pyaudio
 
-# MIDI support
-pip install mido
+# MIDI support needs no extra packages: generation/composition is stdlib-only
+# (`mido` is not required); `midi extract`/`midi analyze` need the [audio]
+# extra for WAV decoding.
 
 # API server
 pip install fastapi uvicorn
@@ -340,10 +342,18 @@ curl http://localhost:8000/health
 
 The API server keeps an in-memory audit log (login, upload, analyze, normalize,
 download, batch-submit events) for the life of the process — it is not
-written to disk. Retrieve it while the server is running:
+written to disk. Reads need a session token; `X-API-Key` is only an extra
+check layered on top when `CHAMELEON_API_KEY` is set, not a standalone
+credential. Log in first (server credentials: `CHAMELEON_DEV_USERNAME` /
+`CHAMELEON_DEV_PASSWORD_HASH`):
 
 ```bash
-curl -H "X-API-Key: $CHAMELEON_API_KEY" http://localhost:8000/audit/log
+TOKEN=$(curl -s -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"<user>","password":"<password>","clearance_level":"UNCLASSIFIED"}' \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+curl -H "Authorization: Bearer $TOKEN" -H "X-API-Key: $CHAMELEON_API_KEY" \
+  http://localhost:8000/audit/log
 ```
 
 ## Contributing

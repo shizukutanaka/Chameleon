@@ -123,3 +123,116 @@ def test_real_imports_are_not_flagged():
     for module in ("core", "main", "bs1770_loudness", "security_validator"):
         assert (PROJECT_ROOT / f"{module}.py").is_file()
     assert "numpy" in EXTERNAL and "pytest" in EXTERNAL
+
+
+# --- Audit-63: README-level claims, checked against the code they name -------
+#
+# The checks above guard imports and scripts. README.md also makes factual
+# claims about the product -- CLI verbs, env-var values, auth mechanics,
+# installable packages -- and each of the ones below was wrong for months.
+# Every test pins the corrected claim, and every one was verified to fail on
+# the pre-fix README before it was written.
+
+def _readme():
+    return (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+
+
+def _readme_docker_run_verbs():
+    """Each `docker run` command's first positional after the image name."""
+    verbs = []
+    for match in re.finditer(r"docker run[^\n]*?chameleon:latest\s+([^\s]+)", _readme()):
+        verbs.append(match.group(1))
+    return verbs
+
+
+def test_readme_docker_run_uses_the_cli_verb():
+    # The entrypoint routes `cli` -> `python3 main.py ...` and a bare verb to
+    # `exec "$@"` (exec: analyze: not found). Only `cli`, `server` and `shell`
+    # reach the product.
+    verbs = _readme_docker_run_verbs()
+    assert verbs, "README shows no `docker run ... chameleon:latest <verb>`"
+    assert all(v == "cli" for v in verbs), (
+        f"README runs the container with bare verb(s) {verbs}; the "
+        "entrypoint exec's those as system binaries, so the command fails")
+
+
+def test_readme_batch_operations_match_argparse():
+    readme_ops = set()
+    match = re.search(r"\(operations:\s*([\w/]+)\)", _readme())
+    assert match, "README no longer lists batch operations"
+    readme_ops = set(match.group(1).split("/"))
+
+    source = (PROJECT_ROOT / "main.py").read_text(encoding="utf-8")
+    batch = re.search(r'add_parser\("batch".*?choices=\[([^\]]+)\]', source, re.S)
+    assert batch, "batch subparser choices not found in main.py"
+    argparse_ops = set(re.findall(r'"(\w+)"', batch.group(1)))
+
+    assert readme_ops == argparse_ops, (
+        f"README lists {sorted(readme_ops)} but argparse offers "
+        f"{sorted(argparse_ops)} -- a user cannot discover the difference")
+
+
+def test_readme_performance_mode_values_are_real():
+    # `fast`, `safe`, `auto` are the only modes _determine_chunk_size honours;
+    # anything else warns and falls back to auto. README claimed `balanced`.
+    line = next(
+        (l for l in _readme().splitlines() if "CHAMELEON_PERFORMANCE_MODE" in l),
+        "",
+    )
+    assert line, "README no longer documents CHAMELEON_PERFORMANCE_MODE"
+    comment = line.split("#", 1)[1] if "#" in line else ""
+    listed = set(re.findall(r"[a-z]+", comment.lower()))
+    assert listed <= {"fast", "safe", "auto", "default", "or", "only",
+                      "chunk", "size", "for", "larger", "smaller"}, (
+        f"README lists performance mode(s) the code never accepts: "
+        f"{sorted(listed)}")
+
+
+def test_readme_audit_log_example_shows_a_bearer_token():
+    # get_current_user requires an HTTPBearer session token; X-API-Key alone
+    # 401s before the key check is even reached -- it is a layered check on
+    # top, not a credential. The old README showed only the key.
+    text = _readme()
+    audit_idx = text.find("/audit/log")
+    assert audit_idx != -1, "README no longer shows the audit log"
+    section = text[max(0, audit_idx - 1500):audit_idx]
+    assert "Bearer" in section or "auth/login" in section, (
+        "README's /audit/log example still presents X-API-Key as the only "
+        "credential; a session Bearer token is required first")
+
+
+def test_readme_pip_installs_only_what_code_imports():
+    # Every `pip install <pkg>` the README teaches must be a package some
+    # product module actually imports -- `mido` was listed for months while
+    # nothing imported it (the .mid writer is stdlib `struct`).
+    imported = set()
+    for py in PROJECT_ROOT.glob("*.py"):
+        for match in re.finditer(
+                r"^\s*(?:import|from)\s+([A-Za-z_][\w]*)", py.read_text(
+                    encoding="utf-8", errors="replace"), re.M):
+            imported.add(match.group(1).lower())
+
+    taught = set()
+    for match in re.finditer(r"pip install\s+([^\n`]+)", _readme()):
+        for token in match.group(1).split("#", 1)[0].split():
+            name = token.strip()
+            if name.startswith(("-", ".", "'", '"')) or "[" in name:
+                continue
+            name = name.split("[")[0].split("=")[0].split("<")[0].split(">")[0]
+            if re.fullmatch(r"[A-Za-z_][\w-]*", name):
+                taught.add(name.lower().replace("-", "_"))
+
+    not_imported = taught - imported
+    assert not not_imported, (
+        f"README tells the reader to install {sorted(not_imported)} but no "
+        "module imports them -- installing changes nothing")
+
+
+def test_benchmark_doc_scopes_the_psutil_claim():
+    # psutil is imported exactly once, in api_server.py for /system/status.
+    # The doc claimed installing it enriched CLI "command summaries".
+    text = (PROJECT_ROOT / "docs/en/performance_benchmarks.md").read_text(
+        encoding="utf-8")
+    assert "command summaries" not in text, (
+        "performance_benchmarks.md still claims psutil feeds CLI command "
+        "summaries; it only enriches the API's /system/status")

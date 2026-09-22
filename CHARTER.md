@@ -3252,3 +3252,28 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22):** Why did README.md get an adversarial pass, and why are its
+corrected claims guarded by tests instead of prose fixes alone?
+**A:** The file taught five behaviors the product does not have, each verified
+by reproducing the failure: `docker run chameleon:latest analyze` exec's a
+bare verb as a system binary (the entrypoint needs `cli analyze`);
+`CHAMELEON_PERFORMANCE_MODE=balanced` names a value the code never accepts
+(it warns and falls back to `auto`); `pip install mido` installs a package
+nothing imports (the .mid writer is stdlib `struct`); the batch-ops list
+dropped `restore`; and the `/audit/log` curl presented `X-API-Key` as the
+whole credential -- HTTPBearer 401s before the key check is even reached,
+because the key is a check layered on top of session auth, not a credential.
+docs/en/performance_benchmarks.md credited `psutil` with feeding CLI
+"command summaries" (it only enriches the API's /system/status). A doc claim
+is executable behavior in the reader's terminal, so each fix is pinned by a
+test that fails on the pre-fix wording -- README bugs in this doc layer
+(nine fantasy pages, an OpenAPI spec that did not parse) survived because
+prose corrections carry no regression cost. One stale comment also fixed:
+pyproject.toml's "models use pydantic v1 syntax so pinned below 2" predated
+the v1/v2-tolerant _PATTERN_KW code; the pin stays as the conservative
+baseline and the comment now says so. Audited and found honest this cycle:
+docs/agents/{OPUS,SONNET}.md (self-dating claims), .dockerignore/.gitignore
+vs the Dockerfile COPY list, core.BatchProcessor's deliberately narrower
+ALLOWED_BATCH_OPERATIONS, /health's exact response shape, X-API-Key as a
+real header, and every other install path README names.
