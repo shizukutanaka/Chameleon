@@ -3,7 +3,8 @@
 **Status**: Beta. Standard-library CLI core is stable and tested; the suite is
 green in three dependency configurations (counts in the dated header of
 `PRODUCT_ANALYSIS.md` — that is the only place they are kept). REST API server
-works end-to-end with `pip install -e .[api]`. Container image builds and runs.
+works end-to-end with `pip install -e .[api]`. Container definition verified
+consistent with the entrypoints (build not run end-to-end here — see §6).
 No web frontend ships (see §5).
 **Last updated**: 2026-09-19 (the onboarding quick commands now invoke the
 interpreter that ran setup instead of a bare `python`, and the librosa
@@ -39,7 +40,7 @@ action.
   soundfile/pyaudio unlock `--master` (full mastering chain), noise
   reduction, format conversion, real-time streaming.
 - **Optional REST API** (`pip install -e .[api]`): `api_server.py`, a FastAPI
-  JSON REST adapter over the same stdlib core. Ships with 11 HTTP-level
+  JSON REST adapter over the same stdlib core. Covered by HTTP-level route
   tests (`tests/test_api_routes.py`).
 - **No web frontend ships.** `gui/` is an experimental, self-admittedly
   unwired React/TypeScript/Electron scaffold — not built by the Dockerfile,
@@ -104,12 +105,6 @@ end-to-end — recommend a maintainer run `docker build .` once to confirm).
 
 ## 3. Known-broken, deliberately left alone (recorded, not silently fixed)
 
-- **`BatchProcessor.process_directory` (sync)**: calls a nonexistent method,
-  `self._execute_operation`. Confirmed zero callers anywhere in the codebase
-  — only the async `process_directory_async` (via `core.batch_process_async`)
-  is actually used. Needs a decision: implement the sync method for parity,
-  or delete the dead one. Not fixed because it's new work outside whatever
-  task was in progress when it was found, not a one-line correction.
 - **`advanced_validation.py`'s `IntegrityVerifier`/`SanitizationEngine`**:
   real code, only reachable via `personal_config.py`, not wired into the
   default batch/load path. Left alone deliberately — security-affecting
@@ -145,9 +140,10 @@ requested but not yet obtained for these.
    "Government-focused" wording and a deleted SIMD-acceleration parameter
    removed from `api_server.py` in PR #23. See `CHARTER.md` §9.
 
-If you are a future session picking this up: re-ask the user about these
-three before deleting anything. Do not delete on the strength of this
-document's "recommended" framing alone.
+If you are a future session picking this up: re-ask the user about `gui/`
+before deleting it — the two struck-through items above already shipped.
+Do not delete on the strength of this document's "recommended" framing
+alone.
 
 ### 4a. NOT a deletion candidate: `personal_config.py`
 
@@ -165,16 +161,13 @@ is also covered by `tests/test_personal_config.py`. See CHARTER.md §9.
 
 ## 5. Deliberately kept as-is (real code, but a product-scope call, not a bug)
 
-Three more orphaned-but-real modules were reviewed and intentionally left
+Two more orphaned-but-real modules were reviewed and intentionally left
 unwired rather than deleted or integrated, because integrating them is a
 product-scope decision, not a mechanical fix:
 
 - **`spectral_editor.py`**: a full interactive spectral editor (selection
   regions, undo, visualization) — larger surface than this CLI's batch-WAV
   job-to-be-done.
-- **`audio_restoration.py`**: real DSP (click/hum/clip repair) but imports
-  numpy/scipy unconditionally (would need the same stdlib-install guard fix
-  as other modules before it could ship) and needs a new CLI subcommand.
 - **`batch_automation.py`**: a genuine DAG/scheduler engine, but wiring a
   generic task-orchestration framework into a "dependency-light auditable
   CLI" risks the exact "second product" scope creep CHARTER §4 forbids.

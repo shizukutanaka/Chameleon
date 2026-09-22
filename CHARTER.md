@@ -2471,3 +2471,38 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** `pyproject.toml` declares `requires-python = ">=3.8"`.
+Can the dev extra actually resolve on the floor the project advertises?
+**A:** No -- and it had been failing in CI on every run. The dev extra pulls
+`sphinx>=7.3` (needs Python 3.9), and `sphinx-rtd-theme`/`myst-parser` pull
+sphinx transitively, so `pip install -e '.[dev]'` cannot resolve *at all* on
+3.8: the pip-resolver step of every "Test Python 3.8" job died before a
+single test ran. Nothing in the repo builds Sphinx docs (no conf.py, no
+.rst, no sphinx import) -- the three packages are aspirational dev-docs
+tooling. All three are now gated `python_version>='3.9'`, so 3.8 installs
+the rest of the dev set and 3.9+ keeps them. Verified the fix evaluates
+exactly as pip does: `packaging.requirements.Requirement("sphinx>=7.3;
+python_version>='3.9'").marker.evaluate({'python_version': '3.8'})` is
+False; `tests/test_pyproject_python_floor.py` pins it -- every sphinx-family
+dev requirement must carry the marker, the marker must admit 3.9, and no
+other dev requirement may be marked off the floor.
+
+**Q (2026-09-22, continued):** PROJECT_STATUS.md claims to be the current
+state snapshot. Are its "known broken" claims still true of the code?
+**A:** Three were stale or self-undermining. §3 warned that
+`core.BatchProcessor` calls "a nonexistent method `self._execute_operation`"
+-- but `_execute_operation` exists (core.py:~2000) and is the documented
+per-op dispatch the parallel batch engine also uses; the bullet described a
+bug that is not there. §4's handoff list still told the next reader to
+"re-ask the user about `gui/`" though two of its three items were struck
+through and resolved. And the file carried an "11 HTTP-level tests" count --
+the exact category of hand-carried number §(test-counts rule) reserves to
+PRODUCT_ANALYSIS.md's dated header. All three corrected; the new
+`test_docs_reference_reality.py` guards fail the moment a status claim names
+a "nonexistent" symbol that exists, or a test count sneaks back in
+(mutation-verified by restoring the pre-fix file from origin/main). Also
+audited this cycle and found honest: all five `demo_plugins/` plugins do
+what they claim (peak/gain/four waveforms/feedback-comb reverb verified
+numerically); `setup.py`'s pydantic comment now matches the code's actual
+v1/v2 tolerance rather than calling the pin "v1 syntax".

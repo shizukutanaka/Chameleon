@@ -87,9 +87,14 @@ dev = [
     "safety>=3.2",
     "twine>=5.1",
     "build>=1.2",
-    "sphinx>=7.3",
-    "sphinx-rtd-theme>=2.0",
-    "myst-parser>=2.0"
+    # Dev-docs tooling only -- nothing in the repo builds Sphinx docs (no
+    # conf.py / .rst). sphinx>=7.3 needs Python 3.9, and the theme/myst-parser
+    # pull sphinx too, so all three are gated off the project's declared
+    # >=3.8 floor; without the markers `pip install -e .[dev]` cannot resolve
+    # on 3.8 at all (every CI 3.8 job failed dependency resolution on this).
+    "sphinx>=7.3; python_version>='3.9'",
+    "sphinx-rtd-theme>=2.0; python_version>='3.9'",
+    "myst-parser>=2.0; python_version>='3.9'"
 ]
 
 [project.scripts]

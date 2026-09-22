@@ -1,17 +1,22 @@
 # Chameleon — Product Analysis (Strengths, Weaknesses, Improvement Backlog)
 
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
-**Version:** 1.1.0 · **Tests:** re-run 2026-09-21 on Python 3.12, green in
-all three configurations — **477 passed** on a bare install (stdlib only,
-33 skipped), **557** with numpy (scipy/librosa/soundfile blocked, 33
-skipped), **662** with numpy + scipy + librosa + soundfile + fastapi
+**Version:** 1.1.0 · **Tests:** re-run 2026-09-22 on Python 3.12, green in
+all three configurations — **483 passed** on a bare install (stdlib only,
+33 skipped), **563** with numpy (scipy/librosa/soundfile blocked, 33
+skipped), **668** with numpy + scipy + librosa + soundfile + fastapi
 (5 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
 configurations do not cover the `[audio]` extra's librosa path; installing
 it on 2026-09-19 exposed a denoiser that damaged stationary material, and
 e2e-driving the real CLI the same day exposed an exit-code crash on
-fully-rejected input (see CHARTER.md §9).
+fully-rejected input (see CHARTER.md §9). A packaging-floor audit on
+2026-09-22 then found the declared >=3.8 Python floor unresolvable in the
+dev extra (sphinx>=7.3 needs 3.9 — every CI 3.8 job died at dependency
+resolution), fixed with `python_version` markers verified against pip's own
+evaluator, plus a PROJECT_STATUS.md "known broken" claim that named a
+method the code actually has.
 
 > Every claim in this file was re-checked against the code on the snapshot
 > date. Eight were false — including four "fast checks" in §4 that could no
