@@ -82,7 +82,12 @@ re-verified, not trusted.
   for it. A static audit of the suite in the same pass found no vacuous
   tests — no `assert True`, no `x == x`, nothing swallowing exceptions, and the
   only three assertion-free tests are "must not raise" checks where the call
-  itself is the assertion.
+  itself is the assertion. The 2026-09-22 pass verified each of its own
+  additions the same way: stashing the fix left three of the four new
+  plugin-directory tests red (a chmod'ed pre-existing dir, two raw
+  `OSError` tracebacks) and collapsed the cli() input-classification pins
+  back to ERROR(1); the surviving pin asserts the create-then-secure
+  contract a pre-existing directory must still hold.
 - **DSP claims are checked against ground truth, not eyeballed.** The
   regression suite asserts measured quantities — a clean sine survives
   restoration bit-exactly, a clipped signal comes back 14.5 dB closer to the

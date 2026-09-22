@@ -29,6 +29,7 @@ from pathlib import Path
 
 import pytest
 
+import main
 from tests._helpers import write_sine_wave
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -111,7 +112,12 @@ def test_a_missing_file_prints_a_message_not_a_traceback(tmp_path):
     )
 
     assert "Traceback" not in result.stdout + result.stderr
-    assert result.returncode == 1
+    # INPUT(3): a missing input file is the same user error here as in
+    # `analyze` -- cli() now classifies deliberate input errors as INPUT
+    # instead of collapsing every deliberate error into ERROR(1). Without
+    # numpy the dependency gate fires first and honestly reports ERROR(1):
+    # extraction cannot run at all, whatever the file's state.
+    assert result.returncode == (3 if main.HAS_NUMPY else 1)
 
 
 def test_an_unsupported_file_type_prints_a_message(tmp_path):
@@ -124,7 +130,29 @@ def test_an_unsupported_file_type_prints_a_message(tmp_path):
     )
 
     assert "Traceback" not in result.stdout + result.stderr
-    assert result.returncode == 1
+    assert result.returncode == (3 if main.HAS_NUMPY else 1)
+
+
+def test_missing_input_exits_input_across_commands(tmp_path):
+    # The same user mistake must report the same exit code everywhere:
+    # `analyze` emitted INPUT(3) through its per-path handling while
+    # `midi extract` reached cli()'s catch-all, which collapsed every
+    # deliberate error into ERROR(1) regardless of kind. (On a numpy-free
+    # install the midi commands' dependency gate answers ERROR(1) first --
+    # a capability gap, not bad input -- so those cases are conditional.)
+    missing = str(tmp_path / "nope.wav")
+
+    cases = {tuple(["analyze", missing]): 3,
+             tuple(["midi", "extract", "--input", missing]):
+                 3 if main.HAS_NUMPY else 1,
+             tuple(["midi", "analyze", "--input", missing]):
+                 3 if main.HAS_NUMPY else 1}
+    for args, expected in cases.items():
+        result = subprocess.run(
+            [sys.executable, "main.py", *args],
+            capture_output=True, text=True, cwd=str(REPO_ROOT),
+        )
+        assert result.returncode == expected, (args, result.stderr)
 
 
 def test_unexpected_exceptions_are_not_swallowed():

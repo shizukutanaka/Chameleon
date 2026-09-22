@@ -3252,3 +3252,20 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-21):** Can the same deliberate user error exit with a
+different code depending on which command hit it -- and can merely
+*listing* a plugin directory change it on disk?
+**A:** Yes to both. `cli()`'s catch-all flattened every deliberate error
+to ERROR(1): `midi extract --input missing.wav` exited 1 while `analyze`
+of the same missing file exits INPUT(3) -- `_error_kind`'s own docstring
+declares the ValueError/FileNotFoundError family INPUT(3). The catch-all
+now mirrors it: ValueError/FNFE -> INPUT, UnsupportedOperationError ->
+ERROR (a missing extra is a capability gap, deliberately not INPUT --
+the supplied path is not what is wrong), SecurityError -> SECURITY.
+And `_resolve_directory` chmod'ed *every* resolvable directory to 0o750
+on resolve -- `plugins list --directory` mutated a pre-existing dir's
+permissions -- while both it and `PluginManager.initialize` caught only
+PermissionError around mkdir, so ENOTDIR/EROFS escaped as a raw
+traceback. chmod now runs only on directories the call created, and
+mkdir failures degrade to warn+skip at both sites.
