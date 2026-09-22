@@ -3252,3 +3252,14 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+### 2026-09-21 (audit 131) — progress bar could render past 100%
+
+**Q:** `ProgressBar.set_progress`/`update` store a raw `current` that
+_render divides by `total`. What does a miscounting caller see?
+
+**A:** **250.0% and a bar 2.5x its declared width** — verified with
+`set_progress(25)` on `total=10`. `_render` now clamps the *displayed*
+fraction to [0, total] (the raw `n/total` count stays truthful — hiding a
+miscount would be its own lie) and treats `total <= 0` as "never renders"
+instead of dividing by it. Regression test pins "100.0%" + raw "25/10".

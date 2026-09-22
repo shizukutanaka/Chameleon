@@ -105,3 +105,17 @@ def test_format_table_rejects_row_wider_than_headers():
     # Short rows and exact rows still format.
     out = TableFormatter.format_table(["A", "B"], [["1"], ["2", "3"]])
     assert "A" in out and "B" in out
+
+
+def test_progress_bar_never_renders_past_100_percent(capsys):
+    # A caller that miscounts (or a resumed run re-reporting items) used to
+    # render "250.0%" and a bar wider than its declared width -- a lie about
+    # progress. The render now clamps display at the declared total while
+    # still showing the raw count.
+    from ux_improvements import ProgressBar
+    bar = ProgressBar(total=10, description="t")
+    bar.set_progress(25)
+    out = capsys.readouterr().out
+    assert "100.0%" in out
+    assert "250" not in out
+    assert "25/10" in out  # raw count stays honest
