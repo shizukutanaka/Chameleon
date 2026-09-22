@@ -7,7 +7,7 @@ This guide documents practical recovery steps for CLI-based deployments. The foc
 ## Core Principles
 
 - **Fail Fast**: Detect invalid paths or URLs through `security_validator.py` before heavy processing begins.
-- **Recover Predictably**: Retry only idempotent operations and record all attempts through `SecurityValidator.audit_log()`.
+- **Recover Predictably**: Retry only idempotent operations and record every attempt in the application log.
 - **Protect Evidence**: Preserve logs and temporary artifacts required for post-incident review.
 
 ## Common Failure Scenarios
@@ -25,12 +25,20 @@ This guide documents practical recovery steps for CLI-based deployments. The foc
 - **Audit**: Rejections are logged to `~/.chameleon/logs/chameleon.log` (or
   `$CHAMELEON_LOG_DIR/chameleon.log`). Note the corrective action.
 
-### 2. Network URL Rejection
-- **Symptoms**: URL rejected by `validate_url()` due to scheme or host.
+### 2. API Authentication Failure
+- **Symptoms**: `401 Invalid authentication token` or `403 Invalid API key`
+  from `main.py server` endpoints.
 - **Action**:
-  - Verify the domain is present in the allowlist controlled by `CHAMELEON_ALLOWED_ORIGINS`.
-  - Re-run the operation after updating the allowlist through change control.
-- **Audit**: Log the allowlist modification and attach change ticket identifiers.
+  - Expired or missing session — log in again via `POST /auth/login` to get
+    a fresh bearer token.
+  - When `CHAMELEON_API_KEY` is configured, every request must also carry
+    the `X-API-Key` header with the same value; a mismatch is a 403.
+  - If the key should not be required at all, `CHAMELEON_API_KEY` must be
+    unset in the service environment — a key the code never reads (e.g. an
+    injected env var under a different name) leaves the check silently off,
+    which is the opposite failure: verify what the process actually sees.
+- **Audit**: Authentication attempts and denials are recorded in
+  `$CHAMELEON_LOG_DIR/api-audit.log` (default `~/.chameleon/logs/`).
 
 ### 3. Disk Capacity Exhaustion
 - **Symptoms**: `OSError: No space left on device` during batch jobs.
@@ -45,16 +53,20 @@ This guide documents practical recovery steps for CLI-based deployments. The foc
 - **Symptoms**: Batch automation stops with timeout events.
 - **Action**:
   - Reduce `batch_automation.py` workload by splitting manifests.
-  - Re-run the job with `--workers 2` or lower.
+  - Re-run the job with fewer workers — `--max-workers` is a global flag
+    and goes before the sub-command:
+    ```bash
+    chameleon --max-workers 2 batch ./audio normalize --output-dir out/
+    ```
 - **Audit**: Capture updated job parameters in the audit log.
 
 ## Recovery Workflow
 
 ```python
 import logging
-from datetime import datetime, timezone
 from security_validator import SecurityValidator, SecurityError
 
+logger = logging.getLogger("recovery")
 validator = SecurityValidator()
 
 def guarded_operation(operation_name, func, *args, **kwargs):
@@ -65,26 +77,18 @@ def guarded_operation(operation_name, func, *args, **kwargs):
         try:
             return func(*args, **kwargs)
         except SecurityError as exc:
-            validator.audit_log(
-                event="operation.security_error",
-                details={
-                    "operation": operation_name,
-                    "attempt": attempts,
-                    "error": str(exc)
-                },
-                level="WARNING"
+            # Security rejections are never retried -- the input is the
+            # problem, not timing. Record and propagate.
+            logger.warning(
+                "%s rejected on attempt %d: %s",
+                operation_name, attempts, exc,
             )
             raise
         except OSError as exc:
             attempts += 1
-            validator.audit_log(
-                event="operation.retry",
-                details={
-                    "operation": operation_name,
-                    "attempt": attempts,
-                    "error": str(exc)
-                },
-                level="WARNING"
+            logger.warning(
+                "%s failed on attempt %d (of %d): %s",
+                operation_name, attempts, max_attempts, exc,
             )
             if attempts >= max_attempts:
                 raise

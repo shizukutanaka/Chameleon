@@ -2471,3 +2471,33 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** The CLI `batch` gather passed glob output straight to
+the pre-flight filter — did that admit anything the filter was never asked
+to exclude?
+**A:** A `.wav` file symlink whose target lives outside the scanned
+directory: the link passes every check because the *target* is a real WAV,
+so `batch` processed a file outside the scanned tree while core.py's own
+gather refuses the same link (`candidate.is_symlink()`). A `foo.wav`-
+named directory reached the deep-inspection gate as a rejection it should
+never have incurred. The gather now admits only
+`is_file() and not is_symlink()` -- mirroring core, so a link's target can
+never leak in through the name match.
+
+**Q (2026-09-22):** Docs were the last unaudited surface -- what did a
+verification read find?
+**A:** Wholesale fiction. `docs/en/batch_processing.md` described a `batch`
+that never existed: a sequential analyze-only walk with `--skip-errors`,
+`--max-files`, `--output`, `--format text|json|csv` (every flag exits 2
+in argparse, and every example omitted the required `operation`
+positional). `docs/en/error_recovery.md` built its playbook on
+`validator.audit_log(...)` and `validate_url()` -- neither method exists;
+it also taught `--workers 2` as a `batch` flag (the real one is global,
+`--max-workers`) and cast `CHAMELEON_ALLOWED_ORIGINS` as a URL allowlist.
+`docs/api_documentation.md` claimed `file_name` URLs are refused "by
+`SecurityValidator.validate_url()`" -- the endpoint rejects `http(s)://`
+inline with a 400. Docs get *read*, not *run*, which is how fiction
+survives longest there: the same doc was last "verified" in a header
+comment that was never true. The flag/method guards in
+tests/test_docs_reference_reality.py now pin every doc-invoked CLI flag
+to argparse and every doc-invoked validator method to the class.

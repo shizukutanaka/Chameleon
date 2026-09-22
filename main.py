@@ -2925,7 +2925,12 @@ async def main():
 
         gathered_files: List[Path] = []
         for ext in SUPPORTED_FORMATS:
-            gathered_files.extend(directory.glob(f"{pattern}{ext}"))
+            for candidate in directory.glob(f"{pattern}{ext}"):
+                # Mirrors core's gather: file symlinks (whose target can
+                # live outside the scanned tree) and non-regular entries
+                # like a `foo.wav` directory are not batch inputs.
+                if candidate.is_file() and not candidate.is_symlink():
+                    gathered_files.append(candidate)
 
         if not gathered_files:
             print("Warning: no supported audio files found.", file=sys.stderr)
