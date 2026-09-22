@@ -437,3 +437,35 @@ def test_sanitize_filename_keeps_names_with_real_characters():
     assert SecurityValidator.sanitize_filename("a..b") == "a..b"
     assert SecurityValidator.sanitize_filename("___...") == "___..."
     assert SecurityValidator.sanitize_filename("x") == "x"
+
+
+class TestOverlongNameDoesNotCrash:
+    """pathlib's exists()/stat() propagate OSError outside the ENOENT
+    family (ENAMETOOLONG on a >NAME_MAX component). Every validator entry
+    point must honour its contract -- validate_path returns False, the
+    others raise SecurityError -- instead of leaking a raw OSError."""
+
+    @pytest.fixture
+    def overlong(self):
+        return "a" * 1000
+
+    @pytest.fixture
+    def validator(self):
+        return SecurityValidator(SecurityConfig())
+
+    def test_validate_path_returns_false(self, validator, overlong):
+        assert validator.validate_path(overlong + ".wav") is False
+
+    def test_validate_file_path_raises_security_error(self, validator, overlong):
+        with pytest.raises(SecurityError):
+            validator.validate_file_path(overlong + ".wav", operation="read")
+
+    def test_validate_directory_raises_security_error(self, validator, overlong):
+        with pytest.raises(SecurityError):
+            validator.validate_directory(overlong)
+
+    def test_secure_open_does_not_leak_oserror(self, validator, overlong, tmp_path):
+        ops = __import__("security_validator").SecureFileOperations(validator)
+        with pytest.raises(SecurityError):
+            with ops.secure_open(tmp_path / (overlong + ".wav"), "rb"):
+                pass

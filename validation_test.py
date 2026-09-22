@@ -188,37 +188,76 @@ def test_performance_basic():
     print("✓ Performance test passed")
 
 def test_security_validation():
-    """Test basic security validation"""
+    """Exercise the real SecurityValidator -- previously this test only
+    re-checked its own private pattern list and printed a verdict, so it
+    could never fail."""
     print("Testing security validation...")
 
-    # Test path validation
-    dangerous_paths = [
-        "../../../etc/passwd",
-        "..\\..\\windows\\system32",
-        "/etc/passwd",
-        "C:\\Windows\\System32\\config",
-        "test\x00.wav",
-        "a" * 1000 + ".wav"  # Very long filename
+    from security_validator import SecurityValidator, SecurityError, SecurityConfig
+
+    # An explicit default config keeps the checks deterministic regardless
+    # of any CHAMELEON_TRUSTED_ROOTS the ambient environment may set.
+    validator = SecurityValidator(SecurityConfig())
+
+    # Inputs the validator must reject (returns False / raises
+    # SecurityError rather than crashing). An overlong filename used to
+    # leak a raw OSError out of every validator entry point.
+    rejected = [
+        ("..\\..\\windows\\system32", "backslash traversal"),
+        ("test\x00.wav", "embedded NUL"),
+        ("a" * 1000 + ".wav", "overlong filename"),
     ]
+    for path, why in rejected:
+        try:
+            result = validator.validate_path(path)
+        except Exception as e:
+            raise AssertionError(
+                f"validate_path crashed on {why}: {type(e).__name__}: {e}")
+        assert result is False, f"validate_path accepted {why}: {path[:50]}"
 
-    blocked_patterns = ['../', '..\\', '\x00', '/etc/', '/proc/', '/sys/']
-
-    for path in dangerous_paths:
-        is_dangerous = any(pattern in path.lower() for pattern in blocked_patterns)
-        is_dangerous = is_dangerous or len(path) > 500
-
-        if is_dangerous:
-            print(f"✓ Correctly blocked dangerous path: {path[:50]}...")
+        try:
+            validator.validate_file_path(path, operation="read")
+        except SecurityError:
+            pass
+        except Exception as e:
+            raise AssertionError(
+                f"validate_file_path raised {type(e).__name__} not "
+                f"SecurityError on {why}: {e}")
         else:
-            print(f"⚠ Path might need additional validation: {path}")
+            raise AssertionError(
+                f"validate_file_path accepted {why}: {path[:50]}")
+        print(f"✓ Rejected {why}: {path[:50]}...")
 
-    # Test file size limits
-    max_size = 500 * 1024 * 1024  # 500MB
-    test_sizes = [0, 1000, 1024*1024, max_size - 1, max_size + 1]
+    # A plain in-tree name must validate (no false positives on the
+    # common case).
+    assert validator.validate_path("ok.wav") is True
+    print("✓ Ordinary filename validates")
 
-    for size in test_sizes:
-        is_valid = 0 < size <= max_size
-        print(f"✓ Size {size:,} bytes: {'valid' if is_valid else 'invalid'}")
+    # Trusted-root containment: with roots configured, a resolved path
+    # outside every root is rejected even though the spelling is clean.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        validator = SecurityValidator(SecurityConfig(trusted_roots={tmpdir}))
+        inside = os.path.join(tmpdir, "inside.wav")
+        assert validator.validate_path(inside) is True
+        assert validator.validate_path("/etc/passwd") is False
+        try:
+            validator.validate_file_path("/etc/passwd", operation="read")
+        except SecurityError:
+            pass
+        else:
+            raise AssertionError("/etc/passwd accepted outside trusted root")
+    print("✓ Trusted-root containment enforced")
+
+    # File size limit: the validator's own cap, not a re-declared constant.
+    import security_validator
+    cap = security_validator.DEFAULT_MAX_FILE_SIZE
+    with tempfile.TemporaryDirectory() as tmpdir:
+        validator = SecurityValidator(SecurityConfig(max_file_size=cap))
+        probe = os.path.join(tmpdir, "probe.wav")
+        with open(probe, "wb") as fh:
+            fh.write(b"RIFF" + b"\x00" * 32)
+        assert validator.validate_file_size(probe) is True
+        print(f"✓ validate_file_size honours the {cap:,}-byte cap")
 
     print("✓ Security validation test passed")
 
@@ -247,14 +286,15 @@ def test_core_modules():
         print(f"✗ Missing standard library module: {e}")
         return False
 
-    # Test optional modules (warning if missing)
+    # Optional modules -- mirrors the [audio] extra in pyproject.toml.
+    # (rich/click used to be listed here but nothing imports them; the
+    # soundfile reader in main.py was missing.)
     optional_modules = [
         ("numpy", "Advanced numerical processing"),
         ("scipy", "Advanced signal processing"),
         ("librosa", "Audio analysis features"),
+        ("soundfile", "Non-WAV audio file I/O"),
         ("pyaudio", "Real-time audio processing"),
-        ("rich", "Enhanced CLI interface"),
-        ("click", "Advanced CLI features")
     ]
 
     for module, description in optional_modules:
@@ -305,7 +345,7 @@ def run_all_tests():
         print("🎉 All basic validation tests passed!")
         print("The core Chameleon system is ready for use.")
         print("\nTo install optional dependencies for advanced features:")
-        print("  pip install numpy scipy librosa pyaudio rich click")
+        print("  pip install -e .[audio]   # numpy scipy librosa soundfile pyaudio")
     else:
         print("❌ Some tests failed. Please check the implementation.")
 

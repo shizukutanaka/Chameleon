@@ -3252,3 +3252,24 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22, continued):** validation_test.py is the third leg of the
+verification gate -- does its `test_security_validation` actually exercise
+the security layer, and do the validators themselves keep their
+rejection contract on hostile input?
+**A:** Two defects, one on each side. (1) The gate's security leg tested
+only a private pattern list re-declared inside the test and *printed* a
+verdict -- it never imported `security_validator`, so it could not fail;
+same class as the audit-57 dead-step finding. It now drives the real
+`SecurityValidator` (backslash-traversal/NUL/overlong-name rejection,
+trusted-root containment, size cap). (2) Driving the real validator
+exposed its own contract leak: `Path.exists()`/`stat()` propagate OSError
+outside the ENOENT family (ENAMETOOLONG on a >NAME_MAX component), so
+`validate_path`/`validate_file_path`/`validate_directory`/`secure_open`
+all raised a raw OSError on an overlong name instead of returning False /
+raising SecurityError (verified empirically). All stat lookups now sit
+inside the exception handling their contracts promise. Also honesty in
+the same file: the optional-module list and trailing install hint named
+`rich`/`click` -- nothing imports them -- while omitting `soundfile`
+(main.py's non-WAV reader); the list now mirrors the [audio] extra and
+the hint points at `pip install -e .[audio]`.
