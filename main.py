@@ -82,6 +82,17 @@ def _json_export_default(obj):
             d["frequency_range"] = None
         if d.get("tempo") == 0.0:
             d["tempo"] = None
+        # A non-finite float is not a measurement either: a NaN/Inf sample
+        # in a float WAV otherwise serializes as the bare token `NaN`, which
+        # is not JSON. Unmeasured and unmeasurable both read as null.
+        for key, val in d.items():
+            if isinstance(val, float) and not math.isfinite(val):
+                d[key] = None
+            elif isinstance(val, (list, tuple)):
+                d[key] = type(val)(
+                    None if isinstance(item, float) and not math.isfinite(item) else item
+                    for item in val
+                )
         return d
     item = getattr(obj, 'item', None)
     if callable(item):  # numpy scalar -> Python scalar
@@ -800,9 +811,15 @@ class AudioProcessor:
         # measure; leave them at 0.0 rather than letting np.max() raise on
         # an identity-less reduction. The stdlib path already reports all
         # zeros for this input.
-        if audio.size:
-            metadata.peak_level = float(np.abs(audio).max())
-            metadata.rms_level = float(np.sqrt(np.mean(audio**2)))
+        #
+        # Non-finite samples (NaN/Inf are legal in float WAVs) are corrupted
+        # content, not a level: one NaN otherwise poisons peak, RMS and every
+        # spectral feature below into NaN, which --export then writes as the
+        # bare token `NaN` that is not JSON.
+        finite = audio[np.isfinite(audio)] if audio.size else audio
+        if finite.size:
+            metadata.peak_level = float(np.abs(finite).max())
+            metadata.rms_level = float(np.sqrt(np.mean(finite**2)))
 
         # Dynamic range
         if metadata.rms_level > 0:
@@ -811,8 +828,11 @@ class AudioProcessor:
         # Advanced features with librosa
         if HAS_LIBROSA and audio.size:
             try:
-                # Convert to mono for analysis
+                # Convert to mono for analysis. Non-finite samples poison
+                # every spectral feature the same way they poison peak/RMS,
+                # so drop them here too.
                 audio_mono = librosa.to_mono(audio) if audio.ndim > 1 else audio
+                audio_mono = audio_mono[np.isfinite(audio_mono)]
 
                 # librosa's default analysis window is 2048 samples. A shorter
                 # signal emits one UserWarning per call (stft, centroid, zcr,

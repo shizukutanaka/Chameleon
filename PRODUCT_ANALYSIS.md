@@ -82,7 +82,11 @@ re-verified, not trusted.
   for it. A static audit of the suite in the same pass found no vacuous
   tests — no `assert True`, no `x == x`, nothing swallowing exceptions, and the
   only three assertion-free tests are "must not raise" checks where the call
-  itself is the assertion.
+  itself is the assertion. The same stash-and-rerun check was repeated on
+  2026-09-22 for this branch's new tests: of the four added (two for
+  NaN-poisoned float-WAV stats, two for `sliding_window_rms`), the three
+  that guard a changed behaviour fail on the unfixed code and pass after;
+  the fourth pins an already-correct window clamp.
 - **DSP claims are checked against ground truth, not eyeballed.** The
   regression suite asserts measured quantities — a clean sine survives
   restoration bit-exactly, a clipped signal comes back 14.5 dB closer to the

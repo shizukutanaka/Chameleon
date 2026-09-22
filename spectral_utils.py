@@ -352,6 +352,9 @@ def sliding_window_rms(samples: Sequence[float], window_size: int) -> List[float
 
     buffer = _to_float_sequence(samples)
     if not buffer:
+        # Every other extractor in this module returns [] on empty input;
+        # here an empty buffer made window_size 0 and the loop still ran
+        # once, dividing by zero.
         return []
     if window_size > len(buffer):
         window_size = len(buffer)

@@ -294,3 +294,57 @@ def test_in_place_via_alias_and_symlink_also_refused(tmp_path):
         result = core.normalize(str(src), alias, 0.5)
         assert not result.success, alias
         assert src.read_bytes() == before
+
+
+def _float_wav(path, samples):
+    """Hand-assemble a float32 WAV (format tag 3)."""
+    import numpy as _np
+    payload = _np.asarray(samples, dtype=_np.float32).tobytes()
+    fmt = struct.pack('<HHIIHH', 3, 1, 44100, 44100 * 4, 4, 32)
+    blob = (b'RIFF' + struct.pack('<I', 4 + 8 + len(fmt) + 8 + len(payload))
+            + b'WAVE' + b'fmt ' + struct.pack('<I', len(fmt)) + fmt
+            + b'data' + struct.pack('<I', len(payload)) + payload)
+    path.write_bytes(blob)
+    return path
+
+
+@pytest.mark.skipif(not main.HAS_NUMPY, reason="float decode + analyze need numpy")
+def test_analyze_audio_drops_nonfinite_float_samples(tmp_path):
+    # NaN/Inf are legal float32 WAV content but are corrupted content, not a
+    # level: one NaN otherwise poisons peak/RMS into NaN, which --export then
+    # writes as the bare token `NaN` that is not JSON.
+    import json
+    import math as _math
+    import numpy as _np
+
+    samples = [0.0] * 3000
+    samples[10] = _math.nan
+    samples[20] = _math.inf
+    samples[100:200] = [0.5] * 100
+    wav = _float_wav(tmp_path / "f32.wav", samples)
+
+    processor = main.AudioProcessor()
+    audio, sr = processor.load_audio(str(wav))
+    metadata = processor.analyze_audio(audio, sr)
+
+    assert metadata.peak_level == pytest.approx(0.5)
+    assert metadata.rms_level > 0.0
+
+    exported = json.dumps(main._serialize_result(metadata),
+                          default=main._json_export_default)
+    assert "NaN" not in exported and "Infinity" not in exported
+    json.loads(exported)  # strict parse must succeed
+
+
+@pytest.mark.skipif(not main.HAS_NUMPY, reason="float decode + analyze need numpy")
+def test_analyze_audio_all_nan_file_reports_zeros(tmp_path):
+    import math as _math
+    import numpy as _np
+
+    wav = _float_wav(tmp_path / "nan.wav", [_math.nan] * 100)
+    processor = main.AudioProcessor()
+    audio, sr = processor.load_audio(str(wav))
+    metadata = processor.analyze_audio(audio, sr)
+
+    assert metadata.peak_level == 0.0
+    assert metadata.rms_level == 0.0
