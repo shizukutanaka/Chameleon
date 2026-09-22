@@ -2471,3 +2471,22 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22, continued):** Is per-engine state actually scoped to one
+workflow run, and does the async batch gather enforce the same admission
+contract as the sync one?
+**A:** Three defects. (1) `process_directory_async` admitted candidates
+with `is_file()` + suffix only -- no `is_symlink()` gate, unlike the sync
+`process_directory` beside it; a `.wav` symlink pointing outside the
+scanned tree passed pre-flight (the target is a real WAV) and was
+processed while the sync path refused it (verified: sync `[False]` "No
+WAV files found" vs async `[True, True]`). The async gather now applies
+the same refusal. (2) `WorkflowEngine.__init__` built `task_queue` and
+`dep_graph` once; `dep_graph.completed` persisted across
+`execute_workflow` calls, so re-running a DAG workflow on one engine
+silently executed zero tasks (verified: first run `['a','b']`, second
+`[]`). `_execute_dag` now rebuilds both per workflow. (3)
+`TaskQueue.remove_task` deleted only from `task_map` -- the
+PriorityQueue entry still surfaced, so a "removed" task ran anyway.
+`get_task` now lazily skips ids absent from the map; `is_empty` can
+linger True on ghost entries but the drain loop terminates correctly.

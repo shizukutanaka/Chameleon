@@ -1854,6 +1854,18 @@ class BatchProcessor:
         pattern = "**/*.wav" if kwargs.get("recursive", True) else "*.wav"
         for candidate in path.glob(pattern):
             if candidate.is_file() and candidate.suffix.lower() in SUPPORTED_FORMATS:
+                # Same containment rule as the sync gather above: a .wav
+                # symlink pointing outside the scanned tree passed the
+                # format inspection (the target is a real WAV) and was
+                # processed -- verified: a link to an out-of-tree file
+                # analyzed successfully while process_directory refused
+                # it. Refuse links here too.
+                try:
+                    if candidate.is_symlink():
+                        continue
+                except OSError:
+                    continue
+
                 if inspector is not None:
                     inspection = inspector.validate_for_processing(candidate)
                     if not inspection.is_valid:

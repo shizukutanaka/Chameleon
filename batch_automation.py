@@ -478,12 +478,19 @@ class TaskQueue:
             self.task_map[task.id] = task
 
     def get_task(self) -> Optional[BatchTask]:
-        """Get next task from queue"""
+        """Get next task from queue.
+
+        PriorityQueue cannot remove arbitrary entries, so remove_task only
+        deletes from task_map; entries removed there are skipped here
+        (lazy deletion). Without this check a "removed" task still ran.
+        """
         try:
-            _, _, task = self.queue.get_nowait()
-            with self.lock:
-                del self.task_map[task.id]
-            return task
+            while True:
+                _, _, task = self.queue.get_nowait()
+                with self.lock:
+                    if task.id in self.task_map:
+                        del self.task_map[task.id]
+                        return task
         except queue.Empty:
             return None
 
@@ -667,6 +674,16 @@ class WorkflowEngine:
 
     def _execute_dag(self, workflow: Workflow) -> Dict[str, TaskResult]:
         """Execute DAG workflow"""
+        # The graph and queue are engine state that must be rebuilt per
+        # workflow: dep_graph.completed persisted across calls, so
+        # re-running a DAG workflow on the same engine silently executed
+        # nothing -- every task id was already in `completed` and
+        # get_ready_tasks excluded them all (verified: second identical
+        # run returned {}). Stale queue entries likewise leaked into the
+        # next workflow.
+        self.dep_graph = DependencyGraph()
+        self.task_queue = TaskQueue()
+
         # Build dependency graph
         for task in workflow.tasks:
             self.dep_graph.add_task(task)
