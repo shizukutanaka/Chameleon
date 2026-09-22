@@ -3249,7 +3249,9 @@ async def main():
                 print(f"Error: unknown key '{args.key}' "
                       f"(expected e.g. C, F#, Bb)", file=sys.stderr)
                 return ExitCode.INPUT
-
+            # The banner claims a composition is being generated; print it
+            # only once every input that can refuse has passed (same rule
+            # as the stream/server banners).
             print("🎵 Generating musical composition...")
 
             mode = args.mode if args.mode is not None else "major"
@@ -3321,6 +3323,8 @@ async def main():
                 print(f"Error: unknown key '{args.key}' "
                       f"(expected e.g. C, F#, Bb)", file=sys.stderr)
                 return ExitCode.INPUT
+            # Same banner-order rule as compose above.
+            print("🎼 Generating MIDI demo...")
 
             print("🎼 Generating MIDI demo...")
 

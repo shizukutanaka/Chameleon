@@ -580,8 +580,20 @@ class AudioRestorer:
         Args:
             audio: Input audio
             sample_rate: Sample rate
-            mode: "auto", "vinyl", "digital", "voice", "music"
+            mode: "auto" runs the RestorationConfig-driven stages;
+                "vinyl" runs the dedicated VinylRestorer pipeline. Those
+                are the only two pipelines that exist -- this docstring
+                once also advertised "digital", "voice" and "music" modes
+                that never had distinct behavior (each silently ran the
+                same generic path while reporting its own name).
         """
+        if mode not in ("auto", "vinyl"):
+            raise ValueError(
+                f"Unknown restore mode {mode!r} (supported: 'auto', 'vinyl'). "
+                "'digital', 'voice' and 'music' were once accepted but had "
+                "no distinct pipeline -- they ran the same generic path "
+                "while reporting the requested name."
+            )
         info = {
             "mode": mode,
             "applied_processes": [],

@@ -360,3 +360,22 @@ def test_midi_compose_valid_key_still_prints_banner(tmp_path):
                 str(tmp_path / "ok.mid"))
     assert "Generating musical composition" in proc.stdout
     assert proc.returncode == 0
+
+
+def test_midi_generate_banners_do_not_precede_refusal(tmp_path):
+    # "Generating MIDI demo..." claimed generation, then --key refused --
+    # the same banner-before-validation defect the stream/server banners
+    # were fixed for. A refused input must not print a doing-it claim.
+    result = _run("midi", "generate", "--key", "bogus",
+                  "--output", str(tmp_path / "x.mid"))
+    assert result.returncode == 3
+    assert "unknown key" in result.stderr
+    assert "Generating" not in result.stdout
+    assert not (tmp_path / "x.mid").exists()
+
+
+def test_midi_compose_banner_does_not_precede_refusal(tmp_path):
+    result = _run("midi", "compose", "--key", "bogus")
+    assert result.returncode == 3
+    assert "unknown key" in result.stderr
+    assert "Generating" not in result.stdout
