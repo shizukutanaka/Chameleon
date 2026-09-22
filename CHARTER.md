@@ -2489,3 +2489,16 @@ while the EQ'd channel shows the boost. `normalize` on interleaved data
 was incidentally correct (global peak) but runs in deinterleaved space now
 for consistency. A buffer that cannot split whole frames keeps the legacy
 flat path rather than fabricating channels.
+
+**Q (2026-09-22, continued):** CI's "Test Python 3.9" leg has been red on
+every PR. Is it the code, or the suite itself?
+**A:** The suite itself. `requires-python = ">=3.8"` but
+`tests/test_no_orphan_modules.py` did a top-level `import tomllib` --
+Python 3.11+ -- so on the 3.8-3.10 legs the run died at collection
+("ModuleNotFoundError: No module named 'tomllib'") before a single test
+ran. The file opens pyproject.toml in binary mode, so `tomli` is a drop-in
+(same API); it now falls back to `import tomli as tomllib`. No dependency
+change: pytest already requires tomli on <3.11, so wherever the suite can
+collect at all, tomli is installed. Verified by blocking tomllib and
+re-pointing at a downloaded tomli: the module resolves and parses all 15
+declared py-modules.
