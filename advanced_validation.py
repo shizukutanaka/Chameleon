@@ -307,6 +307,8 @@ class DeepFileInspector:
         """Validate WAV file structure"""
 
         metadata = {}
+        warnings: List[str] = []
+        errors: List[str] = []
 
         try:
             with open(file_path, 'rb') as f:
@@ -345,13 +347,16 @@ class DeepFileInspector:
                                 "bits_per_sample": bits_per_sample
                             })
 
-                            # Validate format
+                            # Validate format -- collect, do not overwrite:
+                            # repeated assignment to metadata["warning"] meant
+                            # only the last of several problems was reported.
                             if format_tag != 1:  # PCM
-                                metadata["warning"] = f"Non-PCM format: {format_tag}"
+                                warnings.append(f"Non-PCM format: {format_tag}")
 
                             if channels < 1 or channels > 8:
-                                metadata["warning"] = f"Unusual channel count: {channels}"
+                                warnings.append(f"Unusual channel count: {channels}")
 
+<<<<<<< HEAD
                             # The full standard ladder: telephony/broadcast
                             # (8k-32k), consumer (44.1k/48k and halves), and
                             # the hi-res multiples up to 192k. Anything off
@@ -360,6 +365,13 @@ class DeepFileInspector:
                                                    32000, 44100, 48000, 88200,
                                                    96000, 176400, 192000):
                                 metadata["warning"] = f"Non-standard sample rate: {sample_rate}"
+||||||| parent of 1560eae8 (Socratic audit 75: WAV inspector reported only the last of several problems)
+                            if sample_rate not in [8000, 11025, 16000, 22050, 44100, 48000, 96000]:
+                                metadata["warning"] = f"Non-standard sample rate: {sample_rate}"
+=======
+                            if sample_rate not in [8000, 11025, 16000, 22050, 44100, 48000, 96000]:
+                                warnings.append(f"Non-standard sample rate: {sample_rate}")
+>>>>>>> 1560eae8 (Socratic audit 75: WAV inspector reported only the last of several problems)
 
                         # Skip any unread remainder of an oversized fmt body.
                         remainder = chunk_size - len(fmt_data)
@@ -375,15 +387,20 @@ class DeepFileInspector:
 
                 metadata["chunks"] = chunks_found
 
-                # Verify required chunks
+                # Verify required chunks -- a file can miss both.
                 if 'fmt ' not in chunks_found:
-                    metadata["error"] = "Missing fmt chunk"
+                    errors.append("Missing fmt chunk")
                 if 'data' not in chunks_found:
-                    metadata["error"] = "Missing data chunk"
+                    errors.append("Missing data chunk")
 
         except Exception as e:
             metadata["error"] = str(e)
+            return metadata
 
+        if warnings:
+            metadata["warnings"] = warnings
+        if errors:
+            metadata["errors"] = errors
         return metadata
 
 

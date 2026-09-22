@@ -3252,3 +3252,13 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22):** Does `_validate_wav_structure` report every problem it
+finds -- or only the last one?
+**A:** Only the last one. Warnings and errors were written by repeated
+assignment to single metadata keys: a float-format 9-channel 12345 Hz WAV
+produced three findings (non-PCM format, unusual channel count, non-standard
+sample rate) but reported just "Non-standard sample rate"; a WAV missing
+both `fmt ` and `data` reported only "Missing data chunk". Findings are
+now collected and returned as `warnings`/`errors` lists, so every problem
+survives to the caller.
