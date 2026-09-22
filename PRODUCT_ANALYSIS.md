@@ -336,6 +336,7 @@ here because they need a user decision first.
 | ~~P3~~ | ~~Pure-Python true-peak perf, or a documented cap note~~ | ~~Low~~ | ~~S~~ | ~~Low~~ | **DONE 2026-09-19** — chose the documented cap: §2 already states ~0.4 s per 65k-sample bounded prefix |
 | P4 | Plugin sandbox runtime boundary (restricted builtins for `exec_module`) | High (security) | L | High | Architectural; leaky if done partially — design first |
 | P4 | Surround-channel loudness weighting | Low | M | Low | Only if a real multichannel use case appears |
+| ~~P1~~ | ~~`mastering_chain` limiter dropped head/tail; (1,N) mono crashed the stereo paths~~ | ~~High~~ | ~~S~~ | ~~Low~~ | **DONE 2026-09-22** — the limiter emitted `lookahead` zeros at the head and silently dropped the last `lookahead` input samples; emit is now the actual input sample with a real lookahead window and a flushed tail. `Compressor`/`Limiter` dispatched on dimension count, so a (1,N) array read `audio[1]` and crashed; dispatch is on channel count. `lookahead=0` crashed on an empty `.max()`; `mono_freq` at/above Nyquist surfaced a raw scipy error — both now raise/dispatch cleanly |
 
 ---
 
@@ -369,8 +370,8 @@ python main.py --help
 
 **The deep check, worth running before any claim that the suite is sound:**
 break the code on purpose and confirm the suite notices. Revert one fix in the
-source, run only its test file, restore. Six known-good pairs, all verified to
-fail-then-pass on 2026-08-25:
+source, run only its test file, restore. Ten known-good pairs — the first six
+verified to fail-then-pass on 2026-08-25, the last four on 2026-09-22:
 
 | Revert | Should fail |
 |---|---|
@@ -380,6 +381,10 @@ fail-then-pass on 2026-08-25:
 | drop the `shutil.copyfile` in `core.py`'s already-mono branch | `tests/test_stdlib_operations.py` |
 | `np.round(scaled)` → `scaled` in `main.py` | `tests/test_quantization.py` |
 | any K-weighting coefficient × 1.001 in `bs1770_loudness.py` | `tests/test_bs1770_loudness.py` |
+| emit `extended_audio[i]` (drop the `+ emit` offset and the flush zeros) in `Limiter._process_mono` | `tests/test_mastering_wiring.py` |
+| dispatch `Compressor`/`Limiter` on `audio.ndim` instead of channel count | `tests/test_mastering_wiring.py` |
+| `max(1, self.lookahead_samples)` → `self.lookahead_samples` in the limiter window | `tests/test_mastering_wiring.py` |
+| drop the `mono_freq` range check in `StereoProcessor.setup_filters` | `tests/test_mastering_wiring.py` |
 
 A green suite that survives none of these is measuring nothing. Restore the
 file after each one — `git status` must come back empty.
