@@ -17,6 +17,7 @@ import os
 import sys
 import time
 import json
+import math
 import datetime
 import struct
 import shutil
@@ -1167,7 +1168,11 @@ class WAVProcessor:
                         mono_chunk.extend(mv[frame_offset:frame_offset + bytes_per_sample].tobytes())
                         continue
 
-                    avg_sample = int(sum(samples) / len(samples))
+                    # int() truncates toward zero -- a systematic ~0.5-LSB
+                    # inward bias on every output sample. Round to nearest,
+                    # matching _apply_gain_safe's writer: same op, same
+                    # quantization.
+                    avg_sample = int(round(sum(samples) / len(samples)))
                     mono_chunk.extend(self._encode_sample_value(avg_sample, info.bit_depth))
 
                 if mono_chunk:
@@ -2156,13 +2161,16 @@ class EnhancedSecurityValidator:
             if stat.st_mtime > time.time():
                 return False  # Future modification time
 
-            # Check for suspicious file permissions
+            # Check for suspicious file permissions: setuid/setgid/sticky
+            # bits live above 0o777 in st_mode (alongside the file-type bits,
+            # which is why comparing mode&0o777 to mode itself always failed).
             if os.name == 'posix':
-                mode = stat.st_mode
-                if mode & 0o777 != mode:  # Check for special permissions
+                if stat.st_mode & 0o7000:
                     return False
 
-            # Check file entropy for encrypted/compressed content
+            # Check file entropy for encrypted/compressed content (heuristic:
+            # white-noise PCM legitimately approaches 8, so this is a weak
+            # signal by design -- see the docstring on the caller).
             entropy = EnhancedSecurityValidator._calculate_file_entropy(file_path)
             if entropy > 7.5:  # High entropy might indicate encryption
                 return False
@@ -2174,25 +2182,30 @@ class EnhancedSecurityValidator:
 
     @staticmethod
     def _calculate_file_entropy(file_path: str) -> float:
-        """Calculate file entropy for security analysis."""
+        """Shannon entropy (bits/byte) of a bounded 1 MiB prefix.
+
+        The previous "simplified" formula called float.bit_length(), which
+        does not exist -- it raised AttributeError on any non-empty file,
+        and the exception escaped check_file_integrity's OSError guard. It
+        also read the whole file into memory, unlike every other bounded
+        read in this module. A prefix sample is enough for a heuristic.
+        """
         try:
             with open(file_path, 'rb') as f:
-                data = f.read()
+                data = f.read(1024 * 1024)
                 if not data:
                     return 0.0
 
-                # Count byte frequencies
                 byte_counts = [0] * 256
                 for byte in data:
                     byte_counts[byte] += 1
 
-                # Calculate entropy
                 entropy = 0.0
                 length = len(data)
                 for count in byte_counts:
                     if count > 0:
                         p = count / length
-                        entropy -= p * (p.bit_length() if p > 0 else 0)  # Simplified
+                        entropy -= p * math.log2(p)
 
                 return entropy
 

@@ -1,10 +1,10 @@
 # Chameleon — Product Analysis (Strengths, Weaknesses, Improvement Backlog)
 
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
-**Version:** 1.1.0 · **Tests:** re-run 2026-09-21 on Python 3.12, green in
-all three configurations — **477 passed** on a bare install (stdlib only,
-33 skipped), **557** with numpy (scipy/librosa/soundfile blocked, 33
-skipped), **662** with numpy + scipy + librosa + soundfile + fastapi
+**Version:** 1.1.0 · **Tests:** re-run 2026-09-22 on Python 3.12, green in
+all three configurations — **481 passed** on a bare install (stdlib only,
+33 skipped), **561** with numpy (scipy/librosa/soundfile blocked, 33
+skipped), **666** with numpy + scipy + librosa + soundfile + fastapi
 (5 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
@@ -68,8 +68,9 @@ re-verified, not trusted.
   reintroducing that command makes it fail.
 - **Real verification gate, run against three dependency configurations.**
   `compileall` + `pytest` + `validation_test.py` is green with no third-party
-  packages (324 tests), with numpy (365) and with numpy + scipy (454) — up
-  from 22 tests at the start of the hardening effort. The three-way run is
+  packages, with numpy, and with numpy + scipy — current counts live in the
+  dated header above, not here (four hand-carried copies once read 147, 211,
+  215 and 443 at the same time). The three-way run is
   itself a differentiator and is newer than it looks: until 2026-08-25 twelve
   test modules imported numpy unguarded, so on a bare install `pytest` failed
   at *collection* and ran nothing. Verifying the dependency-free core required
@@ -371,8 +372,8 @@ python main.py --help
 
 **The deep check, worth running before any claim that the suite is sound:**
 break the code on purpose and confirm the suite notices. Revert one fix in the
-source, run only its test file, restore. Six known-good pairs, all verified to
-fail-then-pass on 2026-08-25:
+source, run only its test file, restore. Nine known-good pairs, all verified to
+fail-then-pass (six on 2026-08-25, three more on 2026-09-22):
 
 | Revert | Should fail |
 |---|---|
@@ -382,6 +383,9 @@ fail-then-pass on 2026-08-25:
 | drop the `shutil.copyfile` in `core.py`'s already-mono branch | `tests/test_stdlib_operations.py` |
 | `np.round(scaled)` → `scaled` in `main.py` | `tests/test_quantization.py` |
 | any K-weighting coefficient × 1.001 in `bs1770_loudness.py` | `tests/test_bs1770_loudness.py` |
+| `int(round(...))` → `int(...)` in `core.py` `_convert_to_mono` | `tests/test_wav_chunks.py` |
+| `stat.st_mode & 0o7000` → `mode & 0o777 != mode` in `core.py` | `tests/test_security.py` |
+| `math.log2(p)` → `p.bit_length()` in `core.py` `_calculate_file_entropy` | `tests/test_security.py` |
 
 A green suite that survives none of these is measuring nothing. Restore the
 file after each one — `git status` must come back empty.

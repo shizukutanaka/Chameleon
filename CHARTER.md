@@ -2471,3 +2471,37 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** How many ways can "a security check" be broken while
+still looking like a security check?
+**A:** Three, and they were all in `EnhancedSecurityValidator` plus one
+sibling habit:
+
+- `check_file_integrity` asked "does this file have special permissions?"
+  via `mode & 0o777 != mode` -- but st_mode always carries file-type bits
+  above the permission field (0o100644 for a regular file), so the answer
+  was True for every file on POSIX: the integrity check failed closed on
+  literally everything, and nobody noticed because it has no callers. The
+  question it meant to ask is "are setuid/setgid/sticky bits set?":
+  `mode & 0o7000`.
+- `_calculate_file_entropy` called `p.bit_length()` on a float, raising
+  AttributeError on any non-empty file -- which then escaped
+  `check_file_integrity`'s `(OSError, ValueError)` guard, so the
+  "simplified" entropy check was a crash, not a simplification. It now
+  computes real Shannon entropy (`-p * log2(p)`) over a bounded 1 MiB
+  prefix instead of reading the whole file.
+- `_convert_to_mono` averaged channels with `int(sum/len)` -- truncating
+  toward zero, a systematic ~0.5-LSB inward bias on every output sample,
+  while `_apply_gain_safe` in the same file explicitly documents
+  round-to-nearest as the writer convention. `int(round(sum/len))` now.
+
+Lesson: a check that fails closed on everything is indistinguishable
+from a working check until someone tests the accept path. "Fail closed"
+is only a virtue when the closed case is exceptional; here it was the
+only case. Also audited this cycle and found honest: `RecoveryManager`
+retry/backoff + metrics, `ServiceDegradationManager` level ordering,
+`StateRecoveryManager` bounded backups, `BatchProcessor` sync+async
+dispatch (the `_execute_operation`/`_build_operation_runner` split),
+`_find_audio_boundaries`/`_extract_audio_range` byte-exact trim,
+`_copy_patched_header` RIFF/fmt patching, `ParallelBatchProcessor`
+priority ordering, `StructuredLogger`, and the `__main__` mini-CLI.

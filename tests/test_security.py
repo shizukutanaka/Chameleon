@@ -330,3 +330,40 @@ class TestSecurityConfigFromEnvironment:
         with pytest.warns(UserWarning, match="does not exist"):
             cfg = SecurityConfig.from_environment()
         assert str(tmp_path / "ghost") in cfg.trusted_roots
+
+
+# ---------------------------------------------------------------------------
+# core.EnhancedSecurityValidator integrity/entropy helpers
+# ---------------------------------------------------------------------------
+
+def test_check_file_integrity_accepts_ordinary_file(tmp_path):
+    # st_mode carries file-type bits above the 0o777 permission field, so
+    # `mode & 0o777 != mode` was true for every regular file on POSIX --
+    # check_file_integrity answered False unconditionally.
+    from core import EnhancedSecurityValidator
+
+    wav = _write_wav(tmp_path / "clean.wav")
+    assert EnhancedSecurityValidator.check_file_integrity(str(wav)) is True
+
+
+@pytest.mark.skipif(os.name != "posix", reason="permission-bit check is POSIX-only")
+def test_check_file_integrity_rejects_setuid_file(tmp_path):
+    from core import EnhancedSecurityValidator
+
+    wav = _write_wav(tmp_path / "suid.wav")
+    os.chmod(wav, 0o4644)
+    assert EnhancedSecurityValidator.check_file_integrity(str(wav)) is False
+
+
+def test_file_entropy_is_shannon_not_a_crash(tmp_path):
+    # p.bit_length() on a float raised AttributeError on any non-empty file.
+    # Real Shannon: a single repeated byte -> 0.0, 256 uniform bytes -> 8.0.
+    from core import EnhancedSecurityValidator
+
+    flat = tmp_path / "flat.bin"
+    flat.write_bytes(b"\x00" * 1024)
+    uniform = tmp_path / "uniform.bin"
+    uniform.write_bytes(bytes(range(256)) * 4)
+
+    assert EnhancedSecurityValidator._calculate_file_entropy(str(flat)) == pytest.approx(0.0)
+    assert EnhancedSecurityValidator._calculate_file_entropy(str(uniform)) == pytest.approx(8.0)

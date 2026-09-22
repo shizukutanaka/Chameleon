@@ -186,3 +186,21 @@ def test_load_wav_basic_8bit_unsigned_offset(tmp_path):
     audio, sr = main.AudioProcessor()._load_wav_basic(str(wav))
     assert audio[0] == pytest.approx(0.0, abs=0.01)
     assert audio[2] == pytest.approx(-1.0, abs=0.01)
+
+
+def test_mono_conversion_rounds_averages_to_nearest(tmp_path):
+    # Stereo frames (1, 2) and (-3, -4) average to 1.5 and -3.5. int()
+    # truncates toward zero -> (1, -3), a systematic ~0.5-LSB inward bias on
+    # every output sample; the writer convention elsewhere in this file is
+    # round-to-nearest -> (2, -4), as _apply_gain_safe documents.
+    import struct as _struct
+    src, data_offset = write_wav_raw(tmp_path / "odd.wav",
+                                     frames=[1, 2, -3, -4], channels=2)
+    out = tmp_path / "mono.wav"
+
+    result = core.to_mono(str(src), str(out))
+    assert result.success, result.message
+
+    raw = out.read_bytes()
+    mono = _struct.unpack("<hh", raw[data_offset:data_offset + 4])
+    assert mono == (2, -4)
