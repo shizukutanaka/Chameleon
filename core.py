@@ -1356,20 +1356,13 @@ class RecoveryManager:
     def _cleanup_temp_files(self) -> None:
         temp_root = Path(tempfile.gettempdir())
         for candidate in temp_root.glob("chameleon_*"):
+            # Files only. The glob also matches directories -- notably
+            # StateRecoveryManager's chameleon_state fallback -- and
+            # recursing into them wiped the batch-state snapshots this
+            # recovery machinery exists to preserve.
             try:
                 if candidate.is_file():
                     candidate.unlink()
-                elif candidate.is_dir():
-                    for child in candidate.glob("**/*"):
-                        if child.is_file():
-                            try:
-                                child.unlink()
-                            except OSError:
-                                continue
-                    try:
-                        candidate.rmdir()
-                    except OSError:
-                        continue
             except OSError:
                 continue
 
@@ -1446,7 +1439,12 @@ class ServiceDegradationManager:
         errors = summary.get("errors", []) or []
         timed_out = bool(summary.get("timed_out"))
 
-        failure_rate = (failed / processed) if processed else 0.0
+        # A run that only failed (processed == 0, failed > 0) must not read
+        # as 0% failure -- that made it indistinguishable from an idle run.
+        if processed:
+            failure_rate = failed / processed
+        else:
+            failure_rate = 1.0 if failed else 0.0
         has_critical = any(err.get("severity") in {"high", "critical"} for err in errors)
 
         if timed_out:
@@ -1613,7 +1611,10 @@ class BatchProcessor:
         wav_files: List[Path] = []
         inspector = DeepFileInspector() if HAS_DEEP_INSPECTOR else None
 
-        pattern = "**/*.wav" if recursive else "*.wav"
+        # glob's literal match is case-sensitive (".wav" misses ".WAV");
+        # gather everything and let the lowered-suffix test below decide --
+        # the same fix the CLI batch gather needed.
+        pattern = "**/*" if recursive else "*"
         for candidate in path.glob(pattern):
             if candidate.is_file() and candidate.suffix.lower() in SUPPORTED_FORMATS:
                 try:
@@ -1702,7 +1703,8 @@ class BatchProcessor:
                     "operation": operation,
                     "analysis": analysis,
                 }
-                summary["errors"].append(analysis)
+                # summary["errors"] is appended below via result.data so the
+                # same analysis is not recorded twice.
 
             if result.message:
                 result.message = self._sanitize_message(result.message, Path(file_path))
@@ -1851,7 +1853,7 @@ class BatchProcessor:
 
         wav_files: List[Path] = []
         inspector = DeepFileInspector() if HAS_DEEP_INSPECTOR else None
-        pattern = "**/*.wav" if kwargs.get("recursive", True) else "*.wav"
+        pattern = "**/*" if kwargs.get("recursive", True) else "*"
         for candidate in path.glob(pattern):
             if candidate.is_file() and candidate.suffix.lower() in SUPPORTED_FORMATS:
                 if inspector is not None:

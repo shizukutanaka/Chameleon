@@ -92,3 +92,91 @@ def test_disguised_executable_is_filtered_from_batch_process_async(tmp_path):
     # summary = 2 results.
     assert len(results) == 2
     assert results[0].success
+
+
+# ----------------------------------------------------- sync gather: suffix --
+#
+# The gather used a literal "*.wav"/"**/*.wav" glob; glob's match is
+# case-sensitive, so a lone "A.WAV" produced "No WAV files found" even though
+# the suffix test right below accepts it. The gather now globs "*" and lets
+# the lowered-suffix filter decide (same fix the CLI batch needed).
+
+def test_process_directory_gathers_uppercase_suffix(tmp_path):
+    write_sine_wave(tmp_path / "A.WAV", duration=0.01, amplitude=0.5)
+    processor = core.BatchProcessor()
+    results = processor.process_directory(str(tmp_path), "analyze")
+    assert results[0].success, results[0].message
+
+
+def test_process_directory_async_gathers_uppercase_suffix(tmp_path):
+    write_sine_wave(tmp_path / "A.WAV", duration=0.01, amplitude=0.5)
+    processor = core.BatchProcessor()
+    results = asyncio.run(processor.process_directory_async(str(tmp_path), "analyze"))
+    assert results[0].success, results[0].message
+
+
+# --------------------------------------------- summary["errors"] once only --
+#
+# An exception inside _execute_operation appended its analysis to
+# summary["errors"] in the except block, then the failed-result branch
+# appended the same analysis again via result.data -- one failure, two
+# entries.
+
+def test_exception_failure_records_one_error_entry(tmp_path):
+    write_sine_wave(tmp_path / "a.wav", duration=0.01, amplitude=0.5)
+    processor = core.BatchProcessor()
+
+    def boom(operation, file_path, options):
+        raise OSError("disk exploded")
+
+    processor._execute_operation = boom
+    results = processor.process_directory(str(tmp_path), "analyze")
+    summary = results[-1].data["summary"]
+    assert summary["failed"] == 1
+    assert len(summary["errors"]) == 1
+
+
+# ------------------------------------------------- degradation: failed-only --
+#
+# processed == 0 with failed > 0 computed failure_rate 0.0, so a run that
+# only ever failed was indistinguishable from an idle one -- the level stayed
+# "full" with no reason recorded.
+
+def test_degradation_treats_failed_only_run_as_high_failure_rate():
+    manager = core.ServiceDegradationManager()
+    outcome = manager.evaluate({"processed": 0, "failed": 3, "errors": [], "timed_out": False})
+    assert outcome["current_level"] == "minimal"
+    assert "high_failure_rate" in outcome["reasons"]
+
+
+def test_degradation_idle_run_still_stabilises():
+    manager = core.ServiceDegradationManager()
+    outcome = manager.evaluate({"processed": 0, "failed": 0, "errors": [], "timed_out": False})
+    assert outcome["current_level"] == "full"
+    assert "stabilised" in outcome["reasons"]
+
+
+# ------------------------------------------- temp cleanup: files, not dirs --
+#
+# _cleanup_temp_files globbed "chameleon_*" and recursed into matching
+# directories -- which includes StateRecoveryManager's chameleon_state
+# fallback. A disk-full retry wiped the batch-state snapshots recovery is
+# meant to preserve.
+
+def test_cleanup_temp_files_preserves_chameleon_state_dir(tmp_path, monkeypatch):
+    state_dir = tmp_path / "chameleon_state"
+    state_dir.mkdir()
+    state_file = state_dir / "batch_state_keep.json"
+    state_file.write_text("{}")
+    junk_file = tmp_path / "chameleon_junk.bin"
+    junk_file.write_bytes(b"x")
+    junk_dir_file = tmp_path / "chameleon_other" / "nested.bin"
+    junk_dir_file.parent.mkdir()
+    junk_dir_file.write_bytes(b"y")
+
+    monkeypatch.setattr(core.tempfile, "gettempdir", lambda: str(tmp_path))
+    core.RecoveryManager()._cleanup_temp_files()
+
+    assert state_file.exists()
+    assert junk_dir_file.exists()  # directories are no longer recursed into
+    assert not junk_file.exists()

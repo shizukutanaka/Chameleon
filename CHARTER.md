@@ -2471,3 +2471,31 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** `core.BatchProcessor`'s summary row advertises
+"processed/successful/failed + errors[]" and `ServiceDegradationManager`
+rates the run off it. Are the counters and the failure-rate input what the
+docstrings claim?
+
+**A:** Three separate disagreements, all verified live:
+(a) An exception inside `_execute_operation` appended its analysis to
+`summary["errors"]` in the except block, then the failed-result branch
+appended the *same* analysis again via `result.data["analysis"]` -- a
+single OSError produced two entries (verified: errors=2, failed=1).
+(b) Both batch gathers used a literal `"*.wav"`/`"**/*.wav"` glob -- glob's
+match is case-sensitive, so a lone `A.WAV` yielded "No WAV files found"
+while the lowered-suffix filter right below it would have accepted the
+file (verified on sync and async). The gather now globs `"*"`/`"**/*"`
+and lets the filter decide, matching the CLI fix from the previous cycle.
+(c) `ServiceDegradationManager.evaluate` computed
+`failure_rate = failed/processed` guarded to 0.0 when processed was 0 --
+a summary of `{processed: 0, failed: 3}` stayed at level "full" with no
+reason, indistinguishable from an idle run (verified). Failed-only now
+reads as rate 1.0 -> "minimal" with `high_failure_rate`.
+Also: `RecoveryManager._cleanup_temp_files` recursed into `chameleon_*`
+**directories** under the shared temp dir -- the only such directory is
+`StateRecoveryManager`'s `chameleon_state` fallback, so a disk-full retry
+wiped the batch-state snapshots recovery exists to preserve (verified:
+files inside `chameleon_state/` were unlinked). It now removes files only.
+Lesson: a "summary" that can double-count one event is a silent contract
+violation -- count append sites, not appends.
