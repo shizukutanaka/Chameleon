@@ -117,3 +117,35 @@ def test_mastering_rejects_multichannel_instead_of_dropping_channels():
     )
     with pytest.raises(ValueError, match="mono or stereo"):
         chain.process(quad)
+
+
+def test_eq_band_at_or_below_zero_freq_is_skipped_like_above_nyquist():
+    # The add_band guard covered only freq_norm >= 1.0: a zero/negative
+    # frequency reached scipy.butter as Wn <= 0 and raised its raw
+    # ValueError, while a -100 Hz lowshelf silently designed a nonsense
+    # biquad that measured x4.86 on a DC signal.
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("scipy")
+    import mastering_chain
+
+    eq = mastering_chain.ParametricEQ(44100)
+    for band in (
+        mastering_chain.EQBand(frequency=0.0, gain=0.0, filter_type="highpass"),
+        mastering_chain.EQBand(frequency=-100.0, gain=6.0, filter_type="lowshelf"),
+        mastering_chain.EQBand(frequency=0.0, gain=6.0, filter_type="bell"),
+        mastering_chain.EQBand(frequency=44100.0, gain=1.0, filter_type="lowpass"),
+    ):
+        eq.add_band(band)
+
+    assert eq.filters == []
+
+
+def test_loudness_meters_answer_empty_input_instead_of_crashing():
+    # np.abs([]).max() raises "zero-size array to reduction" while the
+    # sibling meters already answered honestly (lufs -> -inf, range -> 0).
+    np = pytest.importorskip("numpy")
+    import mastering_chain
+
+    meter = mastering_chain.LoudnessMeter(44100)
+    assert meter.measure_peak(np.array([])) == float("-inf")
+    assert meter.measure_true_peak(np.array([])) == float("-inf")

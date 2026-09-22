@@ -245,7 +245,12 @@ class LoudnessMeter:
         True-peak measurement requires >=4x oversampling to catch inter-sample
         peaks; this returns the raw sample peak, which can under-read by up to
         ~3 dB on heavily limited material. See measure_true_peak.
+
+        Returns -inf for empty input (matching measure_lufs; a peak of no
+        samples is silence, not a ValueError).
         """
+        if audio.size == 0:
+            return float('-inf')
         return 20 * np.log10(np.abs(audio).max() + 1e-10)
 
     def measure_true_peak(self, audio: np.ndarray) -> float:
@@ -270,10 +275,14 @@ class LoudnessMeter:
         measurement -- consistent with this module's other honestly-scoped
         meters.
 
-        Returns NaN for NaN input. Falls back to the raw sample peak
+        Returns NaN for NaN input and -inf for empty input (matching
+        measure_lufs; a peak of no samples is silence, not a crash).
+        Falls back to the raw sample peak
         (measure_peak) if SciPy is unavailable, which under-reads
         inter-sample peaks -- documented here rather than silently wrong.
         """
+        if audio.size == 0:
+            return float('-inf')
         if audio.ndim == 1:
             audio = audio.reshape(1, -1)
         if np.isnan(audio).any():
@@ -411,7 +420,13 @@ class ParametricEQ:
         nyquist = self.sample_rate / 2
         freq_norm = band.frequency / nyquist
 
-        if freq_norm >= 1.0:
+        # Bands outside (0, Nyquist) cannot be realized. The high/low-pass
+        # arms passed freq_norm <= 0 to scipy.butter, which raises its raw
+        # "critical frequencies must be greater than 0" ValueError; the
+        # bell/shelf arms designed a nonsense biquad instead (a -100 Hz
+        # lowshelf measured x4.86 on a DC signal). Skip the band like the
+        # >= 1.0 case already did.
+        if not 0.0 < freq_norm < 1.0:
             return
 
         # Bell and shelving bands use RBJ biquads, whose coefficients already

@@ -50,3 +50,22 @@ def test_batch_process_show_progress_false_by_default_matches_cli_non_tty(tmp_pa
 
     results = processor.batch_process([str(wav)], "analyze")
     assert results and "error" not in results[0]
+
+
+def test_format_table_tolerates_ragged_rows():
+    # A row with more cells than headers indexed widths[i] past the end of
+    # the header-width list and crashed IndexError; surplus cells are now
+    # truncated at render exactly like zip() already did.
+    from ux_improvements import TableFormatter
+
+    rendered = TableFormatter.format_table(["A", "B"], [["1", "2", "3"]])
+    assert "1 | 2" in rendered
+    assert "3" not in rendered.splitlines()[-1]
+
+
+def test_format_table_short_row_leaves_trailing_cells_blank():
+    from ux_improvements import TableFormatter
+
+    rendered = TableFormatter.format_table(["A", "B", "C"], [["1", "2"]])
+    lines = rendered.splitlines()
+    assert lines[0].count("|") == 2

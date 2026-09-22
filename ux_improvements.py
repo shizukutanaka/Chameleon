@@ -212,11 +212,14 @@ class TableFormatter:
 
         align = align or ['left'] * len(headers)
 
-        # Calculate column widths
+        # Calculate column widths. Cells beyond the header count are
+        # truncated at render (zip), so they must not widen or index the
+        # widths list either -- a ragged row used to raise IndexError.
         widths = [len(h) for h in headers]
         for row in rows:
             for i, cell in enumerate(row):
-                widths[i] = max(widths[i], len(str(cell)))
+                if i < len(widths):
+                    widths[i] = max(widths[i], len(str(cell)))
 
         # Build format strings
         formats = []

@@ -2471,3 +2471,42 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** When a validator, a renderer, and two meters each meet
+an input one size outside their comfort zone, which convention wins?
+**A:** The convention the caller can already rely on. Three repairs this
+cycle, all "one element past the edge" defects that sailed through five
+prior audits:
+
+- `ParametricEQ.add_band` rejected `freq_norm >= 1.0` (above Nyquist) but
+  let `freq_norm <= 0` through: `highpass`/`lowpass` crashed on scipy's
+  "critical frequencies must be greater than 0" while `lowshelf` at -100
+  Hz silently installed a biquad that measured x4.86 on DC. A band that
+  cannot exist is now skipped at both ends of the spectrum, matching the
+  documented skip-quietly convention.
+- `TableFormatter.format_table` measured column widths off the header
+  row only, then indexed `widths[i]` for every cell in every row -- a row
+  with one surplus cell raised IndexError on a code path whose renderer
+  had always truncated via `zip()`. Width measurement now skips cells
+  with no header column, so surplus cells truncate instead of crashing.
+- `LoudnessMeter.measure_peak` / `measure_true_peak` crashed
+  `zero-size array to reduction` on empty input while `measure_lufs`
+  (-inf) and `measure_range` (0.0) answered honestly. A peak of no
+  samples is silence: both now return -inf.
+
+The pattern across audits 27-32: boundary guards get written against the
+*high* side of a range (Nyquist, max-size, ceiling) because that's the
+famous failure, and the *low* side (zero, negative, empty) gets trusted
+to the library underneath -- which then either crashes with its own
+vocabulary or, worse, answers with a number. When adding a range check,
+enumerate both ends or the guard is half a contract.
+
+Also audited this cycle and found honest: `audio_restoration.py` (all
+classes), `bs1770_loudness.py` (true-peak/LRA/M/S paths), `core.py`
+(`_read_wav_header` canonical chunk-walker, MemoryManager,
+PerformanceTracker), `midi_analysis.py` (`generate_midi_file`,
+`analyze_rhythm`, `MIDIComposer`), `plugin_system.py`
+(`execute_with_limits` dual-path timeout+memory, PluginLoader),
+`api_server.py` (`_sanitize_uploaded_name` ".."-handling is
+downstream-defended by the `candidate.parent != upload_root` check), and
+`main.py`'s `stream`/`plugins`/`batch`/`apply_effects` command paths.
