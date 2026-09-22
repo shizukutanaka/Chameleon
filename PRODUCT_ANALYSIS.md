@@ -82,7 +82,10 @@ re-verified, not trusted.
   for it. A static audit of the suite in the same pass found no vacuous
   tests — no `assert True`, no `x == x`, nothing swallowing exceptions, and the
   only three assertion-free tests are "must not raise" checks where the call
-  itself is the assertion.
+  itself is the assertion. Re-checked 2026-09-22 (audit 44): the two new
+  CLI-surface tests were re-run against the unfixed source — the
+  unsafe-`--output-dir` test returned exit 1 instead of 4, and the
+  uppercase-`.WAV` batch test found zero files — so both tests bite.
 - **DSP claims are checked against ground truth, not eyeballed.** The
   regression suite asserts measured quantities — a clean sine survives
   restoration bit-exactly, a clipped signal comes back 14.5 dB closer to the

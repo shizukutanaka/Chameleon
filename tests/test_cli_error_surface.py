@@ -141,3 +141,42 @@ def test_unexpected_exceptions_are_not_swallowed():
 
     assert "except Exception" not in code
     assert "except (ValueError, FileNotFoundError)" in code
+
+
+def test_unsafe_output_dir_is_a_security_rejection(blocker_dir, tmp_path):
+    """--output-dir outside the trusted roots is rejected by the security
+    policy; _error_kind used to classify SecurityError as 'internal'
+    (exit 1) instead of 'security' (exit 4)."""
+    root = tmp_path / "root"
+    root.mkdir()
+    wav = write_sine_wave(root / "in.wav", duration=0.3)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+
+    env = {"PATH": "/usr/bin:/bin",
+           "PYTHONPATH": str(blocker_dir),
+           "CHAMELEON_TRUSTED_ROOTS": str(root)}
+    result = subprocess.run(
+        [sys.executable, "main.py", "process", str(wav), "--normalize",
+         "--output-dir", str(outside)],
+        capture_output=True, text=True, cwd=str(REPO_ROOT), env=env,
+    )
+
+    assert result.returncode == 4, result.stdout + result.stderr
+
+
+def test_batch_gathers_uppercase_extension_files(blocker_dir, tmp_path):
+    """The batch gather globbed '*.wav' literally; on a case-sensitive
+    filesystem A.WAV never matched even though the pipeline's own
+    suffix.lower() accepts it -- 'no supported audio files' for a
+    directory full of WAVs."""
+    wav = write_sine_wave(tmp_path / "LOUD.WAV", duration=0.3)
+
+    result = subprocess.run(
+        [sys.executable, "main.py", "batch", str(tmp_path), "normalize"],
+        capture_output=True, text=True, cwd=str(REPO_ROOT),
+        env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(blocker_dir)},
+    )
+
+    assert "Found 1 audio files" in result.stdout, result.stdout + result.stderr
+    assert result.returncode == 0, result.stdout + result.stderr
