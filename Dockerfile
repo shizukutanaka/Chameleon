@@ -6,7 +6,9 @@
 FROM python:3.11-slim AS builder
 
 ARG BUILD_DATE
-ARG VERSION=1.0.0
+# Default mirrors main.VERSION; `make docker` always passes the live value
+# via --build-arg so this default only matters on a bare `docker build`.
+ARG VERSION=1.1.0
 ARG GIT_COMMIT
 
 LABEL org.opencontainers.image.title="Chameleon Audio Tool"

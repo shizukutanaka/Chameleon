@@ -2471,3 +2471,40 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** `plugins list` on macOS prints "Failed to apply memory
+limit: current limit exceeds maximum limit" four times for one plugin. Is
+the sandbox's memory bound working?
+**A:** No, and it cannot on this platform -- RLIMIT_AS is not enforced on
+macOS (setrlimit fails with EINVAL on every call; verified: hard limit is
+RLIM_INFINITY yet setrlimit(512MB) raises "current limit exceeds maximum
+limit"). So every sandboxed call warned about a bound that can never exist,
+which is two defects at once: a claimed security control that does nothing,
+and noise that trains the user to ignore real warnings. The sandbox now
+says it once per sandbox instance -- "Memory limits are not enforced on
+macOS (RLIMIT_AS is unsupported); plugin memory is unbounded" -- then runs
+quiet. The warning stays per-call on platforms where the limit is real and
+its failure is actionable (the second new test pins that contract). Verified
+end to end: `plugins list` went from four identical warnings to one honest
+sentence.
+
+**Q (2026-09-22, continued):** Does the release pipeline stamp the version
+the package reports?
+**A:** Two sites stamped 1.0.0 while main.VERSION read 1.1.0: the Makefile's
+`docker` target tagged `chameleon-audio:1.0.0` literally, and the
+Dockerfile's `ARG VERSION` default (the OCI image label) was 1.0.0. A
+release built the normal way -- `make docker` -- shipped an image whose tag
+and label both contradict `chameleon --version`. The Makefile now derives
+the tag from `from main import VERSION` and passes it as --build-arg, so the
+only remaining copy is the Dockerfile's bare-build default, which now reads
+1.1.0 and is pinned to main.VERSION by test so the next bump can't drift.
+Related find, same class: SONNET.md had frozen a dated copy of the
+coverage-gap list ("As of 2026-09-14 that's spectral_editor.py") that was
+incomplete the day it was written -- batch_automation.py sat in the same
+PRODUCT_ANALYSIS section. It now points at the live list and says why.
+Audited and found honest this cycle: `ci/proposed-ci.yml`'s e2e commands all
+run exactly as written (verified -- normalize/mono/trim produce the three
+suffixed files it checks, --declip/--dehum -> _restored, --master ->
+_mastered, `batch . trim` and bare-import list all pass); MANIFEST.in,
+.dockerignore, SECURITY.md, requirements.txt and the committed plugin
+templates are honest; plugins/mycustomeffect loads and lists correctly.

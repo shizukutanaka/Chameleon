@@ -12,6 +12,7 @@ import ast
 import queue
 import contextlib
 import re
+import sys
 from abc import ABC, abstractmethod
 from typing import Dict, List, Any, Optional, Callable, FrozenSet
 from dataclasses import dataclass, field
@@ -169,12 +170,25 @@ class PluginSandbox:
         }
         self.allowed_modules = set(config.allowed_imports)
         self.logger = logging.getLogger("plugin_sandbox")
+        self._memory_limit_note_emitted = False
 
     @contextlib.contextmanager
     def _apply_memory_limit(self):
         """Apply soft memory limits on POSIX systems when available."""
 
         if resource is None or not self.config.max_memory_mb:
+            yield
+            return
+
+        # RLIMIT_AS is not enforced on macOS -- setrlimit there fails with
+        # "current limit exceeds maximum limit" on every call, so the bound
+        # cannot exist. Say so once per sandbox, not on every sandboxed call.
+        if sys.platform == "darwin":
+            if not self._memory_limit_note_emitted:
+                self._memory_limit_note_emitted = True
+                self.logger.warning(
+                    "Memory limits are not enforced on macOS (RLIMIT_AS "
+                    "is unsupported); plugin memory is unbounded")
             yield
             return
 

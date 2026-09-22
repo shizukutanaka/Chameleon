@@ -1,17 +1,21 @@
 # Chameleon — Product Analysis (Strengths, Weaknesses, Improvement Backlog)
 
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
-**Version:** 1.1.0 · **Tests:** re-run 2026-09-21 on Python 3.12, green in
-all three configurations — **477 passed** on a bare install (stdlib only,
-33 skipped), **557** with numpy (scipy/librosa/soundfile blocked, 33
-skipped), **662** with numpy + scipy + librosa + soundfile + fastapi
+**Version:** 1.1.0 · **Tests:** re-run 2026-09-22 on Python 3.12, green in
+all three configurations — **482 passed** on a bare install (stdlib only,
+33 skipped), **562** with numpy (scipy/librosa/soundfile blocked, 33
+skipped), **667** with numpy + scipy + librosa + soundfile + fastapi
 (5 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
 configurations do not cover the `[audio]` extra's librosa path; installing
 it on 2026-09-19 exposed a denoiser that damaged stationary material, and
 e2e-driving the real CLI the same day exposed an exit-code crash on
-fully-rejected input (see CHARTER.md §9).
+fully-rejected input (see CHARTER.md §9). A later sweep the same day
+turned up a sandbox memory bound that warns on every call yet can never
+exist on macOS (RLIMIT_AS unenforced there), a release tag and image label
+stamped 1.0.0 while the package reported 1.1.0, and an agent doc that had
+frozen a stale copy of this file's coverage list.
 
 > Every claim in this file was re-checked against the code on the snapshot
 > date. Eight were false — including four "fast checks" in §4 that could no

@@ -15,10 +15,10 @@ executed quickly and correctly.
   "honesty pass" targets and an import-guard task for months after all of
   them were fixed; don't reintroduce that by writing the next one in here.
 - **Test coverage for the modules `PRODUCT_ANALYSIS.md`'s Coverage-gaps
-  section currently names as untested.** As of 2026-09-14 that's
-  `spectral_editor.py`'s actual DSP (it has import-safety coverage only) —
-  `audio_restoration` and `personal_config` are done and covered. Check the
-  live list; it moves.
+  section currently names as untested.** Check the live list; it moves, and
+  don't copy it into this file — the dated copy that used to sit here had
+  already drifted when it was written (it named `spectral_editor.py` while
+  `batch_automation.py` sat in the same section).
 - **P4 items are Opus-shaped, not Sonnet-shaped** (per `OPUS.md`) — they
   need judgment about a design or a risk tradeoff, not just execution. Leave
   them for that session.

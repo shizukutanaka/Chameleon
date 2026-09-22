@@ -304,3 +304,47 @@ def test_load_plugin_limits_all_plugin_code_sites(tmp_path, hang_site):
     with pytest.raises(TimeoutError, match="timed out"):
         loader.load_plugin(plugin)
     assert time.monotonic() - t0 < 10
+
+
+def test_memory_limit_is_announced_once_not_per_call_on_macos():
+    """RLIMIT_AS is not enforced on macOS -- setrlimit there fails with
+    "current limit exceeds maximum limit" on every call, so the bound can
+    never exist. Before this fix every sandboxed call logged the failure:
+    `plugins list` printed the warning four times for one plugin. The
+    sandbox must say the bound is missing once, then stay quiet."""
+    import sys
+    from unittest import mock
+
+    sandbox = PluginSandbox(PluginConfig())
+    with mock.patch.object(sys, "platform", "darwin"), \
+         mock.patch("plugin_system.resource") as res, \
+         mock.patch.object(sandbox.logger, "warning") as warn:
+        for _ in range(3):
+            with sandbox._apply_memory_limit():
+                pass
+    assert res.setrlimit.call_count == 0, (
+        "the limit can never apply on macOS -- attempting it every call is "
+        "what produced the repeated warning")
+    assert warn.call_count == 1
+    assert "macOS" in warn.call_args[0][0]
+
+
+def test_memory_limit_failures_still_warn_off_macos():
+    """Contract pin, not a new behavior: a setrlimit failure on a platform
+    where RLIMIT_AS *is* enforced must stay loud on every call -- the fix
+    quiets only the known-unsupported macOS case."""
+    import sys
+    from unittest import mock
+
+    sandbox = PluginSandbox(PluginConfig())
+    with mock.patch.object(sys, "platform", "linux"), \
+         mock.patch("plugin_system.resource") as res, \
+         mock.patch.object(sandbox.logger, "warning") as warn:
+        res.RLIM_INFINITY = 2**63 - 1
+        res.getrlimit.return_value = (res.RLIM_INFINITY, res.RLIM_INFINITY)
+        res.error = OSError
+        res.setrlimit.side_effect = ValueError("operation not permitted")
+        for _ in range(2):
+            with sandbox._apply_memory_limit():
+                pass
+    assert warn.call_count == 2
