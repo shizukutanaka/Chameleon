@@ -582,3 +582,64 @@ def test_audit_log_is_bounded():
     for i in range(cap + 50):
         api_server.log_audit_event("u", "OP", "res", "SUCCESS", "", "ip", "")
     assert len(api_server.api_state.audit_log) == cap
+
+
+def _make_queued_job(job_id, files):
+    api_server.api_state.active_jobs[job_id] = {
+        "job_id": job_id, "user": "u", "operation": "analyze",
+        "files": files, "options": {},
+        "status": "queued", "progress": 0.0, "completed_files": 0,
+        "total_files": len(files), "created_at": None, "results": [],
+        "started_at": None, "updated_at": None, "completed_at": None,
+    }
+    api_server.api_state.job_queue.append(job_id)
+
+
+def test_process_batch_job_missing_file_fails_only_that_file(client, tmp_path):
+    # A file deleted between submit and processing used to escape as an
+    # HTTPException into the job's outer catch: status 'failed', zero
+    # results recorded, and the remaining files never attempted (verified:
+    # ['deleted.wav','real.wav'] -> failed job, empty results, error '400').
+    # A missing input is a per-file failure like any other.
+    import asyncio
+    import struct
+    import wave
+
+    real = tmp_path / "real.wav"
+    with wave.open(str(real), "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(44100)
+        w.writeframes(struct.pack("<" + "h" * 100, *([0] * 100)))
+
+    api_server.api_state.circuit_breaker_open = False
+    api_server.api_state.job_failures_window.clear()
+    from unittest.mock import patch
+    _make_queued_job("j-missing", ["deleted.wav", "real.wav"])
+    try:
+        with patch.object(api_server, "_resolve_uploaded_path") as resolve:
+            def _resolve(name):
+                if name == "real.wav":
+                    return real
+                raise api_server.HTTPException(status_code=400, detail="missing")
+            resolve.side_effect = _resolve
+
+            asyncio.run(api_server.process_batch_job("j-missing"))
+
+        job = api_server.api_state.active_jobs["j-missing"]
+        assert job["status"] == "completed"
+        assert len(job["results"]) == 2
+        by_file = {entry["file"]: entry["result"] for entry in job["results"]}
+        assert by_file["deleted.wav"]["success"] is False
+        assert by_file["real.wav"]["success"] is True
+    finally:
+        api_server.api_state.active_jobs.pop("j-missing", None)
+        if "j-missing" in api_server.api_state.job_queue:
+            api_server.api_state.job_queue.remove("j-missing")
+
+
+def test_process_batch_job_vanished_job_returns_cleanly(client):
+    # active_jobs can lose the id between scheduling and the worker picking
+    # it up; the lookup used to raise KeyError into the except block, which
+    # then touched the unbound `job_data` and let an UnboundLocalError
+    # escape the task (verified: asyncio.run -> UnboundLocalError).
+    import asyncio
+    asyncio.run(api_server.process_batch_job("job-that-does-not-exist"))

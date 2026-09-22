@@ -2471,3 +2471,23 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22, continued):** When a batch job's input file disappears
+between submit and processing -- or the job entry itself is dropped from
+`api_state.active_jobs` before the worker picks it up -- what happens to the other
+files in that job, and to the background task?
+**A:** Both paths leaked exceptions out of `process_batch_job`. A file
+deleted mid-flight raised an HTTPException in `_resolve_uploaded_path`
+that escaped to the outer catch: the job was marked failed with zero
+results recorded, the remaining files were never attempted, and the
+recorded error collapsed to the bare string '400' (verified:
+['deleted.wav','real.wav'] -> status failed, results [], error '400').
+A missing input is the same failure class as any other per-file error
+and now lands in `results` with `success: False` while the run
+continues (verified: job completes, deleted file fails, real file
+analyzes). Separately, `job_data = api_state.active_jobs[job_id]` sat
+inside the try while the except clause touches `job_data`, so a job id
+that vanishes before processing produced KeyError -> UnboundLocalError
+escaping the asyncio task (verified via asyncio.run). The lookup is now
+a `.get()` before the try that logs a warning and returns cleanly. Both
+mutations pinned by new api-route tests (28 passed in that module).

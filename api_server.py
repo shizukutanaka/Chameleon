@@ -1549,8 +1549,16 @@ async def get_audit_log(
 # Background job processing
 async def process_batch_job(job_id: str):
     """Process batch job in background"""
+    job_data = api_state.active_jobs.get(job_id)
+    if job_data is None:
+        # The job was removed between scheduling and the worker picking it
+        # up -- there is nothing to mark failed. The old code raised
+        # KeyError into the except block, which then touched the unbound
+        # `job_data` and let an UnboundLocalError escape the task (verified:
+        # asyncio.run(process_batch_job("no-such-job")) escaped).
+        logging.warning("Batch job %s vanished before processing", job_id)
+        return
     try:
-        job_data = api_state.active_jobs[job_id]
 
         if api_state.circuit_breaker_open:
             job_data['status'] = 'failed'
@@ -1567,9 +1575,24 @@ async def process_batch_job(job_id: str):
             job_data['started_at'] = datetime.now(timezone.utc)
 
             for i, file_name in enumerate(job_data['files']):
-                file_path = _resolve_uploaded_path(file_name)
                 job_data['current_file'] = file_name
                 job_data['updated_at'] = datetime.now(timezone.utc)
+
+                # A file deleted between submit and processing used to escape
+                # as an HTTPException into the outer catch, failing the whole
+                # job: 0 results recorded, the remaining files never
+                # attempted, and job_data['error'] reduced to '400'. Other
+                # per-file failures below already land in results and let the
+                # run continue -- a missing input is the same class.
+                try:
+                    file_path = _resolve_uploaded_path(file_name)
+                except Exception as exc:
+                    result = {'success': False, 'error': str(exc)}
+                    job_data['results'].append({'file': file_name, 'result': result})
+                    _update_circuit_breaker(False)
+                    job_data['completed_files'] = i + 1
+                    job_data['progress'] = (i + 1) / job_data['total_files']
+                    continue
 
                 # Process file based on operation
                 if job_data['operation'] == 'analyze':
