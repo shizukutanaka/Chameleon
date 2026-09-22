@@ -29,7 +29,7 @@ from pathlib import Path
 import asyncio
 from typing import Union, Optional, Dict, List, Any, Tuple, Callable
 from dataclasses import dataclass
-from security_validator import SecurityValidator, SecurityConfig, _RESERVED_DEVICE_NAMES
+from security_validator import SecurityValidator, SecurityConfig, SecurityError, _RESERVED_DEVICE_NAMES
 
 # Module logger. Previously sourced from a separate "advanced_logging" module
 # that no longer exists; a standard logger keeps behaviour identical for the
@@ -1649,7 +1649,9 @@ class BatchProcessor:
 
     def process_directory(self, directory: str, operation: str, **kwargs) -> List[ProcessingResult]:
         """Process all WAV files in directory."""
-        if not SecurityValidator.validate_directory(directory):
+        try:
+            SecurityValidator.validate_directory(directory)
+        except SecurityError:
             return [ProcessingResult(False, "Invalid directory provided")]
 
         path = Path(directory)
@@ -1663,7 +1665,9 @@ class BatchProcessor:
         output_dir = kwargs.get("output_dir")
         target_dir = None
         if output_dir:
-            if not SecurityValidator.validate_directory(output_dir):
+            try:
+                SecurityValidator.validate_directory(output_dir)
+            except SecurityError:
                 return [ProcessingResult(False, "Invalid output directory provided")]
             target_dir = Path(output_dir)
             parent = target_dir.resolve().parent
@@ -1687,8 +1691,7 @@ class BatchProcessor:
             except (TypeError, ValueError):
                 return [ProcessingResult(False, "threshold must be numeric")]
             if not 0.0 < threshold < 1.0:
-                return [ProcessingResult(
-                    False, "threshold must be greater than 0.0 and less than 1.0")]
+                return [ProcessingResult(False, "threshold must be in (0.0, 1.0)")]
 
         skip_errors = kwargs.get("skip_errors", False)
         max_files = kwargs.get("max_files")
@@ -1919,12 +1922,19 @@ class BatchProcessor:
         # Use asyncio.gather for concurrent processing with semaphore for resource control
         semaphore = asyncio.Semaphore(4)  # Limit concurrent operations
 
+        operation_normalized = (operation or "").strip().lower()
+
         async def process_file_with_semaphore(file_path: Path) -> ProcessingResult:
             async with semaphore:
-                return await self._execute_operation_async(operation, file_path, kwargs)
+                return await self._execute_operation_async(operation_normalized, file_path, kwargs)
 
-        # Get file list
-        if not SecurityValidator.validate_directory(directory):
+        # Get file list -- the same validation the synchronous path applies.
+        # ``validate_directory`` raises SecurityError (it does not return a
+        # bool), so without the try/except an unsafe path escaped as a raw
+        # exception instead of the documented error result.
+        try:
+            SecurityValidator.validate_directory(directory)
+        except SecurityError:
             return [ProcessingResult(False, "Invalid directory provided")]
 
         path = Path(directory)
@@ -1935,11 +1945,49 @@ class BatchProcessor:
         if operation_normalized not in ALLOWED_BATCH_OPERATIONS:
             return [ProcessingResult(False, f"Unsupported operation: {operation}")]
 
+        # Mirror the sync path's output_dir / bound validation: the async
+        # variant skipped all of it, so options the docstring says are
+        # honoured were applied to an unvalidated directory.
+        output_dir = kwargs.get("output_dir")
+        if output_dir:
+            try:
+                SecurityValidator.validate_directory(output_dir)
+            except SecurityError:
+                return [ProcessingResult(False, "Invalid output directory provided")]
+            parent = Path(output_dir).resolve().parent
+            if not parent.exists() or not parent.is_dir():
+                return [ProcessingResult(False, "Parent directory for output is invalid")]
+
+        target_peak = kwargs.get("target_peak")
+        if target_peak is not None:
+            try:
+                target_peak = float(target_peak)
+            except (TypeError, ValueError):
+                return [ProcessingResult(False, "target_peak must be numeric")]
+            if not 0.0 < target_peak <= 1.0:
+                return [ProcessingResult(False, "target_peak must be in (0.0, 1.0]")]
+
+        threshold = kwargs.get("threshold")
+        if threshold is not None:
+            try:
+                threshold = float(threshold)
+            except (TypeError, ValueError):
+                return [ProcessingResult(False, "threshold must be numeric")]
+            if not 0.0 < threshold < 1.0:
+                return [ProcessingResult(False, "threshold must be in (0.0, 1.0)")]
+
         wav_files: List[Path] = []
         inspector = DeepFileInspector() if HAS_DEEP_INSPECTOR else None
         pattern = "**/*.wav" if kwargs.get("recursive", True) else "*.wav"
         for candidate in path.glob(pattern):
             if candidate.is_file() and candidate.suffix.lower() in SUPPORTED_FORMATS:
+                # The sync scan refuses symlinks (a link can point outside
+                # the scanned tree); the async scan must not follow them.
+                try:
+                    if candidate.is_symlink():
+                        continue
+                except OSError:
+                    continue
                 if inspector is not None:
                     inspection = inspector.validate_for_processing(candidate)
                     if not inspection.is_valid:

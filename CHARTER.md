@@ -3252,3 +3252,20 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22, declared twin contracts):** `process_directory_async`'s
+docstring advertises the same contract as `process_directory` -- did the
+code keep that promise?
+**A:** No, in four places, and each drift was silent. The async scan
+dispatched on the *raw* operation string, so 'NORMALIZE' passed the
+normalized whitelist then failed every file 'Unknown operation'; it
+followed symlinks the sync scan refuses (verified: a link pointing
+outside the scanned tree was processed); it skipped `output_dir` and
+numeric-bound validation entirely. And on BOTH paths
+`validate_directory` was called as `if not ...` although it *raises*
+SecurityError -- so an unsafe directory escaped as a raw exception
+instead of the documented `[ProcessingResult(False)]` result. The
+async path now dispatches the normalized name, refuses symlinks, and
+mirrors the sync validation; both paths wrap the validator. Pattern:
+a documented 'same contract' between a sync and async twin is a test
+matrix, not a docstring -- diff the guards, not the signatures.
