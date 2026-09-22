@@ -3252,3 +3252,30 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+## Socratic audit 88
+**Q:** Do config fields and repair APIs honor the domains they document?
+   `harmonic_enhancement` is commented "0.0-1.0"; `repair_gaps` claims to
+   repair the gaps it is handed.
+**A:** Both broke their contracts at the edges.
+   `MasteringConfig.harmonic_enhancement` documents 0.0-1.0 but flowed
+   unvalidated into `audio*(1-amount) + enhanced*amount`: amount=3.0
+   returned output correlated -0.956 with the input (the "subtle
+   enhancement" inverts the signal; amount=1.5 attenuates to a third), and
+   a negative amount slipped past the `> 0` gate as a silent no-op. The
+   chain now raises ValueError naming the field -- same guard family as
+   EQBand.frequency and StereoConfig.mono_freq.
+   `SpectralRepairer.repair_gaps` needs an intact frame on EACH side of a
+   gap to interpolate; a gap at the file head failed that guard and was
+   skipped silently (verified: silent head gap returned rms 0.0000 while an
+   interior gap filled to 0.1676), a sub-hop span assigned np.linspace's
+   empty result (a reported no-op), and a reversed span crashed inside
+   linspace. It now raises ValueError for a gap it cannot interpolate --
+   the file's own "raise rather than no-op" rule the librosa gate already
+   follows.
+   Audited and found honest this cycle: api_server's upload/normalize
+   destination checks, session secret derivation, and pydantic option
+   routing; core.py's env-knob resolution and LRU eviction; YIN pitch
+   detection against the paper's structure; mastering presets. The
+   still-broken `.WAV` globs and StructuredLogger payload on main are owned
+   by open sibling PRs and were not re-fixed.
