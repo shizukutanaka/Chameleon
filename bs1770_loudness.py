@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import List, Sequence
+from typing import List, Optional, Sequence
 
 # Absolute gate per BS.1770-4: blocks quieter than -70 LUFS are discarded
 # outright before the relative gate is computed.

@@ -3252,3 +3252,24 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22, restoration edge):** What does a restorer do with nothing?
+**A:** Crash, in four different ways. `DeclippingProcessor.detect_clipping`
+hit `np.max([])` ("reduction with no identity"), `HumRemover.remove_hum`
+hit `np.fft.rfft([])` ("invalid number of FFT data points"),
+`CrackleRemover.remove_crackle` survived but emitted `np.std([])`'s
+RuntimeWarning -- which this project's own `-W error::RuntimeWarning`
+gate treats as a failure -- and `AudioRestorer`/`VinylRestorer`/`restore`
+died on whichever stage ran first. Only `ClickRemover` survived, and only
+by accident (convolve of empty is empty). `main.repair_audio` already
+documents the convention -- a 0-frame file is identity -- so each stage
+now returns `audio.copy()` early, and the two `restore()` pipelines
+return it with an honest empty `applied_processes`. Same pass:
+`bs1770_loudness._block_summed_mean_squares` used `Optional[...]` in its
+signature without importing it -- masked by `from __future__ import
+annotations`, so nothing breaks until `typing.get_type_hints` resolves
+the strings (NameError). The lesson this time: an edge convention only
+protects the boundary it's written at. `repair_audio` guarded empty
+input at the CLI, but the guard meant the six library entry points
+underneath were never exercised on empty input -- the crash stayed
+invisible to every path that reaches them directly.

@@ -224,3 +224,30 @@ def test_auto_mode_does_not_run_unvetted_detectors():
         audio_restoration.RestorationConfig(click_removal=True))
     _, opt_in = restorer.restore(noise, SAMPLE_RATE)
     assert "click_removal" in opt_in["applied_processes"]
+
+
+# --- empty input is identity, not a crash -----------------------------------
+
+def test_restore_empty_audio_is_identity():
+    # Every stage crashed or warned on a 0-frame file before the guards:
+    # np.max and np.fft.rfft raise on empty input, np.std emits the
+    # RuntimeWarning the DSP gate treats as an error. The whole pipeline
+    # now returns the input unchanged, like repair_audio does.
+    empty = np.array([], dtype=float)
+
+    restored, info = audio_restoration.AudioRestorer().restore(empty, SAMPLE_RATE)
+
+    assert restored.size == 0
+    assert info["applied_processes"] == []
+
+
+def test_each_restoration_stage_empty_audio_is_identity():
+    empty = np.array([], dtype=float)
+
+    assert audio_restoration.ClickRemover().remove_clicks(empty, SAMPLE_RATE).size == 0
+    assert audio_restoration.CrackleRemover().remove_crackle(empty, SAMPLE_RATE).size == 0
+    assert audio_restoration.HumRemover().remove_hum(empty, SAMPLE_RATE).size == 0
+    assert audio_restoration.DeclippingProcessor().restore_clipped(empty, SAMPLE_RATE).size == 0
+    assert audio_restoration.DeclippingProcessor().detect_clipping(empty) == ([], [])
+    restored, info = audio_restoration.VinylRestorer().restore(empty, SAMPLE_RATE)
+    assert restored.size == 0 and info["snr_improvement"] == 0.0
