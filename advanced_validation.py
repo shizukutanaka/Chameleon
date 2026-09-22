@@ -391,6 +391,17 @@ class IntegrityVerifier:
     def create_manifest(self, files: List[Path], manifest_name: str) -> Path:
         """Create integrity manifest for files"""
 
+        # manifest_name becomes "<name>.json" under self.manifest_dir, so a
+        # name containing separators or '..' resolves outside that directory
+        # (create_manifest(files, "../escape") used to write
+        # manifest_dir/../escape.json). Reject anything that is not a plain
+        # file name rather than silently redirecting the write.
+        if (not manifest_name or manifest_name in (".", "..")
+                or "/" in manifest_name or "\\" in manifest_name
+                or "\x00" in manifest_name):
+            raise ValueError(
+                f"manifest_name must be a plain file name, got {manifest_name!r}")
+
         manifest = {}
 
         for file_path in files:
@@ -429,10 +440,23 @@ class IntegrityVerifier:
         with open(manifest_path, 'r') as f:
             manifest = json.load(f)
 
+        # A manifest is trusted input the user can hand-edit: a non-dict
+        # top level (e.g. a JSON list) used to crash on .items(), and a
+        # non-dict entry crashed on expected["checksum"]. Treat malformed
+        # structure as verification failure, not an exception.
+        if not isinstance(manifest, dict):
+            return False, [f"Malformed manifest {manifest_path}: "
+                           f"expected a JSON object, got {type(manifest).__name__}"]
+
         all_valid = True
         issues = []
 
         for file_path_str, expected in manifest.items():
+            if not isinstance(expected, dict):
+                all_valid = False
+                issues.append(f"Malformed entry for {file_path_str}")
+                continue
+
             file_path = Path(file_path_str)
 
             if not file_path.exists():

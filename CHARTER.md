@@ -2471,3 +2471,16 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** Can `IntegrityVerifier`'s manifest paths escape their
+directory -- and does `verify_manifest` survive a malformed manifest?
+**A:** Two defects in the integrity layer. `create_manifest(files,
+"../escape")` wrote `manifest_dir/../escape.json` -- the name is joined
+verbatim into `<name>.json`, so separators and `..` resolve outside the
+configured directory (verified on disk). The name is now validated as a
+plain file name: separators, `..`, empty and NUL are rejected with
+ValueError. And `verify_manifest` trusted the manifest shape: a JSON
+list crashed on `.items()` (`AttributeError`) and a non-dict entry
+crashed on `expected["checksum"]` (`TypeError`) -- hand-editable input
+failing with bare exceptions. Malformed structure now fails verification
+with an explicit issue instead.
