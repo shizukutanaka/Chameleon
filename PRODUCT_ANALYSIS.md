@@ -66,8 +66,9 @@ re-verified, not trusted.
   reintroducing that command makes it fail.
 - **Real verification gate, run against three dependency configurations.**
   `compileall` + `pytest` + `validation_test.py` is green with no third-party
-  packages (324 tests), with numpy (365) and with numpy + scipy (454) — up
-  from 22 tests at the start of the hardening effort. The three-way run is
+  packages, with numpy, and with numpy + scipy — current counts live in the
+  dated header above, not here (four hand-carried copies once read 147, 211,
+  215 and 443 at the same time). The three-way run is
   itself a differentiator and is newer than it looks: until 2026-08-25 twelve
   test modules imported numpy unguarded, so on a bare install `pytest` failed
   at *collection* and ran nothing. Verifying the dependency-free core required
@@ -369,8 +370,8 @@ python main.py --help
 
 **The deep check, worth running before any claim that the suite is sound:**
 break the code on purpose and confirm the suite notices. Revert one fix in the
-source, run only its test file, restore. Six known-good pairs, all verified to
-fail-then-pass on 2026-08-25:
+source, run only its test file, restore. Nine known-good pairs, all verified to
+fail-then-pass (six on 2026-08-25, three more on 2026-09-22):
 
 | Revert | Should fail |
 |---|---|
@@ -380,6 +381,9 @@ fail-then-pass on 2026-08-25:
 | drop the `shutil.copyfile` in `core.py`'s already-mono branch | `tests/test_stdlib_operations.py` |
 | `np.round(scaled)` → `scaled` in `main.py` | `tests/test_quantization.py` |
 | any K-weighting coefficient × 1.001 in `bs1770_loudness.py` | `tests/test_bs1770_loudness.py` |
+| `0.0 < freq_norm < 1.0` → `freq_norm < 1.0` in `mastering_chain.add_band` | `tests/test_mastering_wiring.py` |
+| drop the `audio.size == 0` early-returns in `mastering_chain` | `tests/test_mastering_wiring.py` |
+| drop the `i < len(widths)` guard in `ux_improvements.format_table` | `tests/test_ux_wiring.py` |
 
 A green suite that survives none of these is measuring nothing. Restore the
 file after each one — `git status` must come back empty.

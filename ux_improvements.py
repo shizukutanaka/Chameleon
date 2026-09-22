@@ -223,7 +223,8 @@ class TableFormatter:
                     f"table row has {len(row)} cells but only "
                     f"{len(headers)} headers")
             for i, cell in enumerate(row):
-                widths[i] = max(widths[i], len(str(cell)))
+                if i < len(widths):
+                    widths[i] = max(widths[i], len(str(cell)))
 
         # Build format strings
         formats = []
