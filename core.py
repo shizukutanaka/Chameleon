@@ -2463,6 +2463,11 @@ class StructuredLogger:
                     log_entry["duration_ms"] = record.duration_ms
                 if hasattr(record, 'operation'):
                     log_entry["operation"] = record.operation
+                if hasattr(record, 'success'):
+                    log_entry["success"] = record.success
+                payload = getattr(record, 'payload', None)
+                if isinstance(payload, dict):
+                    log_entry.update(payload)
 
                 return json.dumps(log_entry, ensure_ascii=False)
 
@@ -2493,7 +2498,8 @@ class StructuredLogger:
             "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
             "details": details
         }
-        self.logger.warning(f"Security event: {event_type}", extra=log_entry)
+        self.logger.warning(f"Security event: {event_type}",
+                            extra={"payload": log_entry})
 
     def log_performance_metrics(self, metrics: Dict[str, Any]):
         """パフォーマンスメトリクスをログ記録"""
@@ -2501,7 +2507,7 @@ class StructuredLogger:
             "metrics_type": "performance",
             "metrics": metrics
         }
-        self.logger.info("Performance metrics", extra=log_entry)
+        self.logger.info("Performance metrics", extra={"payload": log_entry})
 
 # Chameleon has no quantum, neural, GPU or source-separation features, and
 # will not grow any -- see CHARTER.md §4. Two gravestone comments for a 2024

@@ -109,3 +109,37 @@ def test_harmonic_enhance_stays_inside_selection():
     assert changed.size > 0
     times = ed.times
     assert all(0.4 <= times[c[1]] <= 0.5 for c in changed)
+
+
+def test_selection_to_reported_end_covers_last_frame_and_top_bin():
+    # load_audio reports time_range/frequency_range ending at the last
+    # frame and the top bin, and select_region clamps to those same
+    # values -- but get_selection_mask sliced end-exclusive, so a
+    # selection to the module's own advertised end silently dropped the
+    # final frame and the Nyquist bin.
+    ed = spectral_editor.SpectralEditor()
+    info = ed.load_audio(_sine(440), SAMPLE_RATE)
+
+    sel = ed.select_region(0.0, info["time_range"][1],
+                           0.0, info["frequency_range"][1])
+    mask = ed.get_selection_mask(sel)
+
+    assert mask.shape == ed.stft.shape
+    assert mask[:, -1].all(), "last time frame not covered by full-range selection"
+    assert mask[-1, :].all(), "top (Nyquist) bin not covered by full-range selection"
+    assert mask.all()
+
+
+def test_selection_end_boundary_is_inclusive():
+    # A selection ending exactly on an interior frame must include that
+    # frame (same inclusive-end contract as the range-end fix above).
+    ed = spectral_editor.SpectralEditor()
+    ed.load_audio(_sine(440), SAMPLE_RATE)
+
+    boundary = float(ed.times[3])
+    sel = ed.select_region(0.0, boundary, 0.0, 0.0)
+    mask = ed.get_selection_mask(sel)
+    covered = mask.any(axis=0)
+
+    assert covered[3], "frame at the end boundary was excluded"
+    assert not covered[4], "selection included a frame past its end"

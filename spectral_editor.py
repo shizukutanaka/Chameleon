@@ -279,14 +279,25 @@ class SpectralEditor:
         return selection
 
     def get_selection_mask(self, selection: SpectralSelection) -> np.ndarray:
-        """Get boolean mask for spectral selection"""
+        """Get boolean mask for spectral selection.
+
+        End bounds are inclusive: ``select_region`` clamps ``time_end`` /
+        ``freq_end`` to the last frame / top bin (the same values
+        ``load_audio`` reports as the range ends), and a selection ending
+        there must reach them. ``searchsorted``'s default left side made an
+        exact boundary hit exclusive -- selecting to the module's own
+        advertised end silently dropped the final frame and the top
+        frequency bin.
+        """
         # Find time indices
         time_start_idx = np.searchsorted(self.times, selection.time_start)
-        time_end_idx = np.searchsorted(self.times, selection.time_end)
+        time_end_idx = np.searchsorted(self.times, selection.time_end,
+                                       side='right')
 
         # Find frequency indices
         freq_start_idx = np.searchsorted(self.freqs, selection.freq_start)
-        freq_end_idx = np.searchsorted(self.freqs, selection.freq_end)
+        freq_end_idx = np.searchsorted(self.freqs, selection.freq_end,
+                                       side='right')
 
         # Create mask
         mask = np.zeros(self.stft.shape, dtype=bool)

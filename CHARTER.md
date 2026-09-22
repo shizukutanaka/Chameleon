@@ -2471,3 +2471,19 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** Does `select_region`'s own advertised end bound reach
+the last frame -- and does `StructuredLogger` emit the payloads its
+methods attach?
+**A:** Two self-inconsistency defects. `load_audio` reports `time_range` /
+`frequency_range` ending at the last frame and the Nyquist bin, and
+`select_region` clamps to exactly those values -- but
+`get_selection_mask` searched `side='left'` and sliced end-exclusive, so
+a selection to the module's own advertised end silently dropped the
+final frame and the top bin (verified: 40/41 columns, 1024/1025 bins).
+End bounds are now inclusive via `side='right'`. And `StructuredLogger`
+-- orphaned but shipped surface -- attached `details`/`metrics`/`success`
+as LogRecord attributes its formatter never read: a security event
+logged its type but dropped the detail dict, a metrics call emitted
+"Performance metrics" with no metrics. The formatter now emits `success`
+and merges a `payload` dict; the two methods pass it accordingly.
