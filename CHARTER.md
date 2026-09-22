@@ -2471,3 +2471,13 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** Does `_validate_wav_structure` report every problem it
+finds -- or only the last one?
+**A:** Only the last one. Warnings and errors were written by repeated
+assignment to single metadata keys: a float-format 9-channel 12345 Hz WAV
+produced three findings (non-PCM format, unusual channel count, non-standard
+sample rate) but reported just "Non-standard sample rate"; a WAV missing
+both `fmt ` and `data` reported only "Missing data chunk". Findings are
+now collected and returned as `warnings`/`errors` lists, so every problem
+survives to the caller.
