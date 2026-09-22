@@ -3252,3 +3252,22 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22, continued):** If the deployment manifest's config surface
+was fictional (audit 58), is DEPLOYMENT_GUIDE.md's operator runbook equally
+verified? Docs get *read*, not *run* -- which is how fiction survives.
+**A:** Six instructions failed as written. `pip install -r requirements.txt`
+installs nothing (the file is intentionally empty) so the production
+systemd unit could never start the server -- the fix is `pip install -e
+'.[api]'`. `docker run ... analyze` hit the entrypoint's `*)` arm and tried
+to exec a binary named "analyze" -- the container needs the `cli` verb.
+The TLS block passed `--cert`/`--key` to `main.py server` -- argparse flags
+that never existed (the app has no TLS; terminate at a proxy/Ingress).
+The guide created `/opt/chameleon/.env` then never sourced it -- the unit
+needed `EnvironmentFile=`. And the whole k8s quickstart used wrong object
+names (`namespace chameleon`, `deployment chameleon`, secret literal
+`api-key` vs the `chameleon-system`/`chameleon-deployment`/`CHAMELEON_*`
+the manifest and code actually declare). test_docs_reference_reality.py
+now also guards: every flag a doc passes to a subcommand must exist in
+argparse, and every kubectl object name / secret literal a doc teaches
+must match the manifest or the code's env reads.

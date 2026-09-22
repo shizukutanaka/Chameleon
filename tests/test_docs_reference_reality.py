@@ -123,3 +123,56 @@ def test_real_imports_are_not_flagged():
     for module in ("core", "main", "bs1770_loudness", "security_validator"):
         assert (PROJECT_ROOT / f"{module}.py").is_file()
     assert "numpy" in EXTERNAL and "pytest" in EXTERNAL
+
+
+def test_no_doc_teaches_a_server_flag_argparse_rejects():
+    # DEPLOYMENT_GUIDE.md's TLS section told readers to pass `--cert`/`--key`
+    # to `main.py server`. argparse has never had those flags -- the command
+    # exits 2. Scan every doc line that invokes the subcommand and check each
+    # flag against the ones `server.add_argument` actually registers.
+    main_src = (PROJECT_ROOT / "main.py").read_text()
+    server_flags = set(re.findall(
+        r"server\.add_argument\(\s*['\"](--[\w-]+)", main_src))
+    assert server_flags, "no `server` subparser flags found -- is this guard stale?"
+
+    violations = []
+    for path in _documentation_files():
+        # The guide's fictional flags sat on `\`-continuations of the
+        # `main.py server` line; join continuations before scanning.
+        text = re.sub(r"\\\n\s*", " ", path.read_text())
+        for line_no, line in enumerate(text.splitlines(), 1):
+            if "main.py server" not in line:
+                continue
+            for flag in re.findall(r"--[\w-]+", line):
+                if flag not in server_flags:
+                    violations.append(f"{_relative(path)}:{line_no}: `{flag}`")
+    assert not violations, (
+        "Documentation passes flag(s) `main.py server` does not accept:\n  "
+        + "\n  ".join(violations))
+
+
+def test_doc_kubectl_commands_name_objects_the_manifest_declares():
+    # The guide's k8s quickstart scaled `deployment chameleon` (the manifest's
+    # Deployment is `chameleon-deployment`), applied into namespace
+    # `chameleon` (the manifest declares `chameleon-system`), and created the
+    # auth secret under the literal name `api-key` -- an env var nothing
+    # reads, so the API-key layer stayed off.
+    guide = (PROJECT_ROOT / "DEPLOYMENT_GUIDE.md")
+    if not guide.is_file():
+        pytest.skip("no deployment guide")
+    text = guide.read_text()
+    manifest = (PROJECT_ROOT / "k8s-deployment.yaml").read_text()
+
+    deploy_names = set(re.findall(
+        r"kind: Deployment\s*\nmetadata:\s*\n\s+name: (\S+)", manifest))
+    for m in re.finditer(r"kubectl\s+(?:scale|autoscale)\s+deployment\s+(\S+)", text):
+        assert m.group(1) in deploy_names, (
+            f"guide scales deployment {m.group(1)!r}; manifest declares {deploy_names}")
+
+    env_reads = set(re.findall(
+        r"""os\.(?:environ\.get|environ\[|getenv)\(?\s*['\"]([A-Z][A-Z0-9_]*)""",
+        "\n".join((PROJECT_ROOT / n).read_text()
+                  for n in ("main.py", "core.py", "api_server.py", "security_validator.py"))))
+    for m in re.finditer(r"--from-literal=([A-Za-z_][\w]*)=", text):
+        assert m.group(1) in env_reads, (
+            f"guide creates secret literal {m.group(1)!r} the code never reads")
