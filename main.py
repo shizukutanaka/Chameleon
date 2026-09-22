@@ -1213,11 +1213,14 @@ class AudioProcessor:
                     # Single forward pass: filtfilt would apply the response
                     # twice and double the requested dB gain.
                     processed = signal.lfilter(b, a, processed)
-                elif freq >= sr / 2:
-                    # A band above Nyquist cannot be represented; skipping it
-                    # silently would report "Processed" for a no-op band.
-                    print(f"Warning: eq band at {freq} Hz exceeds Nyquist "
-                          f"({sr / 2:.0f} Hz) -- skipped", file=sys.stderr)
+                else:
+                    # A band outside (0, Nyquist) cannot be represented;
+                    # skipping it silently would report "Processed" for a
+                    # no-op band. The guard was previously one-sided: a
+                    # band at 0 or a negative frequency dropped without a
+                    # word while only the high end warned.
+                    print(f"Warning: eq band at {freq} Hz is outside "
+                          f"(0, {sr / 2:.0f}) Hz -- skipped", file=sys.stderr)
 
         # Reverb (simple convolution)
         if "reverb" in effects and HAS_SCIPY:
@@ -2098,12 +2101,12 @@ class AudioProcessor:
         correlated with the signal rather than centred on zero. Rounding
         removes that bias and halves the worst-case error.
 
-        Dither is applied only when `ProcessingConfig.apply_dither` is set. It
-        is off by default on purpose: TPDF dither is the right choice for
-        audio quality when reducing bit depth, but it adds noise from a random
-        source, and CHARTER §1 sells this tool on being deterministic and
-        reproducible -- the same input must produce the same bytes. Opting in
-        trades that guarantee for the better-behaved noise floor.
+        Dither is applied only when `ProcessingConfig.apply_dither` is set,
+        off by default because even deterministic dither adds a noise floor
+        and CHARTER §1 sells this tool on a clean by-default output. The
+        generator is seeded: TPDF's value is the noise *shape*, not entropy,
+        so opting in still yields identical bytes run to run -- an unseeded
+        draw traded reproducibility away for nothing.
         """
         if audio.dtype != np.float32:
             audio = audio.astype(np.float32)
@@ -2115,7 +2118,7 @@ class AudioProcessor:
             # independent uniform variables. Triangular rather than
             # rectangular because it makes the quantisation error independent
             # of the signal, which is what removes noise modulation.
-            rng = np.random.default_rng()
+            rng = np.random.default_rng(0)
             scaled = scaled + (rng.random(scaled.shape) - rng.random(scaled.shape))
 
         pcm_audio = np.clip(np.round(scaled), -32768, 32767).astype(np.int16)

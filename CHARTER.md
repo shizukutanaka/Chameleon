@@ -2471,3 +2471,22 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** Why does seeding the opt-in dither matter when it is off
+by default anyway?
+
+**A:** Because `ProcessingConfig.apply_dither` is a public opt-in, and
+`_save_wav_basic`'s docstring claimed the trade as inevitable -- "opting in
+trades determinism for the better-behaved noise floor" -- which is the same
+false dichotomy audit-50 removed from `core.py`'s writer and the mastering
+dither. TPDF's value is the noise *shape*, not entropy: a seeded generator
+produces identical statistics AND identical bytes run to run (verified:
+unseeded, two writes of one signal differed in 1020 bytes). The CLI now
+seeds `default_rng(0)` and the docstring states the real choice (a fixed
+noise floor vs none, not randomness vs reproducibility). The existing test
+that pinned the old contract was updated rather than deleted: pinning a
+defect is what made the defect look intentional. Second fix in the same
+file, same defect class: `apply_effects` warned when an EQ band sat above
+Nyquist but dropped a band at or below 0 Hz with no output at all -- a
+one-sided range guard, twin of audit-32's `ParametricEQ.add_band` -- so
+"Processed" could report success for a no-op band. Both ends now warn.

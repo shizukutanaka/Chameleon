@@ -5,10 +5,11 @@ toward zero. That is a biased quantiser: on single-signed material every
 sample is pulled toward zero by up to a full LSB, and the worst-case error is
 twice what rounding gives. These tests pin the corrected behaviour.
 
-Dither is deliberately off by default -- CHARTER §1 sells the tool on
-deterministic, reproducible output, and dither is noise from a random source.
-The tests assert both halves of that trade: identical bytes by default,
-different bytes when the user opts in.
+Dither is deliberately off by default -- CHARTER §1 sells the tool on a
+clean output, and even deterministic dither adds a noise floor. But opting
+in does not have to give up reproducibility: the generator is seeded, so the
+tests assert identical bytes by default, and identical bytes *with* dither
+too -- TPDF's value is the noise shape, not entropy.
 """
 
 import tempfile
@@ -85,7 +86,7 @@ def test_output_is_deterministic_by_default():
     assert np.array_equal(first, second)
 
 
-def test_opting_into_dither_changes_the_output_and_is_not_deterministic():
+def test_opting_into_dither_changes_the_output_but_stays_deterministic():
     signal = np.full(5000, 0.30001, dtype=np.float32)
 
     undithered = _write_and_read(signal)
@@ -93,8 +94,11 @@ def test_opting_into_dither_changes_the_output_and_is_not_deterministic():
     dithered_again = _write_and_read(signal, apply_dither=True)
 
     assert not np.array_equal(undithered, dithered)
-    # Dither is genuine noise, so two dithered runs must differ too.
-    assert not np.array_equal(dithered, dithered_again)
+    # TPDF's value is the noise *shape*, not entropy: a seeded generator
+    # keeps identical noise statistics while staying reproducible -- the
+    # same determinism CHARTER §1 sells. This test previously pinned the
+    # opposite: an unseeded draw made every run differ.
+    assert np.array_equal(dithered, dithered_again)
 
 
 def test_dither_makes_the_average_converge_on_the_true_value():
