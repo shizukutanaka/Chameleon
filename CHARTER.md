@@ -3252,3 +3252,17 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+### 2026-09-21 (audit 130) — ISTFT rebuilt the wrong window
+
+**Q:** `_compute_stft_manual` honors `window="hamming"` (np.hamming at
+analysis) but `_compute_istft_manual` only branches on "hann" — what does a
+hamming round-trip return on the no-librosa path?
+
+**A:** **~54% of the amplitude.** Synthesis applied a rectangular window
+and normalized the overlap-add by `ones²`, so the hamming weighting from
+analysis was never undone — verified: a 1-second sine came back at 0.540
+RMS ratio. The synthesis window now mirrors every analysis branch
+(hann/hamming/rectangular); both hamming and hann round-trip at 1.000.
+Regression test pins interior RMS parity for both windows under
+`HAS_LIBROSA=False`.

@@ -181,3 +181,22 @@ def test_harmonic_enhance_refuses_empty_selection():
     assert not ed.harmonic_enhance_selection(empty)
     assert len(ed.undo_stack) == undo_depth
     assert np.array_equal(ed.current_audio, before_audio)
+
+
+def test_istft_manual_rebuilds_the_same_window_stft_used(monkeypatch):
+    # _compute_istft_manual synthesized with a rectangular window whenever
+    # config.window was "hamming", while _compute_stft_manual had analyzed
+    # with np.hamming -- a hamming round-trip came back at ~54% amplitude.
+    monkeypatch.setattr(spectral_editor, "HAS_LIBROSA", False)
+    audio = _sine(440)
+
+    for window_name in ("hann", "hamming"):
+        proc = spectral_editor.SpectrogramProcessor(
+            spectral_editor.SpectrogramConfig(window=window_name))
+        stft, _, _ = proc.compute_stft(audio, SAMPLE_RATE)
+        restored = proc.compute_istft(stft, SAMPLE_RATE, len(audio))
+
+        interior = slice(len(audio) // 10, len(audio) * 9 // 10)
+        ratio = (np.sqrt(np.mean(restored[interior] ** 2))
+                 / np.sqrt(np.mean(audio[interior] ** 2)))
+        assert ratio == pytest.approx(1.0, abs=0.02)
