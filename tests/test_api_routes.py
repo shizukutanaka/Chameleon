@@ -582,3 +582,26 @@ def test_audit_log_is_bounded():
     for i in range(cap + 50):
         api_server.log_audit_event("u", "OP", "res", "SUCCESS", "", "ip", "")
     assert len(api_server.api_state.audit_log) == cap
+
+
+def test_system_status_error_rate_is_a_bounded_job_fraction(client):
+    # error_rate used to be failed_jobs / total_requests -- two different
+    # populations. A server with 10 failed jobs against 5 requests
+    # reported a 'rate' of 2.0. It is now the fraction of jobs that
+    # failed, bounded [0,1].
+    token = _login(client).json()["token"]
+    stats = api_server.api_state.stats
+    stats['failed_jobs'] = 10
+    stats['completed_jobs'] = 0
+    stats['total_requests'] = 5
+    try:
+        r = client.get("/system/status", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200
+        assert r.json()["error_rate"] == 1.0
+        stats['completed_jobs'] = 90
+        r = client.get("/system/status", headers={"Authorization": f"Bearer {token}"})
+        assert r.json()["error_rate"] == 0.1
+    finally:
+        stats['failed_jobs'] = 0
+        stats['completed_jobs'] = 0
+        stats['total_requests'] = 0

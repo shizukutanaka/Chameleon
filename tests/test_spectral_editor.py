@@ -109,3 +109,24 @@ def test_harmonic_enhance_stays_inside_selection():
     assert changed.size > 0
     times = ed.times
     assert all(0.4 <= times[c[1]] <= 0.5 for c in changed)
+
+
+def test_demo_workflows_do_not_claim_source_separation(capsys):
+    # CHARTER §4 forbids source-separation. The demo's "Recommended
+    # Workflows" advertised 'Vocal Isolation' and 'Instrument Separation'
+    # -- capabilities this selection-scoped editor does not have. Every
+    # workflow it lists must name an edit the module can actually perform.
+    spectral_editor.demo_spectral_editing()
+    out = capsys.readouterr().out
+    assert "Isolation" not in out
+    assert "Separation" not in out
+
+def test_demo_feature_list_has_no_always_true_gates(capsys):
+    # The 'Spectrogram Computation' row was gated on `HAS_LIBROSA or True`
+    # -- a gate that can never close, reading as dependency-aware while
+    # hardcoding the check.
+    spectral_editor.demo_spectral_editing()
+    out = capsys.readouterr().out
+    # Manual STFT runs in every configuration, so ✓ is the honest answer --
+    # the pin guards it staying listed as available (not the expression).
+    assert "✓ Spectrogram Computation" in out

@@ -735,7 +735,9 @@ def demo_spectral_editing():
 
     # Show available features
     features = [
-        ("Spectrogram Computation", HAS_LIBROSA or True),
+        # Manual STFT always runs; `HAS_LIBROSA or True` read like a
+        # dependency gate but could never be False.
+        ("Spectrogram Computation", True),
         ("Advanced Interpolation", HAS_SCIPY),
         ("Visualization", HAS_MATPLOTLIB),
         ("Noise Reduction", True),
@@ -757,11 +759,15 @@ def demo_spectral_editing():
     print(f"  🎵 Harmonic Enhancement")
     print(f"  🔧 Spectral Interpolation")
 
-    # Show recommended workflows
+    # Show recommended workflows. Every entry must name something the
+    # selection-scoped ops above can actually do: this editor boosts or
+    # removes a frequency region -- it cannot *isolate* a source, and
+    # "Vocal Isolation"/"Instrument Separation" are source-separation
+    # claims, which CHARTER §4 forbids.
     print(f"\nRecommended Workflows:")
-    print(f"  🎤 Vocal Isolation: Select and enhance vocal harmonics")
+    print(f"  🎤 Vocal-band emphasis: select the region and enhance its harmonics")
     print(f"  🔇 Noise Removal: Select noise regions and delete/reduce")
-    print(f"  🎸 Instrument Separation: Enhance specific frequency ranges")
+    print(f"  🎸 Band EQ: boost or cut a specific frequency range")
     print(f"  🔧 Audio Restoration: Interpolate missing spectral content")
 
 if __name__ == "__main__":
