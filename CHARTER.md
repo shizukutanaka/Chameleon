@@ -2471,3 +2471,19 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+### 2026-09-21 (audit 133) — a second DAG on one engine ran nothing
+
+**Q:** `WorkflowEngine._execute_dag` builds dependency state on the
+engine's own `dep_graph`/`task_queue` attributes. What happens when a
+second DAG workflow runs on the same engine?
+
+**A:** **Silently zero tasks.** `DependencyGraph.completed` kept the first
+run's task ids, so `get_ready_tasks` excluded a reused id; every task
+downstream of it stayed unscheduled, the queue sat empty, and
+`execute_workflow` returned `{}` -- success reported for work that never
+ran (the audit-9 class again, one level up). Verified on-device: second
+DAG with ids {a, b<-a} produced `results == {}`. `_execute_dag` now builds
+fresh `DependencyGraph`/`TaskQueue` per call; the engine attributes stay
+for compatibility but are no longer used. Regression test reuses task id
+"a" across two DAGs and pins both results present.

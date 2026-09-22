@@ -55,6 +55,13 @@
 
 ### Fixed
 
+- **A second DAG workflow on one engine silently ran nothing** --
+  `WorkflowEngine._execute_dag` built its dependency state on per-engine
+  `dep_graph`/`task_queue` attributes, so `DependencyGraph.completed`
+  carried over: a second DAG reusing a task id found it already
+  "completed", every dependent stayed unscheduled, and
+  `execute_workflow` returned `{}`. Each execution now builds fresh
+  graph/queue state.
 - **`--convert-bit-depth 32` wrote an IEEE-float WAV that Chameleon
   itself cannot read** -- `save_audio` mapped bit depth 32 to
   soundfile's `FLOAT` subtype (format tag 3), so the converted artifact

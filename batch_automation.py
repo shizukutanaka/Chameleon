@@ -667,9 +667,15 @@ class WorkflowEngine:
 
     def _execute_dag(self, workflow: Workflow) -> Dict[str, TaskResult]:
         """Execute DAG workflow"""
+        # Fresh per-run state: the graph's `completed` set and in-degrees
+        # carry over between calls otherwise, so a second DAG reusing a task
+        # id would find it already "completed" and silently run nothing.
+        dep_graph = DependencyGraph()
+        task_queue = TaskQueue()
+
         # Build dependency graph
         for task in workflow.tasks:
-            self.dep_graph.add_task(task)
+            dep_graph.add_task(task)
 
         # Create task map
         task_map = {task.id: task for task in workflow.tasks}
@@ -677,15 +683,15 @@ class WorkflowEngine:
         running_tasks = {}
 
         # Get initial ready tasks
-        ready_tasks = self.dep_graph.get_ready_tasks()
+        ready_tasks = dep_graph.get_ready_tasks()
         for task_id in ready_tasks:
-            self.task_queue.add_task(task_map[task_id])
+            task_queue.add_task(task_map[task_id])
 
         # Execute tasks
-        while not self.task_queue.is_empty() or running_tasks:
+        while not task_queue.is_empty() or running_tasks:
             # Start new tasks up to parallel limit
             while len(running_tasks) < workflow.max_parallel:
-                task = self.task_queue.get_task()
+                task = task_queue.get_task()
                 if task is None:
                     break
 
@@ -702,10 +708,10 @@ class WorkflowEngine:
                     completed_tasks.append(task_id)
 
                     # Mark as completed and get newly ready tasks
-                    newly_ready = self.dep_graph.mark_completed(task_id)
+                    newly_ready = dep_graph.mark_completed(task_id)
                     for ready_id in newly_ready:
                         if ready_id in task_map:
-                            self.task_queue.add_task(task_map[ready_id])
+                            task_queue.add_task(task_map[ready_id])
 
             # Remove completed tasks
             for task_id in completed_tasks:
