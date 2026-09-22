@@ -3252,3 +3252,22 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22, plugin sandbox limits):** Does `max_execution_time`
+bound every plugin-defined callable, and does it fire at all below one
+second?
+**A:** No, twice over. `signal.alarm(int(max_time))` truncated 0.5 to 0
+-- and `alarm(0)` CANCELS the timer, so any sub-second configured
+timeout silently ran unbounded (verified: limit 0.5, work slept 2s,
+returned normally). `signal.setitimer(ITIMER_REAL, max_time)` keeps the
+fractional value. And two plugin callables bypassed the limits entirely:
+`unload_plugin` invoked `cleanup()` raw (verified: 2s of plugin code
+against a 0.6s limit; a hanging cleanup would have blocked unload and
+shutdown forever), and `execute_plugin` read the operation method with a
+plain `getattr` -- a plugin overriding `__getattr__` ran unbounded code
+at attribute-read time (verified). Both now dispatch through
+`execute_with_limits`, matching the contract the loader already keeps
+for construction, metadata, and initialize. The pattern: **a resource
+limit is only as strong as its narrowest dispatch path** -- wrapping
+nine of ten plugin callables still leaves the sandbox exactly as
+breachable as the tenth.

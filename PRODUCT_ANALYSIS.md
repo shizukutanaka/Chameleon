@@ -82,7 +82,9 @@ re-verified, not trusted.
   for it. A static audit of the suite in the same pass found no vacuous
   tests — no `assert True`, no `x == x`, nothing swallowing exceptions, and the
   only three assertion-free tests are "must not raise" checks where the call
-  itself is the assertion.
+  itself is the assertion. On 2026-09-22 three plugin-sandbox tests on this
+  branch were mutation-verified: the sub-second-timeout, bounded-cleanup, and
+  bounded-getattr tests each failed when the fix was reverted.
 - **DSP claims are checked against ground truth, not eyeballed.** The
   regression suite asserts measured quantities — a clean sine survives
   restoration bit-exactly, a clipped signal comes back 14.5 dB closer to the
