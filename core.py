@@ -2116,6 +2116,12 @@ class EnhancedSecurityValidator:
             name, ext = os.path.splitext(sanitized)
             sanitized = name[:255-len(ext)] + ext
 
+        # '.' and '..' survive the scrub (dots are legal filename chars) yet
+        # are the canonical traversal components -- same guard as
+        # security_validator's twin.
+        if sanitized in (".", ".."):
+            return "untitled"
+
         return sanitized or "untitled"
 
     @staticmethod

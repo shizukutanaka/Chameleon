@@ -582,3 +582,13 @@ def test_audit_log_is_bounded():
     for i in range(cap + 50):
         api_server.log_audit_event("u", "OP", "res", "SUCCESS", "", "ip", "")
     assert len(api_server.api_state.audit_log) == cap
+
+
+def test_resolve_uploaded_path_missing_file_returns_404_not_400():
+    # The exists() check sat after validate_file_path's "read" gate, which
+    # raises SecurityError on a missing file first -- a registered-but-absent
+    # file surfaced as 400 (client's fault) while the intended 404 branch was
+    # unreachable.
+    with pytest.raises(api_server.HTTPException) as exc:
+        api_server._resolve_uploaded_path("definitely_missing_name.wav")
+    assert exc.value.status_code == 404

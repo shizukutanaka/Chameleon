@@ -639,13 +639,17 @@ def _resolve_uploaded_path(name: str) -> Path:
     if candidate.parent != upload_root:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="File reference outside upload area")
 
+    # Existence before the security validator: its "read" check raises on a
+    # missing file too, which surfaced as a 400 and made this 404 branch
+    # unreachable. A registered-but-absent file is "not found", not a bad
+    # request.
+    if not candidate.exists():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not found")
+
     try:
         _REQUEST_VALIDATOR.validate_file_path(candidate, operation="read")
     except ChameleonSecurityError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-
-    if not candidate.exists():
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not found")
 
     return candidate
 

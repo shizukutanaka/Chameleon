@@ -298,6 +298,12 @@ class SecurityValidator:
         if len(sanitized) > 255:
             name, ext = os.path.splitext(sanitized)
             sanitized = name[:255 - len(ext)] + ext
+        # '.' and '..' contain nothing the scrub removes, yet they are the
+        # canonical traversal components: joined onto a directory they
+        # resolve to the directory itself or its parent. A sanitizer that
+        # returns them unchanged has stripped nothing.
+        if sanitized in (".", ".."):
+            return "untitled"
         return sanitized or "untitled"
 
     @_hybridmethod

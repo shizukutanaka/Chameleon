@@ -419,3 +419,23 @@ def test_backup_workflow_verifies_an_intact_copy(tmp_path, monkeypatch, capsys):
 
     assert (dest_dir / "a.wav").exists()
     assert "verified successfully" in capsys.readouterr().out
+
+
+def test_library_search_matches_metadata_values(tmp_path, monkeypatch):
+    # The docstring has always claimed filename/tags/metadata search; the
+    # metadata axis never ran, so '44100' found nothing in a library whose
+    # files all carry sample_rate: 44100 in their scanned metadata.
+    from tests._helpers import write_sine_wave
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    library = tmp_path / "lib"
+    library.mkdir()
+    write_sine_wave(library / "song.wav", duration=0.05)
+
+    config = personal_config.PersonalConfig(audio_library=str(library))
+    manager = personal_config.PersonalLibraryManager(config)
+    manager.scan_library()
+
+    assert manager.search("44100") == ["song.wav"]
+    assert manager.search("song") == ["song.wav"]
+    assert manager.search("definitely-absent") == []

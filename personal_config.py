@@ -411,6 +411,14 @@ class PersonalLibraryManager:
                 results.append(file_key)
                 continue
 
+            # Metadata (sample rate, channels, ...) -- the docstring has
+            # always promised this axis; it just never ran. Searching
+            # '44100' now finds files recorded at that rate.
+            for value in file_info.get("metadata", {}).values():
+                if query.lower() in str(value).lower():
+                    results.append(file_key)
+                    break
+
         return results
 
 

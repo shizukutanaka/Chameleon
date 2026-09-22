@@ -330,3 +330,19 @@ class TestSecurityConfigFromEnvironment:
         with pytest.warns(UserWarning, match="does not exist"):
             cfg = SecurityConfig.from_environment()
         assert str(tmp_path / "ghost") in cfg.trusted_roots
+
+
+class TestSanitizeFilenameDotComponents:
+    def test_dot_components_fall_back_to_untitled(self):
+        # The scrub has no dots to replace, so '.' and '..' passed straight
+        # through -- a sanitizer returning the traversal component it exists
+        # to strip. Live callers' second gates contained it; the function's
+        # own contract did not.
+        assert SecurityValidator.sanitize_filename("..") == "untitled"
+        assert SecurityValidator.sanitize_filename(".") == "untitled"
+
+    def test_legal_dot_names_unchanged(self):
+        # Only the two traversal components are special; '..x.wav' is a
+        # legal (dotfile-style) name and must pass through.
+        assert SecurityValidator.sanitize_filename("..x.wav") == "..x.wav"
+        assert SecurityValidator.sanitize_filename("...") == "..."
