@@ -145,3 +145,31 @@ def test_the_crossfade_weights_sum_to_one(declipper):
     source = inspect.getsource(declipper.restore_clipped)
     assert "(1 - window) * 0.5" not in source
     assert "(1.0 - window)" in source
+
+
+# --- repair honesty --------------------------------------------------------
+
+def test_unrepairable_region_warns_instead_of_silent_skip(declipper):
+    # A clipped run longer than the interpolation window is left untouched --
+    # correctly, since cubic reconstruction cannot cross a 100+ sample hole.
+    # The defect was that it was left *silently*: `detect_clipping` had already
+    # reported the region, and the repair pipeline then counted "declipping"
+    # as applied while the plateau came back bit-identical.
+    audio = np.zeros(500)
+    audio[100:250] = 1.0  # 150-sample plateau at full scale
+
+    with pytest.warns(UserWarning, match="clipped region"):
+        repaired = declipper.restore_clipped(audio, SAMPLE_RATE)
+
+    assert np.array_equal(repaired, audio)
+
+
+def test_repairable_region_does_not_warn(declipper):
+    # Contract pin: short clipped runs are repaired without complaint.
+    import warnings
+    audio = _sine(440, seconds=0.05)
+    audio[1000:1020] = 1.0  # 20-sample plateau -- inside the repairable window
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        declipper.restore_clipped(audio, SAMPLE_RATE)

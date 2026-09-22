@@ -116,25 +116,37 @@ class ClickRemover:
         result = audio.copy()
         clicks = self.detect_clicks(audio, sample_rate)
 
+        skipped = 0
         for click_pos in clicks:
             # Define repair region
             start = max(0, click_pos - 10)
             end = min(len(audio), click_pos + 10)
 
-            if start > 20 and end < len(audio) - 20:
-                # Linear interpolation across the click, crossfaded in at the
-                # edges. This used to be introduced by a comment reading "use
-                # autoregressive prediction", above three lines that gathered
-                # the surrounding samples into a `surrounding` array and then
-                # discarded it unused. No AR model was ever fitted; the label
-                # is removed rather than the method upgraded, because what
-                # ships should be what the comment says.
-                repair_length = end - start
-                repaired = np.linspace(result[start-1], result[end], repair_length)
+            if start <= 20 or end >= len(audio) - 20:
+                # Too close to an edge to interpolate across -- but the click
+                # was detected, so the skip must not be silent either.
+                skipped += 1
+                continue
+            # Linear interpolation across the click, crossfaded in at the
+            # edges. This used to be introduced by a comment reading "use
+            # autoregressive prediction", above three lines that gathered
+            # the surrounding samples into a `surrounding` array and then
+            # discarded it unused. No AR model was ever fitted; the label
+            # is removed rather than the method upgraded, because what
+            # ships should be what the comment says.
+            repair_length = end - start
+            repaired = np.linspace(result[start-1], result[end], repair_length)
 
-                # Apply windowing for smooth transition
-                window = signal.windows.tukey(repair_length, 0.5)
-                result[start:end] = repaired * window + result[start:end] * (1 - window)
+            # Apply windowing for smooth transition
+            window = signal.windows.tukey(repair_length, 0.5)
+            result[start:end] = repaired * window + result[start:end] * (1 - window)
+
+        if skipped:
+            warnings.warn(
+                f"click removal skipped {skipped} click(s) within ~20 samples of the "
+                "file edges: too little context to interpolate across",
+                stacklevel=2,
+            )
 
         return result
 
@@ -316,39 +328,53 @@ class DeclippingProcessor:
         result = audio.copy()
         starts, ends = self.detect_clipping(audio)
 
+        skipped = 0
         for start, end in zip(starts, ends):
-            if end - start < 100:  # Only process short clips
-                # Get surrounding context
-                context_before = max(0, start - 50)
-                context_after = min(len(audio), end + 50)
+            if end - start >= 100:
+                # Cubic interpolation cannot reconstruct context across a gap
+                # this long; leaving the plateau is the honest result, but it
+                # must not be silent -- see the module docstring on reporting
+                # a repair that never ran.
+                skipped += 1
+                continue
+            # Get surrounding context
+            context_before = max(0, start - 50)
+            context_after = min(len(audio), end + 50)
 
-                # Create interpolation points
-                x_known = np.concatenate([
-                    np.arange(context_before, start),
-                    np.arange(end, context_after)
-                ])
-                y_known = np.concatenate([
-                    result[context_before:start],
-                    result[end:context_after]
-                ])
+            # Create interpolation points
+            x_known = np.concatenate([
+                np.arange(context_before, start),
+                np.arange(end, context_after)
+            ])
+            y_known = np.concatenate([
+                result[context_before:start],
+                result[end:context_after]
+            ])
 
-                if len(x_known) > 3:
-                    # Interpolate clipped region
-                    x_clip = np.arange(start, end)
+            if len(x_known) > 3:
+                # Interpolate clipped region
+                x_clip = np.arange(start, end)
 
-                    if self.interpolation_method == 'cubic' and len(x_known) > 3:
-                        f = interpolate.interp1d(x_known, y_known, kind='cubic', fill_value='extrapolate')
-                        restored = f(x_clip)
-                    else:
-                        restored = np.interp(x_clip, x_known, y_known)
+                if self.interpolation_method == 'cubic':
+                    f = interpolate.interp1d(x_known, y_known, kind='cubic', fill_value='extrapolate')
+                    restored = f(x_clip)
+                else:
+                    restored = np.interp(x_clip, x_known, y_known)
 
-                    # Crossfade the reconstruction in over the clipped run.
-                    # The weights must sum to 1: the stray `* 0.5` that used to
-                    # be on the second term made every region edge come out at
-                    # half amplitude, punching a hole where it was repairing.
-                    window = signal.windows.tukey(len(restored), 0.5)
-                    result[start:end] = (restored * window
-                                         + result[start:end] * (1.0 - window))
+                # Crossfade the reconstruction in over the clipped run.
+                # The weights must sum to 1: the stray `* 0.5` that used to
+                # be on the second term made every region edge come out at
+                # half amplitude, punching a hole where it was repairing.
+                window = signal.windows.tukey(len(restored), 0.5)
+                result[start:end] = (restored * window
+                                     + result[start:end] * (1.0 - window))
+
+        if skipped:
+            warnings.warn(
+                f"declipping skipped {skipped} clipped region(s) of 100+ samples: "
+                "interpolation cannot reconstruct context that long",
+                stacklevel=2,
+            )
 
         return result
 

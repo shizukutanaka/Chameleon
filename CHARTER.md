@@ -2471,3 +2471,26 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** `audio_restoration`'s own docstring states the
+contract -- "a caller cannot report a repair that never ran". Do the
+repair stages' *skip* gates honour it: when the detectors have already
+reported damage but the repair stage declines to fix it, does the caller
+learn that?
+**A:** No, twice over. `DeclippingProcessor.restore_clipped` skipped any
+clipped run of 100+ samples, and `ClickRemover.remove_clicks` skipped
+clicks within ~20 samples of the file edges. Both refusals are correct
+engineering -- cubic interpolation cannot reconstruct context across a
+hole that long, and an edge click has too little context to interpolate
+across -- but both were silent while `detect_clipping`/`detect_clicks`
+had already reported the regions and the pipelines above list
+"declipping"/"click_removal" as applied. Measured: a 150-sample plateau
+at full scale came back bit-identical with zero indication. Each stage
+now emits one `warnings.warn` per call naming how many detected regions
+were left unmodified and why. A warning is the right channel rather than
+an exception: a mixed file (one unrepairable region among five good
+ones) must still get its five repairs -- matching how `repair_gaps`
+raises for unrepairable input while `VinylRestorer` records skipped
+steps in `skipped_processes`. Behaviour is unchanged for repairable
+material (verified: the long plateau is still untouched -- now warned;
+a mid-file click still repairs silently).
