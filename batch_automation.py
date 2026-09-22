@@ -49,6 +49,7 @@ class TaskStatus(Enum):
     FAILED = "failed"
     CANCELLED = "cancelled"
     RETRYING = "retrying"
+    SKIPPED = "skipped"  # blocked by a failed dependency or a false condition
 
 class WorkflowType(Enum):
     """Workflow execution types"""
@@ -541,15 +542,46 @@ class DependencyGraph:
 
         return newly_ready
 
+    def mark_failed(self, task_id: str) -> List[str]:
+        """Mark a task failed; return every transitively dependent task.
+
+        Dependents of a failed task can never legitimately become ready --
+        running them would either fail downstream on missing inputs or
+        silently succeed on stale ones. They are settled here (added to
+        `completed` so no later in_degree decrement can resurrect them) and
+        returned so the caller can record why each did not run.
+        """
+        blocked = []
+        seen = {task_id}
+        stack = list(self.graph.get(task_id, []))
+        while stack:
+            node = stack.pop()
+            if node in seen or node in self.completed:
+                continue
+            seen.add(node)
+            blocked.append(node)
+            stack.extend(self.graph.get(node, []))
+        self.completed.update(blocked)
+        return blocked
+
 class TaskExecutor:
     """Execute individual tasks"""
 
     def __init__(self, max_workers: int = 4):
         self.max_workers = max_workers
         self.thread_pool = ThreadPoolExecutor(max_workers=max_workers)
-        self.process_pool = ProcessPoolExecutor(max_workers=max_workers)
+        # Created lazily by the process_pool property: an eager pool leaked
+        # one semaphore set per WorkflowEngine ever constructed (nothing
+        # submits work to it today).
+        self._process_pool: Optional[ProcessPoolExecutor] = None
         self.results = {}
         self.logger = logging.getLogger(__name__)
+
+    @property
+    def process_pool(self) -> ProcessPoolExecutor:
+        if self._process_pool is None:
+            self._process_pool = ProcessPoolExecutor(max_workers=self.max_workers)
+        return self._process_pool
 
     def execute(self, task: BatchTask) -> TaskResult:
         """Execute a single task"""
@@ -608,7 +640,8 @@ class TaskExecutor:
     def cleanup(self) -> None:
         """Cleanup executor resources"""
         self.thread_pool.shutdown(wait=True)
-        self.process_pool.shutdown(wait=True)
+        if self._process_pool is not None:
+            self._process_pool.shutdown(wait=True)
 
 class WorkflowEngine:
     """Execute workflows"""
@@ -616,8 +649,6 @@ class WorkflowEngine:
     def __init__(self, max_parallel: int = 4):
         self.max_parallel = max_parallel
         self.executor = TaskExecutor(max_parallel)
-        self.task_queue = TaskQueue()
-        self.dep_graph = DependencyGraph()
         self.results = {}
         self.logger = logging.getLogger(__name__)
 
@@ -667,25 +698,50 @@ class WorkflowEngine:
 
     def _execute_dag(self, workflow: Workflow) -> Dict[str, TaskResult]:
         """Execute DAG workflow"""
+        # Fresh graph/queue per run -- these used to live on the engine, so
+        # a second execute_workflow call inherited the first run's
+        # `completed` set and silently never ran tasks with the same ids.
+        dep_graph = DependencyGraph()
+        task_queue = TaskQueue()
+
         # Build dependency graph
         for task in workflow.tasks:
-            self.dep_graph.add_task(task)
+            dep_graph.add_task(task)
 
         # Create task map
         task_map = {task.id: task for task in workflow.tasks}
+
+        # A dependency must name a task in this workflow -- a dangling id is
+        # unenforceable, and silently ignoring it made "runs after" mean
+        # "maybe runs" (it also crashed the seeding loop on KeyError via a
+        # phantom graph node). Fail fast with the missing names instead.
+        undeclared = sorted({
+            dep for task in workflow.tasks for dep in task.dependencies
+        } - set(task_map))
+        if undeclared:
+            raise ValueError(
+                f"Dependencies reference unknown tasks: {undeclared}")
+
         results = {}
         running_tasks = {}
 
         # Get initial ready tasks
-        ready_tasks = self.dep_graph.get_ready_tasks()
+        ready_tasks = dep_graph.get_ready_tasks()
         for task_id in ready_tasks:
-            self.task_queue.add_task(task_map[task_id])
+            if task_id in task_map:
+                task_queue.add_task(task_map[task_id])
+
+        # max_parallel <= 0 (reachable from a workflow config) used to make
+        # the submit loop a no-op while the outer loop waited on a queue
+        # that could never drain -- an infinite busy spin. Run sequentially
+        # instead, the smallest honest parallelism.
+        max_parallel = max(1, workflow.max_parallel)
 
         # Execute tasks
-        while not self.task_queue.is_empty() or running_tasks:
+        while not task_queue.is_empty() or running_tasks:
             # Start new tasks up to parallel limit
-            while len(running_tasks) < workflow.max_parallel:
-                task = self.task_queue.get_task()
+            while len(running_tasks) < max_parallel:
+                task = task_queue.get_task()
                 if task is None:
                     break
 
@@ -701,11 +757,29 @@ class WorkflowEngine:
                     results[task_id] = result
                     completed_tasks.append(task_id)
 
-                    # Mark as completed and get newly ready tasks
-                    newly_ready = self.dep_graph.mark_completed(task_id)
-                    for ready_id in newly_ready:
-                        if ready_id in task_map:
-                            self.task_queue.add_task(task_map[ready_id])
+                    if result.status == TaskStatus.COMPLETED:
+                        # Mark as completed and get newly ready tasks
+                        newly_ready = dep_graph.mark_completed(task_id)
+                        for ready_id in newly_ready:
+                            if ready_id in task_map:
+                                task_queue.add_task(task_map[ready_id])
+                    else:
+                        # A failed task must not unblock dependents: they
+                        # would run on missing inputs and surface a
+                        # secondary failure (or silently succeed on stale
+                        # data). Record why each did not run -- a missing
+                        # entry in results is indistinguishable from "the
+                        # task never existed".
+                        for blocked_id in dep_graph.mark_failed(task_id):
+                            results[blocked_id] = TaskResult(
+                                task_id=blocked_id,
+                                status=TaskStatus.SKIPPED,
+                                output=None,
+                                error=(
+                                    f"Skipped: dependency '{task_id}' "
+                                    "did not complete"),
+                                end_time=datetime.now(),
+                            )
 
             # Remove completed tasks
             for task_id in completed_tasks:
@@ -728,6 +802,13 @@ class WorkflowEngine:
             if condition:
                 if not self._evaluate_condition(condition, results):
                     self.logger.info(f"Skipping task {task.id} due to condition")
+                    results[task.id] = TaskResult(
+                        task_id=task.id,
+                        status=TaskStatus.SKIPPED,
+                        output=None,
+                        error="Skipped: condition not met",
+                        end_time=datetime.now(),
+                    )
                     continue
 
             result = self.executor.execute(task)

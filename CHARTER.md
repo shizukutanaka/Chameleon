@@ -2471,3 +2471,62 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** `WorkflowEngine` stores its dependency graph and task
+queue as instance state in `__init__`. Can `execute_workflow` be called
+twice on one engine?
+**A:** No -- and the second call lied instead of failing. `dep_graph` and
+`task_queue` accumulated across runs, so a second DAG workflow inherited
+the first run's `completed` set: tasks with the same ids were never
+"ready", never enqueued, and `execute_workflow` returned `{}` with no
+error. `BatchAutomation.execute` reuses one engine across workflow ids,
+so this was reachable through the public facade. Graph and queue are now
+constructed inside `_execute_dag` per run; the engine attributes are
+gone, because instance state that *looks* shared invites the next reader
+to trust it.
+
+**Q (2026-09-22):** In a DAG workflow, what does `dependencies` mean when
+the upstream task failed?
+**A:** Before this audit it meant "order only": `mark_completed` fired on
+every finished task regardless of status, so a dependent ran -- and could
+succeed -- on missing upstream data. Verified: a task whose only
+dependency raised `RuntimeError` still completed with output. A failed
+task's dependents are now transitively blocked and each gets an explicit
+`TaskResult(status=TaskStatus.SKIPPED, error="Skipped: dependency 'x'
+did not complete")` -- a missing entry in `results` is indistinguishable
+from "the task never existed". Dependents sharing a dep with a
+still-running task cannot be resurrected (blocked ids are settled in
+`completed`, so a later success's in_degree decrement still leaves them
+>0). Conditional workflows got the same treatment: a condition-false
+task used to leave no trace in results; it now records SKIPPED too.
+
+**Q (2026-09-22):** Can a workflow configuration make the engine hang or
+crash?
+**A:** Two ways, both verified. `max_parallel: 0` -- a legal YAML value --
+made the submit loop a no-op while the outer loop waited on a queue that
+could never drain: an infinite busy spin (killed at 5 s). It now falls
+back to sequential execution, the smallest honest parallelism.
+`dependencies: ["ghost"]` seeded a phantom graph node (add_task creates
+an in_degree=0 entry for any dep id) and then crashed the seeding loop
+with a bare `KeyError`; undeclared dependencies now fail fast with a
+`ValueError` naming the missing tasks, because an unenforceable
+constraint silently ignored is the same lie again.
+Also this audit: `TaskExecutor` built a `ProcessPoolExecutor` eagerly at
+init -- one semaphore set leaked per WorkflowEngine ever constructed
+(nothing submits to it; BatchScheduler creates an engine per scheduled
+run). The pool is now created lazily on first access and `cleanup` only
+shuts it down if it exists.
+
+- A graph walked twice needs fresh state each walk: engine-level
+  dep_graph/task_queue made run N+1 inherit run N's `completed` set and
+  return an empty result -- the most silent failure mode there is. Any
+  per-execution structure living on a reusable object is a bug waiting
+  for the second call.
+- "Runs after X" must name which X: a dependency that unblocks on
+  *failure* means dependents execute on missing data and report a
+  secondary failure -- or silently succeed on stale inputs. And a task
+  that never ran still needs a result entry: absence is not a status.
+- A resource that costs something to create should be created when
+  needed: an eager ProcessPoolExecutor leaked OS semaphores for a code
+  path nothing exercised -- the leak was invisible until
+  resource_tracker complained at interpreter exit.

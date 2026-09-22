@@ -1,10 +1,10 @@
 # Chameleon — Product Analysis (Strengths, Weaknesses, Improvement Backlog)
 
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
-**Version:** 1.1.0 · **Tests:** re-run 2026-09-21 on Python 3.12, green in
-all three configurations — **477 passed** on a bare install (stdlib only,
-33 skipped), **557** with numpy (scipy/librosa/soundfile blocked, 33
-skipped), **662** with numpy + scipy + librosa + soundfile + fastapi
+**Version:** 1.1.0 · **Tests:** re-run 2026-09-22 on Python 3.12, green in
+all three configurations — **483 passed** on a bare install (stdlib only,
+33 skipped), **563** with numpy (scipy/librosa/soundfile blocked, 33
+skipped), **668** with numpy + scipy + librosa + soundfile + fastapi
 (5 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
@@ -240,10 +240,14 @@ bugs to fix but problems without a known-good answer in this codebase.
   and never created the `aliases.sh` file its own documented next step tells
   you to source. 23 tests total, one of them a real, unmocked run of the
   onboarding flow end to end. See `CHARTER.md` §9.
-- **The orphaned modules' DSP is still untested.** `spectral_editor.py` and
-  `batch_automation.py` have import-safety coverage
-  (`tests/test_orphaned_import_safety.py`, `tests/test_smoke.py`) but nothing
-  exercises what they compute. The `audio_restoration` audit is the reason to
+- ~~**The orphaned modules' DSP is still untested.**~~ — **partially
+  resolved 2026-09-22:** `batch_automation.py`'s workflow executors now
+  have behavioral coverage (`tests/test_batch_automation.py`), which found
+  four defects: dependents ran after a failed dependency, the engine was
+  not reentrant, a dangling dependency crashed with a bare KeyError, and
+  `max_parallel: 0` spun forever. `spectral_editor.py` still has only
+  import-safety coverage (`tests/test_orphaned_import_safety.py`,
+  `tests/test_smoke.py`). The `audio_restoration` audit is the reason to
   care: every defect it turned up was in code that imported cleanly.
 
 ### Infrastructure / architecture (need a human or a big investment)
@@ -336,6 +340,7 @@ here because they need a user decision first.
 | ~~P3~~ | ~~Consolidate the three spectral-subtraction implementations~~ | ~~Low~~ | ~~M~~ | ~~Med~~ | **DECLINED 2026-09-19** — evaluated in CHARTER §9: not three copies of one algorithm. The shared part is a 4-line kernel; the estimators are semantically different (auto noise-floor vs quiet-decile-with-refusal vs user-selected noise print) and the STFT backends differ (scipy / librosa / SpectralProcessor). A shared helper would dedupe ~4 lines at the cost of a new abstraction across three working DSP paths — the kind of unnecessary abstraction the charter forbids |
 | ~~P4~~ | ~~A trustworthy click detector, or a documented decision not to have one~~ | ~~Med~~ | ~~L~~ | ~~High~~ | **DONE 2026-09-19** — chose the documented decision: §2 already records both measured candidates destroy audio (354 false clicks in 1 s of noise; 1764 via second-difference/MAD), so `--declick` deliberately does not ship |
 | ~~P3~~ | ~~Pure-Python true-peak perf, or a documented cap note~~ | ~~Low~~ | ~~S~~ | ~~Low~~ | **DONE 2026-09-19** — chose the documented cap: §2 already states ~0.4 s per 65k-sample bounded prefix |
+| ~~P2~~ | ~~Give `batch_automation`'s executors behavioral coverage~~ | Med | S | Low | **DONE 2026-09-22** — the audit's own "nothing exercises what they compute" warning proved out: four executor defects fixed (dependents ran on failed dependencies, engine not reentrant, dangling-dep KeyError, `max_parallel=0` spin), + SKIPPED results so no task outcome is silent |
 | P4 | Plugin sandbox runtime boundary (restricted builtins for `exec_module`) | High (security) | L | High | Architectural; leaky if done partially — design first |
 | P4 | Surround-channel loudness weighting | Low | M | Low | Only if a real multichannel use case appears |
 
@@ -371,8 +376,8 @@ python main.py --help
 
 **The deep check, worth running before any claim that the suite is sound:**
 break the code on purpose and confirm the suite notices. Revert one fix in the
-source, run only its test file, restore. Six known-good pairs, all verified to
-fail-then-pass on 2026-08-25:
+source, run only its test file, restore. Ten known-good pairs, six verified to
+fail-then-pass on 2026-08-25 and four added 2026-09-22:
 
 | Revert | Should fail |
 |---|---|
@@ -382,6 +387,10 @@ fail-then-pass on 2026-08-25:
 | drop the `shutil.copyfile` in `core.py`'s already-mono branch | `tests/test_stdlib_operations.py` |
 | `np.round(scaled)` → `scaled` in `main.py` | `tests/test_quantization.py` |
 | any K-weighting coefficient × 1.001 in `bs1770_loudness.py` | `tests/test_bs1770_loudness.py` |
+| `mark_completed` unconditional in `batch_automation._execute_dag` | `tests/test_batch_automation.py` |
+| engine-level (not per-run) `dep_graph`/`task_queue` in `batch_automation` | `tests/test_batch_automation.py` |
+| drop the undeclared-dependencies check in `batch_automation._execute_dag` | `tests/test_batch_automation.py` |
+| `max(1, workflow.max_parallel)` → `workflow.max_parallel` in `batch_automation` | `tests/test_batch_automation.py` |
 
 A green suite that survives none of these is measuring nothing. Restore the
 file after each one — `git status` must come back empty.
