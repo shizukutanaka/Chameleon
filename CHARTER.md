@@ -3252,3 +3252,25 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22):** `audio_restoration.py`'s docstring promises "a clear
+error at point of use" when the optional `[audio]` deps are missing — the
+module guards `import numpy`/`from scipy import signal`. Does every public
+entry point actually honour that?
+
+**A:** It did not. With numpy present but scipy absent (the `numpy_only`
+blocker), `ClickRemover.detect_clicks`, `remove_clicks`,
+`CrackleRemover.remove_crackle`, `HumRemover.remove_hum`,
+`DeclippingProcessor.detect_clipping`/`restore_clipped` and
+`VinylRestorer.restore` all hit `NameError: name 'signal' is not defined`
+(or `interpolate`/`median_filter`) mid-computation — the message names a
+module the user never called, not the missing package. Worse, the
+Declipping paths only touched scipy on clipped content, so clean files
+silently "worked" and the crash deferred to the first damaged input.
+Fix is the smallest possible: one `_require_restoration_deps()` gate as
+the first statement of each public method, raising RuntimeError naming
+the `[audio]` extra — matching the convention `spectral_editor` already
+uses. Lesson: "clear error at point of use" means *every* point of use,
+including detectors and pipelines that delegate to the gated helpers
+indirectly — audit each public method, not just the entrypoint used for
+the original reproduction.
