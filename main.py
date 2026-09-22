@@ -857,6 +857,14 @@ class AudioProcessor:
 
     def normalize_audio(self, audio: np.ndarray, target_peak: float = 0.95) -> np.ndarray:
         """Normalize audio with advanced algorithms"""
+        try:
+            target_peak_value = float(target_peak)
+        except (TypeError, ValueError):
+            raise ValueError(f"target_peak must be a finite value in (0.0, 1.0], got {target_peak!r}") from None
+        if not math.isfinite(target_peak_value) or not 0.0 < target_peak_value <= 1.0:
+            raise ValueError(f"target_peak must be a finite value in (0.0, 1.0], got {target_peak!r}")
+        target_peak = target_peak_value
+
         if audio.size == 0:
             return audio
 

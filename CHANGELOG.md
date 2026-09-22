@@ -55,6 +55,12 @@
 
 ### Fixed
 
+- **`target_peak=nan` crashed mid-write and left a header-only output** --
+  `core.normalize`'s `x <= 0 or x > 1` guard let NaN through (every NaN
+  comparison is False), then `int(round(nan))` crashed after the output
+  header had been written. Both the stdlib `core.normalize` and the numpy
+  `normalize_audio` paths now reject non-finite/non-numeric target_peak
+  before any output is opened.
 - **`--convert-bit-depth 32` wrote an IEEE-float WAV that Chameleon
   itself cannot read** -- `save_audio` mapped bit depth 32 to
   soundfile's `FLOAT` subtype (format tag 3), so the converted artifact
