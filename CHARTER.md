@@ -3252,3 +3252,25 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22, batch output naming + sanitizer honesty):** Can two
+inputs claim one output file, and can a sanitizer emit a file more
+corrupt than its input?
+**A:** Both. `batch_process` derived every output as
+`output_dir / f"{stem}{suffix}"` with no collision handling: two
+same-stem inputs (`a/mix.wav`, `b/mix.wav`) both "succeeded" onto
+`out/mix_normalized.wav` -- the last writer's audio under two results
+claiming the same path (sequential overwrite), or two worker threads
+interleaving bytes into one file (parallel corruption). Derived output
+names are now claimed atomically in a per-batch set under a lock;
+collisions disambiguate as `name_2.ext` and claims reset each batch so
+re-runs keep the canonical name. `SanitizationEngine.sanitize_wav_metadata`
+copied chunk headers verbatim: a source whose `data` chunk declared 1000
+bytes over a 10-byte body produced a sanitized file still *declaring*
+1000 inside a RIFF size that overran the actual file -- the cleaning
+step amplified the corruption it was meant to strip. It now writes the
+size it actually stored (a sanitized file may be shorter than the source
+claimed, never longer), and refuses inputs that are not RIFF at all
+rather than streaming their garbage under a RIFF header. The pattern:
+**a transform that copies declared structure is a credulous transform**
+-- every size it repeats is a size it vouches for.

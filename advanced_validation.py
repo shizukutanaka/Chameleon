@@ -491,6 +491,8 @@ class SanitizationEngine:
         with open(file_path, 'rb') as infile, open(output_path, 'wb') as outfile:
             # Read and write RIFF header
             riff_header = infile.read(12)
+            if len(riff_header) < 12 or riff_header[:4] not in (b'RIFF', b'RIFX'):
+                raise ValueError(f"not a RIFF/WAVE file: {file_path}")
             outfile.write(riff_header[:4])  # RIFF
 
             # We'll update size later
@@ -512,10 +514,18 @@ class SanitizationEngine:
 
                 # Only keep essential chunks
                 if chunk_id in KEEP_CHUNKS:
-                    outfile.write(chunk_header)
                     chunk_data = infile.read(chunk_size)
+                    actual = len(chunk_data)
+                    # Write the size we actually stored, not the size the
+                    # (possibly truncated) source declared: repeating the
+                    # declared size turned a truncated input into a more
+                    # corrupt output -- a data chunk claiming 1000 bytes
+                    # over a 10-byte body, inside a RIFF size that
+                    # overruns the file. The sanitized file is allowed to
+                    # be shorter than the source claimed, never longer.
+                    outfile.write(chunk_id + struct.pack('<I', actual))
                     outfile.write(chunk_data)
-                    total_size += 8 + chunk_size
+                    total_size += 8 + actual
 
                     # Pad to even boundary -- and consume the source's pad
                     # byte too: leaving it unread makes the next header
@@ -523,6 +533,7 @@ class SanitizationEngine:
                     # same way an unconsumed pad on the skip path did.
                     if chunk_size % 2:
                         infile.read(1)
+                    if actual % 2:
                         outfile.write(b'\x00')
                         total_size += 1
                 else:
