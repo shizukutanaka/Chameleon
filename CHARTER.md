@@ -2471,3 +2471,25 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22, continued):** Does `AudioRestorer.restore` handle the
+channel layout every WAV it might actually see has, and does the WAV
+sanitizer emit a file that is true to its own headers?
+**A:** No on both counts. `restore` fed the (channels, samples) array
+straight into mono-only stages: `detect_clipping`'s np.concatenate raised
+'must have same number of dimensions' and dehum's window multiply
+broadcast-failed, so any stereo file crashed before a single repair ran
+(verified on 2-channel input in both `auto` and `vinyl` mode). The CLI
+never hits this -- repair_audio decomposes per channel first -- but the
+facade is a shipped public API; it now decomposes the same way and stacks
+the result. `SanitizationEngine.sanitize_wav_metadata` copied a kept
+chunk's header verbatim even when the declared size ran past EOF, so a
+truncated input produced a 'sanitized' file whose data chunk claimed
+1000 bytes it did not contain (verified: RIFF declared 1036, file held
+144). It now writes the actual byte count and logs the truncation.
+Also: `_calculate_metrics` gated `hf_preservation` on HAS_LIBROSA though
+the metric uses only np.fft -- it silently vanished on numpy-only
+installs where every stage ran; now gated on HAS_NUMPY. Note for the
+record: the hf test is a contract pin on this venv (librosa present) --
+it cannot fail here; the other four new tests all fail on the pre-fix
+code.

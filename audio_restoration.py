@@ -592,6 +592,25 @@ class AudioRestorer:
             "quality_metrics": {}
         }
 
+        if audio.ndim != 1:
+            # Every stage below assumes a 1-D signal (envelope followers,
+            # clipped-run detection, STFT windows). On a (channels, samples)
+            # array they crashed before doing anything: detect_clipping's
+            # np.concatenate hit 'must have same number of dimensions', and
+            # dehum's window multiply hit a broadcast error. Process each
+            # channel independently -- the same decomposition repair_audio
+            # uses -- then rebuild the original channel count.
+            restored_channels = []
+            for channel in audio:
+                restored_channel, channel_info = self.restore(
+                    channel, sample_rate, mode=mode)
+                restored_channels.append(restored_channel)
+                info["applied_processes"] = channel_info["applied_processes"]
+                info["skipped_processes"] = channel_info["skipped_processes"]
+            result = np.stack(restored_channels)
+            info["quality_metrics"] = self._calculate_metrics(audio, result)
+            return result, info
+
         result = audio.copy()
 
         if mode == "vinyl":
@@ -653,8 +672,10 @@ class AudioRestorer:
             np.max(np.abs(restored)) / (np.std(restored) + 1e-10)
         )
 
-        # Clarity (high-frequency preservation)
-        if HAS_LIBROSA:
+        # Clarity (high-frequency preservation). Only numpy is needed --
+        # gating on HAS_LIBROSA (as an earlier version did) silently dropped
+        # the metric on installs where every stage above ran fine.
+        if HAS_NUMPY:
             orig_hf = np.sum(np.abs(np.fft.rfft(original)[len(original)//4:]))
             rest_hf = np.sum(np.abs(np.fft.rfft(restored)[len(restored)//4:]))
             metrics["hf_preservation"] = rest_hf / (orig_hf + 1e-10)

@@ -488,13 +488,26 @@ class SanitizationEngine:
 
                 # Only keep essential chunks
                 if chunk_id in KEEP_CHUNKS:
-                    outfile.write(chunk_header)
                     chunk_data = infile.read(chunk_size)
+                    actual_size = len(chunk_data)
+                    if actual_size < chunk_size:
+                        # A truncated input (declared size past EOF) used to
+                        # be copied header-verbatim: the output's chunk claimed
+                        # bytes that were never written and the RIFF size was
+                        # inflated to match -- the sanitizer produced a WAV
+                        # that fails its own structural claims.
+                        logger.warning(
+                            f"Chunk {chunk_id.decode('latin1', errors='ignore')} "
+                            f"declares {chunk_size} bytes but only {actual_size} "
+                            "remain; writing the truncated size so the output "
+                            "stays self-consistent"
+                        )
+                    outfile.write(chunk_header[:4] + struct.pack('<I', actual_size))
                     outfile.write(chunk_data)
-                    total_size += 8 + chunk_size
+                    total_size += 8 + actual_size
 
                     # Pad to even boundary
-                    if chunk_size % 2:
+                    if actual_size % 2:
                         outfile.write(b'\x00')
                         total_size += 1
                 else:

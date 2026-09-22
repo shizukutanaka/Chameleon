@@ -165,3 +165,35 @@ def test_main_block_self_test_writes_no_state_into_the_real_home(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "Verification: True" in result.stdout
     assert not (home / ".chameleon").exists()
+
+
+def test_sanitize_truncated_chunk_writes_consistent_header(tmp_path):
+    # A file whose `data` chunk declares bytes that end at EOF used to be
+    # copied header-verbatim: the output claimed 1000 bytes of audio it did
+    # not contain, and the RIFF size was inflated to match. The sanitized
+    # file must declare only the bytes it actually holds.
+    from advanced_validation import SanitizationEngine
+
+    fmt = struct.pack("<HHIIHH", 1, 1, 44100, 88200, 2, 16)
+    body = (b"fmt " + struct.pack("<I", 16) + fmt
+            + b"data" + struct.pack("<I", 1000) + b"\x00" * 100)
+    src = tmp_path / "truncated.wav"
+    src.write_bytes(b"RIFF" + struct.pack("<I", 4 + len(body)) + b"WAVE" + body)
+
+    dst = tmp_path / "clean.wav"
+    SanitizationEngine.sanitize_wav_metadata(src, dst)
+
+    out = dst.read_bytes()
+    riff_declared = struct.unpack("<I", out[4:8])[0]
+    assert riff_declared == len(out) - 8
+
+    # Walk the chunks: every kept header must match the bytes present.
+    offset = 12
+    while offset + 8 <= len(out):
+        declared = struct.unpack("<I", out[offset + 4:offset + 8])[0]
+        assert offset + 8 + declared <= len(out)
+        offset += 8 + declared + (declared % 2)
+
+    assert out[20:24] == b"fmt " or b"data" in out
+    data_header = out.find(b"data")
+    assert struct.unpack("<I", out[data_header + 4:data_header + 8])[0] == 100
