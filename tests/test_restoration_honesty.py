@@ -224,3 +224,18 @@ def test_auto_mode_does_not_run_unvetted_detectors():
         audio_restoration.RestorationConfig(click_removal=True))
     _, opt_in = restorer.restore(noise, SAMPLE_RATE)
     assert "click_removal" in opt_in["applied_processes"]
+
+
+def test_edge_click_is_skipped_with_a_warning_not_silently():
+    # A click within ~20 samples of an edge has too little context to
+    # interpolate across, so leaving it is correct -- but `detect_clicks`
+    # had already reported it, and the vinyl pipeline lists click_removal
+    # as applied. The skip must be announced, same contract as
+    # DeclippingProcessor's long-region gate.
+    audio = _sine(440)
+    audio[10] = 5.0
+
+    with pytest.warns(UserWarning, match="click"):
+        out = audio_restoration.ClickRemover().remove_clicks(audio, SAMPLE_RATE)
+
+    assert out[10] == 5.0  # untouched -- warned, not silently dropped
