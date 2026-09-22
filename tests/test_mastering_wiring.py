@@ -117,3 +117,21 @@ def test_mastering_rejects_multichannel_instead_of_dropping_channels():
     )
     with pytest.raises(ValueError, match="mono or stereo"):
         chain.process(quad)
+
+
+def test_unknown_mastering_preset_is_refused_not_defaulted():
+    # create_mastering_preset silently fell through to the gentle default on
+    # any unrecognized name, so master_preset="streamin" mastered a file at
+    # the default -14 LUFS target while claiming the preset ran. Unknown
+    # names now refuse and name the real presets.
+    pytest.importorskip("numpy")
+    import mastering_chain
+
+    with pytest.raises(ValueError, match="Unknown mastering preset"):
+        mastering_chain.create_mastering_preset("streamin")
+
+    for preset in ("default", "streaming", "cd", "vinyl"):
+        assert isinstance(
+            mastering_chain.create_mastering_preset(preset),
+            mastering_chain.MasteringConfig,
+        )

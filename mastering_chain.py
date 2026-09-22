@@ -1038,7 +1038,15 @@ def create_mastering_preset(preset_name: str) -> MasteringConfig:
         )
 
     else:
-        # Default/gentle mastering
+        # "default" is a real preset; anything else that lands here is a
+        # typo. Silently returning the default for 'streamin' masters a
+        # file with the wrong target while claiming the preset ran --
+        # same refusal rule as AudioRestorer.restore(mode=...).
+        if preset_name != "default":
+            raise ValueError(
+                f"Unknown mastering preset '{preset_name}'. "
+                "Available presets: default, streaming, cd, vinyl"
+            )
         return MasteringConfig()
 
 def demo_mastering():
