@@ -3252,3 +3252,33 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+
+**Q (2026-09-22):** Audit 53 -- a '*.py' glob vs a case-insensitive extension
+policy; a numeral table that cannot spell a minor chord; a zip() that eats
+columns; a progress bar that claims 150%.
+
+**A:** Four verified defects, four minimal fixes.
+`PluginLoader.discover_plugins` globbed literal `*.py` while the extension
+policy (`validate_file_path`, suffix.lower()) accepts `.PY` -- a plugin file
+written on a case-insensitive filesystem passed every safety check and was
+silently never discovered on a case-sensitive one. Discovery now iterates
+with `suffix.lower() == '.py'` + `is_file()` -- the fifth same-class fix
+(CLI batch, core x2, personal scan, backup all globbed '*.wav' literally).
+`MIDIComposer.suggest_next_chord` rendered every target from an
+all-uppercase chromatic numeral list, so diatonically-minor degrees were
+named major: 'VI' for vi (A major vs the A minor the table's own comment
+intends), 'III' for iii, 'II' for ii -- and in a minor key the tonic
+itself came out 'VI'. Mode-aware diatonic numeral tables now give real
+chord quality (vi/ii/iii in major, i/iv/v/VI in minor); chromatic roots
+keep the borrowed-numeral spellings.
+`TableFormatter.format_table` trusted `align or ['left']*len(headers)` --
+a caller's *short* list fell through to zip(widths, align), which
+truncates to the shorter operand, so trailing columns vanished from the
+rendered table entirely. align is now padded to len(headers).
+`ProgressBar._render` let `current > total` print '150.0%' and overflow
+the bar past its configured width; display now clamps to total.
+Lesson: when a collection is rendered via zip(), a length mismatch does
+not error -- it silently drops the tail; and a label table without chord
+quality names a different chord, which is a wrong answer dressed as a
+right one.
