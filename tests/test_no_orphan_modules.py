@@ -25,7 +25,10 @@ and say why in the dict below.
 """
 
 import ast
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python < 3.11; pytest already requires tomli
+    import tomli as tomllib
 from pathlib import Path
 
 import pytest
