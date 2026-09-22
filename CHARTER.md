@@ -3252,3 +3252,31 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+**Q:** Audit 81: do the input sanitizers and the upload path behave the
+way their own contracts say, and does library search cover what it
+claims?
+**A:** Three verified defects. `sanitize_filename` (both copies --
+`security_validator.py` and `core.py`'s twin) returned `'.'`/`'..'`
+unchanged: the scrub has no dots to remove, so the canonical traversal
+components sailed through the function whose only job is stripping
+dangerous components (verified: `sanitize_filename("..") == ".."`). Live
+callers were contained by their own second gates -- api_server's
+`destination.parent` check, the `{uuid}_` prefix -- but the utility is
+wrong in isolation and both copies now fall back to "untitled" for the
+two traversal components only; legal dot names ('..x.wav', '...') pass
+through. Second: `_resolve_uploaded_path` ran the security validator's
+"read" check before its own `exists()` gate -- the validator raises
+SecurityError on a missing file first, so a registered-but-absent file
+returned HTTP 400 (verified live) while the intended 404 branch sat
+unreachable below it. Existence is now checked first. Third:
+`PersonalLibraryManager.search` documented "filename, tags, or
+metadata" but never inspected metadata -- '44100' found nothing in a
+library whose scanned entries all carry `sample_rate: 44100` (verified);
+metadata values now participate. Investigated and deliberately left
+alone: `_is_path_shape_safe`'s rejection of POSIX-legal names like
+'what?.wav' -- the rejection is a deliberate, test-pinned hardening
+decision (tests/test_security.py parametrises every char and documents
+the resolved-vs-raw rationale), not a defect to reverse without the
+user; and the suspicious-content scan's max_scan_bytes cap, which is a
+named constructor parameter rather than a hidden limit like audit-66's
+4096-sample one.

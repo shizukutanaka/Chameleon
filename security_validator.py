@@ -328,7 +328,7 @@ class SecurityValidator:
         # filesystem strips trailing dots/spaces leaving nothing usable.
         if not sanitized.strip(" ."):
             return "untitled"
-        return sanitized
+        return sanitized or "untitled"
 
     @_hybridmethod
     def resolve_unique_paths(self, paths: Iterable) -> List[Path]:

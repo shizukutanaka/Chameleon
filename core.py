@@ -2217,7 +2217,7 @@ class EnhancedSecurityValidator:
         if not sanitized.strip(" ."):
             return "untitled"
 
-        return sanitized
+        return sanitized or "untitled"
 
     @staticmethod
     def validate_audio_content_secure(file_path: str) -> bool:
