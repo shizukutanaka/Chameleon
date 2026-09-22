@@ -1,10 +1,10 @@
 # Chameleon — Product Analysis (Strengths, Weaknesses, Improvement Backlog)
 
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
-**Version:** 1.1.0 · **Tests:** re-run 2026-09-21 on Python 3.12, green in
+**Version:** 1.1.0 · **Tests:** re-run 2026-09-22 on Python 3.12, green in
 all three configurations — **477 passed** on a bare install (stdlib only,
-33 skipped), **557** with numpy (scipy/librosa/soundfile blocked, 33
-skipped), **662** with numpy + scipy + librosa + soundfile + fastapi
+34 skipped), **565** with numpy (scipy/librosa/soundfile blocked, 33
+skipped), **670** with numpy + scipy + librosa + soundfile + fastapi
 (5 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
@@ -85,6 +85,14 @@ re-verified, not trusted.
   tests — no `assert True`, no `x == x`, nothing swallowing exceptions, and the
   only three assertion-free tests are "must not raise" checks where the call
   itself is the assertion.
+  On 2026-09-22 the same revert-and-rerun check was applied to audit-50's
+  fixes: seeding the three dither paths (int16 writer, mastering tpdf/rpdf,
+  shaped) fails its two determinism tests, the four empty-selection guards
+  in `spectral_editor` fail their four refusal tests, and passing the true
+  transform length into the bin-width computation fails both odd-N
+  frequency tests — eight of eight new tests bite. One existing test
+  (`test_opting_into_dither_..._is_not_deterministic`) had pinned the
+  nondeterminism itself; it now pins the corrected contract instead.
 - **DSP claims are checked against ground truth, not eyeballed.** The
   regression suite asserts measured quantities — a clean sine survives
   restoration bit-exactly, a clipped signal comes back 14.5 dB closer to the

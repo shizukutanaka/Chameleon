@@ -2099,11 +2099,10 @@ class AudioProcessor:
         removes that bias and halves the worst-case error.
 
         Dither is applied only when `ProcessingConfig.apply_dither` is set. It
-        is off by default on purpose: TPDF dither is the right choice for
-        audio quality when reducing bit depth, but it adds noise from a random
-        source, and CHARTER §1 sells this tool on being deterministic and
-        reproducible -- the same input must produce the same bytes. Opting in
-        trades that guarantee for the better-behaved noise floor.
+        is off by default because it adds noise the caller did not ask for;
+        when enabled it draws from a seeded generator (same convention as the
+        reverb tail in apply_effects), so CHARTER §1's guarantee survives:
+        the same input still produces the same bytes.
         """
         if audio.dtype != np.float32:
             audio = audio.astype(np.float32)
@@ -2115,7 +2114,7 @@ class AudioProcessor:
             # independent uniform variables. Triangular rather than
             # rectangular because it makes the quantisation error independent
             # of the signal, which is what removes noise modulation.
-            rng = np.random.default_rng()
+            rng = np.random.default_rng(0)
             scaled = scaled + (rng.random(scaled.shape) - rng.random(scaled.shape))
 
         pcm_audio = np.clip(np.round(scaled), -32768, 32767).astype(np.int16)

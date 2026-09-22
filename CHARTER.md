@@ -2471,3 +2471,37 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** `apply_dither`'s docstring claimed opting into dither
+necessarily "trades [the] guarantee" of same-input-same-bytes, and all
+three dither paths drew from unseeded `np.random` — is nondeterminism
+actually the cost of dither, or a free choice?
+**A:** A free choice, and a poor one. TPDF/shaped dither needs noise
+whose *statistics* are right, not noise that's irreproducible: a seeded
+`default_rng(0)` — the convention apply_effects' reverb tail already
+follows — produces identical noise floor statistics AND identical bytes.
+Verified: two writes of the same signal differed before, and are now
+byte-identical with the same TPDF profile. All three sites seeded
+(int16 writer, mastering tpdf/rpdf, shaped), the docstring's false
+dichotomy rewritten, and the test that pinned nondeterminism now pins
+the corrected contract.
+**Q (2026-09-22):** Audit-31 made `noise_reduce_selection` refuse an
+empty mask. Do the sibling selection ops still claim success on one?
+**A:** Yes — verified a selection clamped to empty (freq band entirely
+above Nyquist) made `delete`, `enhance`, `harmonic_enhance`, and
+`interpolate` each rebuild an identical spectrogram, log a history
+entry, and return True. `paste` already refused; `noise_reduce`'s
+refusal pattern now covers the remaining four. Same question, fourth
+answer: "returns success" on a no-op is how silent failures accumulate.
+**Q (2026-09-22):** `spectral_utils` priced bin width at
+`sr / (2 * (bins - 1))`. Exact or approximate?
+**A:** Exact only for even transform lengths. rfft bins sit at
+k·sr/N — with K bins, N is 2K-2 *or* 2K-1, and the formula picks the
+even answer always. A 1001-sample transform mislabels every reported
+frequency by ~1/(N-1) (~0.05% at Nyquist-bin scales), including the
+200/2000 Hz EQ band edges in `apply_spectral_mask`: at N=481, bin 20
+sits at 1995.8 Hz under the true spacing but exactly 2000.0 under the
+old one — a mid-band tone crossed into the high band's gain. The true
+sample count is now threaded through `_compute_bandwidth`,
+`_detect_peaks`, and `_apply_band_gains`; even-N results are bit-
+identical to before.

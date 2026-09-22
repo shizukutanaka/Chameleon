@@ -303,6 +303,10 @@ class SpectralEditor:
 
             mask = self.get_selection_mask(selection)
 
+            if not mask.any():
+                self.logger.error("Delete operation failed: empty selection")
+                return False
+
             if fade_edges and self.config.edge_smoothing:
                 # Apply smooth edges to avoid artifacts
                 mask = self._smooth_mask_edges(mask)
@@ -379,6 +383,10 @@ class SpectralEditor:
             mask = self.get_selection_mask(selection)
             gain_linear = 10**(gain_db / 20)
 
+            if not mask.any():
+                self.logger.error("Enhance operation failed: empty selection")
+                return False
+
             if self.config.edge_smoothing:
                 mask = self._smooth_mask_edges(mask)
 
@@ -448,6 +456,10 @@ class SpectralEditor:
 
             mask = self.get_selection_mask(selection)
 
+            if not mask.any():
+                self.logger.error("Harmonic enhancement failed: empty selection")
+                return False
+
             # Simple harmonic enhancement by boosting harmonic frequencies
             magnitude = np.abs(self.stft)
             phase = np.angle(self.stft)
@@ -489,6 +501,13 @@ class SpectralEditor:
             self._save_state()
 
             mask = self.get_selection_mask(selection)
+
+            if not mask.any():
+                # The scipy branch loops over the masked pixels; an empty
+                # selection would rebuild an identical spectrogram and still
+                # report success.
+                self.logger.error("Interpolate operation failed: empty selection")
+                return False
 
             if HAS_SCIPY:
                 # Use scipy for advanced interpolation

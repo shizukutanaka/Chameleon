@@ -924,13 +924,18 @@ class MasteringChain:
             )
             dither_type = "tpdf"
 
+        # Seeded generator, same convention as the reverb tail in
+        # apply_effects and the int16 writer's TPDF dither: dither is noise
+        # by design, but CHARTER §1 still sells byte-level reproducibility --
+        # the same file mastered twice must produce the same bytes.
+        rng = np.random.default_rng(0)
         if dither_type == "tpdf":
             # Triangular PDF dither
-            dither = np.random.uniform(-1, 1, audio.shape) + np.random.uniform(-1, 1, audio.shape)
+            dither = rng.uniform(-1, 1, audio.shape) + rng.uniform(-1, 1, audio.shape)
             dither = dither / 65536  # For 16-bit
         elif dither_type == "rpdf":
             # Rectangular PDF dither
-            dither = np.random.uniform(-1, 1, audio.shape) / 65536
+            dither = rng.uniform(-1, 1, audio.shape) / 65536
         else:
             return self._apply_shaped_dither(audio)
 
@@ -958,7 +963,7 @@ class MasteringChain:
         flat = np.asarray(audio, dtype=np.float64).reshape(-1)
         out = np.empty_like(flat)
         err = 0.0
-        rand = np.random.uniform
+        rand = np.random.default_rng(0).uniform
         for i in range(flat.size):
             d = (rand(-1, 1) + rand(-1, 1)) / 65536
             # v carries the previous quantization error but NOT the dither:

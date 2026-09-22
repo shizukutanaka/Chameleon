@@ -107,8 +107,18 @@ def _inverse_real_transform(spectrum: Sequence[complex], length: int) -> List[fl
     return output
 
 
-def _compute_bandwidth(magnitudes: Sequence[float], sample_rate: int) -> Tuple[float, float]:
-    """Estimate effective bandwidth using cumulative energy thresholds."""
+def _compute_bandwidth(
+    magnitudes: Sequence[float],
+    sample_rate: int,
+    num_samples: int,
+) -> Tuple[float, float]:
+    """Estimate effective bandwidth using cumulative energy thresholds.
+
+    ``num_samples`` is the length of the transformed signal: rfft bins land
+    at ``k * sample_rate / num_samples``, which is ``sr / (2 * (K - 1))``
+    only for even num_samples -- for odd input lengths that formula
+    mislabels every frequency by ~1/(N-1).
+    """
 
     total_energy = sum(value ** 2 for value in magnitudes)
     if total_energy <= 0:
@@ -129,7 +139,7 @@ def _compute_bandwidth(magnitudes: Sequence[float], sample_rate: int) -> Tuple[f
             upper_index = index
             break
 
-    bin_width = sample_rate / (2 * max(len(magnitudes) - 1, 1))
+    bin_width = sample_rate / max(num_samples, 1)
     return lower_index * bin_width, upper_index * bin_width
 
 
@@ -146,16 +156,22 @@ def _hann_window(length: int) -> List[float]:
     return [0.5 - 0.5 * math.cos(2.0 * math.pi * n / (length - 1)) for n in range(length)]
 
 
-def _detect_peaks(magnitudes: Sequence[float], sample_rate: int, max_peaks: int) -> List[SpectrumPeak]:
+def _detect_peaks(
+    magnitudes: Sequence[float],
+    sample_rate: int,
+    num_samples: int,
+    max_peaks: int,
+) -> List[SpectrumPeak]:
     """Select dominant peaks by neighbourhood comparison with sub-bin refinement.
 
     Each local maximum is refined with parabolic (quadratic) interpolation over
     the three points around the peak, which recovers the true frequency to a
     fraction of a bin instead of snapping it to the nearest bin centre.
+    ``num_samples`` is the transformed length -- see _compute_bandwidth.
     """
 
     peaks: List[SpectrumPeak] = []
-    bin_width = sample_rate / (2 * max(len(magnitudes) - 1, 1))
+    bin_width = sample_rate / max(num_samples, 1)
 
     for index in range(1, len(magnitudes) - 1):
         left = magnitudes[index - 1]
@@ -211,8 +227,8 @@ def analyze_spectrum(
 
     rms = math.sqrt(sum(sample ** 2 for sample in buffer) / len(buffer))
     dc_offset = statistics.mean(buffer)
-    bandwidth = _compute_bandwidth(magnitudes, sample_rate)
-    peaks = _detect_peaks(magnitudes, sample_rate, max_peaks)
+    bandwidth = _compute_bandwidth(magnitudes, sample_rate, len(analysis_buffer))
+    peaks = _detect_peaks(magnitudes, sample_rate, len(analysis_buffer), max_peaks)
 
     return SpectrumReport(
         sample_rate=sample_rate,
@@ -276,11 +292,12 @@ def linear_resample(samples: Sequence[float], source_rate: int, target_rate: int
 def _apply_band_gains(
     spectrum: Sequence[complex],
     sample_rate: int,
+    num_samples: int,
     low_gain: float,
     mid_gain: float,
     high_gain: float,
 ) -> List[complex]:
-    bin_width = sample_rate / (2 * max(len(spectrum) - 1, 1))
+    bin_width = sample_rate / max(num_samples, 1)
     adjusted: List[complex] = []
     for index, value in enumerate(spectrum):
         frequency = index * bin_width
@@ -318,7 +335,9 @@ def apply_spectral_mask(
     for start in range(0, len(buffer), step):
         block = buffer[start:start + step]
         spectrum = _discrete_fourier_transform(block)
-        adjusted = _apply_band_gains(spectrum, sample_rate, low_gain, mid_gain, high_gain)
+        adjusted = _apply_band_gains(
+            spectrum, sample_rate, len(block), low_gain, mid_gain, high_gain
+        )
         processed.extend(_inverse_real_transform(adjusted, len(block)))
     return processed
 
