@@ -888,6 +888,13 @@ class WorkflowBuilder:
 
     def from_dict(self, config: Dict[str, Any]) -> Workflow:
         """Build workflow from dictionary"""
+        # A YAML file whose top level is a scalar or list parses fine and
+        # then dies here on `.get` with a bare AttributeError -- for an
+        # empty file the message names 'NoneType', not the actual mistake.
+        if not isinstance(config, dict):
+            raise ValueError(
+                f"workflow configuration must be a mapping of tasks "
+                f"and options, got {type(config).__name__}")
         tasks = []
 
         for task_config in config.get('tasks', []):

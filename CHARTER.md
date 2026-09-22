@@ -2471,3 +2471,19 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+## Q102: WorkflowBuilder.from_dict -- a non-mapping config crashed before the
+task-field validation the builder already had?
+**A:** #219 hardened every field *inside* the config, but `from_dict` itself
+still called `config.get('tasks')` unconditionally -- a YAML file whose top
+level is a scalar or list (an empty file parses to None) died with a bare
+AttributeError naming 'NoneType', not the actual mistake. Now a ValueError
+('workflow configuration must be a mapping...') names it, same malformed-
+config class as the task validation beside it. Audited and found honest
+this cycle: BatchScheduler refuses loudly without the schedule package
+(HAS_SCHEDULE ImportError, only daily/hourly/every_N, one-attempt-per-fault
+warns honestly); `_import_safe_function` allowlist; `_create_function`'s
+builtin adapter and script-hash logging; `_evaluate_template_expression`
+sandbox + size caps; `detect_key` Krumhansl-Schmuckler rotation correctness
+(profile[(pc - tonic) % 12], verified math); `TaskExecutor` timeout capture
+and error truncation.

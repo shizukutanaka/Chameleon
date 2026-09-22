@@ -93,3 +93,15 @@ def test_scheduler_fails_loudly_without_schedule_package():
     scheduler = BatchScheduler()
     with pytest.raises(ImportError):
         scheduler.start()
+
+
+def test_from_dict_rejects_non_mapping_configs():
+    # A YAML/JSON file whose top level is a scalar or list parses cleanly
+    # and then died inside from_dict on `.get` with a bare AttributeError --
+    # for an empty file the message named 'NoneType', not the real mistake.
+    # Same malformed-config class as the task-field validation: ValueError.
+    from batch_automation import WorkflowBuilder
+
+    for bad in (None, "daily", 5, [1, 2]):
+        with pytest.raises(ValueError, match="must be a mapping"):
+            WorkflowBuilder().from_dict(bad)
