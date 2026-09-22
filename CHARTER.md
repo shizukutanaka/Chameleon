@@ -3252,3 +3252,19 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22, failure-state outputs):** The writers patch the RIFF
+header *before* streaming the body -- what does a mid-write abort leave
+on disk?
+**A:** A file that lies at rest: header already rewritten to declare
+the full new size, body truncated at the abort point (verified: 44-byte
+file declaring an 836-byte RIFF). The callers convert the exception
+into `ProcessingResult(False)` -- so the user sees failure while a
+corrupt output sits at the requested path. Every writer
+(`_apply_gain_safe`, `_convert_to_mono`, `_extract_audio_range`) now
+opens output through `_open_output_atomic`: any exception unlinks the
+partial file. Same pass: the *live* `_convert_to_mono` still truncated
+its channel average toward zero -- audit-33 fixed that bias only in
+the orphaned EnhancedSecurityValidator copy. It now rounds to nearest,
+matching the gain writer and the numpy mixer. Pattern: when a fix
+lands in a dead copy, check the living twin before filing it done.
