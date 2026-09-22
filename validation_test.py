@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 """
-Basic validation test without external dependencies
-Tests core functionality that doesn't require numpy/scipy
+Basic validation test without external dependencies.
+
+Exercises the *product* in the dependency-free configuration -- real
+`core.analyze`/`core.trim_silence` runs and the real `SecurityValidator` --
+not the environment around it. An earlier version of this file hand-parsed
+WAVs and greped paths against its own pattern list: it verified `tempfile`
+and `struct`, never imported a product module, and still printed "The core
+Chameleon system is ready for use." A gate step that cannot fail is not a
+gate. See CHARTER.md §9 (2026-09-22).
 """
 
 import os
@@ -49,8 +56,11 @@ def create_test_wav(filename: str, frequency: float = 440.0, duration: float = 1
             f.write(struct.pack('<h', sample))
 
 def test_wav_file_creation():
-    """Test WAV file creation and validation"""
+    """A product parser must accept the fixture we hand it"""
     print("Testing WAV file creation...")
+
+    import core
+    import security_validator
 
     with tempfile.TemporaryDirectory() as tmpdir:
         test_file = os.path.join(tmpdir, "test.wav")
@@ -63,67 +73,41 @@ def test_wav_file_creation():
         file_size = os.path.getsize(test_file)
         assert file_size > 100, f"File too small: {file_size} bytes"
 
-        # Validate WAV header
-        with open(test_file, 'rb') as f:
-            header = f.read(12)
-            assert header[:4] == b'RIFF', "Missing RIFF header"
-            assert header[8:12] == b'WAVE', "Missing WAVE header"
+        # The product's own validators must accept what we feed it
+        assert security_validator.SecurityValidator.validate_audio_content(test_file), \
+            "SecurityValidator rejected a real WAV"
+        info = core.WAVProcessor()._read_wav_header(test_file)
+        assert info is not None, "product WAV parser rejected the fixture"
+        assert info.sample_rate == 44100 and info.channels == 1 and info.bit_depth == 16, \
+            f"parser read wrong format: {info.sample_rate}Hz/{info.channels}ch/{info.bit_depth}b"
 
         print("✓ WAV file creation test passed")
 
 def test_basic_audio_analysis():
-    """Test basic audio analysis without external libraries"""
+    """core.analyze must report the fixture's real format"""
     print("Testing basic audio analysis...")
+
+    import core
 
     with tempfile.TemporaryDirectory() as tmpdir:
         test_file = os.path.join(tmpdir, "test.wav")
         create_test_wav(test_file, 440.0, 2.0, 44100, 0.7)
 
-        # Read WAV file header
-        with open(test_file, 'rb') as f:
-            # Skip RIFF header
-            f.seek(12)
-
-            # Read fmt chunk
-            chunk_id = f.read(4)
-            assert chunk_id == b'fmt ', f"Expected fmt chunk, got {chunk_id}"
-
-            chunk_size = struct.unpack('<I', f.read(4))[0]
-            format_tag = struct.unpack('<H', f.read(2))[0]
-            channels = struct.unpack('<H', f.read(2))[0]
-            sample_rate = struct.unpack('<I', f.read(4))[0]
-            byte_rate = struct.unpack('<I', f.read(4))[0]
-            block_align = struct.unpack('<H', f.read(2))[0]
-            bits_per_sample = struct.unpack('<H', f.read(2))[0]
-
-            # Validate format
-            assert format_tag == 1, f"Expected PCM format, got {format_tag}"
-            assert channels == 1, f"Expected mono, got {channels} channels"
-            assert sample_rate == 44100, f"Expected 44100Hz, got {sample_rate}Hz"
-            assert bits_per_sample == 16, f"Expected 16-bit, got {bits_per_sample}-bit"
-
-            # Find data chunk
-            while True:
-                chunk_header = f.read(8)
-                if len(chunk_header) != 8:
-                    break
-
-                chunk_id = chunk_header[:4]
-                chunk_size = struct.unpack('<I', chunk_header[4:8])[0]
-
-                if chunk_id == b'data':
-                    # Calculate duration
-                    duration = chunk_size / (sample_rate * channels * (bits_per_sample // 8))
-                    assert abs(duration - 2.0) < 0.1, f"Expected 2s duration, got {duration}s"
-                    break
-                else:
-                    f.seek(chunk_size, 1)
+        result = core.analyze(test_file)
+        assert result.success, f"core.analyze failed on a valid WAV: {result.message}"
+        info = result.data  # AudioInfo on success (dict only on the error path)
+        assert info.channels == 1, f"Expected mono, got {info.channels} channels"
+        assert info.sample_rate == 44100, f"Expected 44100Hz, got {info.sample_rate}Hz"
+        assert info.bit_depth == 16, f"Expected 16-bit, got {info.bit_depth}-bit"
+        assert abs(info.duration - 2.0) < 0.1, f"Expected 2s duration, got {info.duration}s"
 
         print("✓ Basic audio analysis test passed")
 
 def test_file_operations():
-    """Test file I/O operations"""
+    """The batch of fixtures must run through the product end to end"""
     print("Testing file operations...")
+
+    import core
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # Test directory operations
@@ -139,115 +123,111 @@ def test_file_operations():
             create_test_wav(str(filepath), 440.0 + i * 100, 0.5, 44100, 0.3)
             test_files.append(filepath)
 
-        # Test file listing
-        wav_files = list(test_dir.glob("*.wav"))
-        assert len(wav_files) == 3, f"Expected 3 WAV files, found {len(wav_files)}"
-
-        # Test file sizes
+        # Every file must analyze successfully through the product
         for filepath in test_files:
-            size = filepath.stat().st_size
-            assert size > 100, f"File {filepath.name} too small: {size} bytes"
+            result = core.analyze(str(filepath))
+            assert result.success, f"core.analyze failed on {filepath.name}: {result.message}"
+
+        # ...and a processing op must produce a real output file
+        out = test_dir / "trimmed.wav"
+        trimmed = core.trim_silence(str(test_files[0]), str(out), 0.01)
+        assert trimmed.success, f"core.trim_silence failed: {trimmed.message}"
+        assert out.exists(), "trim_silence reported success but wrote no file"
 
         print("✓ File operations test passed")
 
 def test_performance_basic():
-    """Test basic performance without heavy computations"""
+    """The product's stdlib analysis must complete on real fixtures quickly"""
     print("Testing basic performance...")
 
-    # Test file creation speed
-    start_time = time.time()
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        for i in range(10):
-            test_file = os.path.join(tmpdir, f"perf_test_{i}.wav")
-            create_test_wav(test_file, 440.0, 0.1, 44100, 0.5)  # 0.1s files
-
-    creation_time = time.time() - start_time
-
-    # Should create 10 small files quickly
-    assert creation_time < 5.0, f"File creation too slow: {creation_time:.2f}s"
-
-    print(f"✓ Created 10 files in {creation_time:.3f}s")
-
-    # Test file reading speed
-    start_time = time.time()
+    import core
 
     with tempfile.TemporaryDirectory() as tmpdir:
         test_file = os.path.join(tmpdir, "read_test.wav")
         create_test_wav(test_file, 440.0, 5.0, 44100, 0.5)  # 5s file
 
-        # Read file multiple times
+        # Analyze it several times through the real pipeline
+        start_time = time.time()
         for _ in range(5):
-            with open(test_file, 'rb') as f:
-                data = f.read()
-                assert len(data) > 1000, "File data too small"
+            result = core.analyze(test_file)
+            assert result.success, f"core.analyze failed: {result.message}"
+        analyze_time = time.time() - start_time
 
-    read_time = time.time() - start_time
+        # Generous bound: this is a smoke check, not a benchmark
+        assert analyze_time < 30.0, f"Analysis too slow: {analyze_time:.2f}s"
 
-    print(f"✓ Read 5s file 5 times in {read_time:.3f}s")
+        print(f"✓ Analyzed 5s file 5 times in {analyze_time:.3f}s")
+
     print("✓ Performance test passed")
 
 def test_security_validation():
-    """Test basic security validation"""
+    """The real SecurityValidator must reject what it claims to reject"""
     print("Testing security validation...")
 
-    # Test path validation
-    dangerous_paths = [
-        "../../../etc/passwd",
-        "..\\..\\windows\\system32",
-        "/etc/passwd",
-        "C:\\Windows\\System32\\config",
-        "test\x00.wav",
-        "a" * 1000 + ".wav"  # Very long filename
-    ]
+    from security_validator import SecurityValidator, SecurityConfig
 
-    blocked_patterns = ['../', '..\\', '\x00', '/etc/', '/proc/', '/sys/']
+    # Path-shape checks: embedded NUL is rejected by the product, not by a
+    # local pattern list.
+    validator = SecurityValidator()
+    assert not validator.validate_path("test\x00.wav"), \
+        "null-byte filename passed the product's path validation"
 
-    for path in dangerous_paths:
-        is_dangerous = any(pattern in path.lower() for pattern in blocked_patterns)
-        is_dangerous = is_dangerous or len(path) > 500
+    with tempfile.TemporaryDirectory() as tmpdir:
+        inside = Path(tmpdir) / "ok.wav"
+        create_test_wav(str(inside), 440.0, 0.1, 44100, 0.5)
+        outside = Path(tempfile.gettempdir()).parent / "etc_passwd_probe.wav"
 
-        if is_dangerous:
-            print(f"✓ Correctly blocked dangerous path: {path[:50]}...")
-        else:
-            print(f"⚠ Path might need additional validation: {path}")
+        # Trusted-root containment: with a root configured, files outside it
+        # are refused; files inside are accepted.
+        scoped = SecurityValidator(SecurityConfig(trusted_roots={tmpdir}))
+        assert scoped.validate_path(str(inside)), \
+            "file inside the trusted root was rejected"
+        assert not scoped.validate_path(str(outside)), \
+            "file outside the trusted root was accepted"
+        assert not scoped.validate_path(str(Path(tmpdir) / ".." / "escape.wav")), \
+            "traversal out of the trusted root was accepted"
 
-    # Test file size limits
-    max_size = 500 * 1024 * 1024  # 500MB
-    test_sizes = [0, 1000, 1024*1024, max_size - 1, max_size + 1]
+        # Size cap: the same file is refused under a smaller configured limit
+        small_cap = SecurityValidator(SecurityConfig(max_file_size=10))
+        assert not small_cap.validate_file_size(str(inside)), \
+            "file over the configured size cap was accepted"
+        assert validator.validate_file_size(str(inside)), \
+            "file under the default size cap was rejected"
 
-    for size in test_sizes:
-        is_valid = 0 < size <= max_size
-        print(f"✓ Size {size:,} bytes: {'valid' if is_valid else 'invalid'}")
+        # Content check: a script payload under a .wav name is refused
+        evil = Path(tmpdir) / "evil.wav"
+        evil.write_bytes(b"<?php echo 1; ?>" + b"\x00" * 32)
+        assert not validator.validate_audio_content(str(evil)), \
+            "script payload in a .wav passed content validation"
+
+        # Filename scrub: shell-hostile characters are removed, not kept
+        sanitized = validator.sanitize_filename('a<b>|c.wav')
+        assert "<" not in sanitized and ">" not in sanitized and "|" not in sanitized, \
+            f"sanitize_filename kept hostile characters: {sanitized!r}"
 
     print("✓ Security validation test passed")
 
 def test_core_modules():
-    """Test that core modules can be imported"""
+    """The dependency-free product modules must import in this environment"""
     print("Testing core module imports...")
 
-    # Test basic Python modules
-    try:
-        import os
-        import sys
-        import time
-        import json
-        import struct
-        import hashlib
-        import tempfile
-        import threading
-        import argparse
-        from pathlib import Path
-        from typing import Dict, List, Optional, Any, Tuple, Union
-        from dataclasses import dataclass
-        from functools import lru_cache
-        import logging
-        print("✓ All required standard library modules available")
-    except ImportError as e:
-        print(f"✗ Missing standard library module: {e}")
-        return False
+    # These are the modules the zero-dependency core is made of -- if any of
+    # them acquired a third-party import, the whole differentiator is gone.
+    product_modules = [
+        "core", "security_validator", "advanced_validation",
+        "bs1770_loudness", "batch_automation", "midi_analysis",
+        "ux_improvements", "personal_config", "spectral_utils", "main",
+    ]
+    for name in product_modules:
+        try:
+            __import__(name)
+        except ImportError as e:
+            print(f"✗ Product module {name} failed to import: {e}")
+            raise
 
-    # Test optional modules (warning if missing)
+    print("✓ All dependency-free product modules import cleanly")
+
+    # Optional extras are informational, not a check -- report what is present
     optional_modules = [
         ("numpy", "Advanced numerical processing"),
         ("scipy", "Advanced signal processing"),

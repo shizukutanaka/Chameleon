@@ -3252,3 +3252,21 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22):** When is a test file itself the defect?
+
+**A:** Audit 57: `validation_test.py` -- the third step of the documented
+verification gate -- imported not a single product module. It hand-parsed
+WAVs with `struct`, greped dangerous paths against its own
+`blocked_patterns` list, timed `tempfile` operations, and checked that
+standard-library imports work, then printed "The core Chameleon system is
+ready for use." Every "✓" it emitted was a check on Python, not on
+Chameleon: the product could have been deleted entirely and the gate would
+still print green. It survived 56 audits precisely because it was only ever
+*run*, never *read*. The rewrite keeps the file stdlib-only (the gate runs
+it in the bare config) but each test now exercises the real product:
+`core.analyze`/`trim_silence` on fixtures, and `SecurityValidator`'s
+trusted-root containment, size cap, content check and filename scrub.
+A gate step that cannot fail is not a gate -- and the same test that
+repeatedly caught fake *code* now also guards the file that claims to
+check it, via `tests/test_validation_gate_is_real.py`.

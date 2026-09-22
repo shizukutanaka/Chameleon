@@ -82,7 +82,13 @@ re-verified, not trusted.
   for it. A static audit of the suite in the same pass found no vacuous
   tests — no `assert True`, no `x == x`, nothing swallowing exceptions, and the
   only three assertion-free tests are "must not raise" checks where the call
-  itself is the assertion.
+  itself is the assertion. On 2026-09-22 a seventh re-verification (audit 57)
+  found the vacuous suite was not the only fake check in the repo:
+  `validation_test.py`, the third step of the documented verification gate,
+  exercised `tempfile` and `struct` while importing no product code at all;
+  it now runs `core.analyze` and `SecurityValidator` for real (verified by
+  sabotage: patching `analyze` or `validate_audio_content` makes it fail),
+  and `test_validation_gate_is_real.py` guards the regression.
 - **DSP claims are checked against ground truth, not eyeballed.** The
   regression suite asserts measured quantities — a clean sine survives
   restoration bit-exactly, a clipped signal comes back 14.5 dB closer to the
