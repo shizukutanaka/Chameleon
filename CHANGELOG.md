@@ -55,6 +55,11 @@
 
 ### Fixed
 
+- **`schedule_workflow` accepted `every_0` / `every_-5`** -- `int()`
+  parses them fine, but `schedule.every(0)` registers a job that fires on
+  every scheduler tick: an unbounded busy loop under a valid-looking name.
+  Non-positive and non-integer intervals now raise a named `ValueError`
+  before the job is registered.
 - **`--convert-bit-depth 32` wrote an IEEE-float WAV that Chameleon
   itself cannot read** -- `save_audio` mapped bit depth 32 to
   soundfile's `FLOAT` subtype (format tag 3), so the converted artifact

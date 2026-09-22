@@ -3252,3 +3252,18 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+### 2026-09-21 (audit 128) — non-positive scheduler intervals
+
+**Q:** `schedule_workflow` parses `every_<minutes>` with `int()` and feeds
+it to `schedule.every(interval).minutes`. What happens at `every_0` or
+`every_-5`?
+
+**A:** **`schedule.every(0)` accepts the interval and the job then fires on
+every scheduler tick** — an unbounded busy loop registered under a
+plausible name; negatives are equally meaningless. Both now fail with a
+named `ValueError`, and non-integer suffixes get the same named error
+instead of `int()`'s bare one. (Verified against `schedule`'s documented
+semantics; the package is not installed here — `HAS_SCHEDULE` guards the
+path — so the test drives it through a monkeypatched module, same as the
+existing scheduler tests.)
