@@ -62,6 +62,13 @@ def test_scheduler_rejects_an_expression_it_cannot_parse(monkeypatch):
         scheduler.schedule_workflow(workflow, "0 9 * * *")
     assert len(scheduler.scheduled_jobs) == 1  # not silently registered
 
+    # 'every_0' / negative intervals parse as ints but schedule a job that
+    # fires on every scheduler tick -- a busy loop wearing a valid name.
+    for bad in ("every_0", "every_-5", "every_x"):
+        with pytest.raises(ValueError, match="Unsupported schedule"):
+            scheduler.schedule_workflow(workflow, bad)
+    assert len(scheduler.scheduled_jobs) == 1
+
 
 def test_template_expression_rejects_oversized_results():
     # "x" * 500_000_000 is a three-node expression that would allocate

@@ -816,7 +816,19 @@ class BatchScheduler:
         elif cron_expression == "hourly":
             job = schedule.every().hour
         elif cron_expression.startswith("every_"):
-            interval = int(cron_expression.split("_")[1])
+            try:
+                interval = int(cron_expression.split("_", 1)[1])
+            except ValueError:
+                raise ValueError(
+                    f"Unsupported schedule expression {cron_expression!r}: "
+                    "'every_<minutes>' needs an integer minute count") from None
+            if interval <= 0:
+                # schedule.every(0) silently schedules a job that fires on
+                # every scheduler tick -- an unbounded busy loop dressed as
+                # a valid interval.
+                raise ValueError(
+                    f"Unsupported schedule expression {cron_expression!r}: "
+                    "the interval must be a positive number of minutes")
             job = schedule.every(interval).minutes
         else:
             raise ValueError(
