@@ -18,6 +18,7 @@ import unittest
 import wave
 from pathlib import Path
 
+import core
 from core import analyze, normalize, to_mono, trim_silence, open_secure
 from security_validator import (
     SecurityValidator,
@@ -150,3 +151,62 @@ class SecurityValidatorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestWritersAtomicityAndMonoRounding(unittest.TestCase):
+    """Audit 40: mid-write abort leaves a corrupt file; mono truncated."""
+
+    def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.tmp_path = Path(self.tmp_dir.name)
+        self.processor = core.WAVProcessor()
+
+    def tearDown(self):
+        self.tmp_dir.cleanup()
+
+    def _write_wav(self, name, channels, frames):
+        """frames: list of per-channel int tuples."""
+        import struct as _s
+        data = b''.join(_s.pack('<' + 'h' * channels, *fr) for fr in frames)
+        fmt = _s.pack('<HHIIHH', 1, channels, 44100,
+                      44100 * 2 * channels, 2 * channels, 16)
+        p = self.tmp_path / name
+        p.write_bytes(
+            b'RIFF' + _s.pack('<I', 4 + 8 + 16 + 8 + len(data)) + b'WAVE' +
+            b'fmt ' + _s.pack('<I', 16) + fmt +
+            b'data' + _s.pack('<I', len(data)) + data)
+        return p
+
+    def test_mid_write_abort_leaves_no_output_file(self):
+        import core
+        src = self._write_wav('in.wav', 1, [(i,) for i in range(-200, 200)])
+        out = self.tmp_path / 'out.wav'
+        info = self.processor._read_wav_header(str(src))
+        calls = [0]
+        orig = core.WAVProcessor.__dict__['_decode_sample_bytes']
+        def boom(b, bd):
+            calls[0] += 1
+            if calls[0] >= 3:
+                raise RuntimeError('simulated mid-write failure')
+            return orig(b, bd)
+        core.WAVProcessor._decode_sample_bytes = staticmethod(boom)
+        try:
+            with self.assertRaises(RuntimeError):
+                self.processor._apply_gain_safe(str(src), str(out), info, 1.5)
+        finally:
+            core.WAVProcessor._decode_sample_bytes = orig
+        self.assertFalse(out.exists(),
+                         "failed write must not leave a corrupt partial file")
+
+    def test_mono_average_rounds_not_truncates(self):
+        import struct as _s
+        src = self._write_wav('st.wav', 2, [(-3, 0), (3, 4)])
+        out = self.tmp_path / 'mono.wav'
+        info = self.processor._read_wav_header(str(src))
+        self.processor._convert_to_mono(str(src), str(out), info)
+        raw = out.read_bytes()
+        payload = raw[raw.find(b'data') + 8:]
+        vals = [_s.unpack('<h', payload[j:j + 2])[0]
+                for j in range(0, len(payload), 2)]
+        # -1.5 -> -2, 3.5 -> 4 (round-half-even, matching the numpy mixer)
+        self.assertEqual(vals, [-2, 4])

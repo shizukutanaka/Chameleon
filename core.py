@@ -13,6 +13,7 @@ Usage:
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 import time
@@ -1060,6 +1061,23 @@ class WAVProcessor:
 
         dst.write(bytes(header))
 
+    @contextlib.contextmanager
+    def _open_output_atomic(self, output_path: str):
+        """Yield an open output file; on any write error remove the partial file.
+
+        A mid-write exception after ``_copy_patched_header`` has run leaves a
+        file whose RIFF header declares sizes the truncated body does not
+        contain -- a corrupt output the caller's failure result does not
+        delete. No output at all is the only honest failure state.
+        """
+        try:
+            with open_secure(output_path, 'wb') as dst:
+                yield dst
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(output_path)
+            raise
+
     def _apply_gain_safe(self, input_path: str, output_path: str, info: AudioInfo, gain: float):
         """Apply gain to audio file with enhanced bit depth support and security."""
         bytes_per_sample = max(1, info.bit_depth // 8) if info.bit_depth != 8 else 1
@@ -1071,7 +1089,7 @@ class WAVProcessor:
         # size fields written up front are exact.
         new_data_size = (info.data_size // frame_size) * frame_size
 
-        with open(input_path, 'rb') as src, open_secure(output_path, 'wb') as dst:
+        with open(input_path, 'rb') as src, self._open_output_atomic(output_path) as dst:
             self._copy_patched_header(src, dst, info, new_data_size)
 
             processed_samples = 0
@@ -1131,7 +1149,7 @@ class WAVProcessor:
         frames = info.data_size // frame_size
         new_data_size = frames * bytes_per_sample
 
-        with open(input_path, 'rb') as src, open_secure(output_path, 'wb') as dst:
+        with open(input_path, 'rb') as src, self._open_output_atomic(output_path) as dst:
             self._copy_patched_header(src, dst, info, new_data_size, channels=1)
 
             to_consume = frames * frame_size
@@ -1167,7 +1185,10 @@ class WAVProcessor:
                         mono_chunk.extend(mv[frame_offset:frame_offset + bytes_per_sample].tobytes())
                         continue
 
-                    avg_sample = int(sum(samples) / len(samples))
+                    # int() truncates toward zero -- a systematic ~0.5-LSB
+                    # inward bias on every odd-sum frame; the file's gain
+                    # writer and the numpy mixer both round to nearest.
+                    avg_sample = int(round(sum(samples) / len(samples)))
                     mono_chunk.extend(self._encode_sample_value(avg_sample, info.bit_depth))
 
                 if mono_chunk:
@@ -1252,7 +1273,7 @@ class WAVProcessor:
         new_data_size = min(sample_count * frame_size,
                             max(0, info.data_size - start_byte))
 
-        with open(input_path, 'rb') as src, open_secure(output_path, 'wb') as dst:
+        with open(input_path, 'rb') as src, self._open_output_atomic(output_path) as dst:
             self._copy_patched_header(src, dst, info, new_data_size)
 
             src.seek(info.data_offset + start_byte)
