@@ -2356,8 +2356,58 @@ class ParallelBatchProcessor:
         if not directory_path.exists() or not directory_path.is_dir():
             raise ValueError(f"無効なディレクトリ: {directory}")
 
-        # WAVファイルを収集
-        wav_files = list(directory_path.rglob("*.wav")) + list(directory_path.rglob("*.wave"))
+        operation_normalized = (operation or "").strip().lower()
+        if operation_normalized not in ALLOWED_BATCH_OPERATIONS:
+            return [ProcessingResult(False, f"Unsupported operation: {operation}")]
+
+        target_peak = kwargs.get("target_peak")
+        if target_peak is not None:
+            try:
+                target_peak = float(target_peak)
+            except (TypeError, ValueError):
+                return [ProcessingResult(False, "target_peak must be numeric")]
+            if not 0.0 <= target_peak <= 1.0:
+                return [ProcessingResult(False, "target_peak must be between 0.0 and 1.0")]
+            kwargs["target_peak"] = target_peak
+
+        threshold = kwargs.get("threshold")
+        if threshold is not None:
+            try:
+                threshold = float(threshold)
+            except (TypeError, ValueError):
+                return [ProcessingResult(False, "threshold must be numeric")]
+            if not 0.0 <= threshold <= 1.0:
+                return [ProcessingResult(False, "threshold must be between 0.0 and 1.0")]
+            kwargs["threshold"] = threshold
+
+        # WAVファイルを収集 -- gather everything once and apply the same
+        # filters BatchProcessor uses: glob's literal `*.wav` match is
+        # case-sensitive (drops A.WAV) and also returns a directory named
+        # x.wav, while a lowered-suffix test accepts exactly the supported
+        # set.
+        wav_files = []
+        inspector = DeepFileInspector() if HAS_DEEP_INSPECTOR else None
+        for candidate in directory_path.rglob("*"):
+            if (not candidate.is_file()
+                    or candidate.suffix.lower() not in SUPPORTED_FORMATS):
+                continue
+            try:
+                if candidate.is_symlink():
+                    continue
+            except OSError:
+                continue
+            if inspector is not None:
+                inspection = inspector.validate_for_processing(candidate)
+                if not inspection.is_valid:
+                    self.logger.warning(
+                        "Skipping file failing format inspection: %s (%s)",
+                        candidate, "; ".join(inspection.errors),
+                    )
+                    continue
+                for note in inspection.warnings:
+                    self.logger.warning(
+                        "Inspection note for %s: %s", candidate, note)
+            wav_files.append(candidate)
         if not wav_files:
             return []
 
@@ -2379,16 +2429,16 @@ class ParallelBatchProcessor:
         async def process_single_file(file_path: Path) -> ProcessingResult:
             async with semaphore:
                 # 処理タイプに基づいて適切な関数を選択
-                if operation == "analyze":
+                if operation_normalized == "analyze":
                     return await self.processor.analyze_async(str(file_path))
-                elif operation == "normalize":
+                elif operation_normalized == "normalize":
                     output_path = file_path.with_suffix('.normalized.wav')
                     target_peak = kwargs.get('target_peak', 0.95)
                     return await self.processor.normalize_async(str(file_path), str(output_path), target_peak)
-                elif operation == "mono":
+                elif operation_normalized == "mono":
                     output_path = file_path.with_suffix('.mono.wav')
                     return await self.processor.convert_to_mono_async(str(file_path), str(output_path))
-                elif operation == "trim":
+                elif operation_normalized == "trim":
                     output_path = file_path.with_suffix('.trimmed.wav')
                     threshold = kwargs.get('threshold', 0.01)
                     return await self.processor.trim_silence_async(str(file_path), str(output_path), threshold)
@@ -2429,7 +2479,9 @@ class ParallelBatchProcessor:
                 new_loop.close()
         except Exception as e:
             logger.error(f"ディレクトリ並列処理エラー: {e}")
-            return []
+            # A silent [] reads as "no files" -- surface the failure the
+            # way the per-file results do.
+            return [ProcessingResult(False, str(e))]
 
 
 class StructuredLogger:

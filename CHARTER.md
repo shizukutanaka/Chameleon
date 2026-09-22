@@ -2471,3 +2471,33 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** `ParallelBatchProcessor.process_directory_async` advertises
+the same batch contract as `BatchProcessor.process_directory`. Does it
+honour it?
+
+**A:** On every axis where the sync twin gained a guard, the parallel twin
+had drifted -- verified empirically against a fixture dir (UPPER.WAV,
+song.wave, notwav.wav, a `fake.wav` directory, and a `link.wav` symlink
+escaping the tree):
+(a) `rglob("*.wav") + rglob("*.wave")` was case-sensitive (UPPER.WAV
+invisible) AND matched the `fake.wav` DIRECTORY -- which then produced a
+phantom per-file failure. Gather is now one `rglob("*")` pass filtered on
+`is_file()` + `suffix.lower() in SUPPORTED_FORMATS`.
+(b) The `link.wav` file symlink was followed and the outside file
+processed -- the sync twin skips symlinks. Now skipped.
+(c) The DeepFileInspector gate was absent: `notwav.wav` reached the
+per-file ops (sync skips it at gathering). Now mirrored, warnings logged.
+(d) An unsupported op or out-of-bounds `threshold`/`target_peak` produced
+one identical per-file failure per gathered file; both are now validated
+upfront with the sync twin's exact messages. The dispatch also compared
+the raw `operation`, so `'ANALYZE'` worked in sync but failed every file
+in parallel -- now normalized.
+(e) `process_directory_parallel` swallowed every exception to `[]` -- an
+invalid directory read as a valid empty one. It now surfaces a single
+failed ProcessingResult carrying the error.
+Lesson: when one of twin APIs grows a guard, grep the sibling for the
+same *stage* (gather/validate/dispatch), not the same code -- the
+parallel twin diverged at every stage independently, and none of the
+earlier case-glob fixes reached it because it builds its pattern
+differently.
