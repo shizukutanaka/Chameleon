@@ -487,9 +487,16 @@ class Compressor:
         """Process audio through compressor, return (audio, gain_reduction)"""
         if audio.ndim == 1:
             return self._process_mono(audio)
-        else:
-            # Stereo-linked compression
-            return self._process_stereo(audio)
+        if audio.shape[0] > 2:
+            # _process_stereo writes output[0]/output[1] unconditionally;
+            # on (3+, N) input the extra channels stayed zeros -- a silent
+            # channel erasure. The chain's own >2-channel guard exists for
+            # exactly this reason; the component must refuse the same way.
+            raise ValueError(
+                f"Compressor supports mono or stereo input; got "
+                f"{audio.shape[0]} channels")
+        # Stereo-linked compression
+        return self._process_stereo(audio)
 
     def _gain_reduction_db(self, envelope: float) -> float:
         """Static soft-knee gain computer: gain reduction (<= 0 dB) for a level.
@@ -608,8 +615,14 @@ class Limiter:
         """Process audio through limiter"""
         if audio.ndim == 1:
             return self._process_mono(audio)
-        else:
-            return self._process_stereo(audio)
+        if audio.shape[0] > 2:
+            # Same silent channel erasure as the compressor's stereo path:
+            # _process_stereo writes output[0]/output[1] only, so a third
+            # channel came back as zeros.
+            raise ValueError(
+                f"Limiter supports mono or stereo input; got "
+                f"{audio.shape[0]} channels")
+        return self._process_stereo(audio)
 
     def _process_mono(self, audio: np.ndarray) -> np.ndarray:
         """Process mono audio"""

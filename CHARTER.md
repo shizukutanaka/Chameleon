@@ -2471,3 +2471,12 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+- **(Q104) Components must refuse channel counts their stereo paths erase.**
+  `Compressor.process`/`Limiter.process` dispatched every `ndim > 1` input to
+  `_process_stereo`, which writes `output[0]`/`output[1]` unconditionally into
+  a `zeros_like` buffer — a (3+, N) input returned N-channel-shaped output with
+  every channel past the second as pure silence while the call reported
+  success. `MasteringChain.process` already refused `>2` channels for exactly
+  this reason ("every stage below is written for mono/stereo"), but the public
+  component classes could still be reached directly. Both dispatchers now raise
+  `ValueError` naming the channel count, matching the chain's own refusal.
