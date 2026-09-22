@@ -23,7 +23,8 @@ Record the wall-clock time and compare runs after adjusting environment variable
 
 ## Profiling tips
 
-- Install `psutil` to include CPU and memory metrics in command summaries.
+- Install `psutil` to add CPU and memory usage to the API server's
+  `/system/status` endpoint; the CLI never uses it.
 - Toggle `CHAMELEON_PERFORMANCE_MODE` between `auto`, `fast`, and `safe` to compare heuristics.
 - When working with large directories, sample a smaller subset of files to estimate the total runtime before launching a full scan.
 

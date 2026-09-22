@@ -61,8 +61,9 @@ audio = [
     "soundfile>=0.10",
     "pyaudio>=0.2.11",
 ]
-# REST API server (api_server.py). The request models use pydantic v1 syntax
-# (Field(regex=...), @validator), so pydantic is pinned below 2.
+# REST API server (api_server.py). pydantic is pinned below 2 as the
+# conservative, tested baseline; api_server.py tolerates either major at
+# runtime by selecting Field(regex=) vs pattern= per installed version.
 api = [
     "fastapi>=0.75,<0.100",
     "uvicorn[standard]>=0.17",
