@@ -2471,3 +2471,29 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22, audit 78):** Does `MIDIAnalyzer.analyze_rhythm` return a
+stable contract, does the suspicious-content chunk walk actually reach
+every chunk, and does the `midi` banner still claim work that was just
+refused?
+**A:** Three different shapes of the same honesty defect, each verified
+empirically before fixing.
+`analyze_rhythm`'s degenerate paths returned
+`{"tempo","time_signature","patterns"}` while the normal path returns
+`{"tempo","time_signature","common_intervals","rhythmic_complexity"}` --
+the module's own demo (`rhythm['rhythmic_complexity']`) crashed with a
+KeyError on a single-note input (verified). All paths now return the
+normal key set (and the no-notes path used to hardcode `(4, 4)` while
+the others honored `self.config.time_signature` -- folded into the same
+fix).
+`DeepFileInspector._non_audio_regions` `break`ed out of the chunk walk
+at the first zero-size non-data chunk under a "never stall" rationale
+that cannot stall -- `offset` always advances by >= 8 bytes (the chunk
+header alone). A crafted `JUNK(0)` chunk placed before a `LIST` made the
+`LIST`'s `import os` payload invisible to the pattern scan (verified:
+warning present without the JUNK, absent with it). The `break` is gone.
+`midi extract`/`analyze` printed `MIDI operation '<op>'` before the
+`--input required` refusal -- a banner claiming an operation that could
+never start (same class as the stream/server banner fixes; the
+compose/generate `--key` site is addressed on a sibling branch). The
+banner now prints only after every refusal check passes.

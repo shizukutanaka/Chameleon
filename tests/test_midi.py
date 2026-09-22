@@ -247,3 +247,38 @@ def test_analyze_harmony_names_the_key_not_a_pitch_class():
     harmony = analyzer.analyze_harmony(chords, key)
 
     assert harmony["key"] == "C major"
+
+
+def test_analyze_rhythm_returns_one_shape_on_degenerate_input():
+    """Degenerate paths used to return {"tempo","time_signature","patterns"}
+    while the normal path returns {"tempo","time_signature",
+    "common_intervals","rhythmic_complexity"} -- the module's own demo
+    (`rhythm['rhythmic_complexity']`) crashed with a KeyError on a single
+    note."""
+    analyzer = MIDIAnalyzer()
+
+    normal = analyzer.analyze_rhythm(_c_major_progression())
+    for degenerate in ([], [MIDINote(60, 100, 0.0, 1.0)],
+                       # simultaneous onsets -> no positive interval
+                       [MIDINote(60, 100, 0.0, 1.0), MIDINote(64, 100, 0.0, 1.0)]):
+        result = analyzer.analyze_rhythm(degenerate)
+        assert set(result) == set(normal), (degenerate, result)
+        assert result["tempo"] == 0
+        assert result["rhythmic_complexity"] == 0
+
+
+def test_midi_banner_does_not_print_for_a_refused_operation(tmp_path):
+    """`midi extract` without --input used to print "MIDI operation
+    'extract'" even though the operation could never start -- a banner
+    claiming work that cannot happen (same class as the stream/server
+    banner fixes)."""
+    import subprocess
+    import sys
+    from pathlib import Path
+    main_py = str(Path(__file__).resolve().parent.parent / "main.py")
+    proc = subprocess.run(
+        [sys.executable, main_py, "midi", "extract"],
+        capture_output=True, text=True, timeout=30)
+    assert proc.returncode == 2  # USAGE
+    assert "required" in proc.stderr
+    assert "MIDI operation" not in proc.stdout

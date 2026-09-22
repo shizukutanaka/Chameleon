@@ -3103,8 +3103,6 @@ async def main():
                       file=sys.stderr)
                 return ExitCode.INPUT
 
-        print(f"MIDI operation '{args.operation}'")
-
         if args.operation in ["extract", "analyze"] and not args.input:
             print("Error: --input required for extract/analyze operations", file=sys.stderr)
             return ExitCode.USAGE
@@ -3120,6 +3118,10 @@ async def main():
                       "file is already MIDI -- there is nothing to extract "
                       "or analyze.", file=sys.stderr)
                 return ExitCode.INPUT
+
+        # The banner claims an operation is starting; it must not print for
+        # a call that was just refused above.
+        print(f"MIDI operation '{args.operation}'")
 
         if args.operation == "extract":
             # Extract MIDI from audio

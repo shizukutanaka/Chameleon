@@ -654,8 +654,14 @@ class MIDIAnalyzer:
 
     def analyze_rhythm(self, notes: List[MIDINote]) -> Dict[str, Any]:
         """Analyze rhythmic patterns"""
+        # Every return path must yield the same keys: the success shape is
+        # {tempo, time_signature, common_intervals, rhythmic_complexity},
+        # and consumers (including this module's own demo) index them
+        # unconditionally. The degenerate paths used to return "patterns"
+        # instead, so a one-note input crashed the caller with a KeyError.
         if not notes:
-            return {"tempo": 0, "time_signature": (4, 4), "patterns": []}
+            return {"tempo": 0, "time_signature": self.config.time_signature,
+                    "common_intervals": [], "rhythmic_complexity": 0}
 
         # Calculate inter-onset intervals
         onsets = sorted([note.start_time for note in notes])
@@ -664,7 +670,8 @@ class MIDIAnalyzer:
         if not intervals:
             # One note has no rhythm; 0 means "not estimable" like the
             # no-notes path above, not a default tempo dressed as a measure.
-            return {"tempo": 0, "time_signature": self.config.time_signature, "patterns": []}
+            return {"tempo": 0, "time_signature": self.config.time_signature,
+                    "common_intervals": [], "rhythmic_complexity": 0}
 
         # Estimate the beat from the commonest inter-onset interval. Intervals
         # are grouped on a LOG scale (48 buckets to the octave, ~1.4% apart)
@@ -686,7 +693,8 @@ class MIDIAnalyzer:
             interval_buckets.setdefault(bucket, []).append(interval)
 
         if not interval_buckets:
-            return {"tempo": 0, "time_signature": self.config.time_signature, "patterns": []}
+            return {"tempo": 0, "time_signature": self.config.time_signature,
+                    "common_intervals": [], "rhythmic_complexity": 0}
 
         largest = max(interval_buckets.values(), key=len)
         ordered = sorted(largest)
