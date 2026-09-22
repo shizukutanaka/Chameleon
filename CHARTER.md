@@ -2471,3 +2471,25 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22, continued):** Is the dependency-free spectral path as
+honest as the numpy one -- does `analyze --spectrum` see the whole file,
+does the inverse transform survive odd lengths, do the band edges land
+where labelled, and does `sliding_window_rms` survive an empty buffer?
+**A:** Four noes. The pure-Python DFT in `analyze_spectrum` transformed
+only the first 4096 samples of the buffer, so a tone living past ~93 ms
+of `analyze --spectrum` reported "Dominant Frequencies: none detected"
+on a mostly-tone file; the fallback now tiles up to 16 contiguous
+4096-sample windows (tail-anchored for partial coverage) and averages
+magnitudes, with `SpectrumReport.analyzed_samples` disclosing whatever
+the cap leaves out. `_inverse_real_transform` mirrored `spectrum[1:-1]`
+unconditionally -- correct only for even-length transforms, since odd N
+has no Nyquist bin, so the top bin vanished and a 0.5-amplitude sine
+round-tripped with 0.156 max error; mirroring now keys off the spectrum
+length's parity. `_compute_bandwidth`, `_detect_peaks` and
+`_apply_band_gains` derived bin width as `sr/(2*(bins-1))` -- exact only
+for even N, stretching every labelled frequency ~1/(N-1) on odd input
+and pushing a 1997.5 Hz tone into the 2000 Hz band; the three helpers
+now take the transform length and use `sr/N`. And
+`sliding_window_rms([])` divided by a window clamped to zero
+(ZeroDivisionError) where every sibling returns `[]` -- now guarded.

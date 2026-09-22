@@ -24,6 +24,11 @@ except ImportError:  # pragma: no cover - minimal deployments
 
 logger = logging.getLogger(__name__)
 
+# The pure-Python DFT is O(n^2): analysis runs in 4096-sample windows,
+# tiled across the buffer and capped so a huge input stays bounded.
+_DFT_BLOCK = 4096
+_DFT_MAX_WINDOWS = 16
+
 
 @dataclass(frozen=True)
 class SpectrumPeak:
@@ -42,6 +47,11 @@ class SpectrumReport:
     bandwidth: Tuple[float, float]
     dominant_peaks: List[SpectrumPeak]
     dc_offset: float
+    # Samples that actually fed the transform. The pure-Python DFT path is
+    # bounded (see _DFT_MAX_WINDOWS), so this can be lower than the input
+    # length -- a report that hides partial coverage reads as whole-signal
+    # when it is not.
+    analyzed_samples: int
 
 
 def _to_float_sequence(samples: Sequence[float]) -> List[float]:
@@ -90,7 +100,12 @@ def _inverse_real_transform(spectrum: Sequence[complex], length: int) -> List[fl
         return restored.astype(float).tolist()
 
     mirrored: List[complex] = list(spectrum)
-    for value in reversed(spectrum[1:-1]):
+    # An even-length source ends on the real Nyquist bin, which has no
+    # conjugate twin; an odd-length source has no Nyquist bin at all, so
+    # every bin past DC needs its mirror. Dropping the last bin either way
+    # loses the top of the spectrum and mis-normalises by the wrong N.
+    inner = spectrum[1:-1] if len(spectrum) % 2 == 1 else spectrum[1:]
+    for value in reversed(inner):
         mirrored.append(value.conjugate())
 
     size = len(mirrored)
@@ -107,7 +122,7 @@ def _inverse_real_transform(spectrum: Sequence[complex], length: int) -> List[fl
     return output
 
 
-def _compute_bandwidth(magnitudes: Sequence[float], sample_rate: int) -> Tuple[float, float]:
+def _compute_bandwidth(magnitudes: Sequence[float], sample_rate: int, transform_length: int) -> Tuple[float, float]:
     """Estimate effective bandwidth using cumulative energy thresholds."""
 
     total_energy = sum(value ** 2 for value in magnitudes)
@@ -129,7 +144,10 @@ def _compute_bandwidth(magnitudes: Sequence[float], sample_rate: int) -> Tuple[f
             upper_index = index
             break
 
-    bin_width = sample_rate / (2 * max(len(magnitudes) - 1, 1))
+    # Bin k of a real transform of length N sits at k * sr / N for both
+    # parities; deriving N as 2*(bins-1) is exact only for even N and
+    # stretches every label ~1/(N-1) on odd input.
+    bin_width = sample_rate / max(transform_length, 1)
     return lower_index * bin_width, upper_index * bin_width
 
 
@@ -146,7 +164,7 @@ def _hann_window(length: int) -> List[float]:
     return [0.5 - 0.5 * math.cos(2.0 * math.pi * n / (length - 1)) for n in range(length)]
 
 
-def _detect_peaks(magnitudes: Sequence[float], sample_rate: int, max_peaks: int) -> List[SpectrumPeak]:
+def _detect_peaks(magnitudes: Sequence[float], sample_rate: int, max_peaks: int, transform_length: int) -> List[SpectrumPeak]:
     """Select dominant peaks by neighbourhood comparison with sub-bin refinement.
 
     Each local maximum is refined with parabolic (quadratic) interpolation over
@@ -155,7 +173,7 @@ def _detect_peaks(magnitudes: Sequence[float], sample_rate: int, max_peaks: int)
     """
 
     peaks: List[SpectrumPeak] = []
-    bin_width = sample_rate / (2 * max(len(magnitudes) - 1, 1))
+    bin_width = sample_rate / max(transform_length, 1)
 
     for index in range(1, len(magnitudes) - 1):
         left = magnitudes[index - 1]
@@ -179,13 +197,39 @@ def _detect_peaks(magnitudes: Sequence[float], sample_rate: int, max_peaks: int)
     return peaks[:max_peaks]
 
 
+def _dft_window_starts(n: int) -> List[int]:
+    """Start offsets of 4096-sample analysis windows covering ``[0, n)``.
+
+    Contiguous tiling; a partial tail is covered by anchoring the final
+    window at ``n - 4096`` (overlap is fine -- it keeps the bin grid uniform
+    and the tail samples in scope). Coverage is capped at
+    ``_DFT_MAX_WINDOWS`` to bound the O(n^2) fallback; whatever the cap
+    leaves uncovered is disclosed via ``SpectrumReport.analyzed_samples``.
+    """
+    if n <= _DFT_BLOCK:
+        return [0]
+    starts = list(range(0, n - _DFT_BLOCK + 1, _DFT_BLOCK))[:_DFT_MAX_WINDOWS]
+    tail = n - _DFT_BLOCK
+    if len(starts) < _DFT_MAX_WINDOWS and starts[-1] != tail:
+        starts.append(tail)
+    return starts
+
+
 def analyze_spectrum(
     samples: Sequence[float],
     sample_rate: int,
     *,
     max_peaks: int = 5,
 ) -> SpectrumReport:
-    """Compute spectral statistics for a mono signal."""
+    """Compute spectral statistics for a mono signal.
+
+    Without NumPy the transform is the O(n^2) pure-Python DFT, so the
+    spectrum is built from up to ``_DFT_MAX_WINDOWS`` 4096-sample windows
+    (contiguous, tail-anchored) whose magnitudes are averaged -- every
+    sample feeds the report whenever the input fits the bound rather than
+    only the first 4096. ``analyzed_samples`` in the report says how many
+    samples were actually transformed.
+    """
 
     if sample_rate <= 0:
         raise ValueError("sample_rate must be a positive integer")
@@ -194,25 +238,37 @@ def analyze_spectrum(
     if not buffer:
         raise ValueError("samples cannot be empty")
 
-    # Window the signal before the transform to suppress spectral leakage.
-    # The pure-Python DFT fallback only transforms the first 4096 samples, so
-    # window exactly that segment to keep the taper aligned with the transform.
-    # RMS and DC are measured on the raw (unwindowed) buffer so those
-    # time-domain statistics are unaffected by the window taper.
-    if not HAS_NUMPY and len(buffer) > 4096:
-        analysis_buffer = buffer[:4096]
+    # Window before the transform to suppress spectral leakage. RMS and DC
+    # are measured on the raw (unwindowed) buffer so those time-domain
+    # statistics are unaffected by the window taper.
+    if HAS_NUMPY:
+        window = _hann_window(len(buffer))
+        spectrum = _discrete_fourier_transform(
+            [sample * weight for sample, weight in zip(buffer, window)])
+        magnitudes = [abs(value) for value in spectrum]
+        transform_length = len(buffer)
+        analyzed_samples = len(buffer)
     else:
-        analysis_buffer = buffer
-    window = _hann_window(len(analysis_buffer))
-    windowed = [sample * weight for sample, weight in zip(analysis_buffer, window)]
-
-    spectrum = _discrete_fourier_transform(windowed)
-    magnitudes = [abs(value) for value in spectrum]
+        starts = _dft_window_starts(len(buffer))
+        magnitudes: List[float] = []
+        transform_length = min(len(buffer), _DFT_BLOCK)
+        for start in starts:
+            block = buffer[start:start + transform_length]
+            window = _hann_window(len(block))
+            spectrum = _discrete_fourier_transform(
+                [sample * weight for sample, weight in zip(block, window)])
+            if not magnitudes:
+                magnitudes = [abs(value) for value in spectrum]
+            else:
+                for index, value in enumerate(spectrum):
+                    magnitudes[index] += abs(value)
+        magnitudes = [value / len(starts) for value in magnitudes]
+        analyzed_samples = starts[-1] + transform_length
 
     rms = math.sqrt(sum(sample ** 2 for sample in buffer) / len(buffer))
     dc_offset = statistics.mean(buffer)
-    bandwidth = _compute_bandwidth(magnitudes, sample_rate)
-    peaks = _detect_peaks(magnitudes, sample_rate, max_peaks)
+    bandwidth = _compute_bandwidth(magnitudes, sample_rate, transform_length)
+    peaks = _detect_peaks(magnitudes, sample_rate, max_peaks, transform_length)
 
     return SpectrumReport(
         sample_rate=sample_rate,
@@ -220,6 +276,7 @@ def analyze_spectrum(
         bandwidth=bandwidth,
         dominant_peaks=peaks,
         dc_offset=dc_offset,
+        analyzed_samples=analyzed_samples,
     )
 
 
@@ -279,8 +336,11 @@ def _apply_band_gains(
     low_gain: float,
     mid_gain: float,
     high_gain: float,
+    transform_length: int,
 ) -> List[complex]:
-    bin_width = sample_rate / (2 * max(len(spectrum) - 1, 1))
+    # k * sr / N, as in the meter helpers -- the 2*(bins-1) shortcut only
+    # holds for even-length transforms.
+    bin_width = sample_rate / max(transform_length, 1)
     adjusted: List[complex] = []
     for index, value in enumerate(spectrum):
         frequency = index * bin_width
@@ -318,7 +378,8 @@ def apply_spectral_mask(
     for start in range(0, len(buffer), step):
         block = buffer[start:start + step]
         spectrum = _discrete_fourier_transform(block)
-        adjusted = _apply_band_gains(spectrum, sample_rate, low_gain, mid_gain, high_gain)
+        adjusted = _apply_band_gains(
+            spectrum, sample_rate, low_gain, mid_gain, high_gain, len(block))
         processed.extend(_inverse_real_transform(adjusted, len(block)))
     return processed
 
@@ -330,6 +391,8 @@ def sliding_window_rms(samples: Sequence[float], window_size: int) -> List[float
         raise ValueError("window_size must be positive")
 
     buffer = _to_float_sequence(samples)
+    if not buffer:
+        return []
     if window_size > len(buffer):
         window_size = len(buffer)
 
