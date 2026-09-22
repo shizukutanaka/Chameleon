@@ -3252,3 +3252,24 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22, personal layer):** Does the personal library stay honest
+as the disk changes, and does `quick_setup` write a path the shell will
+read back the same way?
+**A:** Neither. `scan_library` only ever *added*: a file deleted from
+disk kept its row in `library_db["files"]` forever, so `total_files`
+overstated the library and `search()` returned paths that no longer
+exist. The scan now tracks the keys it sees and drops the rest,
+reporting `removed_files`/`removed` alongside `new`/`updated`. And
+`quick_setup` stored the custom library path verbatim: `Path("~/lib")`
+does not expand `~`, so `mkdir` created a directory literally named `~`
+in the CWD while the generated alias wrote `cd ~/lib` -- which bash
+expands to the real home. The library was created in one place and the
+shortcut pointed at another. The path now goes through
+`expanduser().resolve()` before it is stored, so what is created, what
+is configured, and what the aliases cd to are the same directory. The
+pattern worth keeping: string paths cross a semantic boundary twice --
+once at the filesystem (where `~` is literal) and once at the shell
+(where it expands) -- and every consumer has to agree on which side of
+the boundary the stored value lives on. Also corrected: `search()`'s
+docstring claimed it searched metadata; it searches filenames and tags.
