@@ -2471,3 +2471,28 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** Can a float WAV carry a value that is neither a
+measurement nor silence -- and what should `analyze` report for it?
+**A:** IEEE-754 float WAVs can store NaN/Inf samples (a generator writing
+0/0, or a corrupted file). `analyze_audio` then reported peak_level=nan
+and rms_level=nan, and `--format json` emitted the bare token `NaN` --
+output that is not JSON and crashes every strict parser downstream. The
+fix is two layers, matching the file's existing "unmeasured -> null"
+convention: measurement filters to `np.isfinite` samples before taking
+peak/RMS (and before the librosa mono mix), and `_json_export_default`
+sweeps non-finite floats -- scalars and inside lists -- to null so the
+export is always valid JSON. Same pass: `spectral_utils.sliding_window_rms`
+on an empty buffer clamped window_size to 0 then still iterated once,
+ZeroDivisionError; it now returns [] like every sibling extractor. The
+pattern worth keeping: a NaN is not a small number -- it propagates
+through max()/mean() silently and only explodes at the JSON boundary, so
+non-finite handling belongs at both the measurement and serialization
+edges. Audited honest this cycle: `_load_wav_basic` decode matrix,
+`normalize_audio`, `_soft_clip`, `_bandlimited_resample`, `remove_noise`,
+`repair_audio`, `convert_audio`, `process_stream`, `analyze_music`,
+`generate_midi`, `compose_melody`, `_save_wav_basic` dither path,
+`_resolve_output_path`, `_sanitize_cli_input`, `_serialize_result`,
+`ProcessingConfig` env parsing; `spectral_utils` `_compute_bandwidth`,
+`_detect_peaks`, `_hann_window`, `analyze_spectrum`, `linear_resample`,
+`apply_spectral_mask`, `normalize_peak`, `_apply_band_gains`.

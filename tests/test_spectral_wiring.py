@@ -16,6 +16,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 import core
 import spectral_utils
 from tests._helpers import write_sine_wave
@@ -110,3 +112,13 @@ def test_apply_spectral_mask_does_not_renormalize():
         src, 44100, low_gain=0.5, mid_gain=0.5, high_gain=0.5
     )
     assert max(abs(x) for x in out) < 0.3
+
+
+def test_sliding_window_rms_empty_input_returns_empty_list():
+    # An empty buffer set window_size to 0 and the loop still ran once,
+    # dividing by zero -- every sibling extractor returns [] on empty.
+    assert spectral_utils.sliding_window_rms([], 4) == []
+
+
+def test_sliding_window_rms_window_larger_than_buffer_clamps():
+    assert spectral_utils.sliding_window_rms([3.0, 4.0], 99) == pytest.approx([(25.0 / 2) ** 0.5])
