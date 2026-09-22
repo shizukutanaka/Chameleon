@@ -83,6 +83,13 @@ re-verified, not trusted.
   tests — no `assert True`, no `x == x`, nothing swallowing exceptions, and the
   only three assertion-free tests are "must not raise" checks where the call
   itself is the assertion.
+  On 2026-09-22 the same revert-and-rerun check was applied to audit-51's
+  fixes: reverting the scale-degree lookup in `analyze_harmony` fails all
+  three degree tests (major, chromatic-root, minor-key), and reverting the
+  plugin cache's return-the-live-instance path fails the re-execution test
+  — four of four defect-detecting tests bite (the stale-entry fall-through
+  test pins a behaviour contract rather than a defect, and stays green by
+  design).
 - **DSP claims are checked against ground truth, not eyeballed.** The
   regression suite asserts measured quantities — a clean sine survives
   restoration bit-exactly, a clipped signal comes back 14.5 dB closer to the
