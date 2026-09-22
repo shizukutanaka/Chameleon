@@ -2471,3 +2471,21 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** `AudioProcessor.process_stream` ships as the real-time
+feature behind the `[audio]` extra. `ProcessingConfig.channels` defaults to
+2, so what does the PyAudio callback actually feed the DSP?
+**A:** An interleaved buffer treated as mono. `np.frombuffer` on a stereo
+callback gives LRLR samples; handing that flat array to `apply_effects`
+made every biquad tap the *other* channel's samples as its own history --
+measured 0.28 amplitude of crosstalk into a silent right channel from a
+12 dB EQ band on a 1 kHz left-channel tone (and the left channel's filter
+ran on a half-rate decimated sequence, not the signal it was shown). The
+callback's DSP is now factored into `_process_stream_buffer`, which
+deinterleaves to (channels, samples), processes, and re-interleaves; this
+also makes the path unit-testable for the first time (the old test file
+said it could not be). Verified: silent channel stays silent (max < 1e-3)
+while the EQ'd channel shows the boost. `normalize` on interleaved data
+was incidentally correct (global peak) but runs in deinterleaved space now
+for consistency. A buffer that cannot split whole frames keeps the legacy
+flat path rather than fabricating channels.

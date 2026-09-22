@@ -1314,6 +1314,34 @@ class AudioProcessor:
 
         return converted, new_sr, bit_depth
 
+    def _process_stream_buffer(self, in_data, effects: Optional[Dict]) -> bytes:
+        """Process one raw interleaved callback buffer and return bytes.
+
+        PyAudio hands over interleaved samples (LRLR for stereo). Feeding
+        that flat array to the DSP directly treats the stream as mono: a
+        biquad at position n taps x[n-1], which belongs to the *other*
+        channel -- measured 0.28 amplitude of crosstalk into a silent
+        channel from a 12 dB EQ band on a 1 kHz tone. Deinterleave so
+        each channel's filter sees its own history.
+        """
+        audio = np.frombuffer(in_data, dtype=np.float32)
+        channels = max(1, int(self.config.channels))
+        interleaved = channels > 1 and len(audio) % channels == 0
+
+        if interleaved:
+            audio = audio.reshape(-1, channels).T
+
+        if effects:
+            audio = self.apply_effects(audio, self.config.sample_rate, effects)
+
+        if self.config.normalize:
+            audio = self.normalize_audio(audio, self.config.target_peak)
+
+        if interleaved:
+            audio = audio.T.reshape(-1)
+
+        return audio.astype(np.float32).tobytes()
+
     async def process_stream(self, input_device: Optional[int] = None,
                              output_device: Optional[int] = None,
                              effects: Optional[Dict] = None):
@@ -1331,20 +1359,7 @@ class AudioProcessor:
         p = pyaudio.PyAudio()
 
         def stream_callback(in_data, frame_count, time_info, status):
-            # Convert input bytes to numpy
-            audio = np.frombuffer(in_data, dtype=np.float32)
-
-            # Apply processing
-            if effects:
-                audio = self.apply_effects(audio, self.config.sample_rate, effects)
-
-            # Normalize
-            if self.config.normalize:
-                audio = self.normalize_audio(audio, self.config.target_peak)
-
-            # Convert back to bytes
-            out_data = audio.astype(np.float32).tobytes()
-
+            out_data = self._process_stream_buffer(in_data, effects)
             return (out_data, pyaudio.paContinue)
 
         # Open stream
