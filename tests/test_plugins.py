@@ -304,3 +304,73 @@ def test_load_plugin_limits_all_plugin_code_sites(tmp_path, hang_site):
     with pytest.raises(TimeoutError, match="timed out"):
         loader.load_plugin(plugin)
     assert time.monotonic() - t0 < 10
+
+
+def test_sub_second_execution_timeout_is_enforced():
+    # signal.alarm(int(max_time)) truncated 0.5 to 0, and alarm(0)
+    # *cancels* the timer -- a sub-second configured timeout silently ran
+    # unbounded. setitimer keeps the fractional value.
+    import time as _time
+    from plugin_system import PluginSandbox, PluginConfig
+
+    sandbox = PluginSandbox(PluginConfig(max_execution_time=0.5))
+
+    with pytest.raises(TimeoutError):
+        sandbox.execute_with_limits(lambda: _time.sleep(5))
+
+
+def test_plugin_cleanup_respects_sandbox_timeout(tmp_path):
+    # cleanup() is plugin code like initialize() -- it must stay inside
+    # the sandbox limits. A raw call ran 2s of cleanup against a 0.6s
+    # limit and a hanging one would have blocked unload forever.
+    import time as _time
+    from plugin_system import PluginLoader, PluginConfig
+
+    plugin_file = tmp_path / "slow_cleanup.py"
+    plugin_file.write_text(
+        "import time\n"
+        "from plugin_system import UtilityPlugin, PluginMetadata\n"
+        "class G(UtilityPlugin):\n"
+        "    def get_metadata(self):\n"
+        "        return PluginMetadata(name='G', version='1.0.0', author='a',"
+        " description='d', category='utility')\n"
+        "    def initialize(self, config): return True\n"
+        "    def cleanup(self): time.sleep(30)\n"
+        "    def execute(self, **p): return True\n"
+    )
+    loader = PluginLoader(PluginConfig(max_execution_time=0.6))
+    assert loader.load_plugin(str(plugin_file)) is not None
+
+    start = _time.monotonic()
+    assert loader.unload_plugin("G") is False  # bounded, honestly failed
+    assert _time.monotonic() - start < 10
+
+
+def test_plugin_getattr_dispatch_respects_sandbox_timeout(tmp_path):
+    # A plugin overriding __getattr__ runs plugin code at attribute-read
+    # time; the dispatch used to read it unbounded.
+    import time as _time
+    from plugin_system import PluginManager, PluginConfig
+
+    plugin_file = tmp_path / "slow_getattr.py"
+    plugin_file.write_text(
+        "import time\n"
+        "from plugin_system import UtilityPlugin, PluginMetadata\n"
+        "class S(UtilityPlugin):\n"
+        "    def get_metadata(self):\n"
+        "        return PluginMetadata(name='S', version='1.0.0', author='a',"
+        " description='d', category='utility')\n"
+        "    def initialize(self, config): return True\n"
+        "    def cleanup(self): pass\n"
+        "    def __getattr__(self, n): time.sleep(30)\n"
+        "    def execute(self, **p): return True\n"
+    )
+    manager = PluginManager(
+        PluginConfig(max_execution_time=0.6, plugin_directories=[],
+                     auto_discover=False))
+    assert manager.loader.load_plugin(str(plugin_file)) is not None
+
+    start = _time.monotonic()
+    with pytest.raises(TimeoutError):
+        manager.execute_plugin("S", "missing_op")
+    assert _time.monotonic() - start < 10

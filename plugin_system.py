@@ -247,12 +247,16 @@ class PluginSandbox:
 
             try:
                 signal.signal(signal.SIGALRM, timeout_handler)
-                signal.alarm(int(max_time))
+                # setitimer, not alarm(int(...)): alarm truncates, and
+                # int(0.5) is 0 -- alarm(0) CANCELS the alarm, so any
+                # sub-second max_execution_time silently ran unbounded
+                # (verified: limit 0.5, work slept 2s, returned normally).
+                signal.setitimer(signal.ITIMER_REAL, max_time)
                 with self._apply_memory_limit():
                     return func(*args, **kwargs)
             finally:
                 try:
-                    signal.alarm(0)
+                    signal.setitimer(signal.ITIMER_REAL, 0)
                 finally:
                     signal.signal(signal.SIGALRM, previous_handler)
 
@@ -634,7 +638,12 @@ class PluginLoader:
         """Unload a plugin"""
         if plugin_name in self.plugins:
             try:
-                self.plugins[plugin_name].cleanup()
+                # cleanup() is plugin code like initialize() -- it must
+                # stay inside the sandbox limits. A raw call let a sleeping
+                # cleanup() run far past max_execution_time (verified: 2s
+                # vs a 0.6s limit) and a hanging one would block unload
+                # and shutdown forever.
+                self.sandbox.execute_with_limits(self.plugins[plugin_name].cleanup)
                 del self.plugins[plugin_name]
                 self.logger.info(f"Unloaded plugin: {plugin_name}")
                 return True
@@ -721,12 +730,14 @@ class PluginManager:
         if not plugin.metadata.enabled:
             raise RuntimeError(f"Plugin is disabled: {plugin_name}")
 
-        # Get the operation method
-        if hasattr(plugin, operation):
-            method = getattr(plugin, operation)
-            return self.loader.sandbox.execute_with_limits(method, **params)
-        else:
+        # Get the operation method -- through the sandbox, since a plugin
+        # that overrides __getattr__ runs plugin code at attribute-read
+        # time and was previously unbounded on this dispatch path.
+        try:
+            method = self.loader.sandbox.execute_with_limits(getattr, plugin, operation)
+        except AttributeError:
             raise AttributeError(f"Plugin {plugin_name} has no method: {operation}")
+        return self.loader.sandbox.execute_with_limits(method, **params)
 
     def install_plugin(self, plugin_source: str, plugin_name: Optional[str] = None) -> bool:
         """Install a plugin from source"""
