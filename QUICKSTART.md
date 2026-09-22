@@ -24,8 +24,10 @@ Chameleon ships in two honest tiers — pick one:
 batch/MIDI CLI runs on the Python standard library alone. Nothing to install.
 
 ```bash
-# Optional: install the recommended (still small) runtime deps
-pip install -r requirements.txt
+# Optional: install the package itself — registers the `chameleon` command.
+# Still installs zero dependencies; requirements.txt is intentionally
+# comments-only and there is nothing for `pip install -r` to fetch.
+pip install -e .
 ```
 
 **2. `[audio]` extra — adds MP3 / FLAC / OGG input.** Installs numpy/scipy/librosa/

@@ -82,7 +82,13 @@ re-verified, not trusted.
   for it. A static audit of the suite in the same pass found no vacuous
   tests — no `assert True`, no `x == x`, nothing swallowing exceptions, and the
   only three assertion-free tests are "must not raise" checks where the call
-  itself is the assertion.
+  itself is the assertion. The 2026-09-22 pass verified its own guards the
+  same way: stashing the install-script and doc fixes left nine of ten new
+  tests red (an unenforced Python-3.8 gate, a no-op `requirements.txt`
+  install step, a `mido` dependency nothing imports, a `load_audio` that
+  does not exist, an "AI features" gloss CHARTER §4 forbids, and a style
+  parameter that exists nowhere); the surviving pin asserts a valid
+  interpreter passes the new version gate.
 - **DSP claims are checked against ground truth, not eyeballed.** The
   regression suite asserts measured quantities — a clean sine survives
   restoration bit-exactly, a clipped signal comes back 14.5 dB closer to the

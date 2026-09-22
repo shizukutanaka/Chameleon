@@ -17,6 +17,15 @@ else
 fi
 
 PYTHON_VERSION=$($PYTHON_CMD -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
+IFS=. read -r PY_MAJOR PY_MINOR <<< "$PYTHON_VERSION"
+if ! [[ $PY_MAJOR =~ ^[0-9]+$ && $PY_MINOR =~ ^[0-9]+$ ]] || \
+   [ "$PY_MAJOR" -lt 3 ] || \
+   { [ "$PY_MAJOR" -eq 3 ] && [ "$PY_MINOR" -lt 8 ]; }; then
+    # The banner above promises this gate exists -- enforce it: the code
+    # declares requires-python = ">=3.8" in pyproject.toml.
+    echo "❌ Python 3.8+ is required (found $PYTHON_VERSION)"
+    exit 1
+fi
 echo "✓ Python $PYTHON_VERSION found"
 
 # Create virtual environment
@@ -35,7 +44,10 @@ fi
 echo ""
 echo "📥 Installing dependencies..."
 pip install --upgrade pip -q
-pip install -r requirements.txt -q
+# requirements.txt is intentionally comments-only (the core is stdlib-only,
+# per CHARTER) -- the real install step is the package itself, which also
+# registers the `chameleon` command.
+pip install -e .
 
 echo ""
 echo "✅ Installation complete!"
