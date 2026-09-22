@@ -150,7 +150,13 @@ class PersonalSetup:
         print(f"   Default: {config.audio_library}")
         custom_path = input("   Custom path (or press Enter): ").strip()
         if custom_path:
-            config.audio_library = custom_path
+            # Path does not expand '~': "~/Music" mkdir'd a directory
+            # literally named '~' in the CWD while the aliases file then
+            # wrote `cd ~/Music`, which bash expands to the real home --
+            # the library was created in one place and the shortcuts
+            # pointed at another. Resolve to an absolute path here so
+            # what is created and what is stored are the same.
+            config.audio_library = str(Path(custom_path).expanduser().resolve())
 
         # Performance mode
         print(f"\n⚡ Performance Mode")
@@ -332,9 +338,11 @@ class PersonalLibraryManager:
         new_files = []
         updated_files = []
 
+        seen_keys = set()
         for ext in self.config.supported_formats:
             for file_path in self.library_path.rglob(f"*{ext}"):
                 file_key = str(file_path.relative_to(self.library_path))
+                seen_keys.add(file_key)
 
                 # Check if file is new or modified
                 if file_key not in self.library_db["files"]:
@@ -364,14 +372,25 @@ class PersonalLibraryManager:
                         })
                         updated_files.append(file_key)
 
+        # Files deleted from disk leave ghosts otherwise: total_files
+        # overstated the library and search() returned paths that no
+        # longer exist, forever -- the scan only ever added.
+        removed_files = [
+            key for key in list(self.library_db["files"]) if key not in seen_keys
+        ]
+        for key in removed_files:
+            del self.library_db["files"][key]
+
         self._save_db()
 
         return {
             "total_files": len(self.library_db["files"]),
             "new_files": len(new_files),
             "updated_files": len(updated_files),
+            "removed_files": len(removed_files),
             "new": new_files[:10],  # Show first 10
-            "updated": updated_files[:10]
+            "updated": updated_files[:10],
+            "removed": removed_files[:10]
         }
 
     def add_tags(self, file_pattern: str, tags: list) -> None:
@@ -397,7 +416,7 @@ class PersonalLibraryManager:
         self._save_db()
 
     def search(self, query: str) -> list:
-        """Search library by filename, tags, or metadata"""
+        """Search library by filename or tags"""
         results = []
 
         for file_key, file_info in self.library_db["files"].items():

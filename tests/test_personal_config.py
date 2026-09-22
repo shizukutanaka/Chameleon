@@ -419,3 +419,36 @@ def test_backup_workflow_verifies_an_intact_copy(tmp_path, monkeypatch, capsys):
 
     assert (dest_dir / "a.wav").exists()
     assert "verified successfully" in capsys.readouterr().out
+
+
+def test_scan_library_forgets_deleted_files(manager):
+    # A scan only ever added before: deleting the file on disk left a ghost
+    # in the database that total_files counted and search returned.
+    wav = manager.library_path / "gone.wav"
+    wav.write_bytes(b"\x00" * 64)
+    first = manager.scan_library()
+    assert first["total_files"] == 1
+
+    wav.unlink()
+    second = manager.scan_library()
+
+    assert second["total_files"] == 0
+    assert second["removed_files"] == 1
+    assert manager.search("gone") == []
+
+
+def test_quick_setup_expands_tilde_in_the_custom_library_path(home, monkeypatch):
+    # Path("~/lib") does not expand '~': mkdir created a literal '~'
+    # directory in the CWD while the written alias `cd ~/lib` expanded it
+    # to the real home -- the library was made in one place and the
+    # shortcuts pointed at another.
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.chdir(home)
+    answers = iter(["~/mylib", "", ""])
+    monkeypatch.setattr("builtins.input", lambda *_args: next(answers))
+
+    config = personal_config.PersonalSetup.quick_setup()
+
+    assert config.audio_library == str(home / "mylib")
+    assert (home / "mylib").is_dir()
+    assert not (home / "~").exists()
