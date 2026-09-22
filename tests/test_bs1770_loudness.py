@@ -1,4 +1,4 @@
-"""Tests for bs1770_loudness.py — a pure stdlib ITU-R BS.1770 K-weighted
+"""Tests for bs1770.py — a pure stdlib ITU-R BS.1770 K-weighted
 integrated loudness meter (CHARTER §9's "C1" follow-up).
 
 The K-weighting biquad coefficients are validated against the published
@@ -243,3 +243,24 @@ def test_true_peak_multichannel_takes_the_loudest_channel():
 def test_true_peak_multichannel_empty_and_nan():
     assert bs1770.measure_true_peak_multichannel([]) == float('-inf')
     assert math.isnan(bs1770.measure_true_peak_multichannel([[0.1, 0.2], [float('nan'), 0.1]]))
+
+
+def test_public_entry_points_accept_numpy_arrays():
+    # `if not samples:` / `if not channels:` raised "truth value is
+    # ambiguous" on numpy input -- the format audio callers actually hold.
+    # len() checks admit arrays end-to-end and return identical results.
+    np = pytest.importorskip("numpy")
+
+    t = np.linspace(0, 3, 3 * 48000)
+    audio = 0.1 * np.sin(2 * np.pi * 440 * t)
+    stereo = np.stack([audio, audio])
+
+    assert bs1770.measure_integrated_loudness(audio, 48000) == \
+        pytest.approx(bs1770.measure_integrated_loudness(list(audio), 48000))
+    assert bs1770.measure_integrated_loudness_multichannel(stereo, 48000) == \
+        pytest.approx(bs1770.measure_integrated_loudness_multichannel(
+            [list(audio), list(audio)], 48000))
+    assert bs1770.measure_momentary_loudness(stereo, 48000)
+    assert bs1770.measure_true_peak(audio) == \
+        pytest.approx(bs1770.measure_true_peak(list(audio)))
+    assert bs1770.measure_integrated_loudness(np.array([]), 48000) == float('-inf')

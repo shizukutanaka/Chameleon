@@ -3252,3 +3252,12 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+- **(Q105) Emptiness checks on user input must not rely on truthiness.**
+  `bs1770_loudness` gated its public entry points with `if not samples:` /
+  `if not channels:` / `if not channel:` — on numpy arrays (the format audio
+  callers actually hold) `not ndarray` raises "truth value is ambiguous",
+  crashing every entry point even though the rest of the pipeline
+  (enumerate/slicing/len) accepts arrays end-to-end. `len(x) == 0` admits
+  both lists and arrays, and array input now produces identical
+  measurements to list input. Internal truthiness checks on built lists
+  were left alone.

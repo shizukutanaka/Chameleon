@@ -264,7 +264,10 @@ def measure_integrated_loudness(samples: Sequence[float], sample_rate: int) -> f
     to form a single 400ms measurement block.
     """
 
-    if not samples:
+    # len() rather than truthiness: `not ndarray` raises 'truth value is
+    # ambiguous' on numpy arrays -- the format callers actually hold --
+    # while the rest of the pipeline (enumerate/slicing/len) accepts them.
+    if len(samples) == 0:
         return float('-inf')
 
     weighted = apply_k_weighting(samples, sample_rate)
@@ -289,7 +292,7 @@ def measure_integrated_loudness_multichannel(channels: Sequence[Sequence[float]]
     all-gated, or too short to form a single 400ms measurement block.
     """
 
-    if not channels:
+    if len(channels) == 0:
         return float('-inf')
 
     weights = _channel_weights(channel_mask, len(channels))
@@ -339,7 +342,7 @@ def _ungated_window_lufs(channels: Sequence[Sequence[float]], sample_rate: int,
     float('-inf') rather than dropped, so the series stays time-aligned.
     """
 
-    if not channels:
+    if len(channels) == 0:
         return []
 
     weighted = [apply_k_weighting(channel, sample_rate) for channel in channels]
@@ -566,7 +569,7 @@ def measure_true_peak(samples: Sequence[float]) -> float:
     (accurate estimate, not certified coefficients).
     """
 
-    if not samples:
+    if len(samples) == 0:
         return float('-inf')
     if any(s != s for s in samples):  # NaN != NaN
         return float('nan')
@@ -584,11 +587,11 @@ def measure_true_peak_multichannel(channels: Sequence[Sequence[float]]) -> float
     and float('nan') if any channel contains a NaN sample.
     """
 
-    if not channels:
+    if len(channels) == 0:
         return float('-inf')
     peak = 0.0
     for channel in channels:
-        if not channel:
+        if len(channel) == 0:
             continue
         if any(s != s for s in channel):
             return float('nan')
