@@ -109,3 +109,65 @@ def test_harmonic_enhance_stays_inside_selection():
     assert changed.size > 0
     times = ed.times
     assert all(0.4 <= times[c[1]] <= 0.5 for c in changed)
+
+
+def test_round_trip_preserves_head_on_arbitrary_content():
+    # A pure sine survives the window-edge attenuation by spectral
+    # coherence; broadband content does not. Before the analysis path
+    # center-padded by n_fft//2, the first hop of an arbitrary signal
+    # reconstructed at ~45% amplitude error (measured 1.76 on a +/-4
+    # signal) -- every edit op re-synthesized through ISTFT corrupted
+    # the file head on the numpy-only path.
+    proc = spectral_editor.SpectrogramProcessor()
+    audio = np.random.RandomState(0).randn(SAMPLE_RATE // 4)
+    stft, _, _ = proc.compute_stft(audio, SAMPLE_RATE)
+    restored = proc.compute_istft(stft, SAMPLE_RATE, len(audio))
+
+    assert len(restored) == len(audio)
+    assert np.abs(restored - audio).max() < 1e-6
+
+
+def test_odd_n_fft_round_trip():
+    # (bins - 1) * 2 cannot recover n_fft: 1023 and 1022 share 512 bins.
+    # The inferred 1022 produced a 1022-sample frame against a
+    # 1023-sample window and crashed the overlap-add on broadcast.
+    proc = spectral_editor.SpectrogramProcessor(
+        spectral_editor.SpectrogramConfig(
+            n_fft=1023, hop_length=256, win_length=1023))
+    audio = np.random.RandomState(0).randn(SAMPLE_RATE // 4)
+    stft, _, _ = proc.compute_stft(audio, SAMPLE_RATE)
+    restored = proc.compute_istft(stft, SAMPLE_RATE, len(audio))
+
+    assert len(restored) == len(audio)
+    assert np.abs(restored - audio).max() < 1e-6
+
+
+def test_noise_reduce_empty_selection_refuses_and_keeps_audio():
+    # np.median of an empty selection is NaN; subtracting it wrote NaN
+    # through the whole spectrogram while the call still returned True.
+    ed = spectral_editor.SpectralEditor()
+    audio = _sine(440)
+    ed.load_audio(audio, SAMPLE_RATE)
+    empty = spectral_editor.SpectralSelection(
+        time_start=9.0, time_end=9.5, freq_start=100, freq_end=200)
+
+    assert not ed.noise_reduce_selection(empty)
+    assert not np.isnan(ed.current_audio).any()
+    assert np.abs(ed.current_audio - audio).max() < 1e-3
+
+
+def test_interpolate_fills_masked_bins():
+    # The no-scipy fallback used to assign magnitude to `smoothed`,
+    # making `magnitude[mask] = smoothed[mask]` an identity -- a silent
+    # no-op that still returned True. Masked bins must actually move
+    # toward their neighbourhood.
+    ed = spectral_editor.SpectralEditor()
+    audio = _sine(440)
+    ed.load_audio(audio, SAMPLE_RATE)
+    sel = ed.select_region(0.4, 0.5, 400, 600)
+    mask = ed.get_selection_mask(sel)
+    before = np.abs(ed.stft).copy()
+
+    assert ed.interpolate_selection(sel)
+    after = np.abs(ed.stft)
+    assert (after[mask] - before[mask]).max() > 1e-6

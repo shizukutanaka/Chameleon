@@ -2471,3 +2471,29 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** Why did `spectral_editor`'s numpy-only path still corrupt
+audio even after five earlier repair passes -- and why did its tests not
+notice?
+
+**A:** Four measured defects on this branch: (1) `_compute_istft_manual`
+inferred `n_fft = (bins - 1) * 2`, but odd and even sizes one apart share a
+bin count (1023 and 1022 both give 512) -- an odd `n_fft` produced a frame
+one sample short and crashed the overlap-add on broadcast; `config.n_fft` is
+now authoritative and the conjugate mirror handles both parities. (2) The
+analysis path ran without center padding, so the first hop of samples sat
+under the near-zero left edge of the Hann window and overlap-add returned
+them attenuated -- measured 1.76 max error on broadband content. The
+existing round-trip test could not see it: a pure sine survives by spectral
+coherence (2.4e-11 error), which is why five prior repair passes missed it.
+Center-padding by n_fft//2 (librosa's `center=True` convention) closes it to
+~1e-15 on arbitrary content. (3) `noise_reduce_selection` on an
+out-of-range selection computed `np.median([])` = NaN and wrote NaN through
+the whole spectrogram while returning True -- now refuses on an empty mask.
+(4) `interpolate_selection`'s no-scipy fallback assigned `magnitude` to
+`smoothed`, making `magnitude[mask] = smoothed[mask]` an identity -- a
+silent no-op returning True; masked bins now get a four-neighbour mean via
+`np.roll`. Four tests, all reverted-and-failed on the unfixed code. The
+moral repeats this charter's recurring lesson: a test that cannot fail on
+the defect it guards is documentation, not verification -- the round-trip
+test needed arbitrary content, not a sine.

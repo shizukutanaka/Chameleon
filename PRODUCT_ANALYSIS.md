@@ -1,10 +1,10 @@
 # Chameleon — Product Analysis (Strengths, Weaknesses, Improvement Backlog)
 
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
-**Version:** 1.1.0 · **Tests:** re-run 2026-09-21 on Python 3.12, green in
+**Version:** 1.1.0 · **Tests:** re-run 2026-09-22 on Python 3.12, green in
 all three configurations — **477 passed** on a bare install (stdlib only,
-33 skipped), **557** with numpy (scipy/librosa/soundfile blocked, 33
-skipped), **662** with numpy + scipy + librosa + soundfile + fastapi
+33 skipped), **561** with numpy (scipy/librosa/soundfile blocked, 33
+skipped), **666** with numpy + scipy + librosa + soundfile + fastapi
 (5 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
@@ -338,6 +338,7 @@ here because they need a user decision first.
 | ~~P3~~ | ~~Pure-Python true-peak perf, or a documented cap note~~ | ~~Low~~ | ~~S~~ | ~~Low~~ | **DONE 2026-09-19** — chose the documented cap: §2 already states ~0.4 s per 65k-sample bounded prefix |
 | P4 | Plugin sandbox runtime boundary (restricted builtins for `exec_module`) | High (security) | L | High | Architectural; leaky if done partially — design first |
 | P4 | Surround-channel loudness weighting | Low | M | Low | Only if a real multichannel use case appears |
+| ~~P1~~ | ~~`spectral_editor`'s numpy-only path still corrupted audio~~ | ~~High~~ | ~~S~~ | ~~Low~~ | **DONE 2026-09-22** — odd `n_fft` crashed ISTFT (`(bins-1)*2` cannot recover n_fft); no center padding destroyed the first hop on arbitrary content (sine-only test couldn't see it); empty `noise_reduce` selection NaN-poisoned the whole spectrogram; `interpolate`'s no-scipy fallback was an identity no-op returning True. See CHARTER §9 |
 
 ---
 
@@ -371,8 +372,8 @@ python main.py --help
 
 **The deep check, worth running before any claim that the suite is sound:**
 break the code on purpose and confirm the suite notices. Revert one fix in the
-source, run only its test file, restore. Six known-good pairs, all verified to
-fail-then-pass on 2026-08-25:
+source, run only its test file, restore. Ten known-good pairs — the first six
+verified to fail-then-pass on 2026-08-25, the last four on 2026-09-22:
 
 | Revert | Should fail |
 |---|---|
@@ -382,6 +383,10 @@ fail-then-pass on 2026-08-25:
 | drop the `shutil.copyfile` in `core.py`'s already-mono branch | `tests/test_stdlib_operations.py` |
 | `np.round(scaled)` → `scaled` in `main.py` | `tests/test_quantization.py` |
 | any K-weighting coefficient × 1.001 in `bs1770_loudness.py` | `tests/test_bs1770_loudness.py` |
+| drop the `n_fft // 2` center-pad in `_compute_stft_manual` | `tests/test_spectral_editor.py` |
+| restore `n_fft = (stft.shape[0] - 1) * 2` in `_compute_istft_manual` | `tests/test_spectral_editor.py` |
+| drop the empty-mask guard in `noise_reduce_selection` | `tests/test_spectral_editor.py` |
+| `neighbour_mean[mask]` → `magnitude[mask]` in `interpolate_selection` | `tests/test_spectral_editor.py` |
 
 A green suite that survives none of these is measuring nothing. Restore the
 file after each one — `git status` must come back empty.

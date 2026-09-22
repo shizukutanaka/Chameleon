@@ -146,15 +146,22 @@ class SpectrogramProcessor:
         if win_length < n_fft:
             window = np.pad(window, (0, n_fft - win_length))
 
+        # Center-pad by n_fft//2 (librosa's center=True): without it the
+        # first hop of samples sits under the near-zero left edge of the
+        # analysis window, and overlap-add reconstructs them attenuated --
+        # every edit that re-synthesizes through ISTFT destroyed the head
+        # of the file on this path (max error ~1.8 on a +/-4 signal).
+        audio_padded = np.pad(audio, n_fft // 2)
+
         # Compute STFT. ceil (not floor) so the final partial frame is
         # included -- floor covered only whole frames and ISTFT silently
         # dropped the tail (a 44100-sample input round-tripped to 44032).
-        n_frames = max(1, 1 + int(np.ceil((len(audio) - n_fft) / hop_length)))
+        n_frames = max(1, 1 + int(np.ceil((len(audio_padded) - n_fft) / hop_length)))
         stft = np.zeros((n_fft // 2 + 1, n_frames), dtype=complex)
 
         for i in range(n_frames):
             start = i * hop_length
-            frame = audio[start:start + n_fft]
+            frame = audio_padded[start:start + n_fft]
 
             # Zero-pad if necessary
             if len(frame) < n_fft:
@@ -188,7 +195,10 @@ class SpectrogramProcessor:
 
     def _compute_istft_manual(self, stft: np.ndarray, sample_rate: int, length: int = None) -> np.ndarray:
         """Manual ISTFT computation"""
-        n_fft = (stft.shape[0] - 1) * 2
+        # n_fft cannot be inferred as (bins - 1) * 2: odd and even sizes one
+        # apart share a bin count (1023 and 1022 both give 512 bins). The
+        # transform was computed with config.n_fft, so it is authoritative.
+        n_fft = self.config.n_fft
         hop_length = self.config.hop_length
         win_length = self.config.win_length or n_fft
 
@@ -211,7 +221,13 @@ class SpectrogramProcessor:
             # Reconstruct full FFT
             full_fft = np.zeros(n_fft, dtype=complex)
             full_fft[:len(stft[:, i])] = stft[:, i]
-            full_fft[len(stft[:, i]):] = np.conj(stft[-2:0:-1, i])
+            # Bins above Nyquist are the conjugate mirror of the bins
+            # below it: indices n/2-1..1 for even n_fft, (n-1)/2..1 for
+            # odd n_fft (no Nyquist bin). The single even-only slice
+            # produced a 1022-sample frame for n_fft=1023 and crashed
+            # the overlap-add on a shape mismatch.
+            mirror_stop = -2 if n_fft % 2 == 0 else -1
+            full_fft[len(stft[:, i]):] = np.conj(stft[mirror_stop:0:-1, i])
 
             # IFFT
             frame = np.fft.ifft(full_fft).real
@@ -229,9 +245,14 @@ class SpectrogramProcessor:
         norm[norm == 0] = 1
         output = output / norm
 
-        # Trim to specified length
+        # Remove the n_fft//2 center-pad applied at analysis (see
+        # _compute_stft_manual); then trim to the requested length.
+        if n_fft // 2 > 0:
+            output = output[n_fft // 2:]
         if length is not None:
             output = output[:length]
+        else:
+            output = output[:-n_fft // 2] if n_fft // 2 > 0 else output
 
         return output
 
@@ -410,6 +431,13 @@ class SpectralEditor:
 
             mask = self.get_selection_mask(selection)
 
+            if not mask.any():
+                # np.median of an empty selection is NaN -- subtracting it
+                # poisoned the whole spectrogram with NaN while the call
+                # still returned True.
+                self.logger.error("Noise reduction failed: empty selection")
+                return False
+
             # Estimate noise from selection
             noise_stft = self.stft[mask]
             noise_magnitude = np.median(np.abs(noise_stft))
@@ -539,18 +567,20 @@ class SpectralEditor:
                 # Reconstruct
                 self.stft = magnitude_interp * np.exp(1j * phase)
             else:
-                # Simple averaging interpolation
+                # Without scipy, average each masked bin's four neighbours.
+                # The previous fallback assigned `magnitude` to `smoothed`,
+                # making `magnitude[mask] = smoothed[mask]` an identity -- a
+                # silent no-op that still reported success.
                 magnitude = np.abs(self.stft)
                 phase = np.angle(self.stft)
 
-                # Simple neighbor averaging
-                kernel = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]]) / 4
-                if HAS_SCIPY:
-                    smoothed = ndimage.convolve(magnitude, kernel, mode='reflect')
-                else:
-                    smoothed = magnitude  # Fallback to no interpolation
-
-                magnitude[mask] = smoothed[mask]
+                neighbour_mean = (
+                    np.roll(magnitude, 1, axis=0) +
+                    np.roll(magnitude, -1, axis=0) +
+                    np.roll(magnitude, 1, axis=1) +
+                    np.roll(magnitude, -1, axis=1)
+                ) / 4.0
+                magnitude[mask] = neighbour_mean[mask]
                 self.stft = magnitude * np.exp(1j * phase)
 
             # Reconstruct audio
