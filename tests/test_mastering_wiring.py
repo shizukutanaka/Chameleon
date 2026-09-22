@@ -138,3 +138,29 @@ def test_stereo_width_rejects_non_finite_and_negative():
     proc = mc.StereoProcessor(mc.StereoConfig(width=1.0, bass_mono=False), 44100)
     sig = np.stack([np.ones(1000), -np.ones(1000)]) * 0.2
     assert np.isfinite(proc.process(sig)).all()
+
+
+def test_compressor_and_limiter_refuse_more_than_two_channels():
+    # Both stereo paths write output[0]/output[1] unconditionally and return
+    # zeros_like(audio) -- on (3+, N) input every channel past the second
+    # came back as pure silence while the call reported success. The chain
+    # already refuses >2ch for exactly this reason; the public components
+    # must too.
+    np = pytest.importorskip("numpy")
+    import mastering_chain
+
+    t = np.linspace(0, 1, 44100)
+    audio = np.stack([0.1 * np.sin(2 * np.pi * 440 * t)] * 3)
+
+    with pytest.raises(ValueError, match="mono or stereo"):
+        mastering_chain.Limiter(
+            mastering_chain.LimiterConfig(), 44100).process(audio)
+    with pytest.raises(ValueError, match="mono or stereo"):
+        mastering_chain.Compressor(
+            mastering_chain.CompressorConfig(), 44100).process(audio)
+
+    stereo = audio[:2]
+    assert mastering_chain.Limiter(
+        mastering_chain.LimiterConfig(), 44100).process(stereo).shape == (2, 44100)
+    assert mastering_chain.Compressor(
+        mastering_chain.CompressorConfig(), 44100).process(stereo)[0].shape == (2, 44100)
