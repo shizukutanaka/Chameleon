@@ -89,7 +89,7 @@ re-verified, not trusted.
   fixes: restoring the '*.py' glob fails the '.PY' discovery test, restoring
   the all-uppercase numeral list fails all three suggestion-quality tests,
   and restoring the un-padded align/unclamped bar fails both UX tests —
-  seven of nine new tests bite (the '.py'-named-directory and extra-align
+  six of eight new tests bite (the '.py'-named-directory and extra-align
   tests pin contracts the old code also satisfied).
 - **DSP claims are checked against ground truth, not eyeballed.** The
   regression suite asserts measured quantities — a clean sine survives
