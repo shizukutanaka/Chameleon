@@ -582,3 +582,121 @@ def test_audit_log_is_bounded():
     for i in range(cap + 50):
         api_server.log_audit_event("u", "OP", "res", "SUCCESS", "", "ip", "")
     assert len(api_server.api_state.audit_log) == cap
+
+
+def test_upload_file_count_is_bounded(client, tmp_path, monkeypatch):
+    """uploaded_files was the only api_state registry with no bound --
+    sessions, jobs, audit and rate-limit state are all capped, so a valid
+    token could grow memory and disk without limit at request speed.
+    Capacity is a 503, like the session/queue bounds."""
+    monkeypatch.setattr(api_server, "UPLOAD_DIRECTORY", tmp_path)
+    api_server.api_state.uploaded_files.clear()
+    api_server.api_state.uploaded_bytes_total = 0
+    monkeypatch.setitem(api_server.SECURITY_CONFIG, "max_uploaded_files", 1)
+    login = _login(client)
+    auth = {"Authorization": f"Bearer {login.json()['token']}"}
+
+    first = client.post(
+        "/audio/upload",
+        files={"file": ("one.wav", _wav_bytes(), "audio/wav")},
+        headers=auth,
+    )
+    assert first.status_code == 200
+
+    second = client.post(
+        "/audio/upload",
+        files={"file": ("two.wav", _wav_bytes(), "audio/wav")},
+        headers=auth,
+    )
+    assert second.status_code == 503
+
+
+def test_upload_byte_budget_is_enforced(client, tmp_path, monkeypatch):
+    """A count cap alone still permits count x 100MB of disk writes; the
+    byte budget is the disk-exhaustion bound."""
+    monkeypatch.setattr(api_server, "UPLOAD_DIRECTORY", tmp_path)
+    api_server.api_state.uploaded_files.clear()
+    api_server.api_state.uploaded_bytes_total = 0
+    payload = _wav_bytes()
+    monkeypatch.setitem(
+        api_server.SECURITY_CONFIG, "max_uploaded_bytes", len(payload) - 1)
+    login = _login(client)
+    auth = {"Authorization": f"Bearer {login.json()['token']}"}
+
+    up = client.post(
+        "/audio/upload",
+        files={"file": ("big.wav", payload, "audio/wav")},
+        headers=auth,
+    )
+    assert up.status_code == 503
+    # The mid-stream abort must delete the partial file -- rejecting but
+    # leaving the bytes on disk would defeat the disk bound.
+    assert not list(tmp_path.iterdir())
+
+
+def test_batch_submit_rejects_empty_file_list(client):
+    """files: [] used to create a job that processed nothing and reported
+    success -- an accepted-but-meaningless request, the same class as the
+    dropped options validator. Now a 422 at submit."""
+    login = _login(client)
+    auth = {"Authorization": f"Bearer {login.json()['token']}"}
+    sub = client.post(
+        "/batch/submit",
+        json={"files": [], "operation": "analyze"},
+        headers=auth,
+    )
+    assert sub.status_code == 422
+
+
+def test_batch_job_records_per_file_failure(monkeypatch):
+    """A file that stops resolving between submit and processing used to
+    kill the whole job through the outer except: every remaining file
+    silently got no result and the job reported 'failed'. Per-file
+    failures are data about that file, not a job abort."""
+    import asyncio
+    from datetime import datetime, timezone
+
+    api_server.api_state.circuit_breaker_open = False
+    api_server.api_state.active_jobs.clear()
+    api_server.api_state.job_queue.clear()
+    api_server.api_state.job_failures_window.clear()
+
+    from fastapi import HTTPException
+
+    def flaky_resolve(name):
+        if name == "gone.wav":
+            raise HTTPException(404, "File not found")
+        return api_server.Path(name)
+
+    monkeypatch.setattr(api_server, "_resolve_uploaded_path", flaky_resolve)
+    monkeypatch.setattr(
+        api_server,
+        "analyze_audio_fast",
+        lambda path: asyncio.sleep(
+            0, {"success": True, "processing_time": 0.0}),
+    )
+
+    api_server.api_state.active_jobs["j9"] = {
+        "files": ["gone.wav", "ok.wav"],
+        "operation": "analyze",
+        "options": {},
+        "user": "tester",
+        "status": "queued",
+        "results": [],
+        "completed_files": 0,
+        "total_files": 2,
+        "progress": 0.0,
+        "current_file": None,
+        "updated_at": datetime.now(timezone.utc),
+        "owner_session_id": None,
+    }
+    api_server.api_state.job_queue.append("j9")
+    asyncio.run(api_server.process_batch_job("j9"))
+
+    job = api_server.api_state.active_jobs["j9"]
+    assert job["status"] == "completed"
+    assert len(job["results"]) == 2
+    assert job["results"][0]["result"]["success"] is False
+    assert "404" in job["results"][0]["result"]["error"]
+    assert job["results"][1]["result"]["success"] is True
+    assert job["error"] == "1 of 2 files failed"

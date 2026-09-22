@@ -89,8 +89,15 @@ def _inverse_real_transform(spectrum: Sequence[complex], length: int) -> List[fl
         restored = np.fft.irfft(np.asarray(spectrum, dtype=complex), n=length)
         return restored.astype(float).tolist()
 
+    # An N-point real transform yields N//2+1 bins for even N and (N+1)//2
+    # for odd N. The conjugate mirror that rebuilds the full spectrum
+    # therefore excludes the DC and Nyquist bins for even N but only the DC
+    # bin for odd N (a Nyquist bin exists only when N is even). Mirroring
+    # spectrum[1:1 + mirror_count] unconditionally dropped a real bin on odd lengths and
+    # divided the result by the wrong N.
+    mirror_count = max(0, length - len(spectrum))
     mirrored: List[complex] = list(spectrum)
-    for value in reversed(spectrum[1:-1]):
+    for value in reversed(spectrum[1:1 + mirror_count]):
         mirrored.append(value.conjugate())
 
     size = len(mirrored)

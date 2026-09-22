@@ -3227,24 +3227,38 @@ async def main():
                     (8, "major", [8, 0, 3]),
                     (5, "minor", [5, 8, 0]),
                 ]
+            # generate_melody walks chord and melody time in beats
+            # (note_duration=0.5 beats, an eighth note), but --length is
+            # documented in seconds: convert with the tempo that will be
+            # written into the file. Passing the raw flag meant --length 8
+            # produced 8 beats -- 4 s of music at 120 BPM and a duration
+            # that changed with --tempo instead of with the flag.
+            length_beats = length * tempo / 60.0
+
+            # The progression covers 2 beats per chord; repeat it so a
+            # --length longer than one cycle still has chord tones to draw
+            # from instead of running out of chords and going silent.
+            cycle_beats = len(progression) * 2.0
+            cycles = max(1, math.ceil(length_beats / cycle_beats))
             basic_chords = [
                 {
                     "root": (root + tonic) % 12,
                     "chord_type": chord_type,
                     "notes": [(n + tonic) % 12 for n in notes],
-                    "start_time": i * 2.0,
+                    "start_time": cycle * cycle_beats + i * 2.0,
                     "duration": 2.0,
                 }
+                for cycle in range(cycles)
                 for i, (root, chord_type, notes) in enumerate(progression)
             ]
 
             key_info = {"tonic": tonic, "mode": mode, "confidence": 1.0}
 
-            melody = processor.compose_melody(basic_chords, key_info, length)
+            melody = processor.compose_melody(basic_chords, key_info, length_beats)
 
-            # generate_melody works in beats (note_duration=0.5 = an eighth
-            # note); the MIDI writer expects seconds, so rescale by the
-            # tempo that will be written into the file.
+            # generate_melody emits beat-unit times; the MIDI writer consumes
+            # seconds, so rescale by the tempo that will be written into the
+            # file.
             beats_to_seconds = 60.0 / tempo
             for n in melody:
                 n.start_time *= beats_to_seconds

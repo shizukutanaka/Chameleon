@@ -101,6 +101,34 @@ def test_apply_spectral_mask_preserves_tail_in_stdlib_fallback(monkeypatch):
     assert out[4500] != 0.0
 
 
+def test_inverse_real_transform_odd_length_roundtrip(monkeypatch):
+    # An N-point rfft yields (N+1)//2 bins for odd N and the conjugate
+    # mirror must restore every bin except DC (a Nyquist bin exists only
+    # for even N). Mirroring spectrum[1:-1] dropped a real bin AND divided
+    # by len(mirrored)=N-1 -- measured 0.042 max error on a 999-sample
+    # round-trip vs 5e-14 for even lengths.
+    monkeypatch.setattr(spectral_utils, "HAS_NUMPY", False)
+    n = 999
+    src = [0.3 * math.sin(2 * math.pi * 7 * i / n)
+           + 0.2 * math.sin(2 * math.pi * 23 * i / n) for i in range(n)]
+    spectrum = spectral_utils._discrete_fourier_transform(src)
+    out = spectral_utils._inverse_real_transform(spectrum, n)
+    assert len(out) == n
+    assert max(abs(a - b) for a, b in zip(src, out)) < 1e-6
+
+
+def test_apply_spectral_mask_odd_tail_roundtrips_stdlib(monkeypatch):
+    # The tail-block path reaches _inverse_real_transform with odd N when
+    # len(input) % 4096 is odd -- the bug above made every odd-length tail
+    # block garbage instead of a clean reconstruction.
+    monkeypatch.setattr(spectral_utils, "HAS_NUMPY", False)
+    src = [0.5 * math.sin(2 * math.pi * 440 * i / 44100)
+           for i in range(4096 + 51)]
+    out = spectral_utils.apply_spectral_mask(src, 44100)
+    assert len(out) == len(src)
+    assert max(abs(a - b) for a, b in zip(src, out)) < 1e-6
+
+
 def test_apply_spectral_mask_does_not_renormalize():
     # A uniform 0.5 gain must halve the signal -- the previous version
     # re-normalised every output to full scale, turning an attenuation

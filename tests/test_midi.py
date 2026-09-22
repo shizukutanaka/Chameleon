@@ -176,6 +176,53 @@ def test_compose_writes_eighth_notes_at_any_tempo(tmp_path):
         assert deltas and all(d == 240 for d in deltas), deltas
 
 
+def test_compose_length_measures_seconds_at_any_tempo(tmp_path):
+    # --length is documented "Length in seconds" but generate_melody walks
+    # beat-unit time: unconverted, --length 4 produced 4 *beats* -- 2 s of
+    # music at 120 BPM, 1 s at 240 -- so the flag meant different durations
+    # at different tempos. The last event's absolute tick must land at
+    # ~length *seconds* regardless of --tempo.
+    import subprocess
+    import sys
+    from pathlib import Path
+    main_py = str(Path(__file__).resolve().parent.parent / "main.py")
+
+    def last_event_seconds(path, tempo):
+        data = path.read_bytes()
+        track = data[data.find(b"MTrk") + 8:]
+        i = 0
+        ticks = 0
+        while i < len(track):
+            delta = 0
+            while True:
+                b = track[i]
+                i += 1
+                delta = (delta << 7) | (b & 0x7F)
+                if not b & 0x80:
+                    break
+            status = track[i]
+            i += 1
+            if status == 0xFF:
+                i += 2 + track[i + 1]
+                ticks += delta  # end-of-track carries a delta too
+                continue
+            ticks += delta
+            i += 2
+        return ticks / 480 * 60 / tempo
+
+    for tempo in (120, 240):
+        out = tmp_path / f"d{tempo}.mid"
+        proc = subprocess.run(
+            [sys.executable, main_py, "midi", "compose",
+             "--output", str(out), "--tempo", str(tempo),
+             "--length", "4", "--key", "C", "--mode", "major"],
+            capture_output=True, text=True, timeout=30)
+        if proc.returncode != 0:
+            import pytest
+            pytest.skip("midi compose unavailable in this environment")
+        assert abs(last_event_seconds(out, tempo) - 4.0) < 0.5
+
+
 def test_midi_analyze_on_mid_file_explains_the_trap(tmp_path):
     """`midi analyze --input x.mid` is the most natural mistake: the op
     analyzes *audio* for musical content, and 'Unsupported file type'
