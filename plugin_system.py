@@ -4,6 +4,7 @@ AST-sandboxed plugin loading for extensible audio processing capabilities
 """
 
 import os
+import sys
 import importlib
 import importlib.util
 import inspect
@@ -741,8 +742,13 @@ class PluginManager:
                 return True
         return False
 
-    def create_plugin_template(self, plugin_name: str, category: str, output_dir: str = "plugins"):
-        """Create a plugin template for development"""
+    def create_plugin_template(self, plugin_name: str, category: str, output_dir: str = "templates"):
+        """Create a plugin template for development.
+
+        Default is ``templates/``, not ``plugins/``: a generated stub carries
+        placeholder metadata, so writing it into a discovery directory would
+        make the next ``plugins list`` present it as a real plugin.
+        """
         template = self._generate_plugin_template(plugin_name, category)
 
         output_path = Path(output_dir) / f"{plugin_name.lower()}_plugin.py"
@@ -863,10 +869,31 @@ def create_plugin():
 # SecurityError is imported from security_validator (single canonical type).
 
 def demo_plugin_system():
-    """Demonstrate plugin system capabilities"""
+    """Demonstrate plugin system capabilities.
+
+    Runs inside a temporary working directory: the demo generates plugin
+    files, and writing them into the caller's cwd (as it used to) left a
+    stub in the live ``plugins/`` discovery directory and clobbered the
+    committed ``demo_plugins/*.py`` examples.
+    """
+    import tempfile
+
+    # Generated plugins do ``from plugin_system import ...``. When this file
+    # runs as ``__main__`` that import binds a *second* copy of the module,
+    # and ``issubclass(obj, PluginInterface)`` fails across module copies --
+    # the loaded list came out empty. Register the running module under its
+    # real name so the generated code binds the same classes.
+    sys.modules.setdefault("plugin_system", sys.modules["__main__"])
+
     print("🔌 Chameleon Plugin System Demo")
     print("=" * 50)
 
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        os.chdir(tmp_dir)
+        return _run_plugin_demo()
+
+
+def _run_plugin_demo() -> bool:
     # Initialize plugin manager
     config = PluginConfig(
         plugin_directories=["plugins", "demo_plugins"],

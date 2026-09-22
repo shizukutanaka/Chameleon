@@ -260,7 +260,7 @@ chameleon server --host 127.0.0.1 --port 8000 --workers 1
 |------|---------|
 | `--host H` | Server host |
 | `--port P` | Server port |
-| `--workers N` | Number of workers |
+| `--workers N` | Number of workers -- must be `1`: sessions, jobs and the audit log live in per-process memory, so any other value is rejected as INPUT |
 
 The API is a thin, authenticated adapter over the same stdlib core — not a
 hosted service or a separate product (`CHARTER.md` §3, §7).

@@ -2471,3 +2471,57 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22, audit 69):** `PluginManager.create_plugin_template`
+defaults `output_dir="plugins"`. The same `PluginConfig` defaults point
+discovery at `plugins/` -- does a generated placeholder therefore become
+a loadable plugin?
+**A:** Yes, end to end. Every generated stub carries placeholder
+metadata ("Description of X plugin", author "Plugin Developer") and
+`# TODO` bodies, yet discovery has no "is this a template" check -- the
+next `plugins list` presents it as a real plugin and `plugins audit`
+reports it PASSED. The default output directory is now `templates/`,
+outside every default discovery path.
+**Q (same audit):** `python plugin_system.py` ships a __main__ demo.
+Does running it (a) stay inside the caller's cwd without side effects
+and (b) actually demonstrate what it prints?
+**A:** No to both, two independent defects. (a) The demo wrote
+`demo_plugins/simple_gain.py`, `demo_plugins/peak_analyzer.py` and --
+via the old template default -- `plugins/mycustomeffect_plugin.py` into
+the caller's cwd. That is exactly how the committed stub in `plugins/`
+got there: it is the demo's own output, committed. The demo now runs
+inside a `TemporaryDirectory` (same pattern as the audit-56
+`advanced_validation` fix), same coverage, zero persistence. (b) Its
+"Loaded plugins" list printed empty: run as `__main__`, `PluginInterface`
+lives under `__main__` while generated code's
+`from plugin_system import ...` binds a *second* module copy, so the
+sandbox's `issubclass` check fails across copies. The demo's own product
+could not satisfy its own contract -- the module now registers itself
+under `sys.modules["plugin_system"]` so generated code binds the same
+classes; the list loads and prints.
+**Q (same audit):** The committed `plugins/mycustomeffect_plugin.py` --
+is it honest about what it is?
+**A:** It was a placeholder presented as a product: TODO-marked empty
+methods, boilerplate author/description, "Generated plugin template"
+docstring -- while listing as "MyCustomEffect v1.0.0 (effect)" and
+PASSING `plugins audit`. Deleting or moving it requires per-item
+confirmation (recorded in `PRODUCT_ANALYSIS.md` §2); in the interim its
+docstring, author, and description now disclose that it is the generated
+example kept in the discovery path, and it remains a working gain
+effect. Lesson: a template's destiny matters -- a stub that lands in a
+live registry is indistinguishable from the real thing to every reader
+except the source file itself.
+**Q (same audit):** Secondary findings verified this round.
+**A:** `server --workers` accepts only 1 (sessions/jobs/audit are
+per-process memory) but the en/ja command tables listed it as a free
+integer -- the tables now disclose the constraint and its reason. And
+`ci-cd.yml`'s phantom inventory was incomplete: ci/README documented
+three, the same file also invokes `.[dev,full]` (no `full` extra),
+`--timeout=300` (no pytest-timeout), `kubectl create backup` (not a
+verb), `actions/create-release@v1` (archived), missing linters
+(black/flake8/mypy/bandit never installed -- requirements.txt is
+comments-only), and release notes claiming "AI analysis"/"real-time
+streaming"/"enterprise security" -- fantasy claims the .py-only
+anti-fantasy grep cannot see. ci/README now carries the full list.
+Also audited and found honest: `docs/ja/*` and `docs/en/*` drift guards,
+`setup.py`'s pydantic comment, `tests/_helpers.py` WAV writers.
