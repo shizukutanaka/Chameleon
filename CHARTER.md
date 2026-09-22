@@ -3252,3 +3252,25 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+**Q:** Audit 82: are the shipped demos and the system-status metrics
+honest about what they report?
+**A:** Two verified defects. `spectral_editor`'s demo advertised
+"Vocal Isolation" and "Instrument Separation" as recommended workflows --
+source-separation claims, the capability CHARTER §4 explicitly forbids,
+from an editor whose every operation is a selection-scoped frequency
+edit (verified by running it). They are now named for what the module
+does: vocal-band emphasis and band EQ. The same demo gated
+'Spectrogram Computation' on `HAS_LIBROSA or True` -- a gate that can
+never close -- now the honest `True` it always evaluated to (the manual
+STFT runs in every configuration). Second: `/system/status`'s
+`error_rate` divided failed *jobs* by total *requests* -- two different
+populations -- so a server with more failed jobs than requests reported
+a 'rate' above 1.0 (verified: 10 failures / 5 requests -> 2.0). It is
+now the fraction of jobs that failed, `failed/(failed+completed)`,
+bounded [0,1]. Investigated and confirmed honest: the batch endpoints'
+ownership/queue guards, the request-window pruning behind
+requests_per_minute, the API adapters' dict shape against core's
+ProcessingResult, and bs1770_loudness's gating/weighting/polyphase math
+(read in full this round). ux_improvements' remaining issues
+(>100% bar, ragged rows, short align, stale \r tails) are all owned by
+open PRs #202/#216/#219 -- not re-fixed.
