@@ -9,7 +9,11 @@ fastapi-gated modules only run when the `[api]` extra is present, and
 configurations do not cover the `[audio]` extra's librosa path; installing
 it on 2026-09-19 exposed a denoiser that damaged stationary material, and
 e2e-driving the real CLI the same day exposed an exit-code crash on
-fully-rejected input (see CHARTER.md §9).
+fully-rejected input (see CHARTER.md §9). A later sweep the same day
+turned up a sandbox memory bound that warns on every call yet can never
+exist on macOS (RLIMIT_AS unenforced there), a release tag and image label
+stamped 1.0.0 while the package reported 1.1.0, and an agent doc that had
+frozen a stale copy of this file's coverage list.
 
 > Every claim in this file was re-checked against the code on the snapshot
 > date. Eight were false — including four "fast checks" in §4 that could no

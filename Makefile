@@ -2,6 +2,10 @@
 
 .PHONY: help install develop test test-all lint format security benchmark build publish docker clean
 
+# Derived from the package's own version (main.VERSION) -- a hardcoded tag
+# here drifted to a stale "1.0.0" while the package reported 1.1.0.
+VERSION := $(shell python -c 'from main import VERSION; print(VERSION)' 2>/dev/null || python3 -c 'from main import VERSION; print(VERSION)' 2>/dev/null || echo unknown)
+
 help:
 	@echo "Chameleon Audio Tool - Commercial Build Targets"
 	@echo "  install     Install package in development mode"
@@ -52,8 +56,8 @@ publish: build
 	twine upload dist/*
 
 docker:
-	docker build -t chameleon-audio:latest .
-	docker tag chameleon-audio:latest chameleon-audio:1.0.0
+	docker build --build-arg VERSION=$(VERSION) -t chameleon-audio:latest .
+	docker tag chameleon-audio:latest chameleon-audio:$(VERSION)
 
 clean:
 	rm -rf build dist *.egg-info
