@@ -8,6 +8,22 @@ The active workflow cannot pass: it references a `deployment_manager.py` and
 `pytest -m integration` / `-m benchmark` markers with no matching tests. A red
 check on a pull request here reflects that file, not the change under review.
 
+That is not the complete inventory — verified on 2026-09-22, the same file
+also:
+
+- installs only the comments-only `requirements.txt` in the `code-quality`
+  job, so `black`, `flake8`, `mypy` and `bandit` are never installed and all
+  four steps fail on a missing command;
+- runs `pip install -e .[dev,full]` — there is no `full` extra (the real
+  ones are `audio`, `api`, `dev`);
+- passes `--timeout=300` to pytest with no `pytest-timeout` in the dev
+  extra, and `--staging-url` / `--production-url` flags no conftest defines;
+- invokes `kubectl create backup`, which is not a kubectl verb;
+- uses `actions/create-release@v1`, an action GitHub archived years ago;
+- and stamps release notes advertising "AI analysis", "real-time streaming
+  and visualization" and "enterprise security" — claims the product does
+  not make (`CHARTER.md` §4 forbids the first outright).
+
 ## What the replacement does
 
 Two jobs, because this project makes two different promises.

@@ -297,6 +297,12 @@ needed.** Six MIDI files (`demo_chords.mid`, `demo_composition.mid`,
 `demo_melody.mid`, `demo_scale.mid`, `test_composition.mid`, `test_scale.mid`)
 referenced by no doc, code, or test — committed demo output, not source.
 
+Also identified 2026-09-22: `plugins/mycustomeffect_plugin.py`, the committed
+output of `python plugin_system.py`'s demo — a template stub that sat in the
+default discovery path masquerading as a real plugin (metadata and docstrings
+now honest, but the proper home is `demo_plugins/` or deletion; needs a
+decision since moves/deletes require confirmation).
+
 `tests/test_no_orphan_modules.py` holds the three kept modules above in an
 allow-list with written justifications and fails if a fourth appears, so this
 section and that test must agree.
