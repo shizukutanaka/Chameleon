@@ -1,6 +1,19 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-// Government-grade secure context bridge
+// Menu channels the main process can send (see createMenu in main.js)
+const MENU_CHANNELS = [
+  'menu-open-file',
+  'menu-export',
+  'menu-analyze',
+  'menu-normalize',
+  'menu-batch',
+  'menu-audit-log',
+  'menu-security-settings',
+  'menu-change-password'
+];
+
+// Secure context bridge: only methods with a matching ipcMain.handle in
+// main.js are exposed.
 contextBridge.exposeInMainWorld('electronAPI', {
   // Authentication
   authenticate: (credentials) => ipcRenderer.invoke('authenticate', credentials),
@@ -11,25 +24,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   processAudio: (operation, filePath, options) =>
     ipcRenderer.invoke('process-audio', operation, filePath, options),
 
-  // File operations
-  openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),
-  saveFileDialog: (defaultPath) => ipcRenderer.invoke('save-file-dialog', defaultPath),
-
-  // Menu events
+  // Menu events. ipcRenderer.on delivers (IpcRendererEvent, ...args) and never
+  // the channel name, so the callback receives the channel explicitly --
+  // without it every action arrived as an event object and hit the default
+  // case in the renderer.
   onMenuAction: (callback) => {
-    const events = [
-      'menu-open-file',
-      'menu-export',
-      'menu-analyze',
-      'menu-normalize',
-      'menu-batch',
-      'menu-audit-log',
-      'menu-security-settings',
-      'menu-change-password'
-    ];
-
-    events.forEach(event => {
-      ipcRenderer.on(event, callback);
+    MENU_CHANNELS.forEach((channel) => {
+      ipcRenderer.on(channel, (_event, ...args) => callback(channel, ...args));
     });
   },
 
@@ -38,9 +39,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Security events
   onSecurityAlert: (callback) => ipcRenderer.on('security-alert', callback),
-
-  // System info
-  getSystemInfo: () => ipcRenderer.invoke('get-system-info'),
 
   // Version info
   version: process.versions.electron,

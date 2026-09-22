@@ -9,14 +9,11 @@ import {
   LinearProgress,
   Alert,
   Chip,
-  TextField,
   FormControl,
   InputLabel,
   Select,
   MenuItem,
   Slider,
-  Switch,
-  FormControlLabel,
   Paper,
   Divider,
 } from '@mui/material';
@@ -24,10 +21,9 @@ import {
   Upload as UploadIcon,
   PlayArrow as PlayIcon,
   Stop as StopIcon,
-  Download as DownloadIcon,
   AudioFile as AudioIcon,
-  TuneIcon,
-  AnalyticsIcon,
+  Tune as TuneIcon,
+  Analytics as AnalyticsIcon,
 } from '@mui/icons-material';
 import { useDropzone } from 'react-dropzone';
 
@@ -47,9 +43,11 @@ interface AudioFile {
 
 interface ProcessingResult {
   success: boolean;
-  duration: number;
-  peakLevel: number;
-  rmsLevel: number;
+  // Real results come from the CLI; simulated previews set `simulated`.
+  simulated?: boolean;
+  duration?: number;
+  peakLevel?: number;
+  rmsLevel?: number;
   outputPath?: string;
   error?: string;
 }
@@ -57,10 +55,9 @@ interface ProcessingResult {
 interface ProcessingOptions {
   operation: string;
   targetPeak: number;
-  outputFormat: string;
-  quality: number;
-  enableSIMD: boolean;
-  parallelProcessing: boolean;
+  bitDepth: number;
+  // 0 = keep the source rate (no --convert-sample-rate flag)
+  sampleRate: number;
 }
 
 function AudioProcessor({ user }: AudioProcessorProps) {
@@ -71,10 +68,8 @@ function AudioProcessor({ user }: AudioProcessorProps) {
   const [options, setOptions] = useState<ProcessingOptions>({
     operation: 'analyze',
     targetPeak: 0.95,
-    outputFormat: 'wav',
-    quality: 95,
-    enableSIMD: true,
-    parallelProcessing: true,
+    bitDepth: 16,
+    sampleRate: 0,
   });
 
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -99,8 +94,9 @@ function AudioProcessor({ user }: AudioProcessorProps) {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
+    // The backend reads WAV/WAVE only -- don't accept formats it would reject
     accept: {
-      'audio/*': ['.wav', '.wave', '.mp3', '.flac', '.aiff', '.aif'],
+      'audio/wav': ['.wav', '.wave'],
     },
     maxFiles: 1,
   });
@@ -127,7 +123,7 @@ function AudioProcessor({ user }: AudioProcessorProps) {
       if (window.electronAPI) {
         const result = await window.electronAPI.processAudio(
           options.operation,
-          audioFile.file.path || audioFile.name,
+          (audioFile.file as any).path || audioFile.name,
           options
         );
 
@@ -135,21 +131,36 @@ function AudioProcessor({ user }: AudioProcessorProps) {
         setProgress(100);
 
         if (result.success) {
-          setResult(result);
+          // The main process returns { success, result } where `result` is
+          // the CLI's own payload -- map it onto the display fields.
+          const payload = result.result;
+          const mapped: ProcessingResult = { success: true };
+          if (options.operation === 'analyze' && Array.isArray(payload) && payload[0]) {
+            const meta = payload[0].metadata || {};
+            mapped.duration = payload[0].time;
+            mapped.peakLevel = meta.peak_level;
+            mapped.rmsLevel = meta.rms_level;
+          } else if (payload && payload.result) {
+            mapped.duration = payload.result.time;
+            mapped.outputPath = payload.result.output;
+          }
+          setResult(mapped);
         } else {
           throw new Error(result.error || 'Processing failed');
         }
       } else {
-        // Fallback for web-only testing
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        // Browser preview: no backend exists, so the preview is explicitly
+        // labelled simulated rather than presented as a real result.
+        await new Promise(resolve => setTimeout(resolve, 1500));
         clearInterval(progressInterval);
         setProgress(100);
 
         setResult({
           success: true,
-          duration: audioFile.size / 1000000 * 2.5, // Mock calculation
-          peakLevel: 0.87,
-          rmsLevel: 0.23,
+          simulated: true,
+          duration: 0,
+          peakLevel: 0,
+          rmsLevel: 0,
           outputPath: `processed_${audioFile.name}`,
         });
       }
@@ -164,13 +175,6 @@ function AudioProcessor({ user }: AudioProcessorProps) {
     } finally {
       setIsProcessing(false);
       setTimeout(() => setProgress(0), 2000);
-    }
-  };
-
-  const handleDownloadResult = () => {
-    if (result?.outputPath) {
-      // Trigger download via Electron API
-      console.log('Downloading:', result.outputPath);
     }
   };
 
@@ -229,7 +233,7 @@ function AudioProcessor({ user }: AudioProcessorProps) {
                       Drop audio file here or click to browse
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      Supported formats: WAV, MP3, FLAC, AIFF
+                      Supported formats: WAV, WAVE
                     </Typography>
                   </Box>
                 )}
@@ -284,10 +288,10 @@ function AudioProcessor({ user }: AudioProcessorProps) {
                       label="Operation"
                       onChange={(e) => setOptions({ ...options, operation: e.target.value })}
                     >
+                      {/* Only operations the CLI actually has (main.py). */}
                       <MenuItem value="analyze">Analyze Audio</MenuItem>
                       <MenuItem value="normalize">Normalize Audio</MenuItem>
                       <MenuItem value="convert">Format Conversion</MenuItem>
-                      <MenuItem value="enhance">Audio Enhancement</MenuItem>
                     </Select>
                   </FormControl>
                 </Grid>
@@ -312,61 +316,40 @@ function AudioProcessor({ user }: AudioProcessorProps) {
                   </Grid>
                 )}
 
-                <Grid item xs={12}>
-                  <FormControl fullWidth>
-                    <InputLabel>Output Format</InputLabel>
-                    <Select
-                      value={options.outputFormat}
-                      label="Output Format"
-                      onChange={(e) => setOptions({ ...options, outputFormat: e.target.value })}
-                    >
-                      <MenuItem value="wav">WAV (Uncompressed)</MenuItem>
-                      <MenuItem value="flac">FLAC (Lossless)</MenuItem>
-                      <MenuItem value="mp3">MP3 (Compressed)</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
+                {options.operation === 'convert' && (
+                  <>
+                    {/* Real --convert-bit-depth flag (16/24/32) */}
+                    <Grid item xs={12}>
+                      <FormControl fullWidth>
+                        <InputLabel>Bit Depth</InputLabel>
+                        <Select
+                          value={options.bitDepth}
+                          label="Bit Depth"
+                          onChange={(e) => setOptions({ ...options, bitDepth: e.target.value as number })}
+                        >
+                          <MenuItem value={16}>16-bit</MenuItem>
+                          <MenuItem value={24}>24-bit</MenuItem>
+                          <MenuItem value={32}>32-bit float</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
 
-                <Grid item xs={12}>
-                  <Typography gutterBottom>Quality</Typography>
-                  <Slider
-                    value={options.quality}
-                    onChange={(_, value) => setOptions({ ...options, quality: value as number })}
-                    min={50}
-                    max={100}
-                    step={5}
-                    marks={[
-                      { value: 70, label: '70%' },
-                      { value: 85, label: '85%' },
-                      { value: 95, label: '95%' },
-                    ]}
-                    valueLabelDisplay="auto"
-                  />
-                </Grid>
-
-                <Grid item xs={12}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={options.enableSIMD}
-                        onChange={(e) => setOptions({ ...options, enableSIMD: e.target.checked })}
-                      />
-                    }
-                    label="Enable SIMD Optimization"
-                  />
-                </Grid>
-
-                <Grid item xs={12}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={options.parallelProcessing}
-                        onChange={(e) => setOptions({ ...options, parallelProcessing: e.target.checked })}
-                      />
-                    }
-                    label="Parallel Processing"
-                  />
-                </Grid>
+                    <Grid item xs={12}>
+                      <FormControl fullWidth>
+                        <InputLabel>Sample Rate</InputLabel>
+                        <Select
+                          value={options.sampleRate}
+                          label="Sample Rate"
+                          onChange={(e) => setOptions({ ...options, sampleRate: e.target.value as number })}
+                        >
+                          <MenuItem value={0}>Keep source rate</MenuItem>
+                          <MenuItem value={44100}>44100 Hz</MenuItem>
+                          <MenuItem value={48000}>48000 Hz</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                  </>
+                )}
               </Grid>
 
               <Divider sx={{ my: 2 }} />
@@ -409,57 +392,69 @@ function AudioProcessor({ user }: AudioProcessorProps) {
 
                 {result.success ? (
                   <Box>
-                    <Alert severity="success" sx={{ mb: 2 }}>
-                      Processing completed successfully!
-                    </Alert>
+                    {result.simulated ? (
+                      <Alert severity="warning" sx={{ mb: 2 }}>
+                        Simulated preview -- no backend is connected, so these
+                        values are placeholders, not measurements.
+                      </Alert>
+                    ) : (
+                      <Alert severity="success" sx={{ mb: 2 }}>
+                        Processing completed successfully!
+                      </Alert>
+                    )}
 
                     <Grid container spacing={2}>
-                      <Grid item xs={12} sm={6} md={3}>
-                        <Paper sx={{ p: 2, textAlign: 'center' }}>
-                          <Typography variant="h4" color="primary" sx={{ fontWeight: 700 }}>
-                            {result.duration.toFixed(1)}s
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            Processing Time
-                          </Typography>
-                        </Paper>
-                      </Grid>
+                      {result.duration != null && (
+                        <Grid item xs={12} sm={6} md={3}>
+                          <Paper sx={{ p: 2, textAlign: 'center' }}>
+                            <Typography variant="h4" color="primary" sx={{ fontWeight: 700 }}>
+                              {result.duration.toFixed(1)}s
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              Processing Time
+                            </Typography>
+                          </Paper>
+                        </Grid>
+                      )}
 
-                      <Grid item xs={12} sm={6} md={3}>
-                        <Paper sx={{ p: 2, textAlign: 'center' }}>
-                          <Typography variant="h4" color="primary" sx={{ fontWeight: 700 }}>
-                            {(result.peakLevel * 100).toFixed(1)}%
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            Peak Level
-                          </Typography>
-                        </Paper>
-                      </Grid>
+                      {result.peakLevel != null && (
+                        <Grid item xs={12} sm={6} md={3}>
+                          <Paper sx={{ p: 2, textAlign: 'center' }}>
+                            <Typography variant="h4" color="primary" sx={{ fontWeight: 700 }}>
+                              {(result.peakLevel * 100).toFixed(1)}%
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              Peak Level
+                            </Typography>
+                          </Paper>
+                        </Grid>
+                      )}
 
-                      <Grid item xs={12} sm={6} md={3}>
-                        <Paper sx={{ p: 2, textAlign: 'center' }}>
-                          <Typography variant="h4" color="primary" sx={{ fontWeight: 700 }}>
-                            {(result.rmsLevel * 100).toFixed(1)}%
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            RMS Level
-                          </Typography>
-                        </Paper>
-                      </Grid>
+                      {result.rmsLevel != null && (
+                        <Grid item xs={12} sm={6} md={3}>
+                          <Paper sx={{ p: 2, textAlign: 'center' }}>
+                            <Typography variant="h4" color="primary" sx={{ fontWeight: 700 }}>
+                              {(result.rmsLevel * 100).toFixed(1)}%
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              RMS Level
+                            </Typography>
+                          </Paper>
+                        </Grid>
+                      )}
 
-                      <Grid item xs={12} sm={6} md={3}>
-                        <Paper sx={{ p: 2, textAlign: 'center' }}>
-                          <Button
-                            variant="contained"
-                            startIcon={<DownloadIcon />}
-                            onClick={handleDownloadResult}
-                            disabled={!result.outputPath}
-                            fullWidth
-                          >
-                            Download
-                          </Button>
-                        </Paper>
-                      </Grid>
+                      {result.outputPath && (
+                        <Grid item xs={12} sm={6} md={3}>
+                          <Paper sx={{ p: 2, textAlign: 'center' }}>
+                            <Typography variant="body2" sx={{ fontWeight: 600, wordBreak: 'break-all' }}>
+                              {result.outputPath}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              Output Path
+                            </Typography>
+                          </Paper>
+                        </Grid>
+                      )}
                     </Grid>
                   </Box>
                 ) : (

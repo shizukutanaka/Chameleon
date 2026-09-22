@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { CssBaseline, Box, Alert, Snackbar } from '@mui/material';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+// HashRouter, not BrowserRouter: the packaged build loads index.html over
+// file:// (origin 'null'), where history.pushState throws and every
+// navigate() would fail. Hash routing works on both dev server and file://.
+import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import './App.css';
 
 // Components
@@ -30,8 +33,7 @@ interface SystemAlert {
   timestamp: Date;
 }
 
-// Government theme
-const governmentTheme = createTheme({
+const appTheme = createTheme({
   palette: {
     mode: 'light',
     primary: {
@@ -150,6 +152,20 @@ function App() {
           setIsAuthenticated(true);
           showAlert('success', 'Welcome back! Authentication verified.');
         }
+      } else {
+        // Browser mode (npm run dev): no Electron preload means no auth
+        // backend exists to check -- admit a labelled preview session so the
+        // UI scaffold is browsable. Everything it touches is simulated and
+        // labelled as such in the components.
+        setUser({
+          id: 'ui-preview',
+          username: 'preview',
+          clearanceLevel: 'TOP_SECRET',
+          permissions: ['ui-preview'],
+          lastLogin: new Date().toISOString(),
+        });
+        setIsAuthenticated(true);
+        showAlert('info', 'Browser preview mode -- UI scaffold, no backend connected.');
       }
     } catch (error) {
       console.error('Failed to initialize app:', error);
@@ -182,34 +198,27 @@ function App() {
     // Remove any event listeners if needed
   };
 
-  const handleMenuAction = (event: any) => {
-    // Handle menu actions from Electron
-    const action = event.type || event;
-
+  const handleMenuAction = (action: string) => {
+    // The preload forwards the channel name as the first argument.
+    // Navigation goes through the hash since this is a HashRouter.
     switch (action) {
-      case 'menu-open-file':
-        // Trigger file open dialog
-        break;
-      case 'menu-export':
-        // Trigger export dialog
-        break;
       case 'menu-analyze':
-        // Navigate to audio processor
-        break;
       case 'menu-normalize':
-        // Navigate to audio processor with normalize mode
+        window.location.hash = '#/processor';
         break;
       case 'menu-batch':
-        // Navigate to batch processor
+        window.location.hash = '#/batch';
         break;
       case 'menu-audit-log':
-        // Navigate to audit log
+        window.location.hash = '#/audit';
         break;
       case 'menu-security-settings':
-        // Navigate to security settings
+        window.location.hash = '#/security';
         break;
+      case 'menu-open-file':
+      case 'menu-export':
       case 'menu-change-password':
-        // Show change password dialog
+        showAlert('info', `${action.replace(/^menu-/, '')} is not wired yet -- experimental scaffold.`);
         break;
       default:
         console.log('Unhandled menu action:', action);
@@ -247,7 +256,7 @@ function App() {
 
   if (!isAuthenticated) {
     return (
-      <ThemeProvider theme={governmentTheme}>
+      <ThemeProvider theme={appTheme}>
         <CssBaseline />
         <Box
           sx={{
@@ -287,7 +296,7 @@ function App() {
   }
 
   return (
-    <ThemeProvider theme={governmentTheme}>
+    <ThemeProvider theme={appTheme}>
       <CssBaseline />
       <Router>
         <Layout user={user} onLogout={handleLogout} alerts={alerts}>

@@ -3,9 +3,14 @@
 A React + Electron desktop interface for the Chameleon audio toolkit.
 
 > **Status: experimental / work in progress.** This is UI scaffolding. The
-> components render, but the Electron backend integration with the Python CLI
-> is not yet wired up, and the "security/clearance" concepts below are planned
-> UI ideas, not implemented controls. Do not rely on them for access control.
+> components render, and under Electron the Audio Processor is wired to the
+> real CLI (`analyze`/`process --normalize`/`process --convert` via
+> `main.py` -- override the interpreter with `CHAMELEON_PYTHON`). Everything
+> else is simulated and labelled as such in the UI: dashboard metrics,
+> batch queue, audit rows, security/system status, and authentication
+> (dev mode admits a preview session; there is no auth backend). The
+> "security/clearance" concepts below are planned UI ideas, not
+> implemented controls. Do not rely on them for access control.
 
 ## Features (planned)
 
@@ -19,8 +24,8 @@ A React + Electron desktop interface for the Chameleon audio toolkit.
 - **Modern Design**: Material-UI components
 - **Responsive Layout**: Works on desktop and tablet devices
 - **Dark/Light Modes**: Light and dark color schemes
-- **Accessibility**: WCAG 2.1 AA compliant interface
-- **Real-time Updates**: Live status updates and progress indicators
+- **Accessibility**: targets WCAG 2.1 AA
+- **Real-time Updates**: live status updates and progress indicators
 
 ## Quick Start
 
@@ -70,29 +75,32 @@ npm run dist
 ### Desktop Integration
 - **Electron 22**: Cross-platform desktop application
 - **IPC Security**: Secure communication between processes
-- **Context Isolation**: Maximum security with process separation
-- **Auto-updater**: Secure application updates
+- **Context Isolation**: process separation between renderer and main
 
-### Backend Integration (planned, not yet wired up)
-- **Python Integration**: connection to the audio processing backend
-- **Authentication API**: integration with an external authentication service
-- **File Processing**: file handling and temporary storage
-- **Audit API**: logging of processing activity
+### Backend Integration
+- **Python CLI bridge** (wired): the main process spawns `main.py` for
+  `analyze`, `process --normalize`, and `process --convert`
+- **Authentication API** (not wired): the login window is a preview; dev mode
+  admits a labelled preview session
+- **Audit API** (partial): GUI operations append to `logs/gui-audit.log` under
+  Electron; the Audit Log view shows demo rows, not that file
+- **File Processing** (not wired): no file dialogs are hooked up yet
 
-## Security Architecture
+## Security Architecture (design intent -- not implemented)
 
-### Authentication Flow
-1. **Initial Authentication**: Secure login window with clearance selection
-2. **Token Generation**: Cryptographically secure session tokens
-3. **Permission Validation**: Real-time permission checking
-4. **Session Management**: Automatic timeout and renewal
-5. **Logout Cleanup**: Secure session termination
+### Authentication Flow (intended)
+1. **Initial Authentication**: login window with clearance selection
+2. **Token Generation**: session tokens
+3. **Permission Validation**: permission checking
+4. **Session Management**: timeout and renewal
+5. **Logout Cleanup**: session termination
 
-### Data Protection
-- **Encryption at Rest**: All temporary files encrypted with AES-256
-- **Secure Transmission**: TLS 1.3 for all network communication
-- **Memory Protection**: Secure memory allocation and cleanup
-- **File Integrity**: SHA-256 verification for all processed files
+### Data Protection (intended)
+- **Encryption at Rest** for temporary files
+- **Secure Transmission** for any future network communication
+- **File Integrity** verification for processed files
+
+None of the above exists today; they describe the target design.
 
 ### Access Control Matrix
 | Clearance Level | Dashboard | Processor | Batch | Security | Audit | System |
@@ -114,11 +122,11 @@ npm run dist
 - **UserProfile**: User information and preferences
 - **SystemStatus**: System health and performance
 
-### Security Components
-- **AuthenticationDialog**: Secure login interface
-- **PermissionGuard**: Route-level access control
-- **SecurityContext**: Application-wide security state
-- **AuditLogger**: Comprehensive activity tracking
+### Security Components (not implemented)
+- **AuthenticationDialog**: the Electron auth window exists; its backend does not
+- **PermissionGuard**: route-level access control -- planned
+- **SecurityContext**: application-wide security state -- planned
+- **AuditLogger**: activity tracking -- planned
 
 ### Utility Components
 - **FileDropzone**: Secure file upload interface
@@ -170,14 +178,9 @@ npm run electron-pack
 ## Support
 
 ### Documentation
-- User Manual: `/docs/user-manual.pdf`
-- Security Guide: `/docs/security-guide.pdf`
-- API Documentation: `/docs/api-reference.pdf`
-
-### Contact
-- **Security Team**: `<organization-security@domain>`
-- **Technical Support**: `<organization-support@domain>`
-- **Emergency Contact**: `<organization-emergency-number>`
+- Command reference: `docs/en/commands.md`
+- Configuration guide: `docs/en/advanced_config.md`
+- API documentation: `docs/api_documentation.md`
 
 ---
 

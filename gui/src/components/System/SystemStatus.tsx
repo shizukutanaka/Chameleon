@@ -5,12 +5,11 @@ import {
   CardContent,
   Typography,
   Box,
-  Chip,
   List,
   ListItem,
   ListItemText,
   ListItemIcon,
-  LinearProgress,
+  Alert,
 } from '@mui/material';
 import {
   Computer as ComputerIcon,
@@ -30,6 +29,13 @@ function SystemStatus({ user }: SystemStatusProps) {
         System Status
       </Typography>
 
+      {/* Every value below was hardcoded placeholder text -- present the
+          page as a design preview instead of fake live readings. */}
+      <Alert severity="info" sx={{ mb: 3 }}>
+        <strong>Design preview:</strong> no system metrics are collected yet --
+        values below are placeholders (see gui/README.md).
+      </Alert>
+
       <Grid container spacing={3}>
         <Grid item xs={12} md={6}>
           <Card>
@@ -45,12 +51,7 @@ function SystemStatus({ user }: SystemStatusProps) {
                   </ListItemIcon>
                   <ListItemText
                     primary="CPU Usage"
-                    secondary={
-                      <Box>
-                        <LinearProgress variant="determinate" value={45} sx={{ mt: 1 }} />
-                        <Typography variant="body2">45%</Typography>
-                      </Box>
-                    }
+                    secondary="not collected"
                   />
                 </ListItem>
                 <ListItem>
@@ -59,12 +60,7 @@ function SystemStatus({ user }: SystemStatusProps) {
                   </ListItemIcon>
                   <ListItemText
                     primary="Memory Usage"
-                    secondary={
-                      <Box>
-                        <LinearProgress variant="determinate" value={62} sx={{ mt: 1 }} />
-                        <Typography variant="body2">62%</Typography>
-                      </Box>
-                    }
+                    secondary="not collected"
                   />
                 </ListItem>
                 <ListItem>
@@ -73,12 +69,7 @@ function SystemStatus({ user }: SystemStatusProps) {
                   </ListItemIcon>
                   <ListItemText
                     primary="Disk Usage"
-                    secondary={
-                      <Box>
-                        <LinearProgress variant="determinate" value={78} sx={{ mt: 1 }} />
-                        <Typography variant="body2">78%</Typography>
-                      </Box>
-                    }
+                    secondary="not collected"
                   />
                 </ListItem>
                 <ListItem>
@@ -87,7 +78,7 @@ function SystemStatus({ user }: SystemStatusProps) {
                   </ListItemIcon>
                   <ListItemText
                     primary="Network Status"
-                    secondary={<Chip label="Connected" color="success" size="small" />}
+                    secondary="not collected"
                   />
                 </ListItem>
               </List>
@@ -106,25 +97,25 @@ function SystemStatus({ user }: SystemStatusProps) {
                 <ListItem>
                   <ListItemText
                     primary="Operating System"
-                    secondary="Linux 6.6.87.2-microsoft-standard-WSL2"
+                    secondary="not collected"
                   />
                 </ListItem>
                 <ListItem>
                   <ListItemText
                     primary="Application Version"
-                    secondary="1.0.0"
+                    secondary="not collected"
                   />
                 </ListItem>
                 <ListItem>
                   <ListItemText
                     primary="Python Version"
-                    secondary="3.11.5"
+                    secondary="not collected"
                   />
                 </ListItem>
                 <ListItem>
                   <ListItemText
                     primary="Security Status"
-                    secondary={<Chip label="Secure" color="success" size="small" />}
+                    secondary="not evaluated"
                   />
                 </ListItem>
               </List>

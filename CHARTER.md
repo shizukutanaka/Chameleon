@@ -2471,3 +2471,61 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** The gui/ Electron+React scaffold shipped as part of
+the product -- does it actually run, call the real CLI, and stay inside
+the no-fantasy-features line?
+**A:** No -- on every axis it was fiction: (a) it could never have
+started: main.js `require`d `path`/`fs` after use (TDZ crash at module
+load) and `electron-is-dev`, a package never declared in package.json;
+(b) it could never have compiled: the renderer imported
+`TuneIcon`/`AnalyticsIcon`/`Batch` which are not real
+@mui/icons-material@5.x exports -- tsc on the actual installed tree
+reports exactly those three errors, zero others; (c) it pointed at
+phantoms: spawned `production_cli.py` (doesn't exist), built argv with
+`--input`/`--format json` (not real flags), linked `docs/user_manual.md`
+and `docs/security.md` (neither exists), and piped the `--password`
+flag into a CLI that has no auth; (d) it claimed protections that do
+not exist: a "RESTRICTED" classification banner, "AES-256" /
+"multi-factor" / "government-grade" copy, a login form that accepted
+any credentials against a hardcoded user, an IPC surface
+(openFileDialog/saveFileDialog/getSystemInfo) with no main-side
+handlers, and a certificate-error handler that accepted EVERY invalid
+cert (blanket `callback(true)` -- worse than no handler, since
+Electron's default is to reject); (e) it lied about its data:
+menu events dropped the channel name so every menu action fell into
+`default`, BrowserRouter can't navigate on the file:// build, the
+dashboard/audit-log/system-status/security pages rendered fabricated
+metrics as live, the dropzone accepted .mp3/.flac/.aiff the core
+refuses, and the "enhance"/FLAC/MP3 operations aren't real CLI
+operations; (f) missing node_modules .gitignore meant the first
+`npm install` made a 1,553-package tree committable.
+Fixed by: rebuilding electron/main.js around the real contract --
+requires at top, isDev derived from app.isPackaged, real CLI verbs
+(`analyze --export`, `process --normalize/--convert --json`),
+CHAMELEON_PYTHON override, export-file and last-JSON-line result
+parsing, audit-log dir creation, and deleting the cert bypass;
+preload.js now forwards the channel name to menu callbacks and a new
+auth-preload.js exposes only `authenticate`; auth is an honest preview
+session in dev (clearance picker honored) and an honest "not
+integrated" error when packaged; App moved to HashRouter, menu
+channels navigate via location.hash, and unwired menu items say so;
+browser preview gets a labelled simulated user; every mock panel now
+carries a visible "simulated/design-preview" disclosure; README states
+precisely what is wired vs simulated; docs links point at real files;
+gui/.gitignore added; package-lock.json committed.
+Verified empirically: node --check on all electron JS, npm install
+(1,553 packages) + tsc --noEmit clean on the whole renderer,
+`git ls-files` confirms every gui source tracked. Guard:
+tests/test_gui_contract.py (20 tests -- entry-point requires/spawn
+targets/argv patterns, IPC handler pairing, preload channel
+forwarding, HashRouter, dropzone/fantasy-operation guards, simulated
+labels, claim honesty, docs links). Mutation-verified by stashing the
+tracked gui changes: 19 of 20 fail on pre-fix code (the survivor
+checks a new-file path that stays on disk). Also caught this cycle:
+the earlier stash-based mutation pass raced the in-flight
+`npm install` and swept untracked gui sources -- re-run cleanly once
+npm finished. One pre-existing nondeterminism surfaced again:
+tests/test_exit_codes.py's SIGINT check polls for the first output
+file of a serial job and has now observed -2, 0 and 130 across
+identical runs -- a signal-timing race unrelated to this diff.

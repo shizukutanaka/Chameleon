@@ -1,11 +1,13 @@
 # Chameleon — Product Analysis (Strengths, Weaknesses, Improvement Backlog)
 
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
-**Version:** 1.1.0 · **Tests:** re-run 2026-09-21 on Python 3.12, green in
-all three configurations — **477 passed** on a bare install (stdlib only,
-33 skipped), **557** with numpy (scipy/librosa/soundfile blocked, 33
-skipped), **662** with numpy + scipy + librosa + soundfile + fastapi
-(5 skipped). Skip totals follow which extras are installed — e.g. the two
+**Version:** 1.1.0 · **Tests:** re-run 2026-09-22 on Python 3.12, green in
+all three configurations — **497 passed** on a bare install (stdlib only,
+33 skipped), **577** with numpy (scipy/librosa/soundfile blocked, 33
+skipped), **682** with numpy + scipy + librosa + soundfile + fastapi
+(5 skipped; the SIGINT-timing check is the one nondeterministic test —
+it polls for the first output file of a serial job and the observed
+returncode has swung -2/0/130 across identical runs). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
 configurations do not cover the `[audio]` extra's librosa path; installing

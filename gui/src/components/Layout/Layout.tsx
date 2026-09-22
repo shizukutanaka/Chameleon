@@ -22,7 +22,7 @@ import {
   Menu as MenuIcon,
   Dashboard as DashboardIcon,
   AudioFile as AudioIcon,
-  Batch as BatchIcon,
+  Layers as BatchIcon,
   Security as SecurityIcon,
   Assignment as AuditIcon,
   Person as ProfileIcon,
@@ -127,7 +127,7 @@ function Layout({ user, onLogout, alerts, children }: LayoutProps) {
           Chameleon Audio
         </Typography>
         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>
-          Government-Grade Processing
+          Experimental GUI scaffold
         </Typography>
       </Box>
 
@@ -210,11 +210,12 @@ function Layout({ user, onLogout, alerts, children }: LayoutProps) {
           })}
       </List>
 
-      {/* Classification Banner */}
+      {/* Status banner: this scaffold is a work in progress -- say so
+          instead of a classification marking that asserts nothing true. */}
       <Box
         sx={{
           p: 2,
-          background: '#dc3545',
+          background: '#546e7a',
           color: 'white',
           textAlign: 'center',
         }}
@@ -222,11 +223,11 @@ function Layout({ user, onLogout, alerts, children }: LayoutProps) {
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
           <LockIcon sx={{ fontSize: 16 }} />
           <Typography variant="caption" sx={{ fontWeight: 700, letterSpacing: 1 }}>
-            RESTRICTED
+            PREVIEW
           </Typography>
         </Box>
         <Typography variant="caption" sx={{ fontSize: '0.7rem', opacity: 0.9 }}>
-          Authorized Personnel Only
+          Backend partially wired
         </Typography>
       </Box>
     </Box>

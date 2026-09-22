@@ -14,7 +14,7 @@ import {
   Paper,
   TextField,
   InputAdornment,
-  IconButton,
+  Alert,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -126,6 +126,13 @@ function AuditLog({ user }: AuditLogProps) {
       <Typography variant="h4" sx={{ mb: 3, fontWeight: 700, color: '#2a5298' }}>
         Audit Log
       </Typography>
+
+      {/* Entries are fabricated placeholders until a backend feeds them --
+          present them as a demo, not as a record of real events. */}
+      <Alert severity="warning" sx={{ mb: 2 }}>
+        <strong>Demo entries:</strong> these rows are fabricated sample data --
+        no audit backend is wired to this view (see gui/README.md).
+      </Alert>
 
       <Card>
         <CardContent>
