@@ -582,3 +582,38 @@ def test_audit_log_is_bounded():
     for i in range(cap + 50):
         api_server.log_audit_event("u", "OP", "res", "SUCCESS", "", "ip", "")
     assert len(api_server.api_state.audit_log) == cap
+
+
+def test_failed_batch_job_reports_a_scrubbed_error(monkeypatch):
+    # The top-level failure path stored str(e) verbatim, leaking internal
+    # exception text (paths, attribute names) through /batch/status where
+    # every sibling endpoint returns a scrubbed message.
+    import asyncio
+    from datetime import datetime, timezone
+    api_server.api_state.active_jobs.clear()
+    api_server.api_state.job_queue.clear()
+    api_server.api_state.circuit_breaker_open = False
+
+    api_server.api_state.active_jobs["jbad"] = {
+        # 'files' deliberately missing -> the processing loop raises before
+        # any per-file result exists
+        "operation": "analyze",
+        "options": {},
+        "user": "tester",
+        "status": "queued",
+        "results": [],
+        "completed_files": 0,
+        "total_files": 1,
+        "progress": 0.0,
+        "current_file": None,
+        "updated_at": datetime.now(timezone.utc),
+        "owner_session_id": None,
+    }
+    api_server.api_state.job_queue.append("jbad")
+
+    asyncio.run(api_server.process_batch_job("jbad"))
+
+    job = api_server.api_state.active_jobs["jbad"]
+    assert job["status"] == "failed"
+    assert job["error"] == "Batch job processing failed"
+    assert "files" not in job["error"]

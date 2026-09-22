@@ -1634,7 +1634,10 @@ async def process_batch_job(job_id: str):
     except Exception as e:
         logging.error(f"Batch job processing error: {e}")
         job_data['status'] = 'failed'
-        job_data['error'] = str(e)
+        # str(e) can carry internal paths/module names; sibling endpoints
+        # return a scrubbed message, so the job-level error does too. The
+        # full detail stays in the server log above.
+        job_data['error'] = 'Batch job processing failed'
         api_state.stats['failed_jobs'] += 1
         if job_id in api_state.job_queue:
             api_state.job_queue.remove(job_id)

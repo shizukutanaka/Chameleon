@@ -2471,3 +2471,18 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+### 2026-09-21 (audit 129) — batch job failure leaked raw exception text
+
+**Q:** Every sibling endpoint scrubs handler errors to a generic message
+("Analysis failed", "Normalization failed"), yet `process_batch_job`'s
+top-level catch stored `str(e)` on the job — is the leaked text reachable
+by the caller?
+
+**A:** **Yes.** `GET /batch/status/{job_id}` returns `BatchJobStatus` with
+an `error` field, so a KeyError/AttributeError/OSError raised inside the
+processing loop surfaced its raw text (internal paths, attribute names) to
+any caller who owns the job. The job now stores the scrubbed message
+"Batch job processing failed"; the full exception stays in the server
+log. The existing per-file `result['error']` values come from the core
+processor's own clean messages and are unchanged.
