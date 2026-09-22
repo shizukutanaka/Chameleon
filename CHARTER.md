@@ -2471,3 +2471,24 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** `batch_automation`'s `BatchTask.retry_count` defaults
+to 3, is accepted from YAML, and is echoed into result metadata as
+"retry_allowed". Does anything ever retry?
+**A:** No -- the field was decorative. `TaskExecutor.execute` ran the
+function exactly once; a transient failure on attempt 1 was final,
+`TaskStatus.RETRYING` was a dead enum value, and the metadata reported a
+budget nothing spent (verified: retry_count=3, one call, FAILED).
+`execute` now loops `1 + retry_count` attempts, so a retry-then-success
+returns COMPLETED with the stale error cleared, and result metadata
+gains `attempts` beside `retry_allowed`. Same audit: the 'simple'
+workflow condition (`"run B if A completed"`) treated an absent task_id
+-- never defined, misspelled, or ordered later -- as satisfied: the
+guarded task ran unconditionally (verified with a bogus id and with a
+later-ordered id). A guard that cannot be evaluated must not disable
+itself; the task is now skipped with a warning naming the offending id.
+Audited and found honest: the rest of `process`/`stream`/`server` CLI
+blocks (flag-ownership, port/worker guards, honest banners), the
+conditional-workflow 'expression' evaluator, script-task subprocess
+timeouts, `PersonalConfig` load/save and alias generation, and
+`detect_chords`' windowing/Jaccard internals.

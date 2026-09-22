@@ -562,36 +562,56 @@ class TaskExecutor:
 
         start_clock = time.perf_counter()
 
-        try:
-            # Execute with timeout if specified
-            if task.timeout:
-                future = self.thread_pool.submit(task.function, **task.inputs)
-                output = future.result(timeout=task.timeout)
-            else:
-                output = task.function(**task.inputs)
+        # retry_count was accepted from config and echoed back in metadata
+        # as "retry_allowed", but nothing ever retried: a transient failure
+        # on attempt 1 was final. It names the retry budget -- total
+        # attempts = 1 + retry_count.
+        max_attempts = 1 + max(0, task.retry_count)
+        attempt = 1
+        while True:
+            try:
+                # Execute with timeout if specified
+                if task.timeout:
+                    future = self.thread_pool.submit(task.function, **task.inputs)
+                    output = future.result(timeout=task.timeout)
+                else:
+                    output = task.function(**task.inputs)
 
-            result.status = TaskStatus.COMPLETED
-            result.output = output
-            result.end_time = datetime.now()
+                result.status = TaskStatus.COMPLETED
+                result.output = output
+                result.end_time = datetime.now()
+                # An earlier attempt's error must not survive into a
+                # COMPLETED result.
+                result.error = None
+                break
 
-        except TimeoutError:
-            result.status = TaskStatus.FAILED
-            result.error = f"Task timed out after {task.timeout} seconds"
-            result.end_time = datetime.now()
+            except TimeoutError:
+                result.status = TaskStatus.FAILED
+                result.error = f"Task timed out after {task.timeout} seconds"
+                result.end_time = datetime.now()
 
-        except Exception as e:
-            result.status = TaskStatus.FAILED
-            error_message = str(e)
-            if len(error_message) > 512:
-                error_message = error_message[:509] + "..."
-            result.error = error_message
-            result.end_time = datetime.now()
-            self.logger.error(f"Task {task.id} failed: {e}")
+            except Exception as e:
+                result.status = TaskStatus.FAILED
+                error_message = str(e)
+                if len(error_message) > 512:
+                    error_message = error_message[:509] + "..."
+                result.error = error_message
+                result.end_time = datetime.now()
+
+            if attempt >= max_attempts:
+                self.logger.error(f"Task {task.id} failed: {result.error}")
+                break
+            self.logger.warning(
+                f"Task {task.id} attempt {attempt}/{max_attempts} failed "
+                f"({result.error}); retrying")
+            result.status = TaskStatus.RETRYING
+            attempt += 1
 
         duration_ms = (time.perf_counter() - start_clock) * 1000.0
         result.metadata.update({
             "duration_ms": round(duration_ms, 2),
             "retry_allowed": task.retry_count,
+            "attempts": attempt,
             "timeout_seconds": task.timeout,
             "tags": list(task.tags),
             "priority": task.priority,
@@ -769,10 +789,19 @@ class WorkflowEngine:
         condition_type = condition.get('type', 'simple')
 
         if condition_type == 'simple':
-            # Check if previous task succeeded
+            # Check if previous task succeeded. A task_id that is absent
+            # from results -- never defined, misspelled, or ordered later
+            # than the guarded task -- cannot satisfy the condition. This
+            # used to fall through to `return True`, so the guard silently
+            # disabled itself and the task ran unconditionally.
             task_id = condition.get('task_id')
             if task_id in results:
                 return results[task_id].status == TaskStatus.COMPLETED
+            self.logger.warning(
+                "Skipping guarded task: 'simple' condition references task "
+                "%r, which has no result (unknown id, or runs later)",
+                task_id)
+            return False
 
         elif condition_type == 'expression':
             # Evaluate expression
