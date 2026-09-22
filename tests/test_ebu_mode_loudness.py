@@ -224,3 +224,85 @@ def test_stdlib_lra_agrees_with_the_numpy_scipy_implementation():
     mine = bs1770.measure_loudness_range([channel], sample_rate)
 
     assert mine == pytest.approx(theirs, abs=0.1)
+
+
+# --- channel_mask consistency across the EBU Mode set ---------------------
+#
+# measure_integrated_loudness_multichannel takes the file's dwChannelMask
+# and applies BS.1770-4 channel weighting (LFE excluded, surrounds +1.5 dB),
+# but the M/S meters and LRA previously took no mask: for one 5.1 file the
+# integrated reading excluded the LFE channel while Max-M/Max-S/LRA silently
+# included it -- `analyze --loudness` printed two meter families that
+# disagreed about the same file's channel weighting (~0.45 LU on a steady
+# LFE-heavy signal). All now accept channel_mask, default 0 = equal weight.
+
+_5_1_MASK = 0x1 | 0x2 | 0x4 | 0x8 | 0x10 | 0x20  # L,C,R,LFE,Ls,Rs
+
+
+def _six_channel_fixture(sample_rate=48000, seconds=4):
+    tone = _sine(220.0, sample_rate, sample_rate * seconds, amplitude=0.3)
+    lfe = _sine(60.0, sample_rate, sample_rate * seconds, amplitude=0.5)
+    return [tone, tone, tone, lfe, tone, tone]
+
+
+def test_momentary_and_short_term_apply_the_channel_mask():
+    sample_rate = 48000
+    channels = _six_channel_fixture(sample_rate)
+
+    integrated = bs1770.measure_integrated_loudness_multichannel(
+        channels, sample_rate, channel_mask=_5_1_MASK)
+    max_m = bs1770.measure_max_momentary_loudness(
+        channels, sample_rate, channel_mask=_5_1_MASK)
+    max_s = bs1770.measure_max_short_term_loudness(
+        channels, sample_rate, channel_mask=_5_1_MASK)
+
+    # On a stationary signal the M == S == I invariant holds only when all
+    # three meters see the same channel weighting.
+    assert max_m == pytest.approx(integrated, abs=0.1)
+    assert max_s == pytest.approx(integrated, abs=0.1)
+
+
+def test_channel_mask_defaults_to_equal_weighting():
+    sample_rate = 48000
+    channels = _six_channel_fixture(sample_rate)
+
+    # Omitting the mask must reproduce the pre-parameter behaviour exactly.
+    assert (bs1770.measure_momentary_loudness(channels, sample_rate)
+            == bs1770.measure_momentary_loudness(
+                channels, sample_rate, channel_mask=0))
+    assert (bs1770.measure_short_term_loudness(channels, sample_rate)
+            == bs1770.measure_short_term_loudness(
+                channels, sample_rate, channel_mask=0))
+
+
+def test_mask_excludes_lfe_from_momentary():
+    sample_rate = 48000
+    channels = _six_channel_fixture(sample_rate)
+
+    masked = bs1770.measure_momentary_loudness(
+        channels, sample_rate, channel_mask=_5_1_MASK)
+    unmasked = bs1770.measure_momentary_loudness(channels, sample_rate)
+
+    # The mask drops the LFE channel's energy, so every masked window reads
+    # lower than its unmasked counterpart.
+    assert all(m < u for m, u in zip(masked, unmasked))
+
+
+def test_loudness_range_applies_the_mask_to_its_short_term_series():
+    sample_rate = 48000
+    quiet = _sine(220.0, sample_rate, sample_rate * 3, amplitude=0.02)
+    loud = _sine(220.0, sample_rate, sample_rate * 3, amplitude=0.5)
+    lfe = _sine(60.0, sample_rate, sample_rate * 6, amplitude=0.5)
+    channels = [quiet + loud, quiet + loud, quiet + loud,
+                lfe, quiet + loud, quiet + loud]
+
+    masked = bs1770.measure_loudness_range(
+        channels, sample_rate, channel_mask=_5_1_MASK)
+    # Equivalence proof the mask reaches the windowed path: masking the LFE
+    # channel (G=0) must equal measuring with that channel physically absent.
+    without_lfe = channels[:3] + channels[4:]
+    reference = bs1770.measure_loudness_range(
+        without_lfe, sample_rate,
+        channel_mask=0x1 | 0x2 | 0x4 | 0x8 | 0x10)
+
+    assert masked == pytest.approx(reference)

@@ -2471,3 +2471,22 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** `bs1770_loudness` gained `channel_mask` on the integrated
+meter (LFE excluded, surrounds +1.5 dB) but the EBU Mode M/S meters and LRA
+take no mask. Do the meter families agree on the same file?
+
+**A:** No -- verified numerically on a synthetic 5.1 signal (5 flat channels
++ one hot LFE, mask 0x3F): the masked integrated reading was -6.72 LUFS
+while Max-M/Max-S printed -6.24 LUFS, ~0.5 LU hotter for no reason but the
+LFE channel the file's own mask declares non-loudness. `analyze --loudness`
+already extracted dwChannelMask and passed it to the integrated meter, then
+called M/S/LRA bare -- so the CLI printed meter families disagreeing about
+one file's channel weighting. All five functions now take an optional
+`channel_mask=0` (default = equal weight = the pre-parameter behaviour,
+verified bit-identical) threaded through `_ungated_window_lufs`; the CLI
+passes the same mask to all of them. Invariant restored: on a stationary
+signal M == S == I under the mask as well (I=-6.717, M=-6.724, S=-6.718).
+Lesson: adding a per-channel weighting to one member of a meter *family*
+makes the unweighted members wrong -- the standard's weighting applies to
+the energy sum, not to the window length.

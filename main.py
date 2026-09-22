@@ -2483,10 +2483,12 @@ async def main():
                                 max_m = bs1770_loudness.measure_max_momentary_loudness(
                                     samples_result.data["channels"],
                                     samples_result.data["sample_rate"],
+                                    samples_result.data.get("channel_mask", 0),
                                 )
                                 max_s = bs1770_loudness.measure_max_short_term_loudness(
                                     samples_result.data["channels"],
                                     samples_result.data["sample_rate"],
+                                    samples_result.data.get("channel_mask", 0),
                                 )
                                 if math.isfinite(max_m):
                                     metadata.max_momentary_lufs = max_m
@@ -2498,6 +2500,7 @@ async def main():
                                 lra = bs1770_loudness.measure_loudness_range(
                                     samples_result.data["channels"],
                                     samples_result.data["sample_rate"],
+                                    samples_result.data.get("channel_mask", 0),
                                 )
                                 if math.isfinite(lra):
                                     metadata.loudness_range_lu = lra
