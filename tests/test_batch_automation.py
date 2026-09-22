@@ -283,3 +283,29 @@ def test_condition_expression_in_on_non_iterable_is_typed():
             _evaluate_condition_expression(bad, {})
 
     assert _evaluate_condition_expression('"x" in results["t"].status', {}) is False
+
+
+def test_second_dag_on_one_engine_runs_its_own_tasks():
+    """DependencyGraph/TaskQueue were per-engine state carried between
+    execute_workflow calls: a second DAG reusing a task id found it already
+    "completed" in the stale set and returned {} -- success with no work.
+    Each execution now builds fresh graph state."""
+    from batch_automation import WorkflowEngine, Workflow, BatchTask, WorkflowType
+    engine = WorkflowEngine()
+    first = Workflow(
+        id="w1", name="w1", type=WorkflowType.DAG, max_parallel=1,
+        tasks=[BatchTask(id="a", name="a", function=lambda **k: 1, inputs={})],
+    )
+    assert engine.execute_workflow(first)["a"].status.name == "COMPLETED"
+
+    second = Workflow(
+        id="w2", name="w2", type=WorkflowType.DAG, max_parallel=1,
+        tasks=[
+            BatchTask(id="a", name="a2", function=lambda **k: 2, inputs={}),
+            BatchTask(id="b", name="b", function=lambda **k: 3, inputs={},
+                      dependencies=["a"]),
+        ],
+    )
+    results = engine.execute_workflow(second)
+    assert set(results) == {"a", "b"}
+    assert results["a"].output == 2 and results["b"].output == 3
