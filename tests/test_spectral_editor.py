@@ -109,3 +109,38 @@ def test_harmonic_enhance_stays_inside_selection():
     assert changed.size > 0
     times = ed.times
     assert all(0.4 <= times[c[1]] <= 0.5 for c in changed)
+
+
+def test_synthesis_window_mirrors_analysis_window():
+    # The manual ISTFT used `ones` for every non-"hann" window, so a
+    # "hamming" config round-tripped audio * hamming -- measured max error
+    # ~0.46 on a 0.5-amp sine (~92%). Analysis and synthesis windows must
+    # match for the w-squared normalizer to be meaningful.
+    audio = _sine(440)
+    for win in ("hann", "hamming", "boxcar"):
+        proc = spectral_editor.SpectrogramProcessor(
+            spectral_editor.SpectrogramConfig(window=win))
+        stft, _, _ = proc.compute_stft(audio, SAMPLE_RATE)
+        restored = proc.compute_istft(stft, SAMPLE_RATE, len(audio))
+        assert np.abs(restored - audio).max() < 1e-6, win
+
+
+def test_interpolate_without_scipy_still_interpolates():
+    # The numpy-only fallback assigned `magnitude[mask] = magnitude[mask]`
+    # (its `if HAS_SCIPY` was dead inside the no-scipy branch): a reported
+    # interpolation that changed nothing beyond float noise, returned True
+    # and logged history. With damaged bins it must now inpaint real
+    # neighbor values.
+    pytest.importorskip("numpy")
+    if spectral_editor.HAS_SCIPY:
+        pytest.skip("covers the no-scipy fallback path")
+    ed = spectral_editor.SpectralEditor()
+    audio = _sine(440)
+    ed.load_audio(audio, SAMPLE_RATE)
+    sel = ed.select_region(0.4, 0.6, 100, 2000)
+    mask = ed.get_selection_mask(sel)
+    ed.stft[mask] = 0  # simulate damage inside the selection
+
+    assert ed.interpolate_selection(sel)
+    filled = np.abs(ed.stft[mask])
+    assert filled.size and (filled > 0).all()

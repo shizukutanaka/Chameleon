@@ -2471,3 +2471,30 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22, audit 79):** Are `spectral_editor`'s declared DSP paths
+actually doing what they report?
+**A:** Two verified defects, both only visible on the manual (non-librosa)
+path -- which is the path that always runs, because `import
+librosa.display` requires matplotlib and the [audio] extra does not
+install it.
+`_compute_istft_manual` built the synthesis window for "hann" and
+defaulted everything else to `ones`, but `_compute_stft_manual` honors
+"hamming". Analysis/synthesis window mismatch meant a "hamming" config
+round-tripped `audio * hamming` -- measured max error 0.458 on a
+0.5-amp sine (~92%). The synthesis window now mirrors the analysis
+selection, so the w-squared normalizer is meaningful again.
+`interpolate_selection`'s no-scipy fallback built a 3x3 mean kernel it
+never applied -- its `if HAS_SCIPY` was dead code inside the `else`
+branch -- then assigned `magnitude[mask] = magnitude[mask]`: a reported
+interpolation that changed nothing beyond ~1e-13 of float noise yet
+returned True and logged history (verified). The fallback now runs real
+iterative inpainting in pure numpy: each masked bin takes the mean of
+its already-known 4-neighbors, propagated inward ring by ring until the
+block fills (bounded by the transform size). Also audited this cycle and
+found honest: `noise_reduce_selection` treats the selection as the noise
+profile and subtracts globally -- the documented design; the demo's
+`HAS_LIBROSA or True` reads sloppily but the claim (STFT available) is
+true via the manual path; `SpectrogramConfig.overlap`/`zero_padding` and
+`SpectralEditConfig.precision`/`quality` are inert config fields left as
+metadata -- recorded here, not defects worth churning.

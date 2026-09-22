@@ -192,9 +192,16 @@ class SpectrogramProcessor:
         hop_length = self.config.hop_length
         win_length = self.config.win_length or n_fft
 
-        # Create window
+        # Create window. This MUST mirror the analysis window used in
+        # _compute_stft_manual: the synthesis side used to only special-
+        # case "hann", so a "hamming" config got `ones` here while the
+        # forward transform had windowed by hamming -- analysis/synthesis
+        # mismatch that returned audio * hamming (max error ~92% of the
+        # signal's amplitude on a 0.5-amp sine, verified).
         if self.config.window == "hann":
             window = np.hanning(win_length)
+        elif self.config.window == "hamming":
+            window = np.hamming(win_length)
         else:
             window = np.ones(win_length)
 
@@ -539,19 +546,40 @@ class SpectralEditor:
                 # Reconstruct
                 self.stft = magnitude_interp * np.exp(1j * phase)
             else:
-                # Simple averaging interpolation
+                # Neighbor-fill inpainting in pure numpy: each masked bin
+                # takes the mean of its already-known 4-neighbors, iterated
+                # so a solid block fills inward ring by ring (bounded by
+                # the transform size -- every pass fills at least one bin
+                # or the loop exits). The previous fallback built a kernel
+                # it never applied (its `if HAS_SCIPY` was dead inside
+                # this else branch) and assigned `magnitude[mask] =
+                # magnitude[mask]`: a reported interpolation that changed
+                # nothing beyond ~1e-13 of float noise, yet returned True
+                # and logged history.
                 magnitude = np.abs(self.stft)
                 phase = np.angle(self.stft)
-
-                # Simple neighbor averaging
-                kernel = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]]) / 4
-                if HAS_SCIPY:
-                    smoothed = ndimage.convolve(magnitude, kernel, mode='reflect')
-                else:
-                    smoothed = magnitude  # Fallback to no interpolation
-
-                magnitude[mask] = smoothed[mask]
-                self.stft = magnitude * np.exp(1j * phase)
+                inpainted = magnitude.copy()
+                known = ~mask
+                for _ in range(max(magnitude.shape) + 1):
+                    coords = np.where(mask & ~known)
+                    if coords[0].size == 0:
+                        break
+                    progressed = False
+                    for freq_idx, time_idx in zip(coords[0], coords[1]):
+                        nbrs = []
+                        for df, dt in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                            nf, nt = freq_idx + df, time_idx + dt
+                            if (0 <= nf < magnitude.shape[0] and
+                                0 <= nt < magnitude.shape[1] and
+                                known[nf, nt]):
+                                nbrs.append(inpainted[nf, nt])
+                        if nbrs:
+                            inpainted[freq_idx, time_idx] = np.mean(nbrs)
+                            known[freq_idx, time_idx] = True
+                            progressed = True
+                    if not progressed:
+                        break
+                self.stft = inpainted * np.exp(1j * phase)
 
             # Reconstruct audio
             self.current_audio = self.spectrogram_processor.compute_istft(
