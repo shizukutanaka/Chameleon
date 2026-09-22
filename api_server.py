@@ -703,7 +703,12 @@ def _get_allowed_origins() -> list[str]:
 
 def _resolve_audit_log_path() -> Path:
     """Return secure audit log path with directory validation."""
-    preferred_dir = Path.home() / '.chameleon' / 'logs'
+    # Honour the same CHAMELEON_LOG_DIR the CLI's setup_logging reads --
+    # it is the documented log-directory knob, and the audit log ignoring
+    # it split logging across two directories.
+    preferred_dir = Path(
+        os.getenv("CHAMELEON_LOG_DIR")
+        or (Path.home() / '.chameleon' / 'logs'))
 
     try:
         log_dir = _AUDIT_VALIDATOR.validate_directory(
