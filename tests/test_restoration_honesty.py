@@ -224,3 +224,62 @@ def test_auto_mode_does_not_run_unvetted_detectors():
         audio_restoration.RestorationConfig(click_removal=True))
     _, opt_in = restorer.restore(noise, SAMPLE_RATE)
     assert "click_removal" in opt_in["applied_processes"]
+
+
+# --- channel count --------------------------------------------------------
+
+
+def _stereo_clip(seconds=0.5):
+    rng = np.random.default_rng(0)
+    n = int(SAMPLE_RATE * seconds)
+    stereo = rng.uniform(-0.5, 0.5, (2, n))
+    stereo[:, n // 2:n // 2 + 10] = 0.95  # flat clipped run in both channels
+    return stereo
+
+
+def test_restore_accepts_multichannel_input():
+    # Every stage is mono-only: on (channels, samples) input detect_clipping's
+    # np.concatenate raised 'must have same number of dimensions' and dehum's
+    # window multiply broadcast-failed -- a stereo file crashed before any
+    # repair ran. restore must now decompose per channel (as repair_audio
+    # does) and return the same channel count.
+    stereo = _stereo_clip()
+
+    restored, info = audio_restoration.AudioRestorer().restore(stereo, SAMPLE_RATE)
+
+    assert restored.shape == stereo.shape
+    assert "dehum" in info["applied_processes"]
+    assert "declipping" in info["applied_processes"]
+
+
+def test_restore_stereo_matches_per_channel_results():
+    # The stereo path is a decomposition, not a different pipeline: channel 0
+    # of a stereo restore must equal restoring that channel alone.
+    stereo = _stereo_clip()
+    restorer = audio_restoration.AudioRestorer()
+
+    stereo_out, _ = restorer.restore(stereo, SAMPLE_RATE)
+    mono_out, _ = restorer.restore(stereo[0].copy(), SAMPLE_RATE)
+
+    assert np.array_equal(stereo_out[0], mono_out)
+
+
+def test_restore_vinyl_mode_accepts_stereo():
+    restored, info = audio_restoration.AudioRestorer().restore(
+        _stereo_clip(), SAMPLE_RATE, mode="vinyl")
+
+    assert restored.shape[0] == 2
+    assert "hum_removal" in info["applied_processes"]
+
+
+def test_hf_preservation_metric_does_not_need_librosa():
+    # The metric is an np.fft.rfft magnitude ratio -- it was gated on
+    # HAS_LIBROSA, so on installs where every restoration stage ran fine the
+    # metric silently vanished. numpy alone is enough.
+    rng = np.random.default_rng(1)
+    audio = 0.3 * rng.standard_normal(SAMPLE_RATE)
+    restorer = audio_restoration.AudioRestorer()
+
+    _, info = restorer.restore(audio, SAMPLE_RATE)
+
+    assert "hf_preservation" in info["quality_metrics"]
