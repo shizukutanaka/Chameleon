@@ -297,9 +297,12 @@ class DeepFileInspector:
                 regions.append(mm[body_start:body_end])
 
             offset = body_end + (chunk_size % 2)   # RIFF pads odd-sized chunks
-            if chunk_size == 0 and chunk_id != b'data':
-                offset = body_start                # never stall on a zero-size chunk
-                break
+            # A zero-size chunk cannot stall the walk: body_end is always
+            # offset + 8, so `offset` advances by at least 8 each pass. The
+            # `break` that used to live here stopped the scan at the first
+            # zero-size chunk -- a crafted JUNK(0) before a LIST made every
+            # later chunk invisible to the pattern scan (verified: markup
+            # after it raised no warning).
 
         return regions
 

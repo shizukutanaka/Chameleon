@@ -177,3 +177,20 @@ def test_a_zero_length_chunk_does_not_loop_forever(inspector, tmp_path):
                             + b"data" + struct.pack("<I", 0))
 
     assert inspector.inspect_file(empty_chunk) is not None
+
+
+def test_a_zero_length_chunk_does_not_hide_later_chunks(inspector, tmp_path):
+    """The chunk walk used to `break` at the first zero-size non-data chunk
+    ("never stall"), but `offset` already advances >= 8 bytes per pass, so
+    the break only truncated the scan: a JUNK(0) placed before a LIST chunk
+    made every chunk after it invisible -- markup went unreported."""
+    fmt = struct.pack("<HHIIHH", 1, 1, 8000, 16000, 2, 16)
+    body = (b"WAVE"
+            + b"fmt " + struct.pack("<I", len(fmt)) + fmt
+            + b"JUNK" + struct.pack("<I", 0)                       # empty chunk
+            + b"LIST" + struct.pack("<I", len(b"import os")) + b"import os"
+            + b"data" + struct.pack("<I", 4) + b"\x01\x00\x02\x00")
+    hidden = tmp_path / "hidden.wav"
+    hidden.write_bytes(b"RIFF" + struct.pack("<I", len(body)) + body)
+
+    assert any("import " in w for w in _warnings(inspector, hidden))
