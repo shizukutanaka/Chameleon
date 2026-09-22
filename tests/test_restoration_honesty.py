@@ -224,3 +224,25 @@ def test_auto_mode_does_not_run_unvetted_detectors():
         audio_restoration.RestorationConfig(click_removal=True))
     _, opt_in = restorer.restore(noise, SAMPLE_RATE)
     assert "click_removal" in opt_in["applied_processes"]
+
+
+def test_repair_gaps_refuses_a_gap_it_cannot_interpolate():
+    # Interpolation needs an intact frame on EACH side: a gap at the file
+    # head used to be skipped silently (the damaged samples came back
+    # unchanged while the caller got "repaired" audio), and a span shorter
+    # than one hop interpolated ZERO samples -- the same reported-no-op
+    # class as the missing-librosa return. Both now refuse.
+    pytest.importorskip("librosa")
+    audio = _sine(440, seconds=2.0)
+    audio[20000:21000] = 0.0
+
+    with pytest.raises(ValueError, match="not repairable"):
+        audio_restoration.SpectralRepairer().repair_gaps(audio, [(0, 500)], SAMPLE_RATE)
+    with pytest.raises(ValueError, match="not repairable"):
+        audio_restoration.SpectralRepairer().repair_gaps(audio, [(20000, 20010)], SAMPLE_RATE)
+    with pytest.raises(ValueError, match="not repairable"):
+        audio_restoration.SpectralRepairer().repair_gaps(audio, [(100, 50)], SAMPLE_RATE)
+
+    # An interior gap still repairs.
+    out = audio_restoration.SpectralRepairer().repair_gaps(audio, [(20000, 21000)], SAMPLE_RATE)
+    assert np.sqrt(np.mean(out[20000:21000] ** 2)) > 0.05

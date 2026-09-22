@@ -872,6 +872,17 @@ class MasteringChain:
             self.logger.debug("Applied stereo processing")
 
         # 4. Harmonic enhancement (simplified)
+        # The mix is `audio * (1 - amount) + enhanced * amount`: amounts
+        # above the documented 0.0-1.0 range invert the gain (amount=3
+        # yields output correlated *negatively* with the input, corr -0.96),
+        # and negative amounts previously slipped past the `> 0` check as a
+        # silent no-op. Both are invalid configuration, so fail loudly like
+        # the EQ frequency and mono_freq guards.
+        if not 0.0 <= self.config.harmonic_enhancement <= 1.0:
+            raise ValueError(
+                f"harmonic_enhancement must be within [0.0, 1.0], "
+                f"got {self.config.harmonic_enhancement}"
+            )
         if self.config.harmonic_enhancement > 0:
             processed = self._apply_harmonic_enhancement(processed, self.config.harmonic_enhancement)
 

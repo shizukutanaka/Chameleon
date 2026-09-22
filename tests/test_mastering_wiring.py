@@ -117,3 +117,29 @@ def test_mastering_rejects_multichannel_instead_of_dropping_channels():
     )
     with pytest.raises(ValueError, match="mono or stereo"):
         chain.process(quad)
+
+
+def test_harmonic_enhancement_rejects_out_of_range_amount():
+    # The mix is audio*(1-amount) + enhanced*amount: above the documented
+    # 0.0-1.0 range the gain inverts (amount=3 returned output correlated
+    # -0.96 with the input -- a "subtle enhancement" that flips the signal),
+    # and a negative amount slipped past the `> 0` gate as a silent no-op.
+    np = pytest.importorskip("numpy")
+    from mastering_chain import MasteringChain, MasteringConfig
+
+    sr = 44100
+    audio = 0.5 * np.sin(2 * np.pi * 440 * np.arange(sr) / sr)
+    for bad in (-0.5, 1.5, 3.0):
+        cfg = MasteringConfig(eq_enabled=False, compressor_enabled=False,
+                              limiter_enabled=False, stereo_enabled=False,
+                              dither_enabled=False, auto_gain=False,
+                              harmonic_enhancement=bad)
+        with pytest.raises(ValueError, match="harmonic_enhancement"):
+            MasteringChain(cfg, sr).process(audio)
+
+    cfg = MasteringConfig(eq_enabled=False, compressor_enabled=False,
+                          limiter_enabled=False, stereo_enabled=False,
+                          dither_enabled=False, auto_gain=False,
+                          harmonic_enhancement=0.5)
+    out, _ = MasteringChain(cfg, sr).process(audio)
+    assert np.abs(out).max() > 0
