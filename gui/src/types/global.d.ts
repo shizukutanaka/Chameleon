@@ -16,31 +16,22 @@ declare global {
       getUserInfo: () => Promise<any>;
       logout: () => Promise<{ success: boolean }>;
 
-      // Audio processing
+      // Audio processing -- `result` carries the CLI's own JSON payload
       processAudio: (
         operation: string,
         filePath: string,
         options: any
       ) => Promise<{
         success: boolean;
-        duration?: number;
-        peakLevel?: number;
-        rmsLevel?: number;
-        outputPath?: string;
+        result?: any;
         error?: string;
       }>;
 
-      // File operations
-      openFileDialog: () => Promise<string[]>;
-      saveFileDialog: (defaultPath?: string) => Promise<string>;
-
       // Event handlers
-      onMenuAction: (callback: (event: any) => void) => void;
+      onMenuAction: (callback: (channel: string, ...args: any[]) => void) => void;
       onUserAuthenticated: (callback: (event: any, user: any) => void) => void;
       onSecurityAlert: (callback: (event: any, alert: any) => void) => void;
 
-      // System info
-      getSystemInfo: () => Promise<any>;
       version: string;
       platform: string;
     };
@@ -67,9 +58,10 @@ export interface AudioFile {
 
 export interface ProcessingResult {
   success: boolean;
-  duration: number;
-  peakLevel: number;
-  rmsLevel: number;
+  simulated?: boolean;
+  duration?: number;
+  peakLevel?: number;
+  rmsLevel?: number;
   outputPath?: string;
   error?: string;
 }

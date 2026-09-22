@@ -99,6 +99,14 @@ function BatchProcessor({ user }: BatchProcessorProps) {
         Batch Processor
       </Typography>
 
+      {/* The queue is a UI preview: "Add Files" inserts placeholder rows and
+          "Start Processing" simulates progress -- no backend is wired. */}
+      <Alert severity="warning" sx={{ mb: 2 }}>
+        <strong>UI preview:</strong> this queue is simulated -- Add Files inserts
+        placeholder rows and Start Processing only animates progress
+        (see gui/README.md).
+      </Alert>
+
       <Grid container spacing={3}>
         <Grid item xs={12}>
           <Card>

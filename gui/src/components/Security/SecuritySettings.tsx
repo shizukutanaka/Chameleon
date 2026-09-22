@@ -34,6 +34,14 @@ function SecuritySettings({ user }: SecuritySettingsProps) {
         Security Settings
       </Typography>
 
+      {/* This page is a design preview: none of the controls below are wired
+          to enforcement, so present them as planned behaviour, not active
+          protection. */}
+      <Alert severity="info" sx={{ mb: 3 }}>
+        <strong>Design preview:</strong> these settings are concept UI only --
+        nothing on this page is enforced yet (see gui/README.md).
+      </Alert>
+
       <Grid container spacing={3}>
         <Grid item xs={12} md={6}>
           <Card>
@@ -43,54 +51,46 @@ function SecuritySettings({ user }: SecuritySettingsProps) {
                 Security Status
               </Typography>
 
-              <Alert severity="success" sx={{ mb: 2 }}>
-                <strong>Security Level:</strong> Government-Grade Protection Active
-              </Alert>
-
               <List>
                 <ListItem>
                   <ListItemIcon>
-                    <ShieldIcon sx={{ color: '#198754' }} />
+                    <ShieldIcon sx={{ color: '#6c757d' }} />
                   </ListItemIcon>
                   <ListItemText
-                    primary="Encryption Status"
-                    secondary="AES-256 encryption enabled for all data"
+                    primary="Encryption"
+                    secondary="At-rest file encryption -- not implemented"
                   />
-                  <Chip label="Active" color="success" size="small" />
+                  <Chip label="Planned" color="default" size="small" />
                 </ListItem>
                 <ListItem>
                   <ListItemIcon>
-                    <LockIcon sx={{ color: '#198754' }} />
+                    <LockIcon sx={{ color: '#6c757d' }} />
                   </ListItemIcon>
                   <ListItemText
                     primary="Authentication"
-                    secondary="Multi-factor authentication required"
+                    secondary="Auth backend integration -- not implemented"
                   />
-                  <Chip label="Enforced" color="success" size="small" />
+                  <Chip label="Planned" color="default" size="small" />
                 </ListItem>
                 <ListItem>
                   <ListItemIcon>
-                    <KeyIcon sx={{ color: '#198754' }} />
+                    <KeyIcon sx={{ color: '#6c757d' }} />
                   </ListItemIcon>
                   <ListItemText
                     primary="Access Control"
-                    secondary={`Clearance Level: ${user?.clearanceLevel}`}
+                    secondary={`Clearance labels are UI display only (current: ${user?.clearanceLevel})`}
                   />
-                  <Chip
-                    label="Verified"
-                    color="success"
-                    size="small"
-                  />
+                  <Chip label="Display only" color="default" size="small" />
                 </ListItem>
                 <ListItem>
                   <ListItemIcon>
-                    <VisibilityIcon sx={{ color: '#198754' }} />
+                    <VisibilityIcon sx={{ color: '#6c757d' }} />
                   </ListItemIcon>
                   <ListItemText
                     primary="Audit Logging"
-                    secondary="All activities are monitored and logged"
+                    secondary="GUI operations log to logs/gui-audit.log when run under Electron"
                   />
-                  <Chip label="Enabled" color="success" size="small" />
+                  <Chip label="Partial" color="default" size="small" />
                 </ListItem>
               </List>
             </CardContent>
@@ -133,7 +133,7 @@ function SecuritySettings({ user }: SecuritySettingsProps) {
               </Box>
 
               <Alert severity="info" sx={{ mt: 2 }}>
-                Security settings are managed by system administrators and cannot be modified by end users.
+                These toggles are illustrative; no enforcement layer reads them.
               </Alert>
 
               <Button
@@ -142,7 +142,7 @@ function SecuritySettings({ user }: SecuritySettingsProps) {
                 sx={{ mt: 2 }}
                 disabled
               >
-                Change Password
+                Change Password (not implemented)
               </Button>
             </CardContent>
           </Card>

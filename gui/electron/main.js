@@ -1,13 +1,20 @@
-const DOCS_BASE_PATH = path.join(__dirname, '../../docs');
-const DOCS_BASE_URL = (process.env.CHAMELEON_DOCS_URL || `file://${DOCS_BASE_PATH}`).replace(/\/$/, '');
-const SECURITY_GUIDE_URL = process.env.CHAMELEON_SECURITY_URL || `${DOCS_BASE_URL}/user_manual.md`;
-
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
 const path = require('path');
-const isDev = require('electron-is-dev');
+const fs = require('fs');
+const os = require('os');
 const { spawn } = require('child_process');
 
-// Government security settings
+// Packaged builds load the bundled file:// UI; run-from-source loads the
+// dev server. electron-is-dev is not a declared dependency, so requiring it
+// crashed this file at startup.
+const isDev = process.env.ELECTRON_IS_DEV === '1' || !app.isPackaged;
+
+const DOCS_BASE_PATH = path.join(__dirname, '../../docs');
+const DOCS_BASE_URL = (process.env.CHAMELEON_DOCS_URL || `file://${DOCS_BASE_PATH}`).replace(/\/$/, '');
+const USER_MANUAL_URL = `${DOCS_BASE_URL}/en/commands.md`;
+const SECURITY_GUIDE_URL = process.env.CHAMELEON_SECURITY_URL || `${DOCS_BASE_URL}/en/advanced_config.md`;
+
+// Renderer hardening defaults
 const SECURITY_CONFIG = {
   nodeIntegration: false,
   contextIsolation: true,
@@ -34,7 +41,6 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js')
     },
     titleBarStyle: 'default',
-    icon: path.join(__dirname, '../public/icon.png'),
     show: false // Don't show until authenticated
   });
 
@@ -189,7 +195,7 @@ function createMenu() {
         {
           label: 'User Manual',
           click: () => {
-            shell.openExternal(`${DOCS_BASE_URL}/user_manual.md`);
+            shell.openExternal(USER_MANUAL_URL);
           }
         },
         {
@@ -205,8 +211,8 @@ function createMenu() {
             dialog.showMessageBox(mainWindow, {
               type: 'info',
               title: 'About Chameleon Audio',
-              message: 'Chameleon Audio Processing System',
-              detail: `Version: 1.0.0\nClassification: RESTRICTED\nGovernment-Grade Security Enabled\n\nDeveloped for secure audio processing operations.\nAuthorized personnel only.`
+              message: 'Chameleon Audio GUI',
+              detail: `Version: ${app.getVersion()}\nExperimental Electron GUI scaffold for the Chameleon audio CLI.\nBackend integration is partially wired -- see gui/README.md.`
             });
           }
         }
@@ -222,7 +228,11 @@ function createMenu() {
 ipcMain.handle('authenticate', async (event, credentials) => {
   try {
     // Call Python authentication backend
-    const result = await authenticateUser(credentials.username, credentials.password);
+    const result = await authenticateUser(
+      credentials.username,
+      credentials.password,
+      credentials.clearanceLevel
+    );
 
     if (result.success) {
       isAuthenticated = true;
@@ -288,84 +298,136 @@ ipcMain.handle('logout', () => {
   return { success: true };
 });
 
-// Authentication backend integration
-async function authenticateUser(username, password) {
-  return new Promise((resolve, reject) => {
-    const pythonProcess = spawn('python3', [
-      path.join(__dirname, '../../production_cli.py'),
-      'authenticate',
-      '--username', username,
-      '--password', password,
-      '--format', 'json'
-    ]);
-
-    let output = '';
-    pythonProcess.stdout.on('data', (data) => {
-      output += data.toString();
-    });
-
-    pythonProcess.on('close', (code) => {
-      try {
-        const result = JSON.parse(output);
-        resolve(result);
-      } catch (error) {
-        resolve({ success: false, error: 'Invalid authentication response' });
+// Authentication backend integration is not wired yet (gui/README.md marks
+// the GUI as scaffolding): there is no auth service in this repo to call.
+// In dev mode (running from source) admit a labelled preview session so the
+// scaffold UI is exercisable; in packaged builds report the gap honestly
+// instead of spawning a script that does not exist.
+async function authenticateUser(username, password, clearanceLevel) {
+  if (isDev) {
+    return {
+      success: true,
+      user: {
+        id: 'ui-preview',
+        username: username || 'preview',
+        clearanceLevel: clearanceLevel || 'UNCLASSIFIED',
+        permissions: ['ui-preview'],
+        lastLogin: new Date().toISOString()
       }
-    });
+    };
+  }
+  return {
+    success: false,
+    error: 'Authentication backend is not integrated yet -- see gui/README.md'
+  };
+}
 
-    pythonProcess.on('error', (error) => {
-      resolve({ success: false, error: 'Authentication service error' });
-    });
-  });
+// Map a GUI operation onto the real CLI contract (main.py). Anything not in
+// this table is an operation the product does not have -- answer honestly.
+const PYTHON_BIN = process.env.CHAMELEON_PYTHON || 'python3';
+const MAIN_PY = path.join(__dirname, '../../main.py');
+
+function cliArgsFor(operation, filePath, options) {
+  switch (operation) {
+    case 'analyze': {
+      // analyze writes a JSON report to --export <path>
+      const exportPath = path.join(
+        os.tmpdir(),
+        `chameleon-analyze-${process.pid}-${Date.now()}.json`
+      );
+      return { args: [MAIN_PY, 'analyze', filePath, '--export', exportPath], exportPath };
+    }
+    case 'normalize': {
+      const args = [MAIN_PY, 'process', '--normalize', filePath, '--json'];
+      if (typeof options.targetPeak === 'number') {
+        args.push('--target-peak', String(options.targetPeak));
+      }
+      return { args };
+    }
+    case 'convert': {
+      const args = [MAIN_PY, 'process', '--convert', filePath, '--json'];
+      if (typeof options.bitDepth === 'number') {
+        args.push('--convert-bit-depth', String(options.bitDepth));
+      }
+      if (typeof options.sampleRate === 'number') {
+        args.push('--convert-sample-rate', String(options.sampleRate));
+      }
+      return { args };
+    }
+    default:
+      return null;
+  }
 }
 
 // Audio processing backend integration
-async function executeAudioOperation(operation, filePath, options) {
-  return new Promise((resolve, reject) => {
-    const args = [
-      path.join(__dirname, '../../main.py'),
-      operation,
-      '--input', filePath,
-      '--format', 'json'
-    ];
+async function executeAudioOperation(operation, filePath, options = {}) {
+  const spec = cliArgsFor(operation, filePath, options);
+  if (!spec) {
+    return { success: false, error: `Unsupported operation: ${operation}` };
+  }
 
-    // Add options to args
-    Object.entries(options).forEach(([key, value]) => {
-      args.push(`--${key}`, value.toString());
-    });
-
-    const pythonProcess = spawn('python3', args);
+  return new Promise((resolve) => {
+    const pythonProcess = spawn(PYTHON_BIN, spec.args);
 
     let output = '';
+    let errOutput = '';
     pythonProcess.stdout.on('data', (data) => {
       output += data.toString();
     });
+    pythonProcess.stderr.on('data', (data) => {
+      errOutput += data.toString();
+    });
 
     pythonProcess.on('close', (code) => {
+      if (spec.exportPath) {
+        try {
+          const report = JSON.parse(fs.readFileSync(spec.exportPath, 'utf8'));
+          resolve({ success: true, result: report });
+        } catch (error) {
+          resolve({ success: false, error: `analysis did not produce a report (exit ${code})` });
+        } finally {
+          fs.unlink(spec.exportPath, () => {});
+        }
+        return;
+      }
+      if (code !== 0) {
+        resolve({
+          success: false,
+          error: errOutput.trim() || `chameleon exited with code ${code}`
+        });
+        return;
+      }
+      // `process --json` prints one JSON object per result line
       try {
-        const result = JSON.parse(output);
-        resolve(result);
+        const lines = output.split('\n').filter((line) => line.trim().startsWith('{'));
+        const last = JSON.parse(lines[lines.length - 1]);
+        resolve({ success: true, result: last });
       } catch (error) {
-        resolve({ success: false, error: 'Invalid processing response' });
+        resolve({ success: false, error: 'unparseable CLI output' });
       }
     });
 
-    pythonProcess.on('error', (error) => {
-      resolve({ success: false, error: 'Processing service error' });
+    pythonProcess.on('error', () => {
+      resolve({ success: false, error: `cannot start ${PYTHON_BIN}` });
     });
   });
 }
 
 // Audit logging
 function logAuditEvent(event) {
-  const fs = require('fs');
   const logFile = path.join(__dirname, '../../logs/gui-audit.log');
   const logEntry = JSON.stringify(event) + '\n';
 
-  fs.appendFile(logFile, logEntry, (err) => {
-    if (err) {
-      console.error('Failed to write audit log:', err);
+  fs.mkdir(path.dirname(logFile), { recursive: true }, (mkdirErr) => {
+    if (mkdirErr) {
+      console.error('Failed to create audit log directory:', mkdirErr);
+      return;
     }
+    fs.appendFile(logFile, logEntry, (err) => {
+      if (err) {
+        console.error('Failed to write audit log:', err);
+      }
+    });
   });
 }
 
@@ -405,10 +467,6 @@ app.on('web-contents-created', (event, contents) => {
   });
 });
 
-// Handle certificate errors (government networks)
-app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
-  // In production, implement proper certificate validation
-  // For now, allow government certificates
-  event.preventDefault();
-  callback(true);
-});
+// No 'certificate-error' handler: the Electron default is to reject invalid
+// certificates, which is the behaviour we want -- blanket-accepting them
+// would silently strip TLS verification from any fetch the renderer makes.

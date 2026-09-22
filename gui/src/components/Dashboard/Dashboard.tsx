@@ -214,13 +214,16 @@ function Dashboard({ user }: DashboardProps) {
         </Box>
       </Box>
 
-      {/* Security Alert */}
+      {/* These panels are populated with generated placeholder data -- say so
+          instead of implying a live backend feed. */}
       <Alert
-        severity="info"
+        severity="warning"
         sx={{ mb: 3 }}
         icon={<SecurityIcon />}
       >
-        <strong>Security Status:</strong> All systems operational. Current classification level: {user?.clearanceLevel}
+        <strong>Simulated data:</strong> metrics, charts, and activity below are
+        generated placeholders -- no backend is wired to this dashboard
+        (see gui/README.md).
       </Alert>
 
       {/* Metrics Cards */}

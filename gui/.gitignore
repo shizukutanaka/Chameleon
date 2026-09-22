@@ -1,0 +1,4 @@
+# Electron/React scaffold artifacts
+node_modules/
+build/
+*.log
