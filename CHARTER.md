@@ -3252,3 +3252,21 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22, which twin drifted):** audit 41 said "diff the guards,
+not the signatures" -- so which way does `analyze_async` diverge from
+`analyze`, and is diverging always a defect?
+**A:** Two drifts, one defect. The validation drift was a defect:
+`analyze_async` skipped four of five checks (size, content, existence,
+readability), so async accepted files sync rejected -- now mirrors.
+The *shape* drift was NOT a defect: it returned a JSON-ready dict the
+api_server layer and tests explicitly consume, and an attempted
+"unification" to AudioInfo broke two real callers in one test run.
+Meanwhile `process_directory_parallel` ignored `output_dir` (verified:
+outputs landed beside inputs) and `StructuredLogger` registered a
+StreamHandler per instance on the shared module logger (verified: N
+instances -> N copies of every record; fixed with a name-matched
+dedup, since the formatter class is defined per call and isinstance()
+can never see an earlier instance's). Lesson: before calling a
+divergence a defect, find who consumes the difference -- a contract
+two callers rely on is a feature wearing a bug's clothes.
