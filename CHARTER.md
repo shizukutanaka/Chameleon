@@ -2471,3 +2471,29 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** `batch` gathers files via `directory.glob(f"{pattern}{ext}")`
+per supported extension. `_filter_safe_files` then accepts anything whose
+`suffix.lower()` is supported. Do the two agree?
+**A:** No -- glob is case-sensitive even on case-insensitive filesystems'
+Python bindings, so `A.WAV`/`C.Wav` never reach the suffix check
+(verified: a dir holding A.WAV + C.Wav + b.wav gathered only b.wav),
+and `batch` reported "no supported audio files" (INPUT) for a directory
+full of .WAV files the pipeline itself would accept. The gather now
+filters `p.suffix.lower() in SUPPORTED_FORMATS` over the full glob --
+the same test the pipeline applies -- instead of trusting glob to
+express the extension set.
+
+**Q (2026-09-22, continued):** `_resolve_output_path` guards
+`--output-dir` with `if not SecurityValidator.validate_directory(...)`.
+Is the guard live, and how does a rejection surface?
+**A:** Dead and misclassified. `validate_directory` *raises*
+SecurityError and returns a Path -- the `if not` branch can never fire,
+and the escaping SecurityError hit `_error_kind`, which mapped it to
+"internal" (it is not a ValueError): a user-supplied bad destination
+surfaced as ERROR(1), the same bucket as a code bug. Verified against a
+real call. `_error_kind` now maps SecurityError to "security" -- the
+same kind `_filter_safe_files` assigns to trusted-root/size rejections
+on inputs -- and the dead `if not` was replaced by a direct call so the
+raise is the rejection. E2E verified: `--output-dir` outside
+CHAMELEON_TRUSTED_ROOTS now exits SECURITY(4), not ERROR(1).

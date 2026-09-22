@@ -164,6 +164,11 @@ def _error_kind(exc: Exception) -> str:
     # PermissionError on a user-supplied output path is an input problem
     # (the destination can't be written); other OSErrors like ENOSPC are
     # genuinely environmental and stay internal.
+    if isinstance(exc, SecurityError):
+        # Trusted-root/extension rejections are the same "security" kind
+        # _filter_safe_files assigns -- including on a user-supplied
+        # destination, which used to surface as an internal ERROR(1).
+        return "security"
     if isinstance(exc, (ValueError, FileNotFoundError, PermissionError)):
         return "input"
     return "internal"
@@ -2071,8 +2076,9 @@ class AudioProcessor:
             destination = Path(explicit_path)
         else:
             if output_dir:
-                if not SecurityValidator.validate_directory(output_dir):
-                    raise ValueError(f"Unsafe output directory: {output_dir}")
+                # validate_directory *raises* SecurityError on rejection --
+                # it returns a Path, so an `if not` guard can never fire.
+                SecurityValidator.validate_directory(output_dir)
                 destination_dir = Path(output_dir)
                 if create_dirs:
                     destination_dir.mkdir(parents=True, exist_ok=True)
@@ -2923,9 +2929,15 @@ async def main():
 
         pattern = "**/*" if args.recursive else "*"
 
-        gathered_files: List[Path] = []
-        for ext in SUPPORTED_FORMATS:
-            gathered_files.extend(directory.glob(f"{pattern}{ext}"))
+        # glob's [] character classes can't express "any of these
+        # extensions", and case-sensitive filesystems make `*.wav` miss
+        # A.WAV even though _filter_safe_files (suffix.lower()) would
+        # accept it -- gather everything and filter on the same lowered
+        # suffix test the pipeline uses.
+        gathered_files: List[Path] = [
+            p for p in directory.glob(pattern)
+            if p.is_file() and p.suffix.lower() in SUPPORTED_FORMATS
+        ]
 
         if not gathered_files:
             print("Warning: no supported audio files found.", file=sys.stderr)
