@@ -138,3 +138,21 @@ def test_stereo_width_rejects_non_finite_and_negative():
     proc = mc.StereoProcessor(mc.StereoConfig(width=1.0, bass_mono=False), 44100)
     sig = np.stack([np.ones(1000), -np.ones(1000)]) * 0.2
     assert np.isfinite(proc.process(sig)).all()
+
+
+def test_unknown_mastering_preset_is_refused_not_defaulted():
+    # create_mastering_preset silently fell through to the gentle default on
+    # any unrecognized name, so master_preset="streamin" mastered a file at
+    # the default -14 LUFS target while claiming the preset ran. Unknown
+    # names now refuse and name the real presets.
+    pytest.importorskip("numpy")
+    import mastering_chain
+
+    with pytest.raises(ValueError, match="Unknown mastering preset"):
+        mastering_chain.create_mastering_preset("streamin")
+
+    for preset in ("default", "streaming", "cd", "vinyl"):
+        assert isinstance(
+            mastering_chain.create_mastering_preset(preset),
+            mastering_chain.MasteringConfig,
+        )

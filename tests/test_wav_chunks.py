@@ -294,3 +294,15 @@ def test_in_place_via_alias_and_symlink_also_refused(tmp_path):
         result = core.normalize(str(src), alias, 0.5)
         assert not result.success, alias
         assert src.read_bytes() == before
+
+
+@pytest.mark.skipif(not main.HAS_NUMPY, reason="_load_wav_basic decode needs numpy")
+@pytest.mark.parametrize("fmt_kw", [{"sample_rate": 0}, {"channels": 0}])
+def test_load_wav_basic_rejects_impossible_fmt_fields(tmp_path, fmt_kw):
+    # A malformed fmt chunk is bad input, not a decoder state: sample_rate=0
+    # used to survive the loader as sr=0 and blow up inside analyze_audio's
+    # len/sr division with a bare ZeroDivisionError; channels=0 came back as
+    # a silently empty "mono" array.
+    wav, _ = write_wav_raw(tmp_path / "bad.wav", frames=TONE, **fmt_kw)
+    with pytest.raises(ValueError, match="invalid (sample rate|channel count)"):
+        main.AudioProcessor()._load_wav_basic(str(wav))

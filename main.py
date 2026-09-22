@@ -726,6 +726,18 @@ class AudioProcessor:
                         raise ValueError("Truncated fmt chunk")
                     audio_format, channels, sample_rate, byte_rate, block_align, bits_per_sample = \
                         struct.unpack('<HHIIHH', fmt_data[:16])
+                    # The fmt fields below are trusted only as far as the
+                    # decoder needs them: sample_rate divides into every
+                    # downstream duration (0 -> ZeroDivisionError inside
+                    # analyze_audio), and channels steers the reshape
+                    # (0 -> a silently empty "mono" array). Both are
+                    # malformed input, so name them here.
+                    if sample_rate <= 0:
+                        raise ValueError(
+                            f"WAV fmt chunk declares invalid sample rate: {sample_rate}")
+                    if channels <= 0:
+                        raise ValueError(
+                            f"WAV fmt chunk declares invalid channel count: {channels}")
                     if audio_format == 0xFFFE:
                         if len(fmt_data) < 40:
                             raise ValueError("Truncated WAVE_FORMAT_EXTENSIBLE fmt chunk")

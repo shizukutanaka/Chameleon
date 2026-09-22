@@ -3252,3 +3252,20 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22):** Two different "what does the caller get back" seams --
+does the stdlib WAV decoder trust every byte of the fmt chunk, and does
+the mastering preset lookup keep its promise when the name is wrong?
+**A:** Both leaked. `_load_wav_basic` unpacked `sample_rate`/`channels`
+and passed them through untouched: `sr=0` survived as metadata and blew
+up as a bare `ZeroDivisionError` inside `analyze_audio`'s `len/sr`
+division, while `channels=0` reshaped the samples into a silently empty
+"mono" array. Both are malformed input, so the loader now raises
+`ValueError` naming the field -- same contract as the chunk-walker
+rejections beside it. `create_mastering_preset` fell through to the
+gentle default on any unrecognized name, so `master_preset="streamin"`
+mastered a file at the default -14 LUFS target while claiming the preset
+ran; unknown names now `ValueError` naming the four real presets,
+matching the refusal rule `AudioRestorer.restore(mode=...)` already
+follows. The CLI parser's `choices` meant neither was reachable from the
+command line -- these were library-contract defects only.
