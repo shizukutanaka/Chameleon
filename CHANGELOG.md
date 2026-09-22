@@ -55,6 +55,11 @@
 
 ### Fixed
 
+- **Hamming-window round-trip lost ~46% amplitude** -- `_compute_stft_manual`
+  honors `window="hamming"` at analysis, but `_compute_istft_manual` only
+  branched on `"hann"` and synthesized with a rectangular window normalized
+  by `ones²`; a 1-second sine came back at 0.540 RMS. The ISTFT now rebuilds
+  the same window the STFT used.
 - **`--convert-bit-depth 32` wrote an IEEE-float WAV that Chameleon
   itself cannot read** -- `save_audio` mapped bit depth 32 to
   soundfile's `FLOAT` subtype (format tag 3), so the converted artifact

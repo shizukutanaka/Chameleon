@@ -2471,3 +2471,17 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+### 2026-09-21 (audit 130) — ISTFT rebuilt the wrong window
+
+**Q:** `_compute_stft_manual` honors `window="hamming"` (np.hamming at
+analysis) but `_compute_istft_manual` only branches on "hann" — what does a
+hamming round-trip return on the no-librosa path?
+
+**A:** **~54% of the amplitude.** Synthesis applied a rectangular window
+and normalized the overlap-add by `ones²`, so the hamming weighting from
+analysis was never undone — verified: a 1-second sine came back at 0.540
+RMS ratio. The synthesis window now mirrors every analysis branch
+(hann/hamming/rectangular); both hamming and hann round-trip at 1.000.
+Regression test pins interior RMS parity for both windows under
+`HAS_LIBROSA=False`.

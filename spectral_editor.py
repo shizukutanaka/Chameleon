@@ -192,9 +192,14 @@ class SpectrogramProcessor:
         hop_length = self.config.hop_length
         win_length = self.config.win_length or n_fft
 
-        # Create window
+        # Create the same window _compute_stft_manual applied at analysis --
+        # it knows "hamming" too, and mismatching them leaves the
+        # synthesized signal hamming-weighted over a rectangular normalizer
+        # (a ~46% amplitude loss on a round-trip, verified).
         if self.config.window == "hann":
             window = np.hanning(win_length)
+        elif self.config.window == "hamming":
+            window = np.hamming(win_length)
         else:
             window = np.ones(win_length)
 
