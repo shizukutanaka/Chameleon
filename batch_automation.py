@@ -83,6 +83,25 @@ class BatchTask:
     priority: int = 0
     tags: List[str] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        # ``timeout`` feeds ``future.result(timeout=...)``: a YAML string
+        # like "30" crashes there with an opaque TypeError, ``true`` parses
+        # as bool and means ~1 second, and a negative value "times out"
+        # instantly. Coerce numerics, reject bool, require positive.
+        if self.timeout is not None:
+            if isinstance(self.timeout, bool):
+                raise ValueError(
+                    "task timeout must be a number of seconds, got bool")
+            try:
+                self.timeout = float(self.timeout)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"task timeout must be a number of seconds, "
+                    f"got {self.timeout!r}") from exc
+            if self.timeout <= 0:
+                raise ValueError(
+                    f"task timeout must be positive, got {self.timeout}")
+
 @dataclass
 class Workflow:
     """Workflow definition"""
@@ -94,6 +113,24 @@ class Workflow:
     max_parallel: int = 4
     conditions: Dict[str, Any] = field(default_factory=dict)
     metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        # ``max_parallel`` becomes ``ThreadPoolExecutor(max_workers=...)``:
+        # a YAML string like "4" TypeErrors inside the executor, and 0 or a
+        # negative value raises a bare ValueError. Coerce, require >= 1.
+        if isinstance(self.max_parallel, bool):
+            raise ValueError(
+                "workflow max_parallel must be an integer >= 1, got bool")
+        try:
+            self.max_parallel = int(self.max_parallel)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"workflow max_parallel must be an integer >= 1, "
+                f"got {self.max_parallel!r}") from exc
+        if self.max_parallel < 1:
+            raise ValueError(
+                f"workflow max_parallel must be >= 1, "
+                f"got {self.max_parallel}")
 
 
 SAFE_MODULE_FUNCTIONS = MappingProxyType({
@@ -890,7 +927,22 @@ class WorkflowBuilder:
         """Build workflow from dictionary"""
         tasks = []
 
-        for task_config in config.get('tasks', []):
+        task_configs = config.get('tasks', [])
+        if not isinstance(task_configs, list):
+            raise ValueError(
+                f"'tasks' must be a list of task entries, "
+                f"got {type(task_configs).__name__}")
+        for task_config in task_configs:
+            if not isinstance(task_config, dict):
+                raise ValueError(
+                    f"each task entry must be a mapping, "
+                    f"got {type(task_config).__name__}")
+            if 'id' not in task_config:
+                raise ValueError("task entry is missing required 'id'")
+            if 'function' not in task_config:
+                raise ValueError(
+                    f"task '{task_config['id']}' is missing "
+                    "required 'function'")
             # Create task function from configuration
             func = self._create_function(task_config.get('function'))
 
@@ -922,6 +974,10 @@ class WorkflowBuilder:
 
     def _create_function(self, func_config: Dict[str, Any]) -> Callable:
         """Create function from configuration"""
+        if not isinstance(func_config, dict):
+            raise ValueError(
+                "task 'function' must be a mapping with a 'type' key, "
+                f"got {type(func_config).__name__}")
         func_type = func_config.get('type', 'builtin')
 
         if func_type == 'builtin':

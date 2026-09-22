@@ -2471,3 +2471,32 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22, audit 70):** The terminal renderers redraw with ``\r``.
+Does a shorter line ever overprint a longer one?
+**A:** Yes -- ``\r`` rewinds the cursor without erasing, so any render
+shorter than its predecessor leaves stale characters on screen.
+``SpinnerAnimation.stop`` prints "✓ Done (0.0s)" (14 cols) over a frame
+like "⠏ Loading audio data for analysis (0.0s)" (40+ cols) -- the tail
+of the last frame survives next to the checkmark. ``ProgressBar`` hits
+the same class when the ETA segment drops at 100% ("P 100.0% [...]
+10/10" over "P 50.0% [...] 5/10 ETA: 0s" leaves " ETA: 0s"). Both now
+pad every emitted line to the longest line emitted so far; verified by
+capturing the byte stream and comparing segment lengths.
+**Q (same audit):** ``WorkflowBuilder.from_dict`` -- do malformed YAML
+values reach the executor as clear config errors or as raw crashes?
+**A:** Four raw crashes, all verified: ``timeout: "30"`` survived as a
+str until ``future.result(timeout=...)`` raised "'>' not supported
+between instances of 'str' and 'int'"; ``timeout: true`` parsed as bool
+and silently meant ~1 second; ``timeout: -1`` failed instantly as
+"timed out after -1 seconds"; ``max_parallel: "4"`` TypeError'd inside
+ThreadPoolExecutor; a non-list ``tasks``, a non-dict task entry, and a
+task missing ``id``/``function`` produced bare AttributeError/KeyError.
+``BatchTask.__post_init__`` now coerces numeric timeouts, rejects bool
+and non-positive values; ``Workflow.__post_init__`` does the same for
+``max_parallel`` (>= 1); ``from_dict`` validates the tasks list shape
+and required keys up front. All report the field name in a ValueError
+-- same convention as the audit-56 ``iterations`` fix. Instant tasks
+masked the string-timeout crash (a finished future skips the timeout
+arithmetic) -- the defect only bites slow tasks, which is why it
+survived.

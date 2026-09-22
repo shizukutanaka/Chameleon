@@ -33,6 +33,7 @@ class ProgressBar:
         self.current = 0
         self.start_time = time.time()
         self.last_update = 0
+        self._last_emit_len = 0
 
     def update(self, amount: int = 1) -> None:
         """Update progress"""
@@ -82,9 +83,13 @@ class ProgressBar:
 
         status = " ".join(parts)
 
-        # Print with carriage return
+        # Print with carriage return. A \r only rewinds the cursor -- it
+        # does not erase, so a shorter line than the previous render leaves
+        # stale characters on screen. Pad to the longest line emitted.
         terminal_width = shutil.get_terminal_size((80, 20)).columns
         status = status[:terminal_width - 1]
+        status = status.ljust(self._last_emit_len)
+        self._last_emit_len = len(status)
         sys.stdout.write(f"\r{status}")
         sys.stdout.flush()
 
@@ -118,6 +123,7 @@ class SpinnerAnimation:
         self.frame_index = 0
         self.running = False
         self.start_time = time.time()
+        self._last_emit_len = 0
 
     def spin(self) -> None:
         """Advance spinner animation"""
@@ -127,15 +133,23 @@ class SpinnerAnimation:
         elapsed = time.time() - self.start_time
         frame = self.FRAMES[self.frame_index % len(self.FRAMES)]
 
-        sys.stdout.write(f"\r{frame} {self.description} ({elapsed:.1f}s)")
+        line = f"{frame} {self.description} ({elapsed:.1f}s)"
+        line = line.ljust(self._last_emit_len)
+        self._last_emit_len = len(line)
+        sys.stdout.write(f"\r{line}")
         sys.stdout.flush()
 
         self.frame_index += 1
 
     def stop(self, message: str = "Done") -> None:
-        """Stop spinner and show final message"""
+        """Stop spinner and show final message.
+
+        The "done" line is almost always shorter than the last frame, so it
+        is padded to overwrite whatever the frame left on screen.
+        """
         elapsed = time.time() - self.start_time
-        sys.stdout.write(f"\r✓ {message} ({elapsed:.1f}s)\n")
+        line = f"✓ {message} ({elapsed:.1f}s)".ljust(self._last_emit_len)
+        sys.stdout.write(f"\r{line}\n")
         sys.stdout.flush()
 
 
