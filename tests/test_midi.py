@@ -247,3 +247,52 @@ def test_analyze_harmony_names_the_key_not_a_pitch_class():
     harmony = analyzer.analyze_harmony(chords, key)
 
     assert harmony["key"] == "C major"
+
+
+def _chord(root, chord_type="major"):
+    from midi_analysis import Chord
+    return Chord(root=root, chord_type=chord_type, notes=[],
+                 start_time=0.0, duration=1.0)
+
+
+def test_suggest_next_chord_names_minor_quality_degrees():
+    """The suggestion table indexed semitone distances into an
+    all-uppercase chromatic numeral list, so every minor-quality
+    target was named as a major chord: 'VI' for vi (A major, not A
+    minor), 'III' for iii, 'II' for ii."""
+    from midi_analysis import MIDIComposer, MusicalKey
+
+    composer = MIDIComposer()
+    key = MusicalKey(tonic=0, mode="major", confidence=0.9)
+
+    suggestions = dict(composer.suggest_next_chord([_chord(0)], key))
+    assert suggestions == {"iii": 0.4, "V": 0.3, "vi": 0.2, "IV": 0.1}
+
+    suggestions = dict(composer.suggest_next_chord([_chord(4, "minor")], key))
+    assert suggestions["ii"] == 0.2
+
+
+def test_suggest_next_chord_uses_minor_mode_numerals():
+    """In a minor key the tonic is 'i' -- the all-uppercase list used to
+    name the same suggestions 'VI' (the major-mode label for that
+    semitone distance)."""
+    from midi_analysis import MIDIComposer, MusicalKey
+
+    composer = MIDIComposer()
+    key = MusicalKey(tonic=9, mode="minor", confidence=0.9)
+
+    suggestions = dict(composer.suggest_next_chord([_chord(9, "minor")], key))
+    assert suggestions == {"III": 0.4, "v": 0.3, "VI": 0.2, "iv": 0.1}
+
+
+def test_suggest_next_chord_fallback_is_mode_aware():
+    """A progression ending on a degree the table doesn't cover falls
+    back to the tonic -- 'i' in a minor key, not 'I'."""
+    from midi_analysis import MIDIComposer, MusicalKey
+
+    composer = MIDIComposer()
+    major = MusicalKey(tonic=0, mode="major", confidence=0.9)
+    minor = MusicalKey(tonic=9, mode="minor", confidence=0.9)
+
+    assert composer.suggest_next_chord([_chord(5)], major) == [("I", 1.0)]
+    assert composer.suggest_next_chord([_chord(5)], minor) == [("i", 1.0)]

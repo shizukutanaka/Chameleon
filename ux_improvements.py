@@ -55,14 +55,18 @@ class ProgressBar:
         if self.total == 0:
             return
 
+        # update()/set_progress() can push current past total; display clamps
+        # it so the bar can never claim >100% or overflow its width.
+        current = min(self.current, self.total)
+
         # Calculate metrics
-        percentage = (self.current / self.total) * 100
+        percentage = (current / self.total) * 100
         elapsed = time.time() - self.start_time
-        speed = self.current / elapsed if elapsed > 0 else 0
-        eta = (self.total - self.current) / speed if speed > 0 else 0
+        speed = current / elapsed if elapsed > 0 else 0
+        eta = (self.total - current) / speed if speed > 0 else 0
 
         # Build progress bar
-        filled = int(self.config.bar_width * self.current / self.total)
+        filled = int(self.config.bar_width * current / self.total)
         bar = '█' * filled + '░' * (self.config.bar_width - filled)
 
         # Build status line
@@ -72,7 +76,7 @@ class ProgressBar:
             parts.append(f"{percentage:5.1f}%")
 
         parts.append(f"[{bar}]")
-        parts.append(f"{self.current}/{self.total}")
+        parts.append(f"{current}/{self.total}")
 
         if self.config.show_speed and speed > 0:
             parts.append(f"{speed:.1f} items/s")
@@ -210,7 +214,11 @@ class TableFormatter:
         if not rows:
             return ""
 
-        align = align or ['left'] * len(headers)
+        # A short align list must not drop columns: zip(widths, align) below
+        # produces one format per element, so headers/cells beyond
+        # len(align) used to vanish from the rendered table entirely.
+        align = list(align or [])
+        align += ['left'] * (len(headers) - len(align))
 
         # Calculate column widths
         widths = [len(h) for h in headers]

@@ -50,3 +50,38 @@ def test_batch_process_show_progress_false_by_default_matches_cli_non_tty(tmp_pa
 
     results = processor.batch_process([str(wav)], "analyze")
     assert results and "error" not in results[0]
+
+
+def test_format_table_short_align_keeps_all_columns():
+    """An align list shorter than the headers silently dropped trailing
+    columns: zip(widths, align) produced fewer format specs than
+    columns, so 'C' and '3' below used to vanish from the output."""
+    from ux_improvements import TableFormatter
+
+    out = TableFormatter.format_table(["A", "B", "C"], [["1", "2", "3"]],
+                                      align=["right"])
+
+    assert "B" in out and "C" in out and "3" in out
+
+
+def test_format_table_extra_align_entries_are_ignored():
+    from ux_improvements import TableFormatter
+
+    out = TableFormatter.format_table(["A"], [["1"]],
+                                      align=["right", "center", "right"])
+
+    assert "A" in out and "1" in out
+
+
+def test_progress_bar_display_clamps_overshoot(capsys):
+    """set_progress()/update() can push current past total; the render
+    used to claim '150.0%' and overflow the bar past its width."""
+    from ux_improvements import ProgressBar
+
+    bar = ProgressBar(total=10, description="t")
+    bar.set_progress(15)
+
+    out = capsys.readouterr().out
+    assert "100.0%" in out
+    assert "150" not in out
+    assert "█" * 41 not in out

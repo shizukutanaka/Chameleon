@@ -19,6 +19,31 @@ _MIN_PLAUSIBLE_TEMPO = 40.0
 _MAX_PLAUSIBLE_TEMPO = 240.0
 _NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 
+# Roman numerals for diatonic scale degrees, keyed by semitone distance from
+# the tonic, per mode. Rendering every suggestion from a single all-uppercase
+# chromatic list names every chord major: vi comes out "VI" (a different
+# chord -- A major, not A minor), ii "II", iii "III", and in a minor key the
+# tonic itself was mislabeled ("VI" for i). Diatonic targets get their real
+# quality; chromatic targets keep the borrowed-numeral spellings, which are
+# conventionally read as major.
+_MAJOR_DEGREE_NUMERALS = {
+    0: "I", 2: "ii", 4: "iii", 5: "IV", 7: "V", 9: "vi", 11: "vii°",
+}
+_MINOR_DEGREE_NUMERALS = {
+    0: "i", 2: "ii°", 3: "III", 5: "iv", 7: "v", 8: "VI", 10: "VII",
+}
+_CHROMATIC_NUMERALS = [
+    "I", "♭II", "II", "♭III", "III", "IV",
+    "♭V", "V", "♭VI", "VI", "♭VII", "VII",
+]
+
+
+def _degree_numeral(degree: int, mode: str) -> str:
+    """Roman numeral for a semitone distance from the tonic, respecting the
+    detected key's mode so minor-quality degrees are not named as major."""
+    table = _MINOR_DEGREE_NUMERALS if mode == "minor" else _MAJOR_DEGREE_NUMERALS
+    return table.get(degree, _CHROMATIC_NUMERALS[degree % 12])
+
 
 @dataclass
 class MIDIConfig:
@@ -736,21 +761,21 @@ class MIDIComposer:
         last_chord = current_progression[-1]
         last_degree = (last_chord.root - key.tonic) % 12
 
-        # Simple Markov chain based on common progressions
+        # Simple Markov chain based on common progressions. Keys and targets
+        # are semitone distances from the tonic.
         transition_probabilities = {
-            0: [(4, 0.4), (7, 0.3), (9, 0.2), (5, 0.1)],  # I -> V, IV, vi, etc.
-            4: [(0, 0.5), (7, 0.3), (2, 0.2)],  # V -> I, ii, etc.
-            7: [(0, 0.4), (4, 0.3), (9, 0.3)],  # V -> I, V, vi
-            9: [(4, 0.4), (0, 0.3), (5, 0.3)]   # vi -> V, I, IV
+            0: [(4, 0.4), (7, 0.3), (9, 0.2), (5, 0.1)],  # I -> iii, V, vi, IV
+            4: [(0, 0.5), (7, 0.3), (2, 0.2)],  # iii -> I, V, ii
+            7: [(0, 0.4), (4, 0.3), (9, 0.3)],  # V -> I, iii, vi
+            9: [(4, 0.4), (0, 0.3), (5, 0.3)]   # vi -> iii, I, IV
         }
 
         suggestions = []
         if last_degree in transition_probabilities:
             for next_degree, prob in transition_probabilities[last_degree]:
-                roman_numerals = ["I", "♭II", "II", "♭III", "III", "IV", "♭V", "V", "♭VI", "VI", "♭VII", "VII"]
-                suggestions.append((roman_numerals[next_degree], prob))
+                suggestions.append((_degree_numeral(next_degree, key.mode), prob))
 
-        return suggestions or [("I", 1.0)]
+        return suggestions or [(_degree_numeral(0, key.mode), 1.0)]
 
     def generate_melody(self, chords: List[Chord], key: MusicalKey, length: float = 8.0) -> List[MIDINote]:
         """Generate a simple melody over chord progression"""

@@ -304,3 +304,30 @@ def test_load_plugin_limits_all_plugin_code_sites(tmp_path, hang_site):
     with pytest.raises(TimeoutError, match="timed out"):
         loader.load_plugin(plugin)
     assert time.monotonic() - t0 < 10
+
+
+def test_discover_plugins_finds_uppercase_py_files(tmp_path):
+    """A plugin written as '.PY' passes the extension policy (which
+    lowercases suffixes) but was silently undiscoverable on a
+    case-sensitive filesystem because discovery globbed '*.py'
+    literally -- the same case-sensitivity defect the batch scanners
+    had for '*.wav'."""
+    (tmp_path / "lower.py").write_text("x = 1\n")
+    (tmp_path / "UPPER.PY").write_text("x = 1\n")
+
+    loader = PluginLoader(PluginConfig(plugin_directories=[str(tmp_path)]))
+    found = {Path(p).name for p in loader.discover_plugins()}
+
+    assert found == {"lower.py", "UPPER.PY"}
+
+
+def test_discover_plugins_skips_py_named_directories(tmp_path):
+    """iterdir + is_file also fixes a latent hole: glob('*.py') matched
+    directories, so a 'pkg.py/' directory used to reach the loader."""
+    (tmp_path / "fake.py").mkdir()
+    (tmp_path / "real.py").write_text("x = 1\n")
+
+    loader = PluginLoader(PluginConfig(plugin_directories=[str(tmp_path)]))
+    found = {Path(p).name for p in loader.discover_plugins()}
+
+    assert found == {"real.py"}

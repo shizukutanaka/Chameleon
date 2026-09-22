@@ -339,8 +339,15 @@ class PluginLoader:
             if not resolved_dir or not resolved_dir.exists():
                 continue
 
-            for candidate in resolved_dir.glob("*.py"):
-                if self._is_safe_plugin_file(candidate):
+            # The extension policy in _is_safe_plugin_file is case-insensitive
+            # ('.PY' passes), but a case-sensitive '*.py' glob meant a plugin
+            # written on a case-insensitive filesystem was silently
+            # undiscoverable here. Match the policy: any file whose suffix
+            # case-folds to '.py'.
+            for candidate in resolved_dir.iterdir():
+                if (candidate.is_file()
+                        and candidate.suffix.lower() == ".py"
+                        and self._is_safe_plugin_file(candidate)):
                     plugin_files.append(candidate)
 
             for item in resolved_dir.iterdir():
