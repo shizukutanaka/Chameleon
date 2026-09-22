@@ -2471,3 +2471,12 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+- **(Q105) Emptiness checks on user input must not rely on truthiness.**
+  `bs1770_loudness` gated its public entry points with `if not samples:` /
+  `if not channels:` / `if not channel:` — on numpy arrays (the format audio
+  callers actually hold) `not ndarray` raises "truth value is ambiguous",
+  crashing every entry point even though the rest of the pipeline
+  (enumerate/slicing/len) accepts arrays end-to-end. `len(x) == 0` admits
+  both lists and arrays, and array input now produces identical
+  measurements to list input. Internal truthiness checks on built lists
+  were left alone.
