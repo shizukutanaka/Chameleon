@@ -699,14 +699,27 @@ class StereoProcessor:
         """Setup filters for bass mono processing"""
         if HAS_SCIPY and self.config.bass_mono:
             nyquist = self.sample_rate / 2
+            # butter() requires 0 < Wn < 1: a mono_freq at/below 0 or at/above
+            # Nyquist crashed construction inside scipy with a raw filter error
+            # (verified: mono_freq=0 -> 'critical frequencies must be greater
+            # than 0'). Same guard class as ParametricEQ.add_band's freq check.
+            if not 0 < self.config.mono_freq < nyquist:
+                raise ValueError(
+                    f"mono_freq must be in (0, {nyquist:g}) Hz at "
+                    f"{self.sample_rate} Hz; got {self.config.mono_freq}"
+                )
             cutoff = self.config.mono_freq / nyquist
             self.mono_b, self.mono_a = signal.butter(2, cutoff, 'low')
 
     def process(self, audio: np.ndarray) -> np.ndarray:
         """Process stereo audio"""
         if audio.ndim == 1:
-            # Mono input - create stereo
-            return np.array([audio, audio])
+            # Mono input: stereo processing is a no-op by definition (the
+            # side channel would be exactly 0). The previous version
+            # duplicated the signal to (2, N) -- silently turning a mono
+            # master into dual-mono stereo downstream, doubling the output
+            # channel count (verified: MasteringChain.process(mono) -> (2, N)).
+            return audio
 
         if audio.shape[0] != 2:
             # More than 2 channels - just return first 2

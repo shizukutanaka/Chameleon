@@ -127,15 +127,42 @@ def test_bass_mono_disabled_keeps_side_bass():
 
 # --- shape handling -------------------------------------------------------
 
-def test_mono_input_is_duplicated_to_stereo():
+def test_mono_input_stays_mono():
+    # Widening a mono signal is a no-op -- the side channel is exactly 0 --
+    # so the honest result is the input unchanged. The previous version
+    # duplicated it to (2, N), silently turning a mono master into dual-mono
+    # stereo downstream (verified through MasteringChain.process too).
     processor = mastering_chain.StereoProcessor(
         mastering_chain.StereoConfig(), SAMPLE_RATE)
     signal = _tone(1000.0)
 
     result = processor.process(signal)
 
-    assert result.shape[0] == 2
-    assert np.allclose(result[0], result[1])
+    assert result.ndim == 1
+    assert np.array_equal(result, signal)
+
+
+def test_mastering_chain_keeps_mono_input_mono():
+    # The default config enables the stereo stage; a mono file mastered with
+    # defaults must not come out stereo.
+    chain = mastering_chain.MasteringChain(
+        mastering_chain.MasteringConfig(), SAMPLE_RATE)
+    signal = _tone(1000.0, seconds=0.5)
+
+    processed, _ = chain.process(signal)
+
+    assert processed.ndim == 1
+    assert processed.shape == signal.shape
+
+
+def test_mono_freq_is_validated_against_nyquist():
+    # butter() requires 0 < Wn < 1: unvalidated mono_freq crashed inside
+    # scipy at construction (verified: 0 -> 'critical frequencies must be
+    # greater than 0'). Now a ValueError naming the bound.
+    for bad in (0.0, -120.0, SAMPLE_RATE / 2, SAMPLE_RATE):
+        with pytest.raises(ValueError, match="mono_freq"):
+            mastering_chain.StereoProcessor(
+                mastering_chain.StereoConfig(mono_freq=bad), SAMPLE_RATE)
 
 
 def test_the_stereo_enhancement_config_field_is_inert():

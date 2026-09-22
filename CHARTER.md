@@ -2471,3 +2471,17 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22, continued):** Does the mastering chain preserve a mono
+input's channel count, and is `StereoConfig.mono_freq` a guarded input?
+**A:** Neither held. `StereoProcessor.process` duplicated 1-D input to
+(2, N) "stereo" -- and since `MasteringConfig.stereo_enabled` defaults to
+True, `chain.process(mono)` emitted dual-mono stereo, silently doubling
+the output channel count of every mastered mono file (verified end to
+end). Widening mono is a no-op anyway (side == 0), so the stage now
+returns mono input untouched. `mono_freq` was also passed straight into
+`signal.butter`, so <=0 or >=Nyquist crashed construction with a raw
+scipy error; it is now validated in `setup_filters` with a ValueError
+naming the bound -- the same guard class as ParametricEQ's frequency
+check. The old `test_mono_input_is_duplicated_to_stereo` pinned the bug,
+not a requirement; it now asserts the identity result.
