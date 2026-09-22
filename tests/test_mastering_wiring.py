@@ -117,3 +117,44 @@ def test_mastering_rejects_multichannel_instead_of_dropping_channels():
     )
     with pytest.raises(ValueError, match="mono or stereo"):
         chain.process(quad)
+
+
+def test_compressor_state_does_not_leak_between_signals():
+    # `envelope`/`gain_reduction` are instance state that used to persist
+    # across process() calls: mastering an album track-by-track through
+    # one MasteringChain meant track N+1's head inherited track N's
+    # compression (measured: same quiet input, 0.039 max diff between a
+    # reused and a fresh instance). process() is per-signal, so per-call
+    # state must reset.
+    np = pytest.importorskip("numpy")
+    import mastering_chain
+
+    sr = 44100
+    loud = np.sin(2 * np.pi * 200 * np.arange(sr) / sr) * 0.9
+    quiet = np.sin(2 * np.pi * 200 * np.arange(sr) / sr) * 0.05
+    cfg = mastering_chain.CompressorConfig(
+        threshold=-20.0, ratio=4.0, attack=5.0, release=50.0, makeup_gain=0.0)
+
+    reused = mastering_chain.Compressor(cfg, sr)
+    reused.process(loud)
+    out_reused, _ = reused.process(quiet)
+    out_fresh, _ = mastering_chain.Compressor(cfg, sr).process(quiet)
+    assert np.array_equal(out_reused, out_fresh)
+
+
+def test_mastering_dither_is_deterministic():
+    # _apply_dither drew from the global np.random: the same input
+    # produced different output bytes every run (~6e-5). Dither is
+    # noise by design, not nondeterminism -- seeded default_rng(0)
+    # keeps both, matching the core writer convention.
+    np = pytest.importorskip("numpy")
+    import mastering_chain
+
+    audio = np.sin(2 * np.pi * 440 * np.arange(44100) / 44100) * 0.3
+    chain = mastering_chain.MasteringChain(mastering_chain.MasteringConfig(
+        eq_enabled=False, compressor_enabled=False,
+        limiter_enabled=False, stereo_enabled=False), 44100)
+    for dtype in ("tpdf", "rpdf", "shaped"):
+        a = chain._apply_dither(audio, dtype)
+        b = chain._apply_dither(audio, dtype)
+        assert np.array_equal(a, b), dtype

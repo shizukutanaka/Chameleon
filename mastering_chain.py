@@ -484,7 +484,17 @@ class Compressor:
         self.gain_reduction = 0.0
 
     def process(self, audio: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        """Process audio through compressor, return (audio, gain_reduction)"""
+        """Process audio through compressor, return (audio, gain_reduction)
+
+        Each call processes one complete signal, so the envelope follower
+        and gain-reduction smoother start fresh. They used to persist
+        across calls -- mastering an album track-by-track through one
+        MasteringChain meant track N+1's head inherited track N's
+        compression state (measured: same input, 0.039 max diff between a
+        reused and a fresh instance).
+        """
+        self.envelope = 0.0
+        self.gain_reduction = 0.0
         if audio.ndim == 1:
             return self._process_mono(audio)
         else:
@@ -924,13 +934,18 @@ class MasteringChain:
             )
             dither_type = "tpdf"
 
+        # Seeded RNG: mastering output must be reproducible. The global
+        # np.random made the same input produce different output bytes on
+        # every run (measured ~6e-5) -- same defect class as the core
+        # writer and the apply_dither opt-in flag, fixed elsewhere.
+        rng = np.random.default_rng(0)
         if dither_type == "tpdf":
             # Triangular PDF dither
-            dither = np.random.uniform(-1, 1, audio.shape) + np.random.uniform(-1, 1, audio.shape)
+            dither = rng.uniform(-1, 1, audio.shape) + rng.uniform(-1, 1, audio.shape)
             dither = dither / 65536  # For 16-bit
         elif dither_type == "rpdf":
             # Rectangular PDF dither
-            dither = np.random.uniform(-1, 1, audio.shape) / 65536
+            dither = rng.uniform(-1, 1, audio.shape) / 65536
         else:
             return self._apply_shaped_dither(audio)
 
@@ -958,7 +973,7 @@ class MasteringChain:
         flat = np.asarray(audio, dtype=np.float64).reshape(-1)
         out = np.empty_like(flat)
         err = 0.0
-        rand = np.random.uniform
+        rand = np.random.default_rng(0).uniform  # seeded, see _apply_dither
         for i in range(flat.size):
             d = (rand(-1, 1) + rand(-1, 1)) / 65536
             # v carries the previous quantization error but NOT the dither:

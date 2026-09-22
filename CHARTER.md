@@ -2471,3 +2471,27 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+**Q:** Audit 80: is `MasteringChain`'s per-signal contract actually
+per-signal, and is its "dithered" output reproducible?
+**A:** Two leaks, both verified before fixing. `Compressor.process()`
+kept `self.envelope`/`self.gain_reduction` on the instance across calls
+-- mastering an album track-by-track through one chain meant track
+N+1's head inherited track N's compression state (measured: the same
+quiet input processed by a loud-driven vs fresh instance differed by
+0.039). `process()` takes one complete signal, so per-call state now
+resets at the top; the limiter's own delay-buffer leak (the previous
+file's tail samples emitted at the next file's head, 0.89 diff) lives
+in `_process_mono`/`_process_stereo`, the site the limiter rework on
+the open audit-30 branch already owns, so it is intentionally not
+re-fixed here. Second: `_apply_dither`/`_apply_shaped_dither` drew from
+the global `np.random`, so the same mastered input produced different
+output bytes every run (~6e-5) -- dither is noise by design, not
+nondeterminism; both paths now use `default_rng(0)`, the convention the
+core writer and the apply_dither flag already follow (third site of
+the same class). Also audited and found honest: `StereoProcessor`'s
+bass-mono mid/side math, the auto_adjust deep-copy that prevents
+makeup-gain accumulation, `create_mastering_preset`'s bands (the
+vinyl preset passes a `gain` its lowpass band ignores -- cosmetic,
+left alone), `bs1770_loudness`'s gating order and true-peak polyphase
+resampler, and `ux_improvements`' remaining surface (every gap there
+is owned by an open sibling branch).
