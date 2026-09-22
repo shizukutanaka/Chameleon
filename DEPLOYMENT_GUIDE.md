@@ -10,7 +10,9 @@ git clone https://github.com/shizukutanaka/Chameleon.git
 cd Chameleon
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+# requirements.txt is intentionally empty -- install the package itself.
+# No extras needed for the CLI core; add [api] to run the server.
+pip install -e .
 
 # Test
 python validation_test.py
@@ -22,8 +24,11 @@ python validation_test.py
 # Build
 docker build -t chameleon:latest .
 
-# Run
-docker run -v /audio:/data chameleon:latest analyze /data/file.wav
+# Run the CLI (the entrypoint routes "cli" to `python main.py`)
+docker run -v /audio:/data chameleon:latest cli analyze /data/file.wav
+
+# Or run the API server on its default port 8000
+docker run -p 8000:8000 chameleon:latest server
 ```
 
 ### Production Server (30 minutes)
@@ -44,7 +49,9 @@ cd /opt/chameleon
 # Deploy application
 sudo -u chameleon git clone https://github.com/shizukutanaka/Chameleon.git .
 sudo -u chameleon python3 -m venv .venv
-sudo -u chameleon .venv/bin/pip install -r requirements.txt
+# The API server needs the [api] extra (fastapi/uvicorn); requirements.txt
+# ships empty by design and would leave the service unable to start.
+sudo -u chameleon .venv/bin/pip install -e '.[api]'
 
 # Create systemd service
 sudo cat > /etc/systemd/system/chameleon.service <<EOF
@@ -57,6 +64,9 @@ Type=simple
 User=chameleon
 WorkingDirectory=/opt/chameleon
 Environment="PATH=/opt/chameleon/.venv/bin"
+# '-' prefix = optional file; without this line the .env created below is
+# never read and the CHAMELEON_* variables in it silently do nothing.
+EnvironmentFile=-/opt/chameleon/.env
 ExecStart=/opt/chameleon/.venv/bin/python main.py server --host 0.0.0.0 --port 8080
 Restart=always
 RestartSec=10
@@ -94,12 +104,19 @@ openssl req -x509 -newkey rsa:4096 -nodes \
 # For production, use Let's Encrypt
 sudo certbot certonly --standalone -d audio.example.com
 
-# Update service to use TLS
-# Add to systemd service:
-# ExecStart=/opt/chameleon/.venv/bin/python main.py server \
-#   --host 0.0.0.0 --port 8443 \
-#   --cert /etc/letsencrypt/live/audio.example.com/fullchain.pem \
-#   --key /etc/letsencrypt/live/audio.example.com/privkey.pem
+# `main.py server` accepts only --host/--port/--workers -- it cannot serve
+# TLS itself (an earlier version of this guide documented --cert/--key
+# flags that never existed; the command exits 2 on them). Terminate TLS at
+# a reverse proxy in front, e.g. nginx:
+#
+#   server {
+#       listen 8443 ssl;
+#       ssl_certificate     /etc/letsencrypt/live/audio.example.com/fullchain.pem;
+#       ssl_certificate_key /etc/letsencrypt/live/audio.example.com/privkey.pem;
+#       location / { proxy_pass http://127.0.0.1:8080; }
+#   }
+#
+# On Kubernetes the Ingress manifest already terminates TLS via cert-manager.
 ```
 
 ### Firewall Configuration
@@ -121,30 +138,30 @@ sudo ufw enable
 ### Apply Manifests
 
 ```bash
-# Create namespace
-kubectl create namespace chameleon
+# Apply configuration (creates the `chameleon-system` namespace and all
+# resources -- passing a different `-n` makes kubectl reject the apply).
+kubectl apply -f k8s-deployment.yaml
 
-# Create secrets
+# Then provision real credentials over the manifest's placeholder Secret.
+# Name the keys exactly what the code reads (CHAMELEON_* env vars); a
+# literal like `api-key` is injected but never consulted, which leaves the
+# optional API-key check off while looking configured.
 kubectl create secret generic chameleon-secrets \
-  --from-literal=api-key=$(openssl rand -hex 32) \
-  -n chameleon
-
-# Apply configuration
-kubectl apply -f k8s-deployment.yaml -n chameleon
+  --from-literal=CHAMELEON_API_KEY=$(openssl rand -hex 32) \
+  -n chameleon-system --dry-run=client -o yaml | kubectl apply -f -
+kubectl rollout restart deployment/chameleon-deployment -n chameleon-system
 ```
 
 ### Scale Deployment
 
 ```bash
-# Manual scaling
-kubectl scale deployment chameleon --replicas=5 -n chameleon
+# Manual scaling -- the Deployment is named `chameleon-deployment`
+kubectl scale deployment chameleon-deployment --replicas=5 -n chameleon-system
 
-# Autoscaling
-kubectl autoscale deployment chameleon \
-  --cpu-percent=70 \
-  --min=2 \
-  --max=10 \
-  -n chameleon
+# Autoscaling: the manifest already ships an HPA (min 3, max 50). Patch it
+# rather than `kubectl autoscale`, which would create a second, competing HPA:
+kubectl patch hpa chameleon-hpa -n chameleon-system \
+  -p '{"spec":{"maxReplicas":10}}'
 ```
 
 ## Monitoring Setup
