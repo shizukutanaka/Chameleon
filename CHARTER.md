@@ -2471,3 +2471,25 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** Do the install path and the MIDI guide describe what
+the code actually does -- or a product the docs imagined?
+**A:** Three mismatches, all verified by running things. The install
+scripts print "Python 3.8+ is required but not found" but only check
+that a python binary exists -- a stubbed 3.7 sailed through to
+"Installation complete" on a project declaring requires-python >=3.8.
+Both scripts and QUICKSTART ran `pip install -r requirements.txt` as
+"installing dependencies" while the file is intentionally comments-only;
+the real step is `pip install -e .` (registers `chameleon`, verified in
+a scratch venv), so the scripts now do that and the doc says so. And
+MIDI_USAGE.md sent users to `pip install numpy mido` for generation
+that is pure-stdlib `struct` (mido is imported nowhere -- verified by
+running generate/compose on a numpy-free install), showed a bare
+`load_audio()` call that does not exist as a function, listed
+`enable_composition_ai` as "Enable AI features" when the field's own
+comment says inert (CHARTER §4 forbids AI claims), and advertised a
+"style-based parameter adjustment" that exists in no signature. The
+remaining claims checked out: every MIDIConfig field, the method
+surface (parse_midi_from_audio/detect_key/detect_chords/analyze_harmony
+/suggest_next_chord/generate_melody/generate_midi_file), the Markov
+transition table, and the monophonic-YIN caveat.

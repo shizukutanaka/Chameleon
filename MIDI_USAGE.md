@@ -151,7 +151,8 @@ config = MIDIConfig(
     velocity_threshold=64,          # Note velocity threshold
     chord_detection_threshold=0.3,  # Chord confidence threshold
     harmony_analysis_depth=4,       # Analysis depth
-    enable_composition_ai=True      # Enable AI features
+    enable_composition_ai=True      # Inert: accepted for config compatibility;
+                                    # there is no AI in this module (CHARTER §4)
 )
 ```
 
@@ -178,11 +179,13 @@ JSON format including:
 
 ```python
 # 1. Load and analyze audio
-audio, sr = load_audio("song.wav")
+from main import AudioProcessor, ProcessingConfig
+processor = AudioProcessor(ProcessingConfig())
+audio, sr = processor.load_audio("song.wav")   # needs the [audio] extra
 analyzer = MIDIAnalyzer()
 
 # 2. Extract MIDI
-notes = analyzer.parse_midi_from_audio(audio, sr)
+notes = analyzer.parse_midi_from_audio(audio.tolist(), sr)
 
 # 3. Analyze musical content
 key = analyzer.detect_key(notes)
@@ -215,7 +218,6 @@ analyzer.generate_midi_file(notes, "extracted.mid")
 - Markov chain-based chord suggestions
 - Scale-aware melody generation
 - Rhythm pattern analysis
-- Style-based parameter adjustment
 
 ## Performance Tips
 
@@ -227,12 +229,14 @@ analyzer.generate_midi_file(notes, "extracted.mid")
 ## Requirements
 
 - Python 3.8+
-- NumPy (for audio analysis)
-- Mido (for MIDI file generation)
+- `midi generate` and `midi compose` need nothing else — the MIDI file
+  writer is pure standard library (`struct`); no mido or other package is
+  involved.
+- `midi extract` / `midi analyze --input` read audio through
+  `AudioProcessor.load_audio`, which needs the `[audio]` extra (numpy):
 
-Install with:
 ```bash
-pip install numpy mido
+pip install -e .[audio]
 ```
 
 ## Integration

@@ -16,6 +16,14 @@ if (Get-Command python -ErrorAction SilentlyContinue) {
 }
 
 $pythonVersion = & $pythonCmd -c "import sys; print('.'.join(map(str, sys.version_info[:2])))"
+$versionParts = $pythonVersion.Split('.')
+if ([int]$versionParts[0] -lt 3 -or
+    ([int]$versionParts[0] -eq 3 -and [int]$versionParts[1] -lt 8)) {
+    # The banner above promises this gate exists -- enforce it: the code
+    # declares requires-python = ">=3.8" in pyproject.toml.
+    Write-Host "❌ Python 3.8+ is required (found $pythonVersion)" -ForegroundColor Red
+    exit 1
+}
 Write-Host "✓ Python $pythonVersion found" -ForegroundColor Green
 
 # Create virtual environment
@@ -30,7 +38,10 @@ Write-Host "📦 Creating virtual environment..." -ForegroundColor Yellow
 Write-Host ""
 Write-Host "📥 Installing dependencies..." -ForegroundColor Yellow
 pip install --upgrade pip -q
-pip install -r requirements.txt -q
+# requirements.txt is intentionally comments-only (the core is stdlib-only,
+# per CHARTER) -- the real install step is the package itself, which also
+# registers the `chameleon` command.
+pip install -e .
 
 Write-Host ""
 Write-Host "✅ Installation complete!" -ForegroundColor Green

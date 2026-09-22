@@ -1,10 +1,10 @@
 # Chameleon — Product Analysis (Strengths, Weaknesses, Improvement Backlog)
 
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
-**Version:** 1.1.0 · **Tests:** re-run 2026-09-21 on Python 3.12, green in
-all three configurations — **477 passed** on a bare install (stdlib only,
-33 skipped), **557** with numpy (scipy/librosa/soundfile blocked, 33
-skipped), **662** with numpy + scipy + librosa + soundfile + fastapi
+**Version:** 1.1.0 · **Tests:** re-run 2026-09-22 on Python 3.12, green in
+all three configurations — **487 passed** on a bare install (stdlib only,
+33 skipped), **567** with numpy (scipy/librosa/soundfile blocked, 33
+skipped), **672** with numpy + scipy + librosa + soundfile + fastapi
 (5 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
@@ -84,7 +84,13 @@ re-verified, not trusted.
   for it. A static audit of the suite in the same pass found no vacuous
   tests — no `assert True`, no `x == x`, nothing swallowing exceptions, and the
   only three assertion-free tests are "must not raise" checks where the call
-  itself is the assertion.
+  itself is the assertion. The 2026-09-22 pass verified its own guards the
+  same way: stashing the install-script and doc fixes left nine of ten new
+  tests red (an unenforced Python-3.8 gate, a no-op `requirements.txt`
+  install step, a `mido` dependency nothing imports, a `load_audio` that
+  does not exist, an "AI features" gloss CHARTER §4 forbids, and a style
+  parameter that exists nowhere); the surviving pin asserts a valid
+  interpreter passes the new version gate.
 - **DSP claims are checked against ground truth, not eyeballed.** The
   regression suite asserts measured quantities — a clean sine survives
   restoration bit-exactly, a clipped signal comes back 14.5 dB closer to the
