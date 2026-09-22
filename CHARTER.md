@@ -2471,3 +2471,22 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+## Socratic audit 87
+**Q:** Does every number the UX layer prints actually exist? `format_duration`
+   claims "Xm Ys" -- can Y be 60?
+**A:** Yes. The minutes branch did `secs = seconds % 60` then `{secs:.0f}`:
+   formatting-rounded, not value-rounded. 59.5 <= secs < 60 rendered as "60"
+   without carrying -- format_duration(179.7) printed "2m 60s" and
+   format_duration(3599.6) printed "59m 60s", durations that cannot exist.
+   The helper is orphaned but shipped and demoed in `__main__`; the minutes
+   branch now carries the rounded 60 into `minutes` (179.7 -> "3m 0s",
+   3599.6 -> "60m 0s"). The seconds and hours branches were checked and do
+   not share the defect: sub-minute output rounds into a float ("60.0s" at
+   59.96 -- legal), and the hours branch drops seconds entirely.
+   Audited and found honest this cycle: plugin_system's metadata-required-
+   field validation and unload/execute dispatch; batch_automation's
+   literal/condition AST evaluators and `_import_safe_function` allowlist;
+   midi_analysis `_merge_overlapping` empty-guard. The remaining suspects
+   (format_table ragged rows, ProgressBar >100%, midi banners, error_rate)
+   are already owned by open sibling PRs and were not re-fixed.

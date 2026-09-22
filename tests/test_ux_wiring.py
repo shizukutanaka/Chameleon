@@ -50,3 +50,16 @@ def test_batch_process_show_progress_false_by_default_matches_cli_non_tty(tmp_pa
 
     results = processor.batch_process([str(wav)], "analyze")
     assert results and "error" not in results[0]
+
+
+def test_format_duration_carries_rounded_seconds():
+    # `secs = seconds % 60` with `{secs:.0f}` rounding displayed 59.5+ as
+    # "60" without carrying -- format_duration(179.7) read "2m 60s" and
+    # format_duration(3599.6) read "59m 60s", durations that do not exist.
+    from ux_improvements import format_duration
+    assert format_duration(179.7) == "3m 0s"
+    assert format_duration(3599.6) == "60m 0s"
+    # Unchanged on values that never straddled the boundary.
+    assert format_duration(125.4) == "2m 5s"
+    assert format_duration(59.96) == "60.0s"
+    assert format_duration(3660.4) == "1h 1m"
