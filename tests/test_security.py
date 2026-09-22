@@ -392,6 +392,18 @@ class TestSecureOpen:
             with ops.secure_open(target, "x"):
                 pass
 
+    def test_dot_only_names_fall_back_to_untitled(self):
+        # A scrub result made only of dots/whitespace names a special
+        # directory entry, not a file: "..", "." and friends used to pass
+        # through untouched and would resolve to another directory when
+        # joined into a path.
+        for name in ("..", ".", "...", "   ", " .. "):
+            assert SecurityValidator.sanitize_filename(name) == "untitled"
+
+    def test_names_with_real_content_survive(self):
+        assert SecurityValidator.sanitize_filename(".hidden") == ".hidden"
+        assert SecurityValidator.sanitize_filename("a.wav") == "a.wav"
+
 
 class TestSecurityConfigFromEnvironment:
     def test_invalid_max_file_size_falls_back_to_default(self, monkeypatch):
