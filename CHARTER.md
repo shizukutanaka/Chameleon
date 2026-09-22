@@ -2471,3 +2471,25 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** Why did the mastering limiter eat the head and tail of the
+signal, and why did a mono array crash the "stereo" paths?
+
+**A:** Measured before touching anything: `Limiter.process` on a 1 s tone
+emitted `lookahead_samples` zeros at the head and dropped the last
+`lookahead_samples` input samples entirely -- the emit index pointed at the
+delayed stream position instead of the input's own. `Compressor.process` and
+`Limiter.process` dispatched on `audio.ndim == 2`, so a (1,N) mono array took
+the stereo path and crashed on `audio[1]`; `lookahead=0` crashed on an empty
+`.max()` window; `bass_mono` with `mono_freq >= nyquist` surfaced scipy's raw
+"beyond nyquist" ValueError with no parameter name. Fixed in
+`mastering_chain.py`: the emit index is `i + lookahead` over
+`[delay_buffer | audio | zeros(lookahead)]` so every input sample is emitted
+at its own position and the tail flushes through the appended zeros; the
+lookahead window uses `max(1, L)`; dispatch checks `shape[0] == 1`; and a
+`mono_freq` outside (0, Nyquist) is a configuration ValueError naming the
+parameter and the bound. Five tests in `tests/test_mastering_wiring.py`;
+four were reverted-and-failed against the unfixed code (the fifth is a
+brickwall preservation guard). `ux_improvements.py` and `personal_config.py`
+were also audited this round and found honest (bounded registries, atomic
+writes, NotImplementedError over fake success -- prior-round hardening held).

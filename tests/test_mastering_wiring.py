@@ -117,3 +117,73 @@ def test_mastering_rejects_multichannel_instead_of_dropping_channels():
     )
     with pytest.raises(ValueError, match="mono or stereo"):
         chain.process(quad)
+
+
+def test_limiter_preserves_head_and_tail():
+    # The delay-line was emitted as output: lookahead_samples of leading
+    # zeros were written and the same count of input samples dropped off
+    # the tail -- ~5 ms lost at both ends of every mastered file.
+    np = pytest.importorskip("numpy")
+    import mastering_chain
+
+    sr = 44100
+    limiter = mastering_chain.Limiter(
+        mastering_chain.LimiterConfig(threshold=-1.0, lookahead=5.0,
+                                      release=50.0), sr)
+    audio = np.full(sr, 0.5)
+    audio[-100:] = 0.3
+    out = limiter.process(audio)
+
+    la = limiter.lookahead_samples
+    assert len(out) == len(audio)
+    assert not (out[:la] == 0).all()
+    assert np.allclose(out[-100:], 0.3, atol=1e-3)
+
+
+def test_limiter_still_brickwalls():
+    np = pytest.importorskip("numpy")
+    import mastering_chain
+
+    sr = 44100
+    limiter = mastering_chain.Limiter(
+        mastering_chain.LimiterConfig(threshold=-1.0, lookahead=5.0), sr)
+    out = limiter.process(np.full(sr, 0.95))
+    assert out.max() <= 10 ** (-1.0 / 20) + 1e-6
+
+
+def test_limiter_zero_lookahead_does_not_crash():
+    # lookahead=0 left an empty slice for .max() -- a legal config value
+    # that crashed with ValueError.
+    np = pytest.importorskip("numpy")
+    import mastering_chain
+
+    limiter = mastering_chain.Limiter(
+        mastering_chain.LimiterConfig(threshold=-1.0, lookahead=0.0), 44100)
+    out = limiter.process(np.full(1000, 0.5))
+    assert out.shape == (1000,)
+
+
+def test_two_dimensional_mono_does_not_take_the_stereo_path():
+    # (1, N) arrays are mono; the stereo path reads audio[1] and used to
+    # IndexError on them.
+    np = pytest.importorskip("numpy")
+    import mastering_chain
+
+    mono2d = np.zeros((1, 44100))
+    out, _curve = mastering_chain.Compressor(
+        mastering_chain.CompressorConfig(), 44100).process(mono2d)
+    assert out.shape == (1, 44100)
+    assert mastering_chain.Limiter(
+        mastering_chain.LimiterConfig(), 44100).process(mono2d).shape == (1, 44100)
+
+
+def test_bass_mono_freq_above_nyquist_fails_clearly():
+    # scipy.butter's raw ValueError was the only message a bad mono_freq
+    # produced -- now a configuration error names the parameter.
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("scipy")
+    import mastering_chain
+
+    with pytest.raises(ValueError, match="mono_freq"):
+        mastering_chain.StereoProcessor(
+            mastering_chain.StereoConfig(mono_freq=30000), 44100)
