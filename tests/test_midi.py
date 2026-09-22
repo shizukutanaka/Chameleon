@@ -1,6 +1,6 @@
 """Tests for MIDI musical analysis (chord and key detection)."""
 
-from midi_analysis import MIDIAnalyzer, MIDINote
+from midi_analysis import Chord, MIDIAnalyzer, MIDINote, MusicalKey
 
 
 def _c_major_progression():
@@ -247,3 +247,49 @@ def test_analyze_harmony_names_the_key_not_a_pitch_class():
     harmony = analyzer.analyze_harmony(chords, key)
 
     assert harmony["key"] == "C major"
+
+
+def _chord(root, chord_type="major", start=0.0):
+    return Chord(root=root, chord_type=chord_type, notes=[root],
+                 start_time=start, duration=1.0)
+
+
+def test_analyze_harmony_reports_scale_degrees_not_semitone_offsets():
+    # The "degree" field used to report the chromatic offset + 1: I-IV-V in
+    # C came out as degrees 1, 6, 8 -- the semitone gaps, not the scale
+    # positions that the Roman numerals right beside them (I, IV, V)
+    # already encode. A field named degree must mean scale degree.
+    analyzer = MIDIAnalyzer()
+    key = MusicalKey(tonic=0, mode="major", confidence=1.0)
+    chords = [_chord(0, start=0.0), _chord(5, start=1.0), _chord(7, start=2.0)]
+
+    harmony = analyzer.analyze_harmony(chords, key)
+
+    assert [c["roman"] for c in harmony["progression"]] == ["I", "IV", "V"]
+    assert [c["degree"] for c in harmony["progression"]] == [1, 4, 5]
+
+
+def test_analyze_harmony_chromatic_root_has_no_scale_degree():
+    # A root outside the key's scale has no scale degree -- the Roman
+    # numeral ("♭V") already carries the chromatic information. Reporting
+    # semitone+1 there was mislabelled twice over.
+    analyzer = MIDIAnalyzer()
+    key = MusicalKey(tonic=0, mode="major", confidence=1.0)
+
+    harmony = analyzer.analyze_harmony([_chord(6)], key)
+
+    assert harmony["progression"][0]["roman"] == "♭V"
+    assert harmony["progression"][0]["degree"] is None
+
+
+def test_analyze_harmony_minor_key_degrees_follow_minor_scale():
+    # Degrees index into the detected mode's own scale, not the major
+    # pattern: i-iv-v in A minor (Am, Dm, Em -- roots 9, 2, 4) is 1-4-5.
+    analyzer = MIDIAnalyzer()
+    key = MusicalKey(tonic=9, mode="minor", confidence=1.0)
+    chords = [_chord(9, "minor", 0.0), _chord(2, "minor", 1.0),
+              _chord(4, "minor", 2.0)]
+
+    harmony = analyzer.analyze_harmony(chords, key)
+
+    assert [c["degree"] for c in harmony["progression"]] == [1, 4, 5]

@@ -2471,3 +2471,27 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** `analyze_harmony` returns a `degree` field beside the
+Roman numeral. I-IV-V in C major reported degrees 1, 6, 8 -- is the field
+measuring what it names?
+**A:** No. `degree` was `(chord.root - key.tonic) % 12 + 1` -- the semitone
+offset relabelled as a scale degree, while the `roman` field right beside
+it (I, IV, V) already carried the correct chromatic-numeral mapping. The
+two fields disagreed by construction. `degree` now indexes the root into
+`key.scale_notes` (the detected mode's own pitch classes): a diatonic
+chord reports its true scale position (1, 4, 5) and a chromatic root
+reports `None` -- the Roman numeral ("bV") already says why. Nothing in
+the codebase consumed the field (`suggest_next_chord` keeps its own
+semitone-keyed Markov table, untouched). Same audit: `PluginLoader`'s
+`cache_plugins` wrote an entry on every successful load but a "hit" only
+logged `Loading cached plugin` and re-executed the module anyway --
+verified by counting top-level executions: two loads, two executions,
+zero cache benefit plus a false log line. A hit now returns the
+still-registered live instance (skipping module exec *and* `initialize`,
+both plugin code); an unloaded plugin drops out of the registry and falls
+through to a real re-load. Audited and found honest: the `plugins` CLI
+audit/list paths, `midi` command flag guards, `api_server`'s upload
+persist/resolve/session-cleanup chain, `_enforce_rate_limit`'s bounded
+window cleanup, `DeepFileInspector`'s chunk walk, and
+`ux_improvements`/`spectral_utils` tail helpers.

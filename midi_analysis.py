@@ -495,8 +495,15 @@ class MIDIAnalyzer:
         roman_numerals = ["I", "♭II", "II", "♭III", "III", "IV", "♭V", "V", "♭VI", "VI", "♭VII", "VII"]
 
         for chord in chords:
-            # Calculate scale degree
+            # Chromatic offset drives the Roman numeral (the table is
+            # chromatic-aware); the numeric "degree" field must be the
+            # chord root's position *within the scale* -- I-IV-V in C is
+            # degrees 1, 4, 5, not the semitone offsets 1, 6, 8 this field
+            # previously reported. A non-diatonic root has no scale degree.
             degree = (chord.root - key.tonic) % 12
+            root_pc = chord.root % 12
+            scale_degree = (key.scale_notes.index(root_pc) + 1
+                            if root_pc in key.scale_notes else None)
 
             # Determine quality based on chord type and key
             if chord.chord_type in ["minor", "min7", "min9"]:
@@ -512,7 +519,7 @@ class MIDIAnalyzer:
             progression.append({
                 "chord": chord.name,
                 "roman": roman,
-                "degree": degree + 1,
+                "degree": scale_degree,
                 "quality": quality,
                 "duration": chord.duration,
                 "confidence": chord.confidence

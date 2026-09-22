@@ -304,3 +304,61 @@ def test_load_plugin_limits_all_plugin_code_sites(tmp_path, hang_site):
     with pytest.raises(TimeoutError, match="timed out"):
         loader.load_plugin(plugin)
     assert time.monotonic() - t0 < 10
+
+
+def _write_counter_plugin(path):
+    path.write_text(
+        "import plugin_system\n"
+        "plugin_system.EXECS.append(1)\n"
+        "from plugin_system import AudioEffectPlugin, PluginMetadata\n"
+        "class C(AudioEffectPlugin):\n"
+        "    def get_metadata(self):\n"
+        "        return PluginMetadata(name='c', version='1.0.0', author='t',\n"
+        "                              description='t', category='effect')\n"
+        "    def initialize(self, config):\n"
+        "        return True\n"
+        "    def cleanup(self):\n"
+        "        pass\n"
+        "    def process_audio(self, audio_data, sample_rate, **params):\n"
+        "        return audio_data\n"
+    )
+
+
+def test_plugin_cache_hit_reuses_live_instance_without_reexec(tmp_path):
+    """`cache_plugins` used to write on every load and read never: a hit
+    logged "Loading cached plugin" and then re-executed the module anyway
+    (verified: module top-level ran once per load, producing a second
+    instance). A real cache hit must return the still-registered instance
+    and skip re-running plugin code entirely."""
+    import plugin_system as ps
+    ps.EXECS = []
+    plugin = tmp_path / "counter.py"
+    _write_counter_plugin(plugin)
+    loader = PluginLoader(PluginConfig(cache_plugins=True))
+
+    first = loader.load_plugin(str(plugin))
+    assert first is not None
+    assert len(ps.EXECS) == 1
+
+    second = loader.load_plugin(str(plugin))
+    assert second is first                 # the live registered instance
+    assert len(ps.EXECS) == 1              # module NOT re-executed
+
+
+def test_plugin_cache_stale_entry_falls_through_to_real_load(tmp_path):
+    """An unloaded plugin drops out of the live registry; a reload of the
+    same bytes must re-execute rather than hand back a cleaned-up
+    instance."""
+    import plugin_system as ps
+    ps.EXECS = []
+    plugin = tmp_path / "counter.py"
+    _write_counter_plugin(plugin)
+    loader = PluginLoader(PluginConfig(cache_plugins=True))
+
+    first = loader.load_plugin(str(plugin))
+    del loader.plugins["c"]                # simulate unload
+
+    third = loader.load_plugin(str(plugin))
+    assert third is not None
+    assert third is not first
+    assert len(ps.EXECS) == 2
