@@ -304,3 +304,38 @@ def test_load_plugin_limits_all_plugin_code_sites(tmp_path, hang_site):
     with pytest.raises(TimeoutError, match="timed out"):
         loader.load_plugin(plugin)
     assert time.monotonic() - t0 < 10
+
+
+# --- committed demo plugins: honest parameter handling + per-call state ----
+
+def test_tone_generator_rejects_an_unadvertised_waveform(tmp_path):
+    # waveform='bogus' used to fall through to sine, so a caller asking for
+    # something outside the advertised options got a sine tone back labelled
+    # as the thing they requested.
+    from demo_plugins.tone_generator import ToneGeneratorPlugin
+
+    plugin = ToneGeneratorPlugin()
+    with pytest.raises(ValueError, match="bogus"):
+        plugin.generate_audio(0.01, 8000, waveform='bogus')
+
+    # ...and the advertised set still generates.
+    for name in ("sine", "square", "sawtooth", "triangle"):
+        out = plugin.generate_audio(0.01, 8000, waveform=name)
+        assert len(out) == 80
+
+
+def test_simple_reverb_state_does_not_bleed_across_calls(tmp_path):
+    # The delay buffer is per-call state: one call processes one independent
+    # signal. Carrying it over on the instance echoed the first call's tail
+    # into the second call's output -- verified: silence returned
+    # [0.81, 0.648, ...] from the previous call's contents.
+    from demo_plugins.simple_reverb import SimpleReverbPlugin
+
+    plugin = SimpleReverbPlugin()
+    plugin.initialize({})
+    plugin.process_audio([0.9] * 200, 44100,
+                         room_size=0.0001, decay=0.8, wet_level=0.9)
+
+    out = plugin.process_audio([0.0] * 50, 44100,
+                               room_size=0.0001, decay=0.8, wet_level=0.9)
+    assert all(abs(s) < 1e-9 for s in out)

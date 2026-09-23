@@ -71,6 +71,13 @@ class SimpleReverbPlugin(AudioEffectPlugin):
         decay = params.get('decay', 0.3)
         wet_level = params.get('wet_level', 0.3)
 
+        # The delay buffer is per-call state: one call processes one
+        # independent signal, so carrying it over on the instance echoes
+        # the previous signal's tail into this one's start (verified:
+        # a silent second call emitted the first call's last samples).
+        self.delay_buffer = [0.0] * self.buffer_size
+        self.buffer_index = 0
+
         # Adjust buffer size based on room size
         delay_samples = int(room_size * self.buffer_size)
         if delay_samples == 0:
