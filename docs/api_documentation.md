@@ -63,7 +63,7 @@ Authorization: Bearer <token>
 }
 ```
 
-- `file_name` には `/audio/upload` の応答で受け取った `stored_name` を指定します。URL を指定した場合は `SecurityValidator.validate_url()` により拒否されます。
+- `file_name` には `/audio/upload` の応答で受け取った `stored_name` を指定します。URL や未登録の名前を渡すと `stored_name` として解決されず、アップロード領域の名前検証により 4xx で拒否されます（URL のフェッチ自体は行いません）。
 - 成功応答はメタデータ (`duration`, `sample_rate`, `peak_level` など) を含む `AudioAnalysisResponse` です。
 
 ### 3.3 オーディオ正規化
@@ -153,10 +153,10 @@ GET /health
 
 ## 4. セキュリティ留意事項 / Security Notes
 
-- **絶対パス**: API に送信するファイルパスは絶対パスである必要があります。`SecurityValidator.validate_file_path()` が確認します。
+- **アップロード名**: API にはファイルシステムパスではなく `/audio/upload` が発行した `stored_name` を渡します。`SecurityValidator.validate_file_path()` によりアップロード領域内に限定されます。
 - **URL 検証**: 外部 URL はサポートされません。アップロード前に独自に検証し、HTTPS のみを利用してください。
-- **監査ログ**: すべての操作は `~/.chameleon/logs/api-audit.log` に記録されます。ローテーションは `SecurityValidator` により管理され、世界書き込み不可の権限が要求されます。
-- **レート制限**: `SECURITY_CONFIG['enable_rate_limiting']` が `True` の場合、組織ポリシーに従って API ゲートウェイ側で制御してください。
+- **監査ログ**: すべての操作は `~/.chameleon/logs/api-audit.log` に JSON 行で追記されます（自動ローテーションはありません）。ディレクトリは `SecurityValidator` で検証され、ファイルは 0o600 で作成されます。
+- **レート制限**: `SECURITY_CONFIG['enable_rate_limiting']` が `True` の場合、アプリ内でも `rate_limit_max_requests` / `rate_limit_window_seconds` のウィンドウ制限が適用されます（超過時は 429 応答）。ゲートウェイ側の追加制御は組織ポリシーに従ってください。
 - **セッション管理**: `SECURITY_CONFIG['session_timeout']` および `SECURITY_CONFIG['max_session_idle_seconds']` により期限切れとアイドルタイムアウトを強制します。
 - **ファイル所有権**: `/audio/*` および `/batch/*` 系エンドポイントは、アップロード時に記録された所有者とリクエスト送信者を突き合わせてアクセスを制御します。`SECRET` 以上のクリアランスを持つ利用者のみが他者のファイルへアクセスできます。
 - **監査追跡**: 各操作は `X-Request-ID` を含む監査ログとして永続化されます。相関分析のため同一 ID を用いてクライアント側ログを保持してください。

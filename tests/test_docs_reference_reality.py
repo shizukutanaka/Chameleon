@@ -123,3 +123,45 @@ def test_real_imports_are_not_flagged():
     for module in ("core", "main", "bs1770_loudness", "security_validator"):
         assert (PROJECT_ROOT / f"{module}.py").is_file()
     assert "numpy" in EXTERNAL and "pytest" in EXTERNAL
+
+
+def test_doc_referenced_validator_methods_actually_exist():
+    """The module-name guard above cannot see *method*-level fiction.
+    docs/en/error_recovery.md taught `SecurityValidator.audit_log()` and a
+    `validate_url()` for months; docs/api_documentation.md repeated the
+    same `SecurityValidator.validate_url()` — none of which has ever
+    existed. This pins every validator-API reference a doc makes:
+    prose `SecurityValidator.<name>`, bare `validate_*()`/`audit_*()`
+    calls, and `validator.<attr>` accesses inside fenced python blocks
+    that bind `validator = SecurityValidator()`."""
+    import ast
+    from security_validator import SecurityValidator
+
+    violations = []
+    for path in _documentation_files():
+        text = path.read_text(encoding="utf-8")
+        rel = _relative(path)
+        for match in re.finditer(r"SecurityValidator\.(\w+)", text):
+            name = match.group(1)
+            if not hasattr(SecurityValidator, name):
+                line = text[:match.start()].count("\n") + 1
+                violations.append(f"{rel}:{line}: `SecurityValidator.{name}`")
+        for match in re.finditer(r"\b(validate_\w+|audit_\w+)\(", text):
+            name = match.group(1)
+            if not hasattr(SecurityValidator, name):
+                line = text[:match.start()].count("\n") + 1
+                violations.append(f"{rel}:{line}: `{name}()`")
+        for block in re.findall(r"```python\n(.*?)```", text, re.S):
+            if "SecurityValidator" not in block:
+                continue
+            for node in ast.walk(ast.parse(block)):
+                if (isinstance(node, ast.Attribute)
+                        and isinstance(node.value, ast.Name)
+                        and node.value.id == "validator"
+                        and not hasattr(SecurityValidator, node.attr)):
+                    violations.append(f"{rel}: `validator.{node.attr}`")
+
+    assert not violations, (
+        "Documentation names SecurityValidator methods that do not exist. A "
+        "reader copies them into a terminal and the failure looks like their "
+        "mistake:\n  " + "\n  ".join(sorted(set(violations))))
