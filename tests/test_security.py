@@ -437,3 +437,22 @@ def test_sanitize_filename_keeps_names_with_real_characters():
     assert SecurityValidator.sanitize_filename("a..b") == "a..b"
     assert SecurityValidator.sanitize_filename("___...") == "___..."
     assert SecurityValidator.sanitize_filename("x") == "x"
+
+
+class TestResolveOutputPath:
+    """``AudioProcessor._resolve_output_path`` intends to raise ``ValueError``
+    for an unsafe ``output_dir`` -- but ``validate_directory`` refuses by
+    raising ``SecurityError``, never by returning falsy, so the ``if not``
+    guard could never reach it (the same dead-check class as the batch
+    call sites). The refusal must surface as the ValueError the code
+    declares, not as the validator's own exception."""
+
+    def test_unsafe_output_dir_raises_value_error(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CHAMELEON_TRUSTED_ROOTS", str(tmp_path))
+        monkeypatch.setattr(SecurityValidator, "_default_instance", None)
+        import main
+        processor = main.AudioProcessor()
+        with pytest.raises(ValueError, match="Unsafe output directory"):
+            processor._resolve_output_path(
+                str(tmp_path / "in.wav"), suffix="_n.wav",
+                explicit_path=None, output_dir="/tmp", create_dirs=False)

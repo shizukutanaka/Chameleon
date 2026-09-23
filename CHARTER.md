@@ -3252,3 +3252,21 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22, continued):** Are declared configuration knobs and refusal
+paths actually wired, or do some exist only as surface?
+**A:** Two remnants of the same "declared != real" class. First,
+`AudioProcessor._resolve_output_path` carried the audit-120 dead-check
+shape in main.py: `if not validate_directory(output_dir)` can never fire
+(the API raises SecurityError, never returns falsy), so an unsafe output
+dir escaped as the validator's own exception instead of the declared
+`ValueError("Unsafe output directory")` -- verified: SecurityError surfaced
+where callers expect the documented type. It now catches and re-raises as
+ValueError. Second, four config fields were decorative:
+`SpectrogramConfig.overlap`/`zero_padding` and
+`SpectralEditConfig.precision`/`quality` are never read by any code path --
+`SpectrogramConfig(overlap=0.9)` used to construct a "configuration" that
+changed nothing. Both dataclasses now refuse non-default values for
+unimplemented fields with a ValueError naming the field (defaults still
+construct; the real knobs are unaffected). Gate: 478 bare / 561 numpy /
+666 full, all +4/-/--; mutation-verified against pre-fix code.
