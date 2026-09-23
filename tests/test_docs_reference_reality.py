@@ -94,8 +94,76 @@ def test_no_doc_tells_you_to_run_a_script_that_does_not_exist():
         + "\n  ".join(violations))
 
 
+def test_documented_chameleon_env_vars_exist_in_source():
+    """Every CHAMELEON_* variable a doc names must be read by real code.
+
+    docs/api_documentation.md once listed CHAMELEON_SECURITY_LOG_DIR and
+    CHAMELEON_BASE_URL -- neither was ever read anywhere, so a deployer
+    setting them to relocate the audit log or set the server address got
+    a silent no-op, and the doc's "must review before deploy" wording made
+    the mistake look like theirs. Today every documented variable is a
+    literal in a root-level module.
+    """
+    source_blobs = [
+        path.read_text(encoding="utf-8")
+        for path in PROJECT_ROOT.glob("*.py")
+        if not path.name.startswith("test_")
+    ]
+    violations = []
+    pattern = re.compile(r"CHAMELEON_[A-Z_]+")
+
+    for path in _documentation_files():
+        text = path.read_text(encoding="utf-8")
+        for match in pattern.finditer(text):
+            var = match.group(0)
+            if any(var in blob for blob in source_blobs):
+                continue
+            line = text[:match.start()].count("\n") + 1
+            violations.append(f"{_relative(path)}:{line}: `{var}`")
+
+    assert not violations, (
+        "Documentation names CHAMELEON_* environment variable(s) that no "
+        "code reads -- a silent no-op for whoever sets them:\n  "
+        + "\n  ".join(violations))
+
+
+def test_no_doc_runs_a_test_module_that_does_not_exist():
+    """`python -m unittest X` / `python -m pytest X` must name a real target.
+
+    api_documentation.md told maintainers to run
+    `python -m unittest test_framework.SecurityTests` -- test_framework
+    has never existed, so the command fails at collection. The first
+    dotted segment must resolve to a real file or directory (unittest's
+    own `discover` subcommand is the one legal exception).
+    """
+    violations = []
+    pattern = re.compile(
+        r"python3?\s+-m\s+(?:unittest|pytest)\s+([A-Za-z_][\w./]*)")
+
+    for path in _documentation_files():
+        text = path.read_text(encoding="utf-8")
+        for match in pattern.finditer(text):
+            target = match.group(1)
+            module = target.split(".")[0].split("::")[0].rstrip("/")
+            if module == "discover":
+                continue
+            if (PROJECT_ROOT / f"{module}.py").is_file():
+                continue
+            if (PROJECT_ROOT / module).is_dir():
+                continue
+            if (PROJECT_ROOT / "tests" / f"{module}.py").is_file():
+                continue
+            line = text[:match.start()].count("\n") + 1
+            violations.append(f"{_relative(path)}:{line}: `{match.group(0)}`")
+
+    assert not violations, (
+        "Documentation invokes test module(s) that do not exist:\n  "
+        + "\n  ".join(violations))
+
+
 @pytest.mark.parametrize("ghost", ["chameleon_audio", "audio_tool", "enterprise_cli",
-                                   "chameleon_cli", "security_tools"])
+                                   "chameleon_cli", "security_tools",
+                                   "test_framework"])
 def test_the_named_ghosts_really_are_absent(ghost):
     # Pinned by name because each was documented for months. If one is ever
     # genuinely added, delete its entry here rather than leaving a test that

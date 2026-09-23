@@ -4,7 +4,7 @@
 
 ## 1. 接続要件 / Base URL
 
-- **Base URL**: `CHAMELEON_BASE_URL` 環境変数で指定した HTTPS エンドポイントを使用します。各組織のリバースプロキシまたは API ゲートウェイで公開してください。ローカル開発時は `http://localhost:8080`、本番環境では必ず HTTPS を使用してください。
+- **Base URL**: サーバーが起動したアドレスを使用します（`main.py server --host/--port`、既定はローカル開発向け `http://localhost:8000`）。本番環境では各組織のリバースプロキシまたは API ゲートウェイで公開し、必ず HTTPS を使用してください。
 - **リクエスト ID**: すべての呼び出しで `X-Request-ID` ヘッダーを送信すると追跡が容易になります。未指定の場合はサーバーが自動生成し、応答ヘッダーに反映します。
 - すべてのクライアントは TLS 証明書を検証し、HTTP を使用しないでください。
 - CORS は `CHAMELEON_ALLOWED_ORIGINS` で列挙した HTTPS ドメインのみ許可されます。
@@ -188,9 +188,9 @@ GET /health
 - **事前検証**: アップロード前にローカルでファイルサイズと拡張子をチェックしてください。
 - **監査対策**: `Authorization` トークンの発行・失効を必ず監査ログに記録し、インシデント時には `api-audit.log` を保全してください。
 - **一時ファイルの処理**: バッチ処理完了後は `/audio/download` で必要ファイルを取得し、`download` 応答後は不要な一時データを削除する運用を検討してください。
-- **環境変数**: `CHAMELEON_ALLOWED_ORIGINS`、`CHAMELEON_ALLOWED_HOSTS`、`CHAMELEON_UPLOAD_CHUNK_SIZE`、`CHAMELEON_SECURITY_LOG_DIR` 等をデプロイ時に必ず見直してください。
+- **環境変数**: `CHAMELEON_API_KEY`、`CHAMELEON_ALLOWED_ORIGINS`、`CHAMELEON_ALLOWED_HOSTS`、`CHAMELEON_UPLOAD_DIR`、`CHAMELEON_UPLOAD_CHUNK_SIZE` 等をデプロイ時に必ず見直してください。監査ログは `~/.chameleon/logs/api-audit.log` に追記されます（出力先を変える環境変数はありません）。
 - **クリアランス上限**: ログイン要求の `clearance_level` はクライアントが自己申告します。`CHAMELEON_API_MAX_CLEARANCE`（既定 `TOP_SECRET`）でセッションが請求できる上限をデプロイ側で抑えられます（例: `UNCLASSIFIED` を設定すると特権操作は全セッションで不可）。
 
 ---
 
-このドキュメントは `security_validator.py` のポリシーと `api_server.py` の実装に基づいています。API の拡張や設定変更を行う場合は、同ファイルを確認し、必要に応じてテスト (`python -m unittest test_framework.SecurityTests`) を追加してください。
+このドキュメントは `security_validator.py` のポリシーと `api_server.py` の実装に基づいています。API の拡張や設定変更を行う場合は、同ファイルを確認し、必要に応じてテスト (`python -m pytest tests/test_api_routes.py tests/test_security.py`) を追加してください。
