@@ -476,15 +476,37 @@ class PluginLoader:
     })
     _DANGEROUS_REF_NAMES = _DANGEROUS_CALL_NAMES | frozenset({
         # Referenced-but-not-called is the aliasing bypass: `e = eval` or
-        # `getattr(__builtins__, "ev" + "al")` never puts the name in Call
-        # position, so a Call-only check misses it entirely.
-        "__builtins__",
+        # `g = getattr` never puts the name in Call position, so a Call-only
+        # check misses it entirely. getattr/setattr/delattr are denied as
+        # references too — the special getattr() call check below is what
+        # handled literal names; a bare alias slipped past it (verified:
+        # `g = getattr` audited clean and ran unrestricted).
+        "__builtins__", "getattr", "setattr", "delattr",
     })
     _DANGEROUS_ATTR_CALLS = frozenset({
         ("importlib", "import_module"),
         ("importlib", "__import__"),
         ("importlib.util", "spec_from_file_location"),
         ("importlib.util", "module_from_spec"),
+    })
+    # Names an allowed module may re-export that are themselves capability
+    # modules or dangerous objects. `import plugin_system` passes the import
+    # allowlist, but plugin_system legitimately imports os/importlib/pathlib —
+    # `plugin_system.os.system(...)` then runs with no `import` statement for
+    # the audit to see (verified: a probe plugin reached os.system this way).
+    # The same shape applies to `from plugin_system import os`, so both the
+    # ImportFrom alias and the attribute access are checked against this set.
+    _CAPABILITY_EXPORTED_NAMES = frozenset({
+        "os", "sys", "subprocess", "socket", "urllib", "requests", "ftplib",
+        "smtplib", "telnetlib", "xmlrpc", "importlib", "ctypes", "shutil",
+        "pathlib", "pickle", "marshal", "builtins", "gc", "inspect",
+        "threading", "multiprocessing", "resource", "sqlite3", "io",
+        "signal", "mmap", "pty", "code", "runpy", "traceback", "sysconfig",
+        "site", "platform", "concurrent", "asyncio",
+        # Non-module exports that are capabilities in their own right.
+        "Path", "Thread", "Process", "Pool", "ThreadPoolExecutor",
+        "ProcessPoolExecutor", "Popen", "open", "eval", "exec", "compile",
+        "getattr", "setattr", "delattr", "__import__",
     })
 
     def _check_module_safety(self, plugin_path: Path):
@@ -506,6 +528,11 @@ class PluginLoader:
         except SyntaxError as exc:
             raise SecurityError(f"Plugin contains invalid syntax: {exc}") from exc
 
+        # Names bound to imported modules, including one-hop aliases
+        # (`ps = plugin_system`) — attribute checks below use this set to spot
+        # re-exported capabilities like `plugin_system.os`.
+        module_bindings = self._module_bindings(parsed)
+
         for node in ast.walk(parsed):
             if isinstance(node, ast.Import):
                 for alias in node.names:
@@ -516,6 +543,15 @@ class PluginLoader:
                 module_name = (node.module or '').split('.')[0]
                 if module_name and not self.sandbox.is_safe_import(module_name):
                     raise SecurityError(f"Unsafe import detected: {module_name}")
+                for alias in node.names:
+                    # `from plugin_system import os` re-binds a capability the
+                    # module imported for its own use; '*' brings in every
+                    # re-export at once — neither is auditable.
+                    if alias.name == "*" or alias.name in self._CAPABILITY_EXPORTED_NAMES:
+                        raise SecurityError(
+                            f"Unsafe import detected: {alias.name} is a re-exported capability "
+                            f"of {module_name or 'the module'}, not an allowed name"
+                        )
             elif isinstance(node, ast.Call):
                 func = node.func
                 if isinstance(func, ast.Name) and func.id in self._DANGEROUS_CALL_NAMES:
@@ -548,9 +584,11 @@ class PluginLoader:
                 "__globals__", "__builtins__", "__subclasses__", "__mro__",
                 "__bases__", "__base__", "__dict__", "__class__",
                 "__code__", "__getattribute__", "__func__", "__self__",
-                # frame access: e.__traceback__.tb_frame.f_globals needs
-                # no import and reaches __builtins__ (verified: a probe
-                # plugin passed audit with exactly this chain)
+                # __loader__/__spec__ re-open an import path with no `import`
+                # statement (loader.exec_module / spec.loader), and
+                # __traceback__-style frame access reaches f_globals →
+                # __builtins__ (verified: probes passed audit via both chains).
+                "__loader__", "__spec__",
                 "__traceback__", "__context__", "__cause__", "tb_frame",
                 "tb_next", "f_globals", "f_builtins", "f_locals",
                 "f_back", "gi_frame", "cr_frame", "ag_frame",
@@ -558,10 +596,45 @@ class PluginLoader:
                 raise SecurityError(
                     f"Unsafe attribute access detected: .{node.attr} can be used for sandbox escape"
                 )
+            elif (isinstance(node, ast.Attribute)
+                    and isinstance(node.value, ast.Name)
+                    and node.value.id in module_bindings
+                    and node.attr in self._CAPABILITY_EXPORTED_NAMES):
+                raise SecurityError(
+                    f"Unsafe attribute access detected: {node.value.id}.{node.attr} "
+                    "is a re-exported capability"
+                )
             elif isinstance(node, ast.Name) and node.id in self._DANGEROUS_REF_NAMES:
                 raise SecurityError(
                     f"Unsafe reference detected: {node.id} can be used to bypass the import sandbox"
                 )
+
+    @staticmethod
+    def _module_bindings(parsed: ast.AST) -> set:
+        """Names bound to an imported module: `import x` bindings plus one-hop
+        aliases (`y = x`). A plain `from x import y` is excluded — y is the
+        imported object, not the module."""
+        bindings: set = set()
+        for node in ast.walk(parsed):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    bindings.add(alias.asname or alias.name.split('.')[0])
+        # Alias pass: `ps = plugin_system` makes `ps.os` the same escape as
+        # `plugin_system.os`. Repeat to a fixpoint so `a = b = ps`-style
+        # chains settle regardless of statement order.
+        changed = True
+        while changed:
+            changed = False
+            for node in ast.walk(parsed):
+                if (isinstance(node, ast.Assign)
+                        and len(node.targets) == 1
+                        and isinstance(node.targets[0], ast.Name)
+                        and isinstance(node.value, ast.Name)
+                        and node.value.id in bindings
+                        and node.targets[0].id not in bindings):
+                    bindings.add(node.targets[0].id)
+                    changed = True
+        return bindings
 
     @staticmethod
     def _dotted_name(node: ast.AST) -> Optional[str]:

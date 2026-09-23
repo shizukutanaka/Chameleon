@@ -62,6 +62,7 @@ def _encode_pcm_sample(value, bits: int) -> bytes:
 
 def build_wav_bytes(*, frames, sample_rate: int = 44100, channels: int = 1,
                     bits: int = 16, fmt_variant: str = "16", format_tag: int = 1,
+                    channel_mask: int = 0,
                     pre_data_chunks=(), post_data_chunks=()):
     """Hand-assemble a RIFF/WAVE byte blob for parser robustness tests.
 
@@ -91,7 +92,7 @@ def build_wav_bytes(*, frames, sample_rate: int = 44100, channels: int = 1,
         fmt_body = base_fmt + struct.pack('<H', 0)
     elif fmt_variant == "extensible":
         guid = FLOAT_SUBFORMAT_GUID if format_tag == 3 else PCM_SUBFORMAT_GUID
-        fmt_body = base_fmt + struct.pack('<HHI', 22, bits, 0) + guid
+        fmt_body = base_fmt + struct.pack('<HHI', 22, bits, channel_mask) + guid
     else:
         raise ValueError(f"unknown fmt_variant: {fmt_variant}")
 

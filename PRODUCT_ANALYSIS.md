@@ -1,10 +1,10 @@
 # Chameleon — Product Analysis (Strengths, Weaknesses, Improvement Backlog)
 
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
-**Version:** 1.1.0 · **Tests:** re-run 2026-09-21 on Python 3.12, green in
-all three configurations — **477 passed** on a bare install (stdlib only,
-33 skipped), **557** with numpy (scipy/librosa/soundfile blocked, 33
-skipped), **662** with numpy + scipy + librosa + soundfile + fastapi
+**Version:** 1.1.0 · **Tests:** re-run 2026-09-23 on Python 3.12, green in
+all three configurations — **496 passed** on a bare install (stdlib only,
+37 skipped), **580** with numpy (scipy/librosa/soundfile blocked, 33
+skipped), **685** with numpy + scipy + librosa + soundfile + fastapi
 (5 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
@@ -257,12 +257,17 @@ bugs to fix but problems without a known-good answer in this codebase.
   the stale workflow, **not** product health.
 - **Plugin sandbox is AST-only, not a runtime boundary** (`CHARTER.md` §9).
   `plugin_system.py` blocks dangerous patterns at parse time but
-  `exec_module()` still runs with full builtins. Closing this fully is a real
-  architectural project, not a patch.
-- **Loudness scope, honestly bounded:** BS.1770-4 channel weighting applies
-  when a file carries dwChannelMask (surrounds +1.5 dB, LFE excluded);
-  plain-PCM WAVs have no layout to apply, so their channels weight equally.
-  Pure-Python true-peak costs ~0.4 s per 65k-sample bounded prefix.
+  `exec_module()` still runs with full builtins — the allowlisted
+  `import plugin_system` re-export escapes (`plugin_system.os`,
+  `from plugin_system import os`, `.__loader__`, bare `getattr` aliases)
+  are closed since 2026-09-23, but a computed attribute chain still gets
+  through. Closing this fully is a real architectural project, not a patch.
+- **Loudness scope, honestly bounded:** BS.1770 channel weighting applies
+  to all four EBU-Mode readings (I, M, S — and LRA, which is defined over
+  the S series) when a file carries dwChannelMask (surrounds +1.5 dB, LFE
+  excluded); plain-PCM WAVs have no layout to apply, so their channels
+  weight equally. Pure-Python true-peak costs ~0.4 s per 65k-sample
+  bounded prefix.
 
 ### Orphaned assets awaiting a disposition decision (deletion needs user OK)
 Measured 2026-08-25: `batch_automation.py`, `spectral_editor.py` (both kept by
@@ -336,8 +341,8 @@ here because they need a user decision first.
 | ~~P3~~ | ~~Consolidate the three spectral-subtraction implementations~~ | ~~Low~~ | ~~M~~ | ~~Med~~ | **DECLINED 2026-09-19** — evaluated in CHARTER §9: not three copies of one algorithm. The shared part is a 4-line kernel; the estimators are semantically different (auto noise-floor vs quiet-decile-with-refusal vs user-selected noise print) and the STFT backends differ (scipy / librosa / SpectralProcessor). A shared helper would dedupe ~4 lines at the cost of a new abstraction across three working DSP paths — the kind of unnecessary abstraction the charter forbids |
 | ~~P4~~ | ~~A trustworthy click detector, or a documented decision not to have one~~ | ~~Med~~ | ~~L~~ | ~~High~~ | **DONE 2026-09-19** — chose the documented decision: §2 already records both measured candidates destroy audio (354 false clicks in 1 s of noise; 1764 via second-difference/MAD), so `--declick` deliberately does not ship |
 | ~~P3~~ | ~~Pure-Python true-peak perf, or a documented cap note~~ | ~~Low~~ | ~~S~~ | ~~Low~~ | **DONE 2026-09-19** — chose the documented cap: §2 already states ~0.4 s per 65k-sample bounded prefix |
-| P4 | Plugin sandbox runtime boundary (restricted builtins for `exec_module`) | High (security) | L | High | Architectural; leaky if done partially — design first |
-| P4 | Surround-channel loudness weighting | Low | M | Low | Only if a real multichannel use case appears |
+| P4 | Plugin sandbox runtime boundary (restricted builtins for `exec_module`) | High (security) | L | High | Architectural; leaky if done partially — design first. (2026-09-23: the static-audit re-export escapes are closed — see CHARTER §9) |
+| ~~P4~~ | ~~Surround-channel loudness weighting~~ | ~~Low~~ | ~~M~~ | ~~Low~~ | **DONE 2026-09-23** — the dwChannelMask weighting the integrated meter already applied (surrounds +1.5 dB, LFE excluded) now reaches M, S and LRA, which is what the item was really about: BS.1770-5/Tech 3341/3342 define all of them as the same weighted energy sum over different windows |
 
 ---
 

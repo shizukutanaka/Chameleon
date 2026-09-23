@@ -748,6 +748,14 @@ class WAVProcessor:
             file_size = os.path.getsize(file_path)
             with open(file_path, 'rb') as f:
                 riff_header = f.read(12)
+                if len(riff_header) == 12 and riff_header[:4] in (b'RIFX', b'RF64'):
+                    # WAV variants, not arbitrary binaries: RIFX is the
+                    # big-endian form, RF64 the >4 GB form. Name them so the
+                    # user hears "unsupported variant", not "invalid file".
+                    self._header_rejection_reason = (
+                        f"Unsupported WAV variant ({riff_header[:4].decode('ascii', 'replace')}): "
+                        "the parser reads RIFF (little-endian, <=4 GB) files only")
+                    return None
                 if len(riff_header) != 12 or riff_header[:4] != b'RIFF' or riff_header[8:12] != b'WAVE':
                     return None
 
@@ -1057,6 +1065,13 @@ class WAVProcessor:
                              info.sample_rate * bytes_per_sample * channels)
             struct.pack_into('<H', header, info.fmt_offset + 12,
                              bytes_per_sample * channels)
+            # WAVE_FORMAT_EXTENSIBLE fmt bodies carry dwChannelMask at body
+            # offset 20. A channel-count patch (e.g. 5.1 -> mono) leaves the
+            # source mask claiming the old layout — zero it so the output
+            # declares "unspecified" instead of a stale surround map.
+            if (len(header) >= info.fmt_offset + 24
+                    and header[info.fmt_offset:info.fmt_offset + 2] == b'\xfe\xff'):
+                struct.pack_into('<I', header, info.fmt_offset + 20, 0)
 
         dst.write(bytes(header))
 

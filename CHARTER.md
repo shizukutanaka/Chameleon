@@ -2471,3 +2471,79 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-23, continued):** The mastering limiter claims lookahead, but
+does the delayed-buffer form actually deliver lookahead — and what does
+it emit?
+**A:** It delivered the math but dropped audio. The gain for emitted
+sample j was driven by max|audio[j:j+L]| — real lookahead — yet the
+emitted signal was the delayed copy: `lookahead` leading zeros, the last
+`lookahead` samples of every call silently discarded, and on chunk
+boundaries the previous call's tail re-emitted. Two config crashes rode
+along: `lookahead=0` rounded to a 0-sample window (empty `.max()`) and
+`release=0` divided by zero. The fix processes `out[i] = audio[i]·g[i]`
+with `g[i]` from the same forward window — provably the same gain
+alignment, minus the artifacts — and floors both constants at 1 sample,
+matching `Compressor`'s `max(1, …)` guards. `delay_buffer*` is gone; the
+only surviving state is `gain_reduction`, which is the state a limiter
+should carry across calls. Lesson repeated from the stereo-writes-only-
+rows-0-1 bug: an array shape can look right while the *content* is
+shifted — verify the first and last emitted samples, not just length.
+
+**Q (2026-09-23, continued):** `analyze --loudness` applies BS.1770 channel
+weighting (surrounds +1.5 dB, LFE excluded) to the integrated reading when
+the file declares a layout via dwChannelMask. Do M, S and LRA get the
+same treatment?
+**A:** They must — and didn't. BS.1770-5 (in force since 2023-11, Annex 1
+for ≤5-channel layouts, Annex 3 for larger) defines loudness as the
+weighted sum of K-weighted channel energies; Tech 3341's M and S and Tech
+3342's LRA are the same measurement over different windows, so the
+weighting is intrinsic to every one of them, not an integrated-only
+option. The mask now threads through `measure_momentary/short_term`,
+`measure_max_*` and `measure_loudness_range` (default 0 = equal weight,
+unchanged for files with no declared layout). Same audit found
+`_LFE_MASK_BITS` carrying `0x40000` — not a speaker bit Microsoft assigns
+(defined bits stop at 0x20000) — which would have excluded a channel a
+driver used it for; reduced to the real LFE bit `0x8`. A mask bit is a
+claim: an undefined bit must not silently become a channel exclusion.
+
+**Q (2026-09-23, continued):** `_copy_patched_header` rewrites nChannels
+when deriving mono — what happens to the dwChannelMask the EXTENSIBLE fmt
+body still carries?
+**A:** It lied. A 5.1 EXTENSIBLE file (mask 0x3F) converted to mono kept
+declaring a six-way surround layout in a 1-channel file — exactly the
+stale-layout claim the mask exists to prevent, and it fed our own
+BS.1770 weighting wrong positions. The patcher now zeroes dwChannelMask
+whenever the channel count is rewritten on an EXTENSIBLE fmt body
+("unspecified" is honest for derived mono); normalize/trim keep it,
+since the layout is unchanged. Nearby honesty gap, same file: `RIFX`
+(big-endian WAV) and `RF64` (>4 GB WAV) were rejected with the generic
+"invalid format" — they are named variants now, so the user hears
+"unsupported", not "corrupt".
+
+**Q (2026-09-23, continued):** The plugin AST audit checks imports and
+dangerous names — but `plugin_system` itself is on the allowlist, and it
+legitimately imports `os`, `importlib`, `pathlib`. Are those re-exports
+reachable?
+**A:** They were, and it was verified end to end before the fix: a probe
+plugin doing nothing but `import plugin_system` then
+`plugin_system.os.system(...)` audited clean and would have run
+unrestricted; `from plugin_system import os` bound the same capability
+under a bare name; `plugin_system.__loader__` re-opened an import path
+(`SourceFileLoader.exec_module`) with no `import` statement; and a bare
+`g = getattr` alias slipped the getattr()-call check that only fired on
+the literal call shape. All four are closed: a capability denylist on
+from-import names and on attribute access off module-bound names
+(including one-hop `ps = plugin_system` aliases), `__loader__`/`__spec__`
+in the attribute blocklist, and getattr/setattr/delattr as denied
+references. Honest scope, unchanged: this is still static analysis
+raising the bar, not a runtime boundary — a determined adversary with a
+computed attribute chain is the P4 architectural item, not this patch.
+
+**Q (2026-09-23, continued):** `sanitize_wav_metadata` copies chunks
+verbatim — what does a truncated input produce?
+**A:** A file whose data chunk header declared more bytes than were
+written — the sanitizer propagated the input's lie instead of clamping
+to it. The output now writes the size actually read (and pads/sizes on
+the real length): a sanitizer's job is to emit a truthful file, not a
+faithful copy of a corrupt one.

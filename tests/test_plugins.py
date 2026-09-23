@@ -304,3 +304,115 @@ def test_load_plugin_limits_all_plugin_code_sites(tmp_path, hang_site):
     with pytest.raises(TimeoutError, match="timed out"):
         loader.load_plugin(plugin)
     assert time.monotonic() - t0 < 10
+
+
+# -- re-export escapes ----------------------------------------------------
+#
+# `import plugin_system` is on the allowlist because plugins need its base
+# classes, but the module legitimately imports os/importlib/pathlib for its
+# own use — until the audit checked attribute access on imported names, all
+# of these reached live capabilities with zero `import` statements for the
+# allowlist to see. Verified empirically before the fix: each probe audited
+# clean and would have run unrestricted.
+
+def test_check_module_safety_rejects_module_attr_capability(tmp_path):
+    # plugin_system.os is the os module re-exported — `plugin_system.os.system`
+    # ran `os.system` with no flagged construct (verified).
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / "reexport.py"
+    bad.write_text(
+        "import plugin_system\n"
+        "plugin_system.os.system('echo hi')\n"
+    )
+    with pytest.raises(SecurityError, match="re-exported capability"):
+        loader._check_module_safety(Path(bad))
+
+
+def test_check_module_safety_rejects_from_import_capability(tmp_path):
+    # `from plugin_system import os` binds the same re-exported capability
+    # under a bare name — the imported-names check has to see it, not just
+    # the module allowlist.
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / "fromcap.py"
+    bad.write_text("from plugin_system import os\nos.system('echo hi')\n")
+    with pytest.raises(SecurityError, match="re-exported capability"):
+        loader._check_module_safety(Path(bad))
+
+
+def test_check_module_safety_rejects_star_import(tmp_path):
+    # `from plugin_system import *` lands every re-exported capability in
+    # the plugin's namespace at once — nothing per-name to audit.
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / "star.py"
+    bad.write_text("from plugin_system import *\n")
+    with pytest.raises(SecurityError, match="re-exported capability"):
+        loader._check_module_safety(Path(bad))
+
+
+def test_check_module_safety_rejects_aliased_module_attr(tmp_path):
+    # `ps = plugin_system` then `ps.os` is the same escape one hop removed —
+    # the audit tracks trivial module aliases too.
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / "aliasmod.py"
+    bad.write_text(
+        "import plugin_system\n"
+        "ps = plugin_system\n"
+        "ps.subprocess.run('echo hi', shell=True)\n"
+    )
+    with pytest.raises(SecurityError, match="re-exported capability"):
+        loader._check_module_safety(Path(bad))
+
+
+def test_check_module_safety_rejects_as_import_module_attr(tmp_path):
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / "asimport.py"
+    bad.write_text(
+        "import plugin_system as ps\n"
+        "ps.pathlib.Path('/etc/passwd').read_text()\n"
+    )
+    with pytest.raises(SecurityError, match="re-exported capability"):
+        loader._check_module_safety(Path(bad))
+
+
+@pytest.mark.parametrize("attr", ["__loader__", "__spec__"])
+def test_check_module_safety_rejects_loader_dunders(tmp_path, attr):
+    # __loader__/__spec__ re-open an import path with no `import` statement:
+    # `plugin_system.__loader__` is a SourceFileLoader whose exec_module
+    # runs arbitrary code (verified: the attribute read audited clean).
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / "loader.py"
+    bad.write_text(f"import plugin_system\nx = plugin_system.{attr}\n")
+    with pytest.raises(SecurityError, match="Unsafe attribute access"):
+        loader._check_module_safety(Path(bad))
+
+
+@pytest.mark.parametrize("name", ["getattr", "setattr", "delattr"])
+def test_check_module_safety_rejects_attr_builtin_aliases(tmp_path, name):
+    # `g = getattr` aliasing slipped past the getattr()-call check, which
+    # only fired on the literal call shape — the reference itself is denied.
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / "attralias.py"
+    bad.write_text(f"g = {name}\n")
+    with pytest.raises(SecurityError, match="Unsafe reference"):
+        loader._check_module_safety(Path(bad))
+
+
+def test_check_module_safety_accepts_plugin_base_imports_after_hardening(tmp_path):
+    # The escape checks must not break the shape every real plugin uses:
+    # importing the base classes off plugin_system by name.
+    loader = PluginLoader(PluginConfig())
+    good = tmp_path / "good.py"
+    good.write_text(
+        "from plugin_system import AudioEffectPlugin, PluginMetadata\n"
+        "class G(AudioEffectPlugin):\n"
+        "    def get_metadata(self):\n"
+        "        return PluginMetadata(name='g', version='1.0.0', author='t',\n"
+        "                              description='t', category='effect')\n"
+        "    def initialize(self, config):\n"
+        "        return True\n"
+        "    def cleanup(self):\n"
+        "        pass\n"
+        "    def process_audio(self, audio_data, sample_rate, **params):\n"
+        "        return audio_data\n"
+    )
+    loader._check_module_safety(Path(good))  # must not raise

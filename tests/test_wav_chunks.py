@@ -159,6 +159,55 @@ def test_trim_silence_on_chunked_file(tmp_path):
     assert trimmed.data.duration < (6000 / 44100) * 0.9  # silence actually removed
 
 
+def test_mono_conversion_on_extensible_clears_channel_mask(tmp_path):
+    """A 5.1 EXTENSIBLE file declares its layout via dwChannelMask. Deriving
+    mono must not carry that mask over — a 1-channel file claiming a six-way
+    surround layout misleads every downstream parser (including our own
+    BS.1770 weighting). The output mask reads 0: unspecified."""
+    frames = sine_frames(count=2205, channels=6)
+    src, _ = write_wav_raw(tmp_path / "surround.wav", frames=frames,
+                           channels=6, fmt_variant="extensible",
+                           channel_mask=0x3F)
+    out = tmp_path / "mono.wav"
+
+    result = core.to_mono(str(src), str(out))
+    assert result.success, result.message
+
+    reparsed = core._processor._read_wav_header(str(out))
+    assert reparsed.channels == 1
+    assert reparsed.channel_mask == 0x0
+
+
+def test_extensible_normalize_keeps_the_channel_mask(tmp_path):
+    """Normalize doesn't change the channel count, so the source mask is
+    still truthful and must be preserved — the mask is only cleared when
+    the layout is rewritten."""
+    frames = sine_frames(count=2205, channels=6)
+    src, _ = write_wav_raw(tmp_path / "surround.wav", frames=frames,
+                           channels=6, fmt_variant="extensible",
+                           channel_mask=0x3F)
+    out = tmp_path / "norm.wav"
+
+    result = core.normalize(str(src), str(out))
+    assert result.success, result.message
+    reparsed = core._processor._read_wav_header(str(out))
+    assert reparsed.channels == 6
+    assert reparsed.channel_mask == 0x3F
+
+
+@pytest.mark.parametrize("magic", [b"RIFX", b"RF64"])
+def test_non_riff_wav_variants_are_named_in_the_rejection(tmp_path, magic):
+    """RIFX (big-endian WAV) and RF64 (>4 GB WAV) aren't invalid files —
+    the rejection must name the variant so the user hears 'unsupported',
+    not 'corrupt'."""
+    path = tmp_path / "variant.wav"
+    path.write_bytes(magic + b"\x00" * 8)
+
+    assert core._processor._read_wav_header(str(path)) is None
+    reason = core._processor._header_rejection_reason
+    assert reason and magic.decode() in reason
+
+
 # ------------------------------------------------- main.py basic WAV loader --
 
 @pytest.mark.skipif(not main.HAS_NUMPY, reason="_load_wav_basic decode needs numpy")

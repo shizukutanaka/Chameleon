@@ -2479,14 +2479,19 @@ async def main():
                                           f"(4x-oversampled inter-sample peak estimate)")
                                 # EBU Mode (Tech 3341) completes the integrated
                                 # reading with the two ungated sliding-window
-                                # meters: Max-M (400ms) and Max-S (3s).
+                                # meters: Max-M (400ms) and Max-S (3s). The mask
+                                # threads through so M/S/LRA apply the same
+                                # channel weighting as the integrated reading.
+                                channel_mask = samples_result.data.get("channel_mask", 0)
                                 max_m = bs1770_loudness.measure_max_momentary_loudness(
                                     samples_result.data["channels"],
                                     samples_result.data["sample_rate"],
+                                    channel_mask,
                                 )
                                 max_s = bs1770_loudness.measure_max_short_term_loudness(
                                     samples_result.data["channels"],
                                     samples_result.data["sample_rate"],
+                                    channel_mask,
                                 )
                                 if math.isfinite(max_m):
                                     metadata.max_momentary_lufs = max_m
@@ -2498,6 +2503,7 @@ async def main():
                                 lra = bs1770_loudness.measure_loudness_range(
                                     samples_result.data["channels"],
                                     samples_result.data["sample_rate"],
+                                    channel_mask,
                                 )
                                 if math.isfinite(lra):
                                     metadata.loudness_range_lu = lra
