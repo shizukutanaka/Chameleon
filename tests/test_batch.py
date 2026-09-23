@@ -83,3 +83,51 @@ def test_batch_skips_unsupported_file_types(tmp_path):
     # (1 per-file result + trailing batch summary.)
     assert len(results) == 2
     assert results[0].success is True
+
+
+def _scoped_trusted_roots(monkeypatch, root):
+    """Point the shared validator's lazy default at a roots config."""
+    from security_validator import SecurityValidator
+    monkeypatch.setenv("CHAMELEON_TRUSTED_ROOTS", str(root))
+    monkeypatch.setattr(SecurityValidator, "_default_instance", None)
+
+
+def test_sync_batch_output_dir_outside_trusted_roots_refused(tmp_path, monkeypatch):
+    """validate_directory raises SecurityError, so `if not` on it was a dead
+    check: an unsafe output_dir escaped process_directory as a raw exception
+    instead of the intended 'Invalid output directory provided' result."""
+    _scoped_trusted_roots(monkeypatch, tmp_path)
+    src = tmp_path / "in"
+    src.mkdir()
+    write_sine_wave(src / "a.wav", duration=0.2, amplitude=4000)
+
+    results = core.BatchProcessor().process_directory(
+        str(src), "normalize", output_dir="/tmp")
+
+    assert [r.success for r in results] == [False]
+    assert results[0].message == "Invalid output directory provided"
+
+
+def test_async_batch_output_dir_outside_trusted_roots_refused(tmp_path, monkeypatch):
+    """The async gather honoured output_dir as a feature but skipped its
+    validation entirely: under a roots policy it wrote the outputs anywhere
+    while the sync path refused (verified: normalized_a.wav landed in /tmp)."""
+    _scoped_trusted_roots(monkeypatch, tmp_path)
+    src = tmp_path / "in"
+    src.mkdir()
+    write_sine_wave(src / "a.wav", duration=0.2, amplitude=4000)
+
+    results = _run_batch(src, "normalize", output_dir="/tmp")
+
+    assert [r.success for r in results] == [False]
+    assert results[0].message == "Invalid output directory provided"
+
+
+def test_sync_batch_input_dir_outside_trusted_roots_refused(tmp_path, monkeypatch):
+    """Same dead `if not` on the input directory check."""
+    _scoped_trusted_roots(monkeypatch, tmp_path)
+
+    results = core.BatchProcessor().process_directory("/etc", "normalize")
+
+    assert [r.success for r in results] == [False]
+    assert results[0].message == "Invalid directory provided"
