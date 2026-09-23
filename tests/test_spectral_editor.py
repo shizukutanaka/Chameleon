@@ -109,3 +109,63 @@ def test_harmonic_enhance_stays_inside_selection():
     assert changed.size > 0
     times = ed.times
     assert all(0.4 <= times[c[1]] <= 0.5 for c in changed)
+
+
+def test_noise_reduce_on_empty_selection_refuses_instead_of_writing_nan():
+    # An empty mask means np.median([]) == NaN, and NaN propagates through
+    # the whole spectrogram: the operation returned True with an all-NaN
+    # file. A selection that covers no cells must refuse instead.
+    ed = spectral_editor.SpectralEditor()
+    ed.load_audio(_sine(440), SAMPLE_RATE)
+    # 30-31 kHz clamps to the top of the band and selects nothing.
+    empty = ed.select_region(0.1, 0.2, 30000.0, 31000.0)
+    assert not ed.get_selection_mask(empty).any()
+
+    assert ed.noise_reduce_selection(empty) is False
+    assert not np.isnan(ed.export_current_audio()).any()
+
+
+def test_manual_round_trip_recovers_signal_at_the_edges(monkeypatch):
+    # The manual STFT anchored frames at signal index 0 rather than
+    # center-padding like librosa: samples under the window's zero ends
+    # (index 0 for hann) were multiplied away and could not come back.
+    # A sine hides it (sine[0] == 0), so use noise with nonzero edges --
+    # measured old-code error at sample 0: ~0.8.
+    monkeypatch.setattr(spectral_editor, "HAS_LIBROSA", False)
+    rng = np.random.RandomState(7)
+    audio = rng.randn(8192) * 0.1
+    proc = spectral_editor.SpectrogramProcessor()
+    stft, _, _ = proc.compute_stft(audio, SAMPLE_RATE)
+    restored = proc.compute_istft(stft, SAMPLE_RATE, len(audio))
+
+    assert len(restored) == len(audio)
+    assert np.abs(restored[:2048] - audio[:2048]).max() < 1e-6
+    assert np.abs(restored[-2048:] - audio[-2048:]).max() < 1e-6
+
+
+def test_manual_round_trip_honours_the_hamming_window(monkeypatch):
+    # Analysis applied 'hamming' but synthesis treated anything non-hann
+    # as rectangular: window**2 normalisation divided by ones**2 and the
+    # reconstruction came back scaled and tapered (max error ~1.4).
+    monkeypatch.setattr(spectral_editor, "HAS_LIBROSA", False)
+    audio = _sine(440, seconds=0.2)
+    cfg = spectral_editor.SpectrogramConfig(window="hamming")
+    proc = spectral_editor.SpectrogramProcessor(cfg)
+    stft, _, _ = proc.compute_stft(audio, SAMPLE_RATE)
+    restored = proc.compute_istft(stft, SAMPLE_RATE, len(audio))
+
+    assert np.abs(restored - audio).max() < 1e-3
+
+
+def test_manual_stft_uses_the_same_frame_grid_as_librosa(monkeypatch):
+    # Center-padded convention: 1 + len//hop frames, frame i centered on
+    # sample i*hop -- identical to librosa.stft(center=True), so a
+    # spectrogram does not shift shape with the installed extras.
+    monkeypatch.setattr(spectral_editor, "HAS_LIBROSA", False)
+    audio = _sine(440, seconds=0.2)
+    proc = spectral_editor.SpectrogramProcessor()
+    stft, times, _ = proc.compute_stft(audio, SAMPLE_RATE)
+
+    expected_frames = 1 + len(audio) // 512
+    assert stft.shape[1] == expected_frames
+    assert times[0] == pytest.approx(0.0)

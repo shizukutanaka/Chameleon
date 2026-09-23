@@ -11,7 +11,11 @@ do what it claims. Two of its public paths could never have worked:
   job was then registered in scheduled_jobs and never ran.
 """
 
+import os
+import subprocess
+import sys
 import types
+from pathlib import Path
 
 import pytest
 
@@ -93,3 +97,97 @@ def test_scheduler_fails_loudly_without_schedule_package():
     scheduler = BatchScheduler()
     with pytest.raises(ImportError):
         scheduler.start()
+
+
+def _task(tid, fn=None, **kw):
+    def _ok(**_):
+        return "done"
+    return ba.BatchTask(id=tid, name=tid, function=fn or _ok, inputs={}, **kw)
+
+
+def test_dag_rejects_undeclared_dependency_ids():
+    # A dependency on a task that was never declared used to crash on the
+    # phantom id mid-run with a bare KeyError -- after earlier tasks had
+    # already executed. Name it upfront, before anything runs.
+    eng = ba.WorkflowEngine()
+    wf = ba.Workflow(id="w", name="w", type=ba.WorkflowType.DAG,
+                     tasks=[_task("a", dependencies=["ghost"])])
+    with pytest.raises(ValueError, match="ghost"):
+        eng.execute_workflow(wf)
+
+
+def test_dag_rejects_dependency_cycles():
+    # a<->b could never satisfy in_degree 0, so nothing queued and the
+    # workflow returned {} -- indistinguishable from 'no work to do'.
+    eng = ba.WorkflowEngine()
+    wf = ba.Workflow(id="w", name="w", type=ba.WorkflowType.DAG,
+                     tasks=[_task("a", dependencies=["b"]),
+                            _task("b", dependencies=["a"])])
+    with pytest.raises(ValueError, match="unschedulable"):
+        eng.execute_workflow(wf)
+
+
+def test_dag_failed_task_cancels_dependents_transitively():
+    # mark_completed ran on FAILED results too, so dependents of a failed
+    # task executed with a dead upstream. They must be CANCELLED, with a
+    # result naming the cause -- while independent branches still run.
+    def _boom(**_):
+        raise RuntimeError("explode")
+
+    eng = ba.WorkflowEngine()
+    wf = ba.Workflow(id="w", name="w", type=ba.WorkflowType.DAG,
+                     tasks=[_task("a", fn=_boom),
+                            _task("b", dependencies=["a"]),
+                            _task("c", dependencies=["b"]),
+                            _task("d")])
+    res = eng.execute_workflow(wf)
+    assert res["a"].status is ba.TaskStatus.FAILED
+    assert res["b"].status is ba.TaskStatus.CANCELLED
+    assert res["c"].status is ba.TaskStatus.CANCELLED
+    assert "a" in res["b"].error
+    assert res["d"].status is ba.TaskStatus.COMPLETED
+
+
+def test_remove_task_means_the_task_never_runs():
+    # PriorityQueue has no remove: the entry stayed queued, get_task popped
+    # it, and deleting it from task_map a second time raised KeyError.
+    # Removal is now honoured by skipping stale queue entries.
+    q = ba.TaskQueue()
+    q.add_task(_task("t1"))
+    q.add_task(_task("t2"))
+    assert q.remove_task("t1") is True
+    assert q.get_task().id == "t2"
+    assert q.get_task() is None
+
+
+def test_simple_condition_on_a_task_that_never_ran_is_false():
+    # 'simple' asks 'did task X complete?' -- a task absent from results
+    # has not completed, so falling through to True ran dependents on
+    # evidence that did not exist.
+    eng = ba.WorkflowEngine()
+    cond = {"type": "simple", "task_id": "never_ran"}
+    assert eng._evaluate_condition(cond, {}) is False
+    failed = {"a": ba.TaskResult(task_id="a", status=ba.TaskStatus.FAILED, output=None)}
+    assert eng._evaluate_condition({"type": "simple", "task_id": "a"}, failed) is False
+    done = {"a": ba.TaskResult(task_id="a", status=ba.TaskStatus.COMPLETED, output=None)}
+    assert eng._evaluate_condition({"type": "simple", "task_id": "a"}, done) is True
+
+
+def test_import_creates_no_state_files(tmp_path):
+    # Importing must not create ~/.chameleon/logs in the user's state
+    # directory -- the log handler opens lazily on the first real record.
+    # Run under a subprocess so the import really happens under the
+    # isolated HOME (this test module imported the package already).
+    code = (
+        "import sys; sys.path.insert(0, '.');"
+        "import batch_automation;"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=str(Path(__file__).resolve().parent.parent),
+        env={"HOME": str(tmp_path), "PATH": os.environ.get("PATH", ""),
+             "PYTHONPATH": str(Path(__file__).resolve().parent.parent)},
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert not (tmp_path / ".chameleon").exists()

@@ -125,6 +125,25 @@ class SpectrogramProcessor:
 
         return stft, times, freqs
 
+    def _analysis_window(self) -> np.ndarray:
+        """Window used by both the manual STFT and ISTFT.
+
+        The analysis and synthesis windows must be the same shape for the
+        overlap-add normalizer (which accumulates window**2) to reconstruct
+        the input; honouring 'hamming' at analysis but not synthesis broke
+        COLA and returned a tapered, mis-scaled signal.
+        """
+        win_length = self.config.win_length or self.config.n_fft
+        if self.config.window == "hann":
+            window = np.hanning(win_length)
+        elif self.config.window == "hamming":
+            window = np.hamming(win_length)
+        else:
+            window = np.ones(win_length)
+        if win_length < self.config.n_fft:
+            window = np.pad(window, (0, self.config.n_fft - win_length))
+        return window
+
     def _compute_stft_manual(self, audio: np.ndarray, sample_rate: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Manual STFT computation when librosa not available"""
         if audio.ndim > 1:
@@ -132,29 +151,27 @@ class SpectrogramProcessor:
 
         n_fft = self.config.n_fft
         hop_length = self.config.hop_length
-        win_length = self.config.win_length or n_fft
 
-        # Create window
-        if self.config.window == "hann":
-            window = np.hanning(win_length)
-        elif self.config.window == "hamming":
-            window = np.hamming(win_length)
-        else:
-            window = np.ones(win_length)
+        window = self._analysis_window()
 
-        # Zero-pad window if needed
-        if win_length < n_fft:
-            window = np.pad(window, (0, n_fft - win_length))
+        # Center-pad by n_fft//2 on both sides -- the same convention
+        # librosa.stft uses (center=True), so this path and the librosa
+        # path produce the same frame count, time axis and edge content.
+        # Without it the first and last n_fft//2 samples sit under a
+        # window taper of ~0 and are unrecoverable on reconstruction
+        # (measured: ~1.4 max error at the head of a hann round-trip).
+        pad = n_fft // 2
+        padded = np.pad(audio, (pad, pad))
 
-        # Compute STFT. ceil (not floor) so the final partial frame is
-        # included -- floor covered only whole frames and ISTFT silently
-        # dropped the tail (a 44100-sample input round-tripped to 44032).
-        n_frames = max(1, 1 + int(np.ceil((len(audio) - n_fft) / hop_length)))
+        # Compute STFT. floor over the padded buffer: with the pad the
+        # last frame still covers the tail, and the frame grid matches
+        # librosa's 1 + len(audio)//hop.
+        n_frames = max(1, 1 + len(audio) // hop_length)
         stft = np.zeros((n_fft // 2 + 1, n_frames), dtype=complex)
 
         for i in range(n_frames):
             start = i * hop_length
-            frame = audio[start:start + n_fft]
+            frame = padded[start:start + n_fft]
 
             # Zero-pad if necessary
             if len(frame) < n_fft:
@@ -190,16 +207,8 @@ class SpectrogramProcessor:
         """Manual ISTFT computation"""
         n_fft = (stft.shape[0] - 1) * 2
         hop_length = self.config.hop_length
-        win_length = self.config.win_length or n_fft
 
-        # Create window
-        if self.config.window == "hann":
-            window = np.hanning(win_length)
-        else:
-            window = np.ones(win_length)
-
-        if win_length < n_fft:
-            window = np.pad(window, (0, n_fft - win_length))
+        window = self._analysis_window()
 
         # Reconstruct signal
         n_frames = stft.shape[1]
@@ -229,9 +238,16 @@ class SpectrogramProcessor:
         norm[norm == 0] = 1
         output = output / norm
 
-        # Trim to specified length
+        # Strip the center padding the forward path added: the real signal
+        # starts exactly at padded index n_fft//2 (the frame grid anchors
+        # at padded position 0). When the original length is known the
+        # tail comes out exact even when it is not a hop multiple; when it
+        # is not, drop both pad edges and return what is recoverable.
+        pad = n_fft // 2
         if length is not None:
-            output = output[:length]
+            output = output[pad:pad + length]
+        elif len(output) >= 2 * pad:
+            output = output[pad:len(output) - pad]
 
         return output
 
@@ -410,8 +426,15 @@ class SpectralEditor:
 
             mask = self.get_selection_mask(selection)
 
-            # Estimate noise from selection
+            # Estimate noise from selection. An empty selection has no
+            # cells to estimate from -- np.median([]) returns NaN, and
+            # NaN * anything propagates through the whole spectrogram,
+            # turning 'reduce noise in a region' into 'write NaN over the
+            # entire file' while reporting success.
             noise_stft = self.stft[mask]
+            if noise_stft.size == 0:
+                self.logger.error("Noise reduction failed: selection covers no spectrogram cells")
+                return False
             noise_magnitude = np.median(np.abs(noise_stft))
 
             # Apply spectral subtraction to entire spectrogram

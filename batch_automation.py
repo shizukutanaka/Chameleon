@@ -23,6 +23,7 @@ from enum import Enum
 from datetime import datetime
 from pathlib import Path
 import hashlib
+import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 import logging
 from logging.handlers import RotatingFileHandler
@@ -126,15 +127,12 @@ SCRIPT_VALIDATOR = SecurityValidator(
 )
 
 
-_LOGGING_CONFIGURED = False
 _MODULE_LOGGER = logging.getLogger(__name__)
 
 
-def _configure_logging() -> None:
-    global _LOGGING_CONFIGURED
-    if _LOGGING_CONFIGURED:
-        return
-
+def _create_log_handler() -> logging.Handler:
+    """Build the rotating file handler, or a NullHandler when the log
+    directory cannot be validated."""
     validator = SecurityValidator()
 
     try:
@@ -144,9 +142,7 @@ def _configure_logging() -> None:
             allow_create=True
         )
     except SecurityError:
-        _MODULE_LOGGER.addHandler(logging.NullHandler())
-        _LOGGING_CONFIGURED = True
-        return
+        return logging.NullHandler()
 
     log_file = log_dir / 'batch_automation.log'
 
@@ -159,14 +155,31 @@ def _configure_logging() -> None:
     handler.setFormatter(logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     ))
-
-    _MODULE_LOGGER.setLevel(logging.INFO)
-    _MODULE_LOGGER.addHandler(handler)
-    _MODULE_LOGGER.propagate = False
-    _LOGGING_CONFIGURED = True
+    return handler
 
 
-_configure_logging()
+class _DeferredFileHandler(logging.Handler):
+    """Open the log file on the first emitted record, not at import.
+
+    Importing this module must not create directories or file handles in
+    the user's state directory -- an import has no business writing to
+    $HOME. The ~/.chameleon/logs tree only appears once something is
+    actually logged.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._inner: Optional[logging.Handler] = None
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if self._inner is None:
+            self._inner = _create_log_handler()
+        self._inner.emit(record)
+
+
+_MODULE_LOGGER.setLevel(logging.INFO)
+_MODULE_LOGGER.addHandler(_DeferredFileHandler())
+_MODULE_LOGGER.propagate = False
 
 
 class ResultProxy:
@@ -478,14 +491,23 @@ class TaskQueue:
             self.task_map[task.id] = task
 
     def get_task(self) -> Optional[BatchTask]:
-        """Get next task from queue"""
-        try:
-            _, _, task = self.queue.get_nowait()
+        """Get next task from queue.
+
+        PriorityQueue has no remove, so remove_task() only drops the id
+        from task_map and the queued entry goes stale. Skipping stale
+        entries here is what actually makes removal work -- without the
+        check, get_task popped a removed task and crashed deleting it
+        from the map a second time.
+        """
+        while True:
+            try:
+                _, _, task = self.queue.get_nowait()
+            except queue.Empty:
+                return None
             with self.lock:
-                del self.task_map[task.id]
-            return task
-        except queue.Empty:
-            return None
+                if task.id in self.task_map:
+                    del self.task_map[task.id]
+                    return task
 
     def remove_task(self, task_id: str) -> bool:
         """Remove task from queue"""
@@ -574,7 +596,10 @@ class TaskExecutor:
             result.output = output
             result.end_time = datetime.now()
 
-        except TimeoutError:
+        # concurrent.futures.TimeoutError predates the builtin TimeoutError
+        # alias (unified only in 3.11) -- catch both so a timeout reports
+        # 'timed out' rather than the generic exception text on <=3.10.
+        except (TimeoutError, concurrent.futures.TimeoutError):
             result.status = TaskStatus.FAILED
             result.error = f"Task timed out after {task.timeout} seconds"
             result.end_time = datetime.now()
@@ -667,12 +692,24 @@ class WorkflowEngine:
 
     def _execute_dag(self, workflow: Workflow) -> Dict[str, TaskResult]:
         """Execute DAG workflow"""
+        # Create task map
+        task_map = {task.id: task for task in workflow.tasks}
+
+        # A dependency on a task that was never declared used to crash
+        # mid-run with a bare KeyError on the phantom id -- name it
+        # upfront, before any task has run.
+        missing = sorted({
+            dep for task in workflow.tasks for dep in task.dependencies
+        } - set(task_map))
+        if missing:
+            raise ValueError(
+                "DAG workflow depends on undeclared task ids: "
+                + ", ".join(missing))
+
         # Build dependency graph
         for task in workflow.tasks:
             self.dep_graph.add_task(task)
 
-        # Create task map
-        task_map = {task.id: task for task in workflow.tasks}
         results = {}
         running_tasks = {}
 
@@ -701,10 +738,15 @@ class WorkflowEngine:
                     results[task_id] = result
                     completed_tasks.append(task_id)
 
-                    # Mark as completed and get newly ready tasks
+                    if result.status == TaskStatus.FAILED:
+                        self._cancel_downstream(task_id, task_map, results)
+
+                    # Mark as completed and get newly ready tasks. A task
+                    # already in results (cancelled above) must not queue
+                    # just because its other dependencies finished.
                     newly_ready = self.dep_graph.mark_completed(task_id)
                     for ready_id in newly_ready:
-                        if ready_id in task_map:
+                        if ready_id in task_map and ready_id not in results:
                             self.task_queue.add_task(task_map[ready_id])
 
             # Remove completed tasks
@@ -716,7 +758,46 @@ class WorkflowEngine:
                 import time
                 time.sleep(0.1)
 
+        # Any declared task that never produced a result is unschedulable
+        # -- its dependencies form a cycle (or were cancelled out from
+        # under it). Returning silently looked like 'nothing to do'.
+        blocked = sorted(set(task_map) - set(results))
+        if blocked:
+            raise ValueError(
+                "DAG workflow has unschedulable tasks (dependency cycle?): "
+                + ", ".join(blocked))
+
         return results
+
+    def _cancel_downstream(self, failed_id: str, task_map: Dict[str, BatchTask],
+                           results: Dict[str, TaskResult]) -> None:
+        """Cancel every task that transitively depends on a failed task.
+
+        A dependent must not run when an upstream failed -- the old code
+        marked the failure 'completed' and scheduled the dependent
+        anyway. Each cancelled task gets a real TaskResult naming the
+        upstream cause, and is pulled from the queue so it cannot start
+        when its remaining dependencies finish.
+        """
+        stack = [failed_id]
+        seen = {failed_id}
+        while stack:
+            current = stack.pop()
+            for dependent in self.dep_graph.graph.get(current, []):
+                if dependent in seen:
+                    continue
+                seen.add(dependent)
+                if dependent in task_map and dependent not in results:
+                    results[dependent] = TaskResult(
+                        task_id=dependent,
+                        status=TaskStatus.CANCELLED,
+                        output=None,
+                        error=f"Cancelled: upstream task '{failed_id}' failed",
+                        start_time=datetime.now(),
+                        end_time=datetime.now(),
+                    )
+                    self.task_queue.remove_task(dependent)
+                stack.append(dependent)
 
     def _execute_conditional(self, workflow: Workflow) -> Dict[str, TaskResult]:
         """Execute conditional workflow"""
@@ -769,10 +850,15 @@ class WorkflowEngine:
         condition_type = condition.get('type', 'simple')
 
         if condition_type == 'simple':
-            # Check if previous task succeeded
+            # Check if the named task succeeded. A task not yet in results
+            # (never ran, or skipped by its own condition) has not
+            # completed, so the condition is unmet -- falling through to
+            # 'return True' ran dependents on evidence that didn't exist.
             task_id = condition.get('task_id')
-            if task_id in results:
-                return results[task_id].status == TaskStatus.COMPLETED
+            return bool(
+                task_id in results
+                and results[task_id].status == TaskStatus.COMPLETED
+            )
 
         elif condition_type == 'expression':
             # Evaluate expression
@@ -831,7 +917,12 @@ class BatchScheduler:
         """Execute scheduled workflow"""
         self.logger.info(f"Executing scheduled workflow: {workflow.name}")
         engine = WorkflowEngine()
-        results = engine.execute_workflow(workflow)
+        try:
+            engine.execute_workflow(workflow)
+        finally:
+            # Every run built a fresh engine -- without shutdown its two
+            # executor pools (threads AND processes) leaked per firing.
+            engine.executor.cleanup()
         self.logger.info(f"Completed workflow: {workflow.name}")
 
     def start(self) -> None:

@@ -2471,3 +2471,67 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-23, continued):** `batch_automation.py` is allow-listed as an
+orphan kept by user decision. But does merely *importing* it -- the thing
+`test_orphaned_import_safety.py` does every run -- leave state behind, and
+does its executor keep the timeout contract it advertises?
+**A:** Importing it created `~/.chameleon/logs/` and a
+`batch_automation_*.log` file -- every test run, every `import
+batch_automation`, on every user's machine, unasked. The same defect class
+already fixed in `personal_config` and `advanced_validation`: module import
+must not touch the home directory. The file handler is now deferred
+(`_DeferredFileHandler` builds the real handler on first `emit`), so import
+is free and the first actual log still lands where it always did. Same
+module, second defect: `TaskExecutor.execute` caught only `TimeoutError`,
+but on Python <3.11 `concurrent.futures.TimeoutError` is a *different*
+class than the builtin -- a timed-out future surfaced as an unhandled
+exception, not the documented TIMEOUT status. Both are now caught.
+Verified with a subprocess probe on an isolated HOME: import writes nothing.
+
+**Q (2026-09-23, continued):** The same module sells a DAG scheduler --
+`execute_workflow` over declared `depends_on` edges. Does the scheduling
+semantics keep the contract, or does it quietly drop tasks?
+**A:** It dropped them, four ways. (1) `remove_task` deleted the map entry
+but left the id in the heap, so `get_task` could hand back a deleted task.
+(2) A `depends_on` naming a task that was never declared left the dependent
+in the graph forever: the loop drained the ready queue, the dependent
+simply never ran and never appeared in `results` -- silent loss. It is now
+a `ValueError` up front naming the missing ids. (3) A dependency cycle did
+the same vanishing act; tasks left unscheduled after the queue drains are
+now a `ValueError` naming the residue. (4) An upstream failure left
+dependents pending-then-absent; they now cascade to `CANCELLED` via
+`_cancel_downstream` with the failure named in `error`, while independent
+branches still complete. And the `simple` dependency condition counted
+`task_id in results` as satisfied -- a *failed* upstream satisfied it; it
+now requires `status == COMPLETED`. Finally `_execute_scheduled` never
+called `executor.cleanup()`, leaking the ThreadPoolExecutor per scheduled
+run; it now cleans up in a `finally`. Six new tests pin each behaviour.
+
+**Q (2026-09-23, continued):** `spectral_editor.py` documents a manual
+STFT/ISTFT for when librosa is absent. Same question that caught the
+batch-engine drift: does the fallback path compute the *same thing* as the
+path it replaces?
+**A:** No -- measured, not suspected. The manual STFT anchored the frame
+grid at sample 0 and grew frames as needed, so the same file produced a
+*different frame count* depending on which extras were installed (librosa's
+`center=True` grid is `1 + len // hop`; the manual path produced more).
+Two renderings of one file, picked by the environment -- the same class of
+interop defect as the loudness mask. It now centre-pads to the librosa
+grid. The manual ISTFT compounded it: the synthesis window was hardcoded
+Hann regardless of the `window` argument, and the output was cropped
+symmetrically `[pad:-pad]` even though the real signal is anchored at
+index `pad`, so `length` inputs came back misaligned and over-long. It
+now shares `_analysis_window` with the forward path and crops
+`output[pad : pad + length]`. Two smaller measured defects in the same
+audit: `noise_reduce_selection` on an empty selection computed NaN noise
+statistics, wrote NaN over *the whole spectrogram*, and returned `True`
+(success) -- it now logs and returns `False`; and
+`spectral_utils._inverse_real_transform` dropped `spectrum[-1]` from the
+mirror for *every* length, but the last rfft bin is Nyquist (to be
+excluded) only for even lengths -- odd-length blocks lost their top bin.
+`sliding_window_rms([])` returned a bogus one-element list; it returns
+`[]`. Each fix has a test that was verified to fail on the old code --
+including one (round-trip edge recovery) whose first version passed on
+the old code because a sine's zero-valued first sample hid the defect;
+the test now uses noise with nonzero edges.

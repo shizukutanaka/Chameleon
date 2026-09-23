@@ -110,3 +110,22 @@ def test_apply_spectral_mask_does_not_renormalize():
         src, 44100, low_gain=0.5, mid_gain=0.5, high_gain=0.5
     )
     assert max(abs(x) for x in out) < 0.3
+
+
+def test_sliding_window_rms_returns_empty_for_empty_input():
+    # window_size > len(buffer) clamped to len(buffer) == 0 and then
+    # divided by it -- empty input crashed with ZeroDivisionError.
+    assert spectral_utils.sliding_window_rms([], 10) == []
+
+
+def test_apply_spectral_mask_reconstructs_odd_length_blocks(monkeypatch):
+    # The pure-Python inverse DFT mirrored spectrum[1:-1], which drops the
+    # final bin -- correct only when that bin is Nyquist, which exists
+    # just for even lengths. An odd tail block (len % 4096 odd) came back
+    # scrambled.
+    monkeypatch.setattr(spectral_utils, "HAS_NUMPY", False)
+    src = [0.5, -0.3, 0.2, -0.1, 0.4, -0.6, 0.7]
+    out = spectral_utils.apply_spectral_mask(src, 44100, low_gain=0.0)
+    mean = sum(src) / len(src)
+    expected = [x - mean for x in src]
+    assert max(abs(a - b) for a, b in zip(out, expected)) < 1e-10
