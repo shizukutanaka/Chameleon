@@ -1,5 +1,7 @@
 """Tests for MIDI musical analysis (chord and key detection)."""
 
+import pytest
+
 from midi_analysis import MIDIAnalyzer, MIDINote
 
 
@@ -459,3 +461,23 @@ def test_generate_melody_still_generates_for_valid_length():
     chord = Chord(root=0, chord_type="major", notes=[0, 4, 7],
                   start_time=0.0, duration=8.0)
     assert len(composer.generate_melody([chord], key, length=8.0)) == 16
+
+
+def test_extract_midi_downmixes_stereo_input():
+    """A stereo array used to arrive as a list of two channel lists, so the
+    frame loop never ran and `midi extract` on an ordinary stereo file
+    silently reported zero notes."""
+    np = pytest.importorskip("numpy")
+    import main
+
+    sr = 44100
+    t = np.linspace(0, 0.5, int(0.5 * sr))
+    tone = 0.5 * np.sin(2 * np.pi * 440 * t)
+    stereo = np.stack([tone, tone])
+
+    processor = main.AudioProcessor()
+    if not main.HAS_MIDI:
+        pytest.skip("midi_analysis not available")
+    notes = processor.extract_midi(stereo, sr)
+
+    assert len(notes) == len(processor.extract_midi(tone, sr)) > 0

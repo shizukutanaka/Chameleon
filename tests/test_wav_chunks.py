@@ -294,3 +294,24 @@ def test_in_place_via_alias_and_symlink_also_refused(tmp_path):
         result = core.normalize(str(src), alias, 0.5)
         assert not result.success, alias
         assert src.read_bytes() == before
+
+
+def test_mono_downmix_rounds_to_nearest_not_toward_zero(tmp_path):
+    """int(avg) truncated toward zero, a ~0.5-LSB inward bias on every
+    frame -- the same rule the gain path's writer already follows. A pair
+    averaging to a half-sample must round, not truncate."""
+    src = tmp_path / "st.wav"
+    import wave, struct
+    with wave.open(str(src), "wb") as w:
+        w.setnchannels(2)
+        w.setsampwidth(2)
+        w.setframerate(44100)
+        w.writeframes(b"".join(struct.pack("<hh", 1001, 1002) for _ in range(4)))
+
+    out = tmp_path / "mono.wav"
+    result = core.to_mono(str(src), str(out))
+    assert result.success, result.message
+
+    with wave.open(str(out), "rb") as w:
+        vals = struct.unpack("<4h", w.readframes(4))
+    assert vals == (1002,) * 4
