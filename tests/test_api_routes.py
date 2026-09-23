@@ -582,3 +582,38 @@ def test_audit_log_is_bounded():
     for i in range(cap + 50):
         api_server.log_audit_event("u", "OP", "res", "SUCCESS", "", "ip", "")
     assert len(api_server.api_state.audit_log) == cap
+
+
+def test_system_status_reports_null_not_zero_when_psutil_absent(client, monkeypatch):
+    """Without psutil the status endpoint cannot measure CPU/memory; a
+    literal 0.0 in the response is indistinguishable from a real zero
+    reading. The model's own convention for unmeasured fields is None
+    (request_latency_ms/p95 already do this), so memory_usage/cpu_usage
+    must be null when psutil is missing, floats when present."""
+    login = _login(client)
+    auth = {"Authorization": f"Bearer {login.json()['token']}"}
+
+    monkeypatch.setattr(api_server, "HAS_PSUTIL", False)
+    r = client.get("/system/status", headers=auth)
+    assert r.status_code == 200
+    assert r.json()["memory_usage"] is None
+    assert r.json()["cpu_usage"] is None
+
+    class _FakeProcess:
+        def memory_info(self):
+            return type("M", (), {"rss": 50 * 1024 * 1024})()
+
+        def cpu_percent(self, interval=0):
+            return 1.5
+
+        def oneshot(self):
+            import contextlib
+            return contextlib.nullcontext()
+
+    fake_psutil = type("P", (), {"Process": staticmethod(lambda pid: _FakeProcess())})
+    monkeypatch.setattr(api_server, "psutil", fake_psutil, raising=False)
+    monkeypatch.setattr(api_server, "HAS_PSUTIL", True)
+    r = client.get("/system/status", headers=auth)
+    assert r.status_code == 200
+    assert r.json()["memory_usage"] == 50.0
+    assert r.json()["cpu_usage"] == 1.5

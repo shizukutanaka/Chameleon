@@ -317,8 +317,8 @@ class SystemStatusResponse(BaseModel):
     queued_jobs: int
     completed_jobs: int
     error_rate: float
-    memory_usage: float
-    cpu_usage: float
+    memory_usage: Optional[float]
+    cpu_usage: Optional[float]
     security_status: str
     version: str
     active_sessions: int
@@ -1477,8 +1477,11 @@ async def get_system_status(http_request: Request, user: dict = Depends(require_
     """Get system status and metrics"""
     uptime = time.time() - api_state.server_start_time
 
-    memory_usage = 0.0
-    cpu_usage = 0.0
+    # None, not 0.0, when psutil is absent: a monitor reading a literal
+    # zero cannot tell "not measured" from "genuinely idle". Same
+    # convention request_latency_ms/p95 already use for missing data.
+    memory_usage = None
+    cpu_usage = None
     if HAS_PSUTIL:
         process = psutil.Process(os.getpid())
         with process.oneshot():

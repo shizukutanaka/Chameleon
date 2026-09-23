@@ -2471,3 +2471,27 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22, continued):** `/system/status` reported
+`memory_usage = 0.0` / `cpu_usage = 0.0` whenever psutil was not
+installed — and `docs/en/performance_benchmarks.md` claimed installing
+psutil adds CPU/memory metrics to "command summaries". Which surface
+lies, and is the doc claim true anywhere?
+**A:** Both. In a psutil-less environment the endpoint emits literal
+zeroes, so a monitor cannot distinguish "not measured" from "genuinely
+idle" — the same failure class as audit-104's zero-filter EQ, where a
+missing dependency rendered as a plausible value. The model already
+encodes the right convention: `request_latency_ms`,
+`request_latency_p95_ms`, `last_request_timestamp` and `last_job_error`
+are `Optional` and report `null` when unmeasured; `memory_usage` and
+`cpu_usage` were the only two non-Optional unmeasured fields. Both are
+now `Optional[float]` and the handler emits `None` without psutil,
+real floats with it. The doc claim was false on every surface it named:
+repo-wide, `psutil` is referenced only inside `api_server.py`
+(`HAS_PSUTIL`, `/system/status`) — no CLI command (`analyze`,
+`process`, `batch`) prints CPU or memory metrics, so installing psutil
+changes nothing a "command summary" could show. The bullet now names
+the real surface and states plainly that CLI output is unaffected.
+No test previously asserted values for either field, so making them
+nullable is a compatible change; the new test pins `null` when absent
+and measured floats (via a stubbed psutil module) when present.
