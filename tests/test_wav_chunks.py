@@ -186,3 +186,24 @@ def test_load_wav_basic_8bit_unsigned_offset(tmp_path):
     audio, sr = main.AudioProcessor()._load_wav_basic(str(wav))
     assert audio[0] == pytest.approx(0.0, abs=0.01)
     assert audio[2] == pytest.approx(-1.0, abs=0.01)
+
+
+def test_mono_downmix_rounds_to_nearest_not_toward_zero(tmp_path):
+    """int(avg) truncated toward zero, a ~0.5-LSB inward bias on every
+    frame -- the same rule the gain path's writer already follows. A pair
+    averaging to a half-sample must round, not truncate."""
+    src = tmp_path / "st.wav"
+    import wave, struct
+    with wave.open(str(src), "wb") as w:
+        w.setnchannels(2)
+        w.setsampwidth(2)
+        w.setframerate(44100)
+        w.writeframes(b"".join(struct.pack("<hh", 1001, 1002) for _ in range(4)))
+
+    out = tmp_path / "mono.wav"
+    result = core.to_mono(str(src), str(out))
+    assert result.success, result.message
+
+    with wave.open(str(out), "rb") as w:
+        vals = struct.unpack("<4h", w.readframes(4))
+    assert vals == (1002,) * 4

@@ -2471,3 +2471,22 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22, continued):** What does `midi extract` do with the
+*ordinary* case -- a stereo file? And does the mono downmix quantize the
+same way the gain path does?
+**A:** It silently found nothing. `extract_midi` passed `audio.tolist()`
+straight to the parser, so a (2, N) stereo array became a list of two
+channel lists -- `parse_midi_from_audio` saw len(audio_list) == 2, its
+frame loop never ran, and `midi extract`/`midi analyze` reported zero
+notes (or "No musical content detected") on a perfectly ordinary stereo
+file (verified: identical mono/stereo tones -> 1 note vs 0). The path now
+collapses `ndim > 1` input with `audio.mean(axis=0)` before flattening --
+the same mono-folding `analyze_audio` already does for librosa. Same
+audit, quantization side: `_convert_to_mono` computed each output sample
+as `int(sum(samples)/len(samples))` -- int() truncation toward zero, the
+~0.5-LSB inward bias the gain path's writer explicitly rejected two
+methods up ("Same op, same quantization" -- round to nearest). A channel
+pair averaging to a half-sample now rounds: (1001, 1002) -> 1002, was
+1001. Both mutations verified: the stereo test fails on pre-fix code (0
+notes), the downmix test fails (1001, not 1002).

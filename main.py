@@ -1377,7 +1377,12 @@ class AudioProcessor:
             return []
 
         try:
-            # Convert to list for MIDI analyzer
+            # The extractor tracks one pitch per frame; a multi-channel
+            # array would arrive as a list of channel lists (len == 2), so
+            # the frame loop never ran and stereo inputs silently produced
+            # zero notes. Collapse to mono before handing it a flat list.
+            if getattr(audio, "ndim", 1) > 1:
+                audio = audio.mean(axis=0)
             audio_list = audio.tolist() if hasattr(audio, 'tolist') else list(audio)
 
             analyzer = MIDIAnalyzer(config)
