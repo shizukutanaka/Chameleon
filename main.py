@@ -169,43 +169,19 @@ def _error_kind(exc: Exception) -> str:
     return "internal"
 
 
-def _load_effects(effects_path: str) -> Dict[str, Any]:
-    """Load and validate an effects JSON file.
+def _validate_effects(effects: Any) -> None:
+    """Validate an effects spec; raise ValueError naming the real mistake.
 
-    Raises ValueError on a malformed file -- every caller converts it to
-    ExitCode.INPUT, because a bad effects file is a user-input problem, not
-    an internal failure. An unvalidated shape used to fail deeper: a
-    non-object top level silently matched no "in effects" checks and wrote
-    unchanged audio under a "Processed" message, and a non-object per-effect
-    value crashed inside apply_effects with 'str' object has no attribute
-    'get'.
+    Shared by _load_effects (file contents) and apply_effects (a direct
+    argument). Without it a direct call reached ``band["frequency"]`` and
+    leaked KeyError/TypeError internals, iterated a dict's keys as
+    "bands", or silently skipped a band at/below DC.
     """
-
-    try:
-        with open(effects_path) as f:
-            effects = json.load(f)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Effects file '{effects_path}' is not valid JSON: {exc}") from exc
-    except OSError as exc:
-        raise ValueError(f"Cannot read effects file '{effects_path}': {exc}") from exc
-
     if not isinstance(effects, dict):
         raise ValueError(
-            f"Effects file '{effects_path}' must contain a JSON object mapping "
-            f"effect names to parameter objects, got {type(effects).__name__}"
+            f"Effects spec must map effect names to parameter objects, "
+            f"got {type(effects).__name__}"
         )
-
-    known = set(AudioProcessor._EFFECT_REQUIREMENTS)
-
-    # Parameter keys apply_effects actually reads per effect. An unknown
-    # key (a typo like 'treshold', or 'damping' which nothing consumes)
-    # would otherwise be silently ignored.
-    known_params = {
-        "eq": {"frequency", "gain", "q"},
-        "reverb": {"room_size", "wet"},
-        "compression": {"threshold", "ratio", "attack", "release", "knee",
-                        "makeup_gain"},
-    }
 
     for name, params in effects.items():
         if name == "eq":
@@ -241,19 +217,11 @@ def _load_effects(effects_path: str) -> Dict[str, Any]:
                     raise ValueError(
                         f"Effect 'eq' band #{i} 'q' must be a positive number"
                     )
-                for key in band:
-                    if key not in known_params["eq"]:
-                        print(f"Warning: unknown eq parameter '{key}' in band "
-                              f"#{i} will be ignored", file=sys.stderr)
         elif not isinstance(params, dict):
             raise ValueError(
                 f"Effect '{name}' must map to a parameter object, got {type(params).__name__}"
             )
         else:
-            for key in params:
-                if name in known_params and key not in known_params[name]:
-                    print(f"Warning: unknown parameter '{key}' for effect "
-                          f"'{name}' will be ignored", file=sys.stderr)
             if name == "reverb":
                 for key in ("room_size", "wet"):
                     if key in params and (not isinstance(params[key], (int, float))
@@ -293,9 +261,70 @@ def _load_effects(effects_path: str) -> Dict[str, Any]:
                             f"Effect 'compression' '{key}' must be >= 0, "
                             f"got {params[key]}"
                         )
+
+
+def _warn_unknown_effect_params(effects: Dict[str, Any]) -> None:
+    """Warn about effect names and parameter keys nothing consumes.
+
+    Emitted where the spec is consumed so a direct ``apply_effects`` call
+    warns exactly like the CLI's effects-file path: an unknown key (a
+    typo like 'treshold') or effect name would otherwise be silently
+    ignored.
+    """
+    # Parameter keys apply_effects actually reads per effect.
+    known_params = {
+        "eq": {"frequency", "gain", "q"},
+        "reverb": {"room_size", "wet"},
+        "compression": {"threshold", "ratio", "attack", "release", "knee",
+                        "makeup_gain"},
+    }
+    known = set(AudioProcessor._EFFECT_REQUIREMENTS)
+
+    for name, params in effects.items():
+        if name == "eq":
+            for i, band in enumerate(params):
+                for key in band:
+                    if key not in known_params["eq"]:
+                        print(f"Warning: unknown eq parameter '{key}' in band "
+                              f"#{i} will be ignored", file=sys.stderr)
+        else:
+            for key in params:
+                if name in known_params and key not in known_params[name]:
+                    print(f"Warning: unknown parameter '{key}' for effect "
+                          f"'{name}' will be ignored", file=sys.stderr)
         if name not in known:
-            print(f"Warning: unknown effect '{name}' in effects file will be ignored "
+            print(f"Warning: unknown effect '{name}' will be ignored "
                   f"(known effects: {', '.join(sorted(known))})", file=sys.stderr)
+
+
+def _load_effects(effects_path: str) -> Dict[str, Any]:
+    """Load and validate an effects JSON file.
+
+    Raises ValueError on a malformed file -- every caller converts it to
+    ExitCode.INPUT, because a bad effects file is a user-input problem, not
+    an internal failure. An unvalidated shape used to fail deeper: a
+    non-object top level silently matched no "in effects" checks and wrote
+    unchanged audio under a "Processed" message, and a non-object per-effect
+    value crashed inside apply_effects with 'str' object has no attribute
+    'get'.
+    """
+
+    try:
+        with open(effects_path) as f:
+            effects = json.load(f)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Effects file '{effects_path}' is not valid JSON: {exc}") from exc
+    except OSError as exc:
+        raise ValueError(f"Cannot read effects file '{effects_path}': {exc}") from exc
+
+    if not isinstance(effects, dict):
+        raise ValueError(
+            f"Effects file '{effects_path}' must contain a JSON object mapping "
+            f"effect names to parameter objects, got {type(effects).__name__}"
+        )
+
+    _validate_effects(effects)
+    _warn_unknown_effect_params(effects)
 
     return effects
 
@@ -1173,6 +1202,14 @@ class AudioProcessor:
         the file is written, the command reports success, and the effect simply
         is not there.
         """
+        # The CLI reaches here through _load_effects, but this is also a
+        # public entry point: validate the spec instead of trusting it, so
+        # a malformed spec names its own mistake (ValueError) rather than
+        # leaking a KeyError/TypeError from the DSP loop or silently
+        # skipping a band at/below DC.
+        _validate_effects(effects)
+        _warn_unknown_effect_params(effects)
+
         unavailable = [
             f"{name} (needs {package})"
             for name, (package, available) in self._EFFECT_REQUIREMENTS.items()

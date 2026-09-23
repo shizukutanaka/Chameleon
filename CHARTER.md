@@ -2471,3 +2471,29 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22, continued):** `apply_effects` is documented as a public
+entry point (`AudioProcessor.apply_effects(audio, sr, effects)`), but the
+CLI only reaches it through `_load_effects` -- does the function itself
+honour the spec contract the file path enforces?
+**A:** It did not. The validation lived entirely in `_load_effects`, so a
+direct call trusted the spec: a band missing `gain` crashed with
+KeyError, `eq` given a dict iterated its keys as "bands" and died with
+TypeError, `reverb` given a list died with AttributeError, a band at or
+below DC fell through both arms of `0 < freq < sr/2` and returned the
+input byte-identical, and an unknown effect name was silently ignored
+(verified all five). The spec validation and the unknown-name/parameter
+warnings are now shared module helpers -- `_validate_effects` and
+`_warn_unknown_effect_params` -- run by both `_load_effects` and
+`apply_effects`, so a direct call gets the same ValueError naming the
+mistake and the same warnings the CLI emits. CLI output is unchanged:
+validation still raises before the availability gate, and warnings still
+fire exactly once (the emission point moved to where the spec is
+consumed). Also re-audited this cycle and found owned or honest:
+`_compute_bandwidth`/`_detect_peaks` odd-N bin widths (the audit-66
+branch already threads `transform_length` through both), the
+uploaded_files registry bound (audit-27), plugin-dir chmod on `plugins
+list` (audit-61), `search()`'s metadata axis + `.WAV` globs (audits
+47/81), the committed plugin templates (all four instantiate and
+implement every abstract method), and the restoration component classes
+(their entry point `AudioRestorer.restore` gates deps for them).
