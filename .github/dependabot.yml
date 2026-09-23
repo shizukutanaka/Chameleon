@@ -12,7 +12,9 @@ updates:
     directory: "/"
     allow:
       - dependency-type: "direct"
-    automerge:
-      - dependency-type: "direct"
+    # GitHub-native Dependabot has no automerge option (it existed only on
+    # dependabot.com). The v2 schema rejects unknown keys, so the previous
+    # 'automerge' entry failed validation. Real auto-merge needs the repo's
+    # "Allow auto-merge" setting plus a workflow, not this file.
     schedule:
       interval: "weekly"

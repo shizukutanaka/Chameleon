@@ -2471,3 +2471,16 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** `.github/dependabot.yml` declares `automerge` for the
+github-actions update -- does GitHub-native Dependabot have such an
+option?
+**A:** No. Automerge existed only on the dependabot.com predecessor and
+was dropped at the GitHub-native migration; the v2 schema's `update`
+object lists 23 keys with `additionalProperties: false`, so the entry
+fails config validation while claiming a behavior that cannot happen.
+Removed the block and left a comment naming the real mechanism (repo
+"Allow auto-merge" plus a workflow). New
+`tests/test_dependabot_config.py` validates every top-level and
+per-update key against the published schema allowlist; it skips in the
+bare-stdlib config where PyYAML is absent.
