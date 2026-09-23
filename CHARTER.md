@@ -3252,3 +3252,16 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22):** The CLI accepts `--output` in three subcommands -- does
+it mean the same thing in each?
+**A:** No, and argparse's default `allow_abbrev` made the collision
+silent. `midi --output` is an output *file*, but `process --output
+out.wav` prefix-matched `--output-dir`, so the CLI created a directory
+literally named `out.wav` holding `in_normalized.wav` -- verified on a
+real run. `stream --output 5` silently bound to `--output-device`. A
+mistyped flag must exit, not rebind: all parsers now run
+`allow_abbrev=False` via `_StrictArgumentParser` (top parser plus both
+`add_subparsers` groups, which propagate it as `parser_class`).
+`tests/test_cli_strict_parser.py` pins the refusals and that every
+explicit flag still parses.
