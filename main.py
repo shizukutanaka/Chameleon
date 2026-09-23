@@ -2169,9 +2169,26 @@ def _midi_tonic(key: Optional[str]) -> Optional[int]:
     return _MIDI_NOTE_NAMES.index(name) if name in _MIDI_NOTE_NAMES else None
 
 
+class _StrictArgumentParser(argparse.ArgumentParser):
+    """Parser that refuses long-option abbreviations.
+
+    argparse's default `allow_abbrev` treats any unambiguous prefix as the
+    flag itself. Here that produced a meaning-shift: `midi --output` is an
+    output *file*, so a user typing `process --output out.wav` gets
+    `--output-dir` and the CLI creates a directory literally named
+    `out.wav` holding `smoke_normalized.wav`; `stream --output 5` became
+    `--output-device 5`. A mistyped flag must fail, not silently bind to a
+    different one.
+    """
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("allow_abbrev", False)
+        super().__init__(*args, **kwargs)
+
+
 def create_cli():
     """Create comprehensive CLI interface"""
-    parser = argparse.ArgumentParser(
+    parser = _StrictArgumentParser(
         description=f"Chameleon Audio Processing System v{VERSION}",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -2180,7 +2197,9 @@ def create_cli():
     parser.add_argument("--max-workers", type=int, help="Limit worker threads for batch operations")
     parser.add_argument("--no-parallel", action="store_true", help="Disable parallel execution even when available")
 
-    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+    subparsers = parser.add_subparsers(
+        dest="command", help="Available commands",
+        parser_class=_StrictArgumentParser)
 
     # Analyze command
     analyze = subparsers.add_parser("analyze", help="Analyze audio files")
@@ -2288,7 +2307,9 @@ def create_cli():
         help="Absolute plugin directory to inspect; may be specified multiple times"
     )
     plugins_cmd.add_argument("--json", action="store_true", help="Emit structured JSON output")
-    plugin_subparsers = plugins_cmd.add_subparsers(dest="plugins_command", help="Plugin operations")
+    plugin_subparsers = plugins_cmd.add_subparsers(
+        dest="plugins_command", help="Plugin operations",
+        parser_class=_StrictArgumentParser)
     if hasattr(plugin_subparsers, "required"):
         plugin_subparsers.required = True
 

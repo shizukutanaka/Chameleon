@@ -2471,3 +2471,16 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** The CLI accepts `--output` in three subcommands -- does
+it mean the same thing in each?
+**A:** No, and argparse's default `allow_abbrev` made the collision
+silent. `midi --output` is an output *file*, but `process --output
+out.wav` prefix-matched `--output-dir`, so the CLI created a directory
+literally named `out.wav` holding `in_normalized.wav` -- verified on a
+real run. `stream --output 5` silently bound to `--output-device`. A
+mistyped flag must exit, not rebind: all parsers now run
+`allow_abbrev=False` via `_StrictArgumentParser` (top parser plus both
+`add_subparsers` groups, which propagate it as `parser_class`).
+`tests/test_cli_strict_parser.py` pins the refusals and that every
+explicit flag still parses.
