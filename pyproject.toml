@@ -76,6 +76,9 @@ dev = [
     "mypy>=1.10",
     "pytest>=8.2",
     "pytest-cov>=5.0",
+    # tests/test_no_orphan_modules.py reads pyproject.toml; stdlib tomllib
+    # is Python 3.11+, tomli is the same API for the supported 3.8-3.10 range.
+    "tomli>=1.1; python_version < '3.11'",
     # Needed only for tests/test_api_routes.py's TestClient. Pinned below
     # 0.24: newer httpx dropped the app= shortcut that this project's pinned
     # fastapi/starlette version (matching the `api` extra above) relies on.
