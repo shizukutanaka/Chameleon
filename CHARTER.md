@@ -3252,3 +3252,18 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22, continued):** Audit-108 regenerated templates/*.py and
+enforced the live plugin's gain, but demo_plugins/ is the third place
+generated plugin artifacts live. Are any committed demos still lying
+about their parameters?
+**A:** One: demo_plugins/peak_analyzer.py declared a `gain` parameter
+(min 0.0, max 2.0, "Gain level") that its peak detector never reads --
+stale output of the template bug audits 106-108 removed, sitting in a
+default discovery directory where `plugins list` presents it as a
+real, audited plugin. It now declares `parameters={}` per the
+audit-107 convention (its code reads nothing). Every other committed
+plugin -- simple_gain, simple_reverb, spectrum_analyzer, tone_generator,
+mycustomeffect -- was verified to declare exactly what it consumes; a
+swept contract test now pins declared==consumed across both discovery
+directories so the next stale artifact cannot slip back in.
