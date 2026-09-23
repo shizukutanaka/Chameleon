@@ -854,6 +854,16 @@ class MasteringChain:
             # Apply adjusted settings
             if adjusted_config.compressor_enabled:
                 self.compressor.config = adjusted_config.compressor
+            if adjusted_config.eq_enabled and hasattr(self, 'eq'):
+                # auto_adjust fills an empty eq_bands with generated
+                # mastering bands; self.eq was built once in __init__ and
+                # would never see them, so the suggestion was computed
+                # then silently dropped. Rebuild the filter list from the
+                # adjusted bands each run -- idempotent when eq_bands was
+                # already configured (they are the same bands).
+                self.eq.filters = []
+                for band in adjusted_config.eq_bands:
+                    self.eq.add_band(band)
 
         # 1. EQ
         if self.config.eq_enabled and hasattr(self, 'eq'):

@@ -2471,3 +2471,19 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22, continued):** Should `MasteringChain.process` apply the
+whole `auto_adjust` result or only the compressor slice?
+**A:** The whole thing -- it was silently dropping the EQ half. When
+`auto_gain` is on and `eq_bands` is empty, `auto_adjust` generates four
+default mastering bands into the returned config -- but `process` wired
+only `adjusted_config.compressor` back onto the live processor. `self.eq`
+is built once in `__init__` from `config.eq_bands` (empty exactly when
+auto-generation kicks in), so the suggested bands were computed then
+dropped: the debug log still claimed "Applied EQ" while a zero-filter
+ParametricEQ returned the input bit-identical (verified: generated 4
+bands, 0 applied, max diff 0.0 vs 0.142 with the bands actually run).
+process now rebuilds `self.eq.filters` from `adjusted_config.eq_bands`
+each run -- the wholesale-apply twin of the compressor.config line beside
+it: idempotent when bands were already configured (they are the same
+bands), real when they were generated.
