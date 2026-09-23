@@ -756,17 +756,38 @@ class PluginManager:
 
     def _generate_plugin_template(self, name: str, category: str) -> str:
         """Generate plugin template code"""
+        # A category this validator does not accept would produce a plugin
+        # that fails validation on load -- name the miss instead of
+        # silently generating unloadable code.
+        if category not in ("effect", "analyzer", "generator", "utility"):
+            raise ValueError(
+                f"Unknown plugin category {category!r}; expected one of "
+                "effect, analyzer, generator, utility"
+            )
+
         if category == "effect":
             base_class = "AudioEffectPlugin"
+            parameters = '''{
+                "gain": {
+                    "type": "float",
+                    "default": 1.0,
+                    "min": 0.0,
+                    "max": 2.0,
+                    "description": "Gain level"
+                }
+            }'''
             main_method = """def process_audio(self, audio_data: List[float], sample_rate: int, **params) -> List[float]:
         \"\"\"Process audio data\"\"\"
         # TODO: Implement your audio effect here
-        # Example: simple gain
+        # Example: simple gain, enforcing the range it advertises
         gain = params.get('gain', 1.0)
+        if not isinstance(gain, (int, float)) or not 0.0 <= gain <= 2.0:
+            raise ValueError(f"gain must be in 0.0-2.0, got {gain!r}")
         return [sample * gain for sample in audio_data]"""
 
         elif category == "analyzer":
             base_class = "AudioAnalyzerPlugin"
+            parameters = "{}"
             main_method = """def analyze_audio(self, audio_data: List[float], sample_rate: int, **params) -> Dict[str, Any]:
         \"\"\"Analyze audio data\"\"\"
         # TODO: Implement your audio analysis here
@@ -776,12 +797,25 @@ class PluginManager:
 
         elif category == "generator":
             base_class = "AudioGeneratorPlugin"
+            # The old template advertised `gain` here while the code read
+            # `frequency` -- declared-but-unread and consumed-but-undeclared.
+            parameters = '''{
+                "frequency": {
+                    "type": "float",
+                    "default": 440.0,
+                    "min": 20.0,
+                    "max": 20000.0,
+                    "description": "Tone frequency in Hz"
+                }
+            }'''
             main_method = """def generate_audio(self, duration: float, sample_rate: int, **params) -> List[float]:
         \"\"\"Generate audio data\"\"\"
         # TODO: Implement your audio generator here
-        # Example: sine wave
+        # Example: sine wave, enforcing the range it advertises
         import math
         frequency = params.get('frequency', 440.0)
+        if not isinstance(frequency, (int, float)) or not 20.0 <= frequency <= 20000.0:
+            raise ValueError(f"frequency must be in 20-20000 Hz, got {frequency!r}")
         samples = []
         for i in range(int(duration * sample_rate)):
             t = i / sample_rate
@@ -791,6 +825,7 @@ class PluginManager:
 
         else:  # utility
             base_class = "UtilityPlugin"
+            parameters = "{}"
             main_method = """def execute(self, **params) -> Any:
         \"\"\"Execute utility function\"\"\"
         # TODO: Implement your utility here
@@ -817,15 +852,7 @@ class {name}Plugin({base_class}):
             description="Description of {name} plugin",
             category="{category}",
             tags=["{category}", "audio"],
-            parameters={{
-                "gain": {{
-                    "type": "float",
-                    "default": 1.0,
-                    "min": 0.0,
-                    "max": 2.0,
-                    "description": "Gain level"
-                }}
-            }}
+            parameters={parameters}
         )
 
     def initialize(self, config: Dict[str, Any]) -> bool:

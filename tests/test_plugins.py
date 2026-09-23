@@ -304,3 +304,36 @@ def test_load_plugin_limits_all_plugin_code_sites(tmp_path, hang_site):
     with pytest.raises(TimeoutError, match="timed out"):
         loader.load_plugin(plugin)
     assert time.monotonic() - t0 < 10
+
+
+def test_generated_templates_declare_exactly_the_params_they_read():
+    # The template used to emit a `gain` parameter for every category:
+    # analyzers and utilities that never read it, and the generator that
+    # reads `frequency` instead -- declared-but-unread and
+    # consumed-but-undeclared at the same time. The effect example also
+    # applied the gain raw (the audit-106 bug at its source).
+    import re
+    from plugin_system import PluginManager
+
+    manager = PluginManager()
+    for category in ("effect", "analyzer", "generator", "utility"):
+        template = manager._generate_plugin_template("T", category)
+        declared = set(re.findall(r'"(\w+)":\s*\{', template))
+        consumed = set(re.findall(r"params\.get\('(\w+)'", template))
+        assert declared == consumed, (category, declared, consumed)
+
+    effect = manager._generate_plugin_template("T", "effect")
+    assert "0.0 <= gain <= 2.0" in effect
+    generator = manager._generate_plugin_template("T", "generator")
+    assert "20.0 <= frequency <= 20000.0" in generator
+
+
+def test_generate_plugin_template_rejects_a_category_its_validator_forbids():
+    # 'bogus' used to fall into the utility branch while stamping
+    # category='bogus' in the metadata -- a plugin its own
+    # _validate_plugin would refuse to load.
+    from plugin_system import PluginManager
+
+    manager = PluginManager()
+    with pytest.raises(ValueError, match="bogus"):
+        manager._generate_plugin_template("T", "bogus")
