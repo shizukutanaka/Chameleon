@@ -3252,3 +3252,19 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22, continued):** The CLI refuses out-of-range `convert`
+parameters -- does the direct API agree?
+**A:** No, in both directions. `batch_process([wav], "convert",
+bit_depth=8)` wrote a 16-bit file and reported `bit_depth: 16` with no
+error: `_process_single_file` silently coerced unsupported depths to 16
+(`resolved_bit_depth not in {16,24,32} -> 16`) so `convert_audio`'s own
+ValueError was unreachable, and `bit_depth=0` slipped past `or 16` as
+falsy. `sample_rate` had the same shape: argparse caps
+`--convert-sample-rate` at `MAX_TARGET_SAMPLE_RATE` (768_000) but the
+direct API had no cap -- verified `sample_rate=768001` produced a
+768001 Hz file. Same contract-leak class as audit-101's apply_effects:
+bounds enforced only in the parser. The bit-depth set is now refused in
+`_process_single_file` before the output path is even named (so dry-run
+shows the refusal too), `bit_depth=None` still defaults to 16, and
+`convert_audio` enforces (0, MAX_TARGET_SAMPLE_RATE] for every caller.
