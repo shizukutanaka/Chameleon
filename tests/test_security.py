@@ -330,3 +330,47 @@ class TestSecurityConfigFromEnvironment:
         with pytest.warns(UserWarning, match="does not exist"):
             cfg = SecurityConfig.from_environment()
         assert str(tmp_path / "ghost") in cfg.trusted_roots
+
+
+class TestCoreSecurityWiring:
+    """core.security_validator is the shared gate for normalize/trim/mono.
+    It used to be built as ``SecurityValidator(SecurityConfig())`` -- a bare,
+    truthy config that skipped ``from_environment()``, so CHAMELEON_TRUSTED_ROOTS
+    and CHAMELEON_MAX_FILE_SIZE were silently ignored by every core op."""
+
+    def test_core_validator_reads_environment(self, tmp_path, monkeypatch):
+        import importlib
+
+        import core
+
+        with monkeypatch.context() as mp:
+            mp.setenv("CHAMELEON_TRUSTED_ROOTS", str(tmp_path))
+            importlib.reload(core)
+            assert str(tmp_path) in core.security_validator.config.trusted_roots
+        # Env restored on context exit; rebuild the singleton the process
+        # actually uses so later tests see the real config.
+        importlib.reload(core)
+
+    def test_convert_to_mono_validates_output_path(self, tmp_path, monkeypatch):
+        """normalize() and trim_silence() refuse an output outside the
+        trusted roots; convert_to_mono() did not check the output at all, so
+        it wrote past the same gate once roots were configured."""
+        import core
+
+        src = tmp_path / "in.wav"
+        with wave.open(str(src), "wb") as w:
+            w.setnchannels(2)
+            w.setsampwidth(2)
+            w.setframerate(44100)
+            w.writeframes(b"".join(struct.pack("<hh", 1000, -1000) for _ in range(200)))
+
+        outside = tmp_path.parent / "escape.wav"
+        monkeypatch.setattr(
+            core,
+            "security_validator",
+            SecurityValidator(SecurityConfig(trusted_roots={str(tmp_path)})),
+        )
+        result = core.to_mono(str(src), str(outside))
+        assert not result.success
+        assert "output" in result.message.lower()
+        assert not outside.exists()
