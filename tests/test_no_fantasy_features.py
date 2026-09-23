@@ -46,6 +46,17 @@ FORBIDDEN_PATTERNS = [
     # ProcessingConfig.use_gpu existed for a year with zero consumers and
     # was removed 2026-09. Keep it out of any config/argparse surface.
     re.compile(r"\b(use|enable)_gpu\b|\bgpu_(enabled|acceleration)\b", re.IGNORECASE),
+    # Textual capability claims, the same set DOC_FORBIDDEN bans in
+    # user-facing documents: "advanced spectral/ML processing" was a §4
+    # violation in the README, and it is one in a docstring or a debug log
+    # too -- a claim does not become true by living in a source file the
+    # doc guard skips. ("ML features" shipped in main.py twice until
+    # 2026-09-22: the analyze_audio docstring and the librosa-missing
+    # message.)
+    re.compile(r"\bML[\s/-]*(processing|features?|models?|pipeline)\b"),
+    re.compile(r"\bmachine[\s-]*learning\b", re.IGNORECASE),
+    re.compile(r"\bdeep[\s-]*learning\b", re.IGNORECASE),
+    re.compile(r"\bAI[\s-]*(powered|driven|based)\b", re.IGNORECASE),
 ]
 
 # Substrings that mark a line as a sanctioned removal / avoidance record.
@@ -242,3 +253,20 @@ def test_guard_actually_detects_a_violation():
     assert any(p.search(sample) for p in FORBIDDEN_PATTERNS)
     # ...and that a removal record is correctly exempted.
     assert _is_removal_record("# Quantum computing features removed in 2024 refactor")
+
+
+def test_source_guard_catches_the_ml_claims_it_used_to_miss():
+    # "ML features" shipped in main.py twice -- the analyze_audio docstring
+    # and the librosa-missing debug line -- while DOC_FORBIDDEN already
+    # treated the same phrase as a §4 violation in the docs. A claim that is
+    # forbidden in a document cannot be permitted in the product source.
+    assert any(p.search('"""Comprehensive audio analysis with ML features"""')
+               for p in FORBIDDEN_PATTERNS)
+    assert any(p.search("Librosa not installed. ML features will be limited.")
+               for p in FORBIDDEN_PATTERNS)
+    # And the guard must not fire on the project's own disclaimers, which
+    # carry no removal marker but also make no claim a user could act on.
+    assert not any(
+        p.search("when the [audio] extra is installed. "
+                 "No ML/AI features (see CHARTER.md §4).")
+        for p in FORBIDDEN_PATTERNS)
