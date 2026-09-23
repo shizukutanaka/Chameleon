@@ -6,8 +6,8 @@ This guide documents practical recovery steps for CLI-based deployments. The foc
 
 ## Core Principles
 
-- **Fail Fast**: Detect invalid paths or URLs through `security_validator.py` before heavy processing begins.
-- **Recover Predictably**: Retry only idempotent operations and record all attempts through `SecurityValidator.audit_log()`.
+- **Fail Fast**: Detect invalid paths through `security_validator.py` before heavy processing begins.
+- **Recover Predictably**: Retry only idempotent operations and record every attempt in the `chameleon` log (`~/.chameleon/logs/chameleon.log`, or `$CHAMELEON_LOG_DIR/chameleon.log`).
 - **Protect Evidence**: Preserve logs and temporary artifacts required for post-incident review.
 
 ## Common Failure Scenarios
@@ -25,12 +25,16 @@ This guide documents practical recovery steps for CLI-based deployments. The foc
 - **Audit**: Rejections are logged to `~/.chameleon/logs/chameleon.log` (or
   `$CHAMELEON_LOG_DIR/chameleon.log`). Note the corrective action.
 
-### 2. Network URL Rejection
-- **Symptoms**: URL rejected by `validate_url()` due to scheme or host.
+### 2. File Rejected by Size or Extension Policy
+- **Symptoms**: `SecurityError` from `validate_file_path()` — the input
+  exceeds `CHAMELEON_MAX_FILE_SIZE` (default 524288000 bytes, 500 MiB) or
+  its suffix is outside `allowed_extensions`.
 - **Action**:
-  - Verify the domain is present in the allowlist controlled by `CHAMELEON_ALLOWED_ORIGINS`.
-  - Re-run the operation after updating the allowlist through change control.
-- **Audit**: Log the allowlist modification and attach change ticket identifiers.
+  - Check the effective cap:
+    `python -c "from security_validator import SecurityConfig; print(SecurityConfig.from_environment().max_file_size)"`.
+  - Raise the cap for this deployment via `CHAMELEON_MAX_FILE_SIZE` (bytes),
+    or split the source into files under the limit.
+- **Audit**: The rejection and its reason are written to `chameleon.log`.
 
 ### 3. Disk Capacity Exhaustion
 - **Symptoms**: `OSError: No space left on device` during batch jobs.
@@ -45,7 +49,7 @@ This guide documents practical recovery steps for CLI-based deployments. The foc
 - **Symptoms**: Batch automation stops with timeout events.
 - **Action**:
   - Reduce `batch_automation.py` workload by splitting manifests.
-  - Re-run the job with `--workers 2` or lower.
+  - Re-run the job with `--max-workers 2` or lower (or `--no-parallel`).
 - **Audit**: Capture updated job parameters in the audit log.
 
 ## Recovery Workflow
@@ -56,6 +60,7 @@ from datetime import datetime, timezone
 from security_validator import SecurityValidator, SecurityError
 
 validator = SecurityValidator()
+audit = logging.getLogger("chameleon")  # file handler set by setup_logging()
 
 def guarded_operation(operation_name, func, *args, **kwargs):
     attempts = 0
@@ -65,26 +70,16 @@ def guarded_operation(operation_name, func, *args, **kwargs):
         try:
             return func(*args, **kwargs)
         except SecurityError as exc:
-            validator.audit_log(
-                event="operation.security_error",
-                details={
-                    "operation": operation_name,
-                    "attempt": attempts,
-                    "error": str(exc)
-                },
-                level="WARNING"
+            audit.warning(
+                "security_error operation=%s error=%s",
+                operation_name, exc,
             )
             raise
         except OSError as exc:
             attempts += 1
-            validator.audit_log(
-                event="operation.retry",
-                details={
-                    "operation": operation_name,
-                    "attempt": attempts,
-                    "error": str(exc)
-                },
-                level="WARNING"
+            audit.warning(
+                "retry operation=%s attempt=%d error=%s",
+                operation_name, attempts, exc,
             )
             if attempts >= max_attempts:
                 raise

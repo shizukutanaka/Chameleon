@@ -2471,3 +2471,36 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22, continued):** `docs/en/error_recovery.md` and
+`docs/api_documentation.md` both survived the import-level doc-reality
+guard — do any of them still teach APIs that do not exist?
+**A:** Yes, five claims across the two files, all confirmed against the
+code: (1) `error_recovery.md`'s principles and its "Recovery Workflow"
+snippet told operators to call `SecurityValidator.audit_log()` — the
+class has no such method; the snippet raised `AttributeError` on its
+first error. The real audit surface is `logging.getLogger("chameleon")`
+whose file handler writes `chameleon.log`; the snippet now uses it and
+was executed to prove it runs. (2) Its "Network URL Rejection" scenario
+described `validate_url()` driven by `CHAMELEON_ALLOWED_ORIGINS` — no
+URL validation exists anywhere (nothing accepts URLs to reject), and
+the env var only feeds CORS middleware in `api_server.py`. The scenario
+was replaced with the real `SecurityError` size/extension rejection
+(`validate_file_path`, `CHAMELEON_MAX_FILE_SIZE`). (3) Its timeout
+advice said `--workers 2`, which is only the *server* subcommand's
+uvicorn flag — batch jobs take `--max-workers`/`--no-parallel`.
+(4) `api_documentation.md` claimed a URL passed as `file_name` is
+rejected "by `SecurityValidator.validate_url()`" — a URL is actually
+resolved as a `stored_name` candidate and fails the upload-area
+name checks with a 4xx; no URL fetching ever happens. (5) The same
+file claimed audit-log rotation "managed by SecurityValidator" — the
+write path is a plain append via `SecureFileOperations.secure_open`
+(0o600, which the doc got right); nothing rotates. The rotation claim
+and the in-app 429 limiter (`rate_limit_max_requests` /
+`rate_limit_window_seconds`, which the doc credited to the gateway)
+were corrected. A new test in `test_docs_reference_reality.py` pins
+the method-level surface the import-level guard cannot see: every
+`SecurityValidator.<name>` prose reference, bare `validate_*()` /
+`audit_*()` call, and `validator.<attr>` access in fenced python
+blocks binding `validator = SecurityValidator()` must resolve to a
+real attribute — mutation-verified against the unfixed docs.
