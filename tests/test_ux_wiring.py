@@ -105,3 +105,20 @@ def test_format_table_rejects_row_wider_than_headers():
     # Short rows and exact rows still format.
     out = TableFormatter.format_table(["A", "B"], [["1"], ["2", "3"]])
     assert "A" in out and "B" in out
+
+
+def test_progress_bar_eta_format_carries_minutes():
+    """The ETA helper's minutes+seconds split must carry: formatting
+    ``seconds / 60`` and ``seconds % 60`` independently printed a second
+    field of "60" whenever the seconds fraction rounded up (119.7 ->
+    "2m 60s", 3599.6 -> "60m 60s") -- a duration that does not exist."""
+    from ux_improvements import ProgressBar
+
+    fmt = ProgressBar._format_time
+
+    assert fmt(119.7) == "2m 0s"   # was "2m 60s"
+    assert fmt(3599.6) == "60m 0s"  # was "60m 60s"
+    # Below the carry window the split is unchanged.
+    assert fmt(59.4) == "59s"
+    assert fmt(119.4) == "1m 59s"
+    assert fmt(60.0) == "1m 0s"
