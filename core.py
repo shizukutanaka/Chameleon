@@ -29,7 +29,9 @@ from pathlib import Path
 import asyncio
 from typing import Union, Optional, Dict, List, Any, Tuple, Callable
 from dataclasses import dataclass
-from security_validator import SecurityValidator, SecurityConfig, _RESERVED_DEVICE_NAMES
+from security_validator import (
+    SecurityValidator, SecurityConfig, SecurityError, _RESERVED_DEVICE_NAMES,
+)
 
 # Module logger. Previously sourced from a separate "advanced_logging" module
 # that no longer exists; a standard logger keeps behaviour identical for the
@@ -1649,7 +1651,9 @@ class BatchProcessor:
 
     def process_directory(self, directory: str, operation: str, **kwargs) -> List[ProcessingResult]:
         """Process all WAV files in directory."""
-        if not SecurityValidator.validate_directory(directory):
+        try:
+            SecurityValidator.validate_directory(directory)
+        except SecurityError:
             return [ProcessingResult(False, "Invalid directory provided")]
 
         path = Path(directory)
@@ -1663,7 +1667,9 @@ class BatchProcessor:
         output_dir = kwargs.get("output_dir")
         target_dir = None
         if output_dir:
-            if not SecurityValidator.validate_directory(output_dir):
+            try:
+                SecurityValidator.validate_directory(output_dir)
+            except SecurityError:
                 return [ProcessingResult(False, "Invalid output directory provided")]
             target_dir = Path(output_dir)
             parent = target_dir.resolve().parent
@@ -1924,7 +1930,9 @@ class BatchProcessor:
                 return await self._execute_operation_async(operation, file_path, kwargs)
 
         # Get file list
-        if not SecurityValidator.validate_directory(directory):
+        try:
+            SecurityValidator.validate_directory(directory)
+        except SecurityError:
             return [ProcessingResult(False, "Invalid directory provided")]
 
         path = Path(directory)
@@ -1934,6 +1942,15 @@ class BatchProcessor:
         operation_normalized = (operation or "").strip().lower()
         if operation_normalized not in ALLOWED_BATCH_OPERATIONS:
             return [ProcessingResult(False, f"Unsupported operation: {operation}")]
+
+        # The sync variant validates the write destination before it gathers
+        # inputs; without the same gate here an async batch writes anywhere
+        # the directory policy exists to forbid.
+        if kwargs.get("output_dir"):
+            try:
+                SecurityValidator.validate_directory(kwargs["output_dir"])
+            except SecurityError:
+                return [ProcessingResult(False, "Invalid output directory provided")]
 
         wav_files: List[Path] = []
         inspector = DeepFileInspector() if HAS_DEEP_INSPECTOR else None

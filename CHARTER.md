@@ -3252,3 +3252,23 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22, continued):** Do both batch entry points enforce the same
+write-destination policy, and does `validate_directory`'s contract match
+how the batch layer calls it?
+**A:** Two leaks, one mechanism. `SecurityValidator.validate_directory`
+*raises* SecurityError -- it never returns a falsy value -- so
+`if not SecurityValidator.validate_directory(x): return [False]` was a
+dead check at all four call sites: an unsafe input or output directory
+escaped `process_directory` as a raw SecurityError instead of the intended
+`ProcessingResult(False, "Invalid ... directory provided")` (verified).
+And `process_directory_async` never validated `output_dir` at all: while
+the sync path gated the write destination, an async batch under
+CHAMELEON_TRUSTED_ROOTS wrote outputs anywhere (verified:
+normalized_a.wav landed outside the trusted root with success=True).
+Both variants now refuse identically via try/except around the raising
+API. Gate: 480 bare / 560 numpy / 664+1 full -- the sole failure is the
+pre-existing intermittent SIGINT exit-code test
+(test_sigint_during_processing_exits_interrupted, passes standalone and
+is unrelated to this diff; it dies by signal rather than exit code on
+this platform's process timing).
