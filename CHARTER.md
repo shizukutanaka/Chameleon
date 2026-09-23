@@ -3252,3 +3252,20 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22, continued):** The MIDI extractor's onset gate sums energy
+over the whole frame -- but the frame is a fixed ~23 ms window, so its
+length scales with the sample rate. Does the gate mean the same level at
+every rate?
+**A:** No, and quiet notes paid for it. `energy > 0.001` on a bare sum
+fired at 44.1 kHz (frame ~1014 samples, so the gate sat around -60 dBFS
+RMS) but silently dropped the same -55 dBFS tone at 8 kHz (frame ~184
+samples, 5.5x less energy): `midi extract` on a quiet low-rate file
+returned an empty track and reported success (verified: 1 note vs 0).
+The gate now compares the frame's mean square (`energy / len(frame) >
+1e-6`), which is rate-independent and preserves the ~-60 dBFS level the
+sum implied. Related but deliberately untouched this cycle: the velocity
+field has the same frame-length-dependent scaling -- fixed on the open
+audit-115 PR; the velocity=0 seen on the 8 kHz note above is that issue,
+and `generate_melody`'s unbounded `length` spin and `generate_midi_file`'s
+encodable-tempo range are owned by other open branches.

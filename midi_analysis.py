@@ -175,10 +175,14 @@ class MIDIAnalyzer:
         for i in range(0, len(audio_data) - frame_size, hop_size):
             frame = audio_data[i:i + frame_size]
 
-            # Simple energy-based onset detection
+            # Simple energy-based onset detection: mean square, so the gate
+            # means the same level at every sample rate — the frame is a
+            # fixed ~23 ms window, so its length (and therefore a bare sum's
+            # threshold) would scale with the rate. ~1e-6 mean-square is
+            # roughly a -60 dBFS RMS level.
             energy = sum(x * x for x in frame)
 
-            if energy > 0.001:  # Threshold for note detection
+            if energy / len(frame) > 1e-6:  # Threshold for note detection
                 # Estimate fundamental frequency using autocorrelation
                 pitch_hz = self._estimate_pitch(frame, sample_rate)
 
