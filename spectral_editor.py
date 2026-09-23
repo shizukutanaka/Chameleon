@@ -374,6 +374,10 @@ class SpectralEditor:
                          gain_db: float = 6.0) -> bool:
         """Enhance (boost) spectral content in selection"""
         try:
+            if not np.isfinite(gain_db):
+                self.logger.error(
+                    f"Enhance operation failed: non-finite gain_db {gain_db}")
+                return False
             self._save_state()
 
             mask = self.get_selection_mask(selection)
@@ -406,6 +410,10 @@ class SpectralEditor:
                               strength: float = 0.8) -> bool:
         """Apply noise reduction to selection using spectral subtraction"""
         try:
+            if not np.isfinite(strength):
+                self.logger.error(
+                    f"Noise reduction failed: non-finite strength {strength}")
+                return False
             self._save_state()
 
             mask = self.get_selection_mask(selection)
@@ -444,6 +452,11 @@ class SpectralEditor:
                                   harmonic_strength: float = 0.5) -> bool:
         """Enhance harmonics in selection"""
         try:
+            if not np.isfinite(harmonic_strength):
+                self.logger.error(
+                    "Harmonic enhancement failed: non-finite strength "
+                    f"{harmonic_strength}")
+                return False
             self._save_state()
 
             mask = self.get_selection_mask(selection)
@@ -743,6 +756,13 @@ def demo_spectral_editing():
         ("Selection Tools", True),
         ("Undo/Redo", True)
     ]
+
+    if not HAS_NUMPY:
+        # Nothing below runs on this install: SpectrogramProcessor and
+        # SpectralEditor constructors refuse via _require_numpy. Report
+        # every row unavailable rather than printing checkmarks for
+        # operations that all raise.
+        features = [(name, False) for name, _ in features]
 
     print("Available Features:")
     for feature, available in features:

@@ -2471,3 +2471,28 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22, continued):** `spectral_editor`'s demo prints a feature
+checklist, and its edit operations take scalar params -- are either of them
+honest on a stock install or with hostile input?
+**A:** Two defects. (1) `demo_spectral_editing` hardcoded `True` for
+"Noise Reduction", "Harmonic Enhancement", "Selection Tools" and
+"Undo/Redo" (and `HAS_LIBROSA or True` for spectrogram computation), so on
+a no-NumPy install it printed checkmarks for features that all raise --
+every operation constructs `SpectrogramProcessor`/`SpectralEditor`, whose
+constructors refuse via `_require_numpy`. The demo now reports every row
+unavailable when `HAS_NUMPY` is false. (2) `enhance_selection(gain_db)`,
+`noise_reduce_selection(strength)` and `harmonic_enhance_selection(
+harmonic_strength)` took non-finite params without checking: NaN or
++-inf flowed into the STFT (`stft[mask] *= nan`, `mag * (1 + nan)`), and
+ISTFT smeared the corruption across the signal -- `current_audio` carried
+NaN/inf and `export_current_audio()` handed it out, all while returning
+True. All three now refuse non-finite params with False before
+`_save_state()`, so a refused op does not pollute the undo stack or the
+edit history. (`reduce_selection` delegates to `enhance_selection` and is
+covered by the same guard.) Cross-checks that held: `select_region`'s
+end-inclusive bounds and `interpolate_selection`'s no-scipy path are
+already fixed on open PR branches (#222/#228); `PROJECT_STATUS.md`,
+`Makefile`, `quick_install.sh`, `requirements.txt`, `Dockerfile`,
+`test_core.py` and both `commands.md`/`advanced_config.md` pairs verified
+honest against the code.
