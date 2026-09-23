@@ -3252,3 +3252,19 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22, continued):** Audit-107 fixed the plugin template
+generator, but the generator's output is committed in two places --
+templates/ (what users scaffold from) and plugins/ (the live discovery
+directory). Are the committed artifacts still the buggy generation?
+**A:** Yes, both. The four templates/*.py files were stale output: the
+analyzer and utility declared a `gain` parameter their code never
+reads, the generator declared `gain` while reading (and never bounding)
+`frequency`, and the effect applied `gain` unchecked -- the audit-106
+defect in committed form. They are regenerated to match the fixed
+generator's output. Separately, plugins/mycustomeffect_plugin.py --
+loaded and audited as a real plugin because plugins/ is a default
+discovery path -- advertised gain 0.0-2.0 while applying the raw value;
+it now enforces the range it declares (the same class audit-106 fixed
+in demo_plugins/simple_gain.py). PR-218 touched that file's docstring
+and metadata only, so this edit lands on disjoint lines.

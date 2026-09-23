@@ -45,8 +45,10 @@ class MyCustomEffectPlugin(AudioEffectPlugin):
     def process_audio(self, audio_data: List[float], sample_rate: int, **params) -> List[float]:
         """Process audio data"""
         # TODO: Implement your audio effect here
-        # Example: simple gain
+        # Example: simple gain, enforcing the range it advertises
         gain = params.get('gain', 1.0)
+        if not isinstance(gain, (int, float)) or not 0.0 <= gain <= 2.0:
+            raise ValueError(f"gain must be in 0.0-2.0, got {gain!r}")
         return [sample * gain for sample in audio_data]
 
 # Plugin entry point
