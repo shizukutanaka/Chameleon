@@ -3252,3 +3252,20 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22, continued):** `AudioProcessor.normalize_audio` measures the
+peak over the raw array. What happens to a float WAV carrying one NaN or Inf
+sample -- legitimate content per the format, corrupted content per audit-34's
+convention?
+**A:** One NaN sample poisons `np.abs(audio).max()` into NaN, so `gain` is
+NaN and the multiply spreads NaN across the entire file: `normalize` wrote
+an all-NaN output and reported success (verified: [0.5, -0.5, NaN, 0.3]
+came back [NaN, NaN, NaN, NaN]). An Inf sample is worse in a different
+direction -- `target/inf` is zero gain, flattening every good sample. The
+method now measures the peak over finite samples, scales only those, and
+leaves non-finite samples untouched: corrupted input stays visibly wrong
+instead of being amplified into an all-NaN "normalized" file. This is
+audit-34's convention (non-finite is corruption, not a measurement)
+applied to the writer path that cycle covered only for the analysis/read
+side; `process_batch`'s 0..1 range check already refuses non-finite
+`target_peak`, so the parameter side needed nothing.
