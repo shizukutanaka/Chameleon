@@ -101,6 +101,24 @@ def test_apply_spectral_mask_preserves_tail_in_stdlib_fallback(monkeypatch):
     assert out[4500] != 0.0
 
 
+def test_demo_marks_all_features_unavailable_without_numpy(monkeypatch, capsys):
+    # Every edit path constructs a SpectrogramProcessor/SpectralEditor, and
+    # both constructors raise via _require_numpy when NumPy is absent --
+    # yet the demo printed checkmarks for "Noise Reduction", "Undo/Redo",
+    # etc. on installs where all of them refuse to run.
+    import spectral_editor
+
+    monkeypatch.setattr(spectral_editor, "HAS_NUMPY", False)
+    spectral_editor.demo_spectral_editing()
+
+    marks = [
+        line.strip() for line in capsys.readouterr().out.splitlines()
+        if line.strip().startswith(("✓", "✗"))
+    ]
+    assert marks, "demo printed no feature rows"
+    assert all(mark.startswith("✗") for mark in marks)
+
+
 def test_apply_spectral_mask_does_not_renormalize():
     # A uniform 0.5 gain must halve the signal -- the previous version
     # re-normalised every output to full scale, turning an attenuation

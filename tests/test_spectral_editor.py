@@ -92,6 +92,51 @@ def test_paste_of_empty_copy_refuses():
         np.zeros_like(ed.stft), ed.select_region(0.5, 0.6, 0, 22050))
 
 
+def test_enhance_selection_refuses_nonfinite_gain_db():
+    # gain_db=nan/inf multiplied the selected bins by NaN/inf, which ISTFT
+    # then smeared across the whole signal -- current_audio exported
+    # corrupted audio while the operation reported success.
+    ed = spectral_editor.SpectralEditor()
+    ed.load_audio(_sine(440), SAMPLE_RATE)
+    before = ed.current_audio.copy()
+
+    for bad in (float("nan"), float("inf"), float("-inf")):
+        assert not ed.enhance_selection(
+            ed.select_region(0.4, 0.6, 0, 22050), gain_db=bad), bad
+        assert np.array_equal(ed.current_audio, before), bad
+
+    assert not ed.undo_stack  # refused ops must not push undo state
+    assert not ed.edit_history
+
+
+def test_noise_reduce_selection_refuses_nonfinite_strength():
+    ed = spectral_editor.SpectralEditor()
+    ed.load_audio(_sine(440), SAMPLE_RATE)
+    before = ed.current_audio.copy()
+
+    for bad in (float("nan"), float("inf"), float("-inf")):
+        assert not ed.noise_reduce_selection(
+            ed.select_region(0.4, 0.6, 0, 22050), strength=bad), bad
+        assert np.array_equal(ed.current_audio, before), bad
+
+    assert not ed.undo_stack
+    assert not ed.edit_history
+
+
+def test_harmonic_enhance_selection_refuses_nonfinite_strength():
+    ed = spectral_editor.SpectralEditor()
+    ed.load_audio(_sine(440), SAMPLE_RATE)
+    before = ed.current_audio.copy()
+
+    for bad in (float("nan"), float("inf"), float("-inf")):
+        assert not ed.harmonic_enhance_selection(
+            ed.select_region(0.4, 0.6, 0, 22050), harmonic_strength=bad), bad
+        assert np.array_equal(ed.current_audio, before), bad
+
+    assert not ed.undo_stack
+    assert not ed.edit_history
+
+
 def test_harmonic_enhance_stays_inside_selection():
     # Boosting harmonics must write only the selected time columns --
     # the previous version multiplied whole frequency rows, changing
