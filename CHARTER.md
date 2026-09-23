@@ -3252,3 +3252,23 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22, continued):** Docs-reality audits covered imports,
+scripts, and SecurityValidator method prose -- but does the docs' own
+**configuration surface** (environment variables, test invocations)
+describe knobs that exist?
+**A:** Three defects, all in `docs/api_documentation.md` -- the file the
+reality guards had the least coverage of. (1) `CHAMELEON_SECURITY_LOG_DIR`
+was listed as a must-review deploy variable, but no code reads it:
+`_resolve_audit_log_path` hardwires `~/.chameleon/logs/` (tempdir
+fallback). A deployer setting it to relocate the audit trail gets a
+silent no-op. (2) `CHAMELEON_BASE_URL` -- same phantom class; the server
+has no base-URL env var at all, it binds via `server --host/--port`
+(default localhost:8000). (3) The maintenance note pointed at
+`python -m unittest test_framework.SecurityTests` -- `test_framework` has
+never existed, so the command fails at collection. All corrected to
+describe the real surface. `tests/test_docs_reference_reality.py` grew a
+`CHAMELEON_*` sweep (every documented variable must appear as a literal
+in a root-level module) and a `-m unittest/pytest` target guard -- both
+mutation-verified to fail on the pre-fix doc; `test_framework` joined the
+pinned ghost list.
