@@ -172,3 +172,81 @@ def test_lfe_channel_is_excluded_from_loudness(tmp_path):
         result.data["channel_mask"])
     import math
     assert not math.isfinite(lufs)  # -inf: gated, not a number
+
+
+def test_momentary_and_short_term_apply_the_same_channel_weighting(tmp_path):
+    """M and S are the same loudness summation as integrated over different
+    windows — on a masked 5.1 file they must carry the same +1.5 dB surround
+    / LFE-excluded weighting, not the old flat all-1.0 sum."""
+    import bs1770_loudness
+    import math
+
+    # 4s: the S meter needs >=3s of samples, and the default 65536-sample
+    # analysis prefix (~1.5s) is too short to open even one window.
+    sixch = _write_extensible_wav(tmp_path / "six.wav", 6, 0x3F, duration=4.0)
+    result = core.get_samples_for_analysis(
+        str(sixch), max_samples=200000, separate_channels=True)
+    channels = result.data["channels"]
+    sr = result.data["sample_rate"]
+    mask = result.data["channel_mask"]
+
+    max_m_flat = bs1770_loudness.measure_max_momentary_loudness(channels, sr)
+    max_m_masked = bs1770_loudness.measure_max_momentary_loudness(channels, sr, mask)
+    max_s_flat = bs1770_loudness.measure_max_short_term_loudness(channels, sr)
+    max_s_masked = bs1770_loudness.measure_max_short_term_loudness(channels, sr, mask)
+
+    # 5.1 mask → weights [1,1,1,0,√2,√2]: masked reads (3+2√2)/6 of the
+    # flat sum's energy — same delta the integrated meter produces.
+    expected = 10.0 * math.log10((3.0 + 2.0 * (10 ** 0.15)) / 6.0)
+    assert abs((max_m_masked - max_m_flat) - expected) < 0.05
+    assert abs((max_s_masked - max_s_flat) - expected) < 0.05
+
+
+def test_lfe_only_content_gates_out_of_momentary_and_range(tmp_path):
+    """An LFE-only signal is not just quiet for integrated — M and LRA must
+    also report 'nothing measurable' rather than metering the excluded
+    channel."""
+    import bs1770_loudness
+    import math
+
+    lfe_only = _write_extensible_wav(tmp_path / "lfe.wav", 6, 0x3F,
+                                     ch_active=[3], duration=4.0)
+    result = core.get_samples_for_analysis(
+        str(lfe_only), max_samples=200000, separate_channels=True)
+    channels = result.data["channels"]
+    sr = result.data["sample_rate"]
+    mask = result.data["channel_mask"]
+
+    assert bs1770_loudness.measure_max_momentary_loudness(channels, sr, mask) == float("-inf")
+    assert bs1770_loudness.measure_max_short_term_loudness(channels, sr, mask) == float("-inf")
+    assert not math.isfinite(
+        bs1770_loudness.measure_loudness_range(channels, sr, mask))
+    # Without the mask the same samples DO produce a measurement — the gate
+    # comes from the weighting, not the content.
+    assert bs1770_loudness.measure_max_momentary_loudness(channels, sr) != float("-inf")
+    assert math.isfinite(bs1770_loudness.measure_loudness_range(channels, sr))
+
+
+def test_lra_uses_the_masked_short_term_series(tmp_path):
+    """LRA is defined over the short-term loudness distribution, so the mask
+    must reach it too — the S series behind a masked file's LRA carries the
+    same weighting as the S meter itself."""
+    import bs1770_loudness
+    import math
+
+    wav = _write_extensible_wav(tmp_path / "range.wav", 6, 0x3F, duration=4.0)
+    result = core.get_samples_for_analysis(
+        str(wav), max_samples=200000, separate_channels=True)
+    channels = result.data["channels"]
+    sr = result.data["sample_rate"]
+    mask = result.data["channel_mask"]
+
+    lra_masked = bs1770_loudness.measure_loudness_range(channels, sr, mask)
+    lra_flat = bs1770_loudness.measure_loudness_range(channels, sr)
+
+    assert math.isfinite(lra_masked) and math.isfinite(lra_flat)
+    # The masked S series differs from the flat one — LRA masks through the
+    # series rather than reusing unweighted windows.
+    flat_series = bs1770_loudness.measure_short_term_loudness(channels, sr)
+    masked_series = bs1770_loudness.measure_short_term_loudness(channels, sr, mask)
+    assert masked_series != flat_series

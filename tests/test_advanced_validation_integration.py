@@ -144,6 +144,29 @@ def test_sanitize_preserves_data_after_odd_sized_metadata(tmp_path):
         assert w.readframes(4) == payload
 
 
+def test_sanitize_clamps_lying_data_size_to_bytes_written(tmp_path):
+    """A truncated input whose data chunk declares more than the file holds
+    used to come out with the same lying header — the declared size exceeded
+    the bytes actually written. The output now claims only what it carries."""
+    import struct as _st
+    from advanced_validation import SanitizationEngine
+
+    fmt = _st.pack("<HHIIHH", 1, 1, 44100, 88200, 2, 16)
+    payload = _st.pack("<2h", 100, 200)  # 4 real bytes…
+    body = b"fmt " + _st.pack("<I", 16) + fmt + b"data" + _st.pack("<I", 100) + payload
+    # …but the data chunk claims 100.
+    src = tmp_path / "truncated.wav"
+    src.write_bytes(b"RIFF" + _st.pack("<I", 4 + len(body)) + b"WAVE" + body)
+
+    dst = tmp_path / "clean.wav"
+    SanitizationEngine.sanitize_wav_metadata(src, dst)
+
+    blob = dst.read_bytes()
+    data_at = blob.index(b"data") + 4
+    declared = _st.unpack("<I", blob[data_at:data_at + 4])[0]
+    assert declared == len(payload)
+
+
 def test_main_block_self_test_writes_no_state_into_the_real_home(tmp_path):
     """`python advanced_validation.py` used to leave a test_manifest.json
     inside ~/.chameleon/manifests permanently -- the self-test deleted its

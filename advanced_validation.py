@@ -512,10 +512,13 @@ class SanitizationEngine:
 
                 # Only keep essential chunks
                 if chunk_id in KEEP_CHUNKS:
-                    outfile.write(chunk_header)
                     chunk_data = infile.read(chunk_size)
+                    # Write the size actually read, not the declared size: on
+                    # truncated input the declared size outlives the bytes and
+                    # the output's chunk header would lie.
+                    outfile.write(chunk_id + struct.pack('<I', len(chunk_data)))
                     outfile.write(chunk_data)
-                    total_size += 8 + chunk_size
+                    total_size += 8 + len(chunk_data)
 
                     # Pad to even boundary -- and consume the source's pad
                     # byte too: leaving it unread makes the next header
@@ -523,6 +526,7 @@ class SanitizationEngine:
                     # same way an unconsumed pad on the skip path did.
                     if chunk_size % 2:
                         infile.read(1)
+                    if len(chunk_data) % 2:
                         outfile.write(b'\x00')
                         total_size += 1
                 else:

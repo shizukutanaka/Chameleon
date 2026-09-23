@@ -162,7 +162,10 @@ def _block_mean_squares(weighted: Sequence[float], sample_rate: int) -> List[flo
 # excluded entirely (G=0). Front channels and any bit we can't identify
 # keep G=1.0 -- an unidentified channel is safer counted flat than guessed.
 _SURROUND_MASK_BITS = 0x10 | 0x20 | 0x100 | 0x200 | 0x400
-_LFE_MASK_BITS = 0x8 | 0x40000
+# 0x8 is SPEAKER_LOW_FREQUENCY. 0x40000 is not a speaker bit Microsoft
+# assigns (defined bits stop at 0x20000, SPEAKER_TOP_BACK_RIGHT) -- treating
+# it as LFE would silently exclude a channel a device used it for.
+_LFE_MASK_BITS = 0x8
 _SURROUND_WEIGHT = 10 ** (1.5 / 10.0)  # +1.5 dB energy weight
 
 
@@ -331,7 +334,8 @@ _EBU_MODE_HOP_SECONDS = 0.1
 
 
 def _ungated_window_lufs(channels: Sequence[Sequence[float]], sample_rate: int,
-                         window_seconds: float) -> List[float]:
+                         window_seconds: float,
+                         channel_weights: Optional[Sequence[float]] = None) -> List[float]:
     """LUFS value for each sliding window, ungated (EBU Mode M/S helper).
 
     Returns [] when there are no channels or the signal is shorter than one
@@ -347,6 +351,7 @@ def _ungated_window_lufs(channels: Sequence[Sequence[float]], sample_rate: int,
         weighted, sample_rate,
         block_seconds=window_seconds,
         hop_seconds=_EBU_MODE_HOP_SECONDS,
+        channel_weights=channel_weights,
     )
     return [
         (_LUFS_CALIBRATION_OFFSET + 10.0 * math.log10(energy)) if energy > 0 else float('-inf')
@@ -354,35 +359,48 @@ def _ungated_window_lufs(channels: Sequence[Sequence[float]], sample_rate: int,
     ]
 
 
-def measure_momentary_loudness(channels: Sequence[Sequence[float]], sample_rate: int) -> List[float]:
+def measure_momentary_loudness(channels: Sequence[Sequence[float]], sample_rate: int,
+                               channel_mask: int = 0) -> List[float]:
     """Momentary loudness series (LUFS): 400 ms sliding window, ungated.
 
     One value per 100 ms hop. Empty list if the signal is shorter than 400 ms.
+    `channel_mask` carries the file's dwChannelMask; the same per-channel
+    weighting the integrated meter applies (surrounds +1.5 dB, LFE excluded)
+    applies here -- M/S/I/LRA are all the same loudness summation, only the
+    window differs.
     """
 
-    return _ungated_window_lufs(channels, sample_rate, _MOMENTARY_SECONDS)
+    weights = _channel_weights(channel_mask, len(channels)) if channels else None
+    return _ungated_window_lufs(channels, sample_rate, _MOMENTARY_SECONDS, weights)
 
 
-def measure_short_term_loudness(channels: Sequence[Sequence[float]], sample_rate: int) -> List[float]:
+def measure_short_term_loudness(channels: Sequence[Sequence[float]], sample_rate: int,
+                                channel_mask: int = 0) -> List[float]:
     """Short-term loudness series (LUFS): 3 s sliding window, ungated.
 
     One value per 100 ms hop. Empty list if the signal is shorter than 3 s.
+    See `measure_momentary_loudness` for the channel_mask weighting rule.
     """
 
-    return _ungated_window_lufs(channels, sample_rate, _SHORT_TERM_SECONDS)
+    weights = _channel_weights(channel_mask, len(channels)) if channels else None
+    return _ungated_window_lufs(channels, sample_rate, _SHORT_TERM_SECONDS, weights)
 
 
-def measure_max_momentary_loudness(channels: Sequence[Sequence[float]], sample_rate: int) -> float:
+def measure_max_momentary_loudness(channels: Sequence[Sequence[float]], sample_rate: int,
+                                   channel_mask: int = 0) -> float:
     """Max-M (LUFS): the loudest 400 ms window. -inf if unmeasurable/silent."""
 
-    series = [v for v in measure_momentary_loudness(channels, sample_rate) if v != float('-inf')]
+    series = [v for v in measure_momentary_loudness(channels, sample_rate, channel_mask)
+              if v != float('-inf')]
     return max(series) if series else float('-inf')
 
 
-def measure_max_short_term_loudness(channels: Sequence[Sequence[float]], sample_rate: int) -> float:
+def measure_max_short_term_loudness(channels: Sequence[Sequence[float]], sample_rate: int,
+                                    channel_mask: int = 0) -> float:
     """Max-S (LUFS): the loudest 3 s window. -inf if unmeasurable/silent."""
 
-    series = [v for v in measure_short_term_loudness(channels, sample_rate) if v != float('-inf')]
+    series = [v for v in measure_short_term_loudness(channels, sample_rate, channel_mask)
+              if v != float('-inf')]
     return max(series) if series else float('-inf')
 
 
@@ -441,8 +459,13 @@ def _percentile(sorted_values: Sequence[float], percentile: float) -> float:
     return sorted_values[lower_index] * (1.0 - weight) + sorted_values[upper_index] * weight
 
 
-def measure_loudness_range(channels: Sequence[Sequence[float]], sample_rate: int) -> float:
+def measure_loudness_range(channels: Sequence[Sequence[float]], sample_rate: int,
+                           channel_mask: int = 0) -> float:
     """Loudness range (LRA) in LU per EBU Tech 3342.
+
+    `channel_mask` applies the same channel weighting as the M/S/I meters
+    (LRA is defined over the short-term loudness distribution, which carries
+    the weighting).
 
     Returns float('nan') when a range cannot be measured -- no channels, a
     signal shorter than one 3 s window, digital silence, or everything below
@@ -451,7 +474,7 @@ def measure_loudness_range(channels: Sequence[Sequence[float]], sample_rate: int
     Guard with math.isfinite().
     """
 
-    series = [v for v in measure_short_term_loudness(channels, sample_rate)
+    series = [v for v in measure_short_term_loudness(channels, sample_rate, channel_mask)
               if v != float('-inf') and v == v]  # drop silent windows and NaN
     if not series:
         return float('nan')
