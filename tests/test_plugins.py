@@ -304,3 +304,36 @@ def test_load_plugin_limits_all_plugin_code_sites(tmp_path, hang_site):
     with pytest.raises(TimeoutError, match="timed out"):
         loader.load_plugin(plugin)
     assert time.monotonic() - t0 < 10
+
+
+def test_memory_manager_vectorized_entries_die_with_their_source_bytes():
+    # vectorized_cache held one array per cached file and was never
+    # evicted or cleared: after 1500 cached reads the bounded LRU held
+    # 1000 entries while the twin held all 1500 -- an unbounded leak of
+    # copies nothing ever reads (get_vectorized_audio has no callers).
+    from core import MemoryManager
+
+    r = MemoryManager()
+    for i in range(1500):
+        key = f"key{i}"
+        r.vectorized_cache[key] = {'array': b'', 'ready': True}
+        r.cache_data(key, b'x' * 100)
+
+    assert len(r.cache) == r.max_cache_items
+    assert len(r.vectorized_cache) == len(r.cache)
+
+    r.clear_cache()
+    assert not r.vectorized_cache
+
+
+def test_simple_gain_enforces_its_advertised_range():
+    # The metadata advertises gain 0.0..2.0 but the value was applied
+    # unchecked: gain=100 overdrove, gain=-1 silently phase-inverted,
+    # and a non-number died on TypeError.
+    from demo_plugins.simple_gain import SimpleGainPlugin
+
+    plugin = SimpleGainPlugin()
+    assert plugin.process_audio([0.5], 44100, gain=2.0) == [1.0]
+    for bad in (100, -1, 'loud'):
+        with pytest.raises(ValueError):
+            plugin.process_audio([0.5], 44100, gain=bad)

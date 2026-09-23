@@ -225,11 +225,13 @@ class MemoryManager:
         if isinstance(data, bytearray):
             data = bytes(data)
 
-        # ベクター化処理用にデータを準備
+        self.cache_data(cache_key, data)
+
+        # ベクター化処理用にデータを準備 -- after cache_data: a cache
+        # replace now drops the vectorized twin too, so prepare only
+        # once the new bytes are actually stored.
         if size is not None and size <= 1024 * 1024:
             self._prepare_vectorized_data(data, cache_key)
-
-        self.cache_data(cache_key, data)
         return data
 
     def _prepare_vectorized_data(self, data: bytes, cache_key: str):
@@ -342,6 +344,7 @@ class MemoryManager:
         self.current_cache_size = 0
         self.cache_hits = 0
         self.cache_misses = 0
+        self.vectorized_cache.clear()
 
     def _remove_from_cache(self, key: str):
         """Remove key from cache and update tracking."""
@@ -353,6 +356,10 @@ class MemoryManager:
                 self.cache_order.remove(key)
             except ValueError:
                 pass
+        # The vectorized entry is a derivative of the cached bytes: it
+        # used to outlive them forever -- one array per file, never
+        # read by anything. It dies with its source.
+        self.vectorized_cache.pop(key, None)
 
 class PerformanceTracker:
     """Lightweight performance tracking - Carmack style."""

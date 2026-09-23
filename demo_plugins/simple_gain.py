@@ -46,7 +46,14 @@ class SimpleGainPlugin(AudioEffectPlugin):
         """Process audio data"""
         # TODO: Implement your audio effect here
         # Example: simple gain
+        # The metadata advertises gain 0.0..2.0 but the value used to be
+        # applied unchecked: gain=100 overdrove the signal, gain=-1
+        # silently phase-inverted it, and a non-number died on TypeError.
         gain = params.get('gain', 1.0)
+        if not isinstance(gain, (int, float)):
+            raise ValueError(f"gain must be a number, got {gain!r}")
+        if not 0.0 <= gain <= 2.0:
+            raise ValueError(f"gain {gain} outside advertised range 0.0-2.0")
         return [sample * gain for sample in audio_data]
 
 # Plugin entry point
