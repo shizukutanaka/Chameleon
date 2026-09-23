@@ -210,6 +210,17 @@ class TableFormatter:
         if not rows:
             return ""
 
+        # Ragged input used to fail two ways: a row longer than the header
+        # died on a bare IndexError, and a shorter row silently produced a
+        # line with fewer cells than the header promised. Name the shape
+        # problem instead of emitting misleadingly aligned output.
+        for n, row in enumerate(rows):
+            if len(row) != len(headers):
+                raise ValueError(
+                    f"table row {n} has {len(row)} cells "
+                    f"for {len(headers)} headers"
+                )
+
         align = align or ['left'] * len(headers)
 
         # Calculate column widths

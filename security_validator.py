@@ -329,24 +329,50 @@ class SecureFileOperations:
     def secure_open(self, path, mode: str = "rb", *, encoding: Optional[str] = None):
         """Context manager that validates *path* and opens it.
 
-        Write/append modes create the file with restrictive 0o600 permissions and
-        refuse to follow symlinks (mirrors ``core.open_secure``).
+        Write/append/exclusive-create modes (and any ``+`` mode, which is
+        write-capable) create the file with restrictive 0o600 permissions
+        and refuse to follow symlinks (mirrors ``core.open_secure``).
+
+        The file opened is the path validate_file_path *resolved*, not the
+        caller's raw string: previously ``secure_open("~/x", "w")`` validated
+        the expanded home path and then tried to open a directory literally
+        named ``~`` under the CWD -- FileNotFoundError -- while a ``r+``
+        open was both validated as a read and given none of the write-side
+        hardening (measured: it happily wrote through a symlink). Because
+        resolution now collapses the caller's final component before
+        O_NOFOLLOW can see it, a final-component symlink on the caller's
+        own path is refused explicitly below -- preserving the
+        core.open_secure semantics this mirrors.
         """
-        writing = "w" in mode or "a" in mode
+        writing = any(c in mode for c in ("w", "a", "x", "+"))
         operation = "write" if writing else "read"
-        self.validator.validate_file_path(path, operation=operation)
+        resolved = self.validator.validate_file_path(path, operation=operation)
 
         if writing:
-            flags = os.O_WRONLY
-            flags |= os.O_CREAT | (os.O_APPEND if "a" in mode else os.O_TRUNC)
+            # Resolution already followed any symlink in the caller's path,
+            # so O_NOFOLLOW on `resolved` can no longer refuse one; check
+            # the caller's final component directly instead.
+            if Path(path).expanduser().is_symlink():
+                raise SecurityError(
+                    f"Refusing to open symlink for writing: {path}")
+
+            flags = os.O_RDWR if "+" in mode else os.O_WRONLY
+            if "x" in mode:
+                flags |= os.O_CREAT | os.O_EXCL
+            elif "a" in mode:
+                flags |= os.O_CREAT | os.O_APPEND
+            elif "w" in mode:
+                flags |= os.O_CREAT | os.O_TRUNC
+            # "+" alone (r+/rb+): opens an existing file read/write, so no
+            # O_CREAT/O_TRUNC -- matching the semantics of the mode string.
             if hasattr(os, "O_NOFOLLOW"):
                 flags |= os.O_NOFOLLOW
             if hasattr(os, "O_BINARY"):
                 flags |= os.O_BINARY
-            fd = os.open(os.fspath(path), flags, 0o600)
+            fd = os.open(os.fspath(resolved), flags, 0o600)
             handle = os.fdopen(fd, mode, encoding=encoding)
         else:
-            handle = open(path, mode, encoding=encoding)
+            handle = open(resolved, mode, encoding=encoding)
 
         try:
             yield handle

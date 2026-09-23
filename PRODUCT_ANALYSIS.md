@@ -1,10 +1,10 @@
 # Chameleon — Product Analysis (Strengths, Weaknesses, Improvement Backlog)
 
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
-**Version:** 1.1.0 · **Tests:** re-run 2026-09-21 on Python 3.12, green in
-all three configurations — **477 passed** on a bare install (stdlib only,
-33 skipped), **557** with numpy (scipy/librosa/soundfile blocked, 33
-skipped), **662** with numpy + scipy + librosa + soundfile + fastapi
+**Version:** 1.1.0 · **Tests:** re-run 2026-09-23 on Python 3.12, green in
+all three configurations — **498 passed** on a bare install (stdlib only,
+33 skipped), **578** with numpy (scipy/librosa/soundfile blocked, 33
+skipped), **683** with numpy + scipy + librosa + soundfile + fastapi
 (5 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
@@ -190,6 +190,25 @@ All of these were fixed in this pass (see §2 "Resolved"), except where noted.
   it by string (`uvicorn.run("api_server:app", …)`) and guards the uvicorn
   import — so it is a latent fragility, not a live bug. Covered by
   `tests/test_api_routes.py` / `tests/test_api_fallback.py`.
+- ~~**`secure_open` validated one path and opened another; the library DB
+  and generated alias files drifted from reality.**~~ **RESOLVED
+  2026-09-23.** Measured on the then-current tree: `secure_open` discarded
+  the resolved path `validate_file_path` returned and opened the caller's
+  raw string (`~/x` → literal `~` dir → FileNotFoundError; intermediate
+  symlink components bypassed the check), and every `+` mode was
+  validated as a *read* while staying write-capable with none of the
+  write-side hardening (r+ wrote through a symlink); `scan_library`
+  never pruned — deleted files stayed counted and searchable forever,
+  and its `added` field stored the file's mtime rather than when it
+  entered the DB; `search` documented "filename, tags, or metadata" but
+  never looked at metadata; `format_table` died on a bare IndexError for
+  rows longer than the headers; `quick_setup` stored `~/…` verbatim so
+  the wizard-created dir was a literal `./~`; and `create_quick_commands`
+  embedded paths in one single-quoted alias body — an apostrophe in the
+  library path made the file `bash -n` rejects outright (paths now go
+  through `shlex.quote` / PowerShell single-quoted literals). Proven by
+  `tests/test_io_and_library_integrity.py` — 17 of its 21 tests fail on
+  the pre-fix code.
 
 ### Honesty residue (docstring/metadata overclaims) — RESOLVED 2026-07-18
 The three overclaims below were fixed in the same pass that produced this

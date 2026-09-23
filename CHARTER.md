@@ -2471,3 +2471,56 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-23, continued):** `SecureFileOperations.secure_open` calls
+`self.validator.validate_file_path(path)` -- which expands `~` and resolves
+symlinks and returns the resolved path -- then opens `path` itself. Does the
+opened file match the validated one?
+**A:** No -- the resolved path was discarded and the raw string opened.
+Measured: `secure_open("~/x", "w")` validated the expanded home path and
+then failed with FileNotFoundError trying to open a literal `~` directory
+under the CWD. And the mode check `writing = "w" in mode or "a" in mode`
+treated every `+` mode (r+/w+/rb+) as a READ: validated as read, then
+`open(path, "r+")` handed back a write-capable handle with none of the
+write-side hardening -- measured r+ wrote through a final-component
+symlink that O_NOFOLLOW refuses. `x` mode was likewise classified as a
+read and could never create anything. Now: `+`/`x` count as writing,
+`+` maps to O_RDWR (r+ gets no O_CREAT/O_TRUNC, matching mode-string
+semantics; w+ keeps create+truncate; x gets O_CREAT|O_EXCL), and the
+file opened is the resolved path -- which also means the caller's
+final component is checked for symlink-ness explicitly before opening,
+since resolve() collapses it before O_NOFOLLOW could see it. A raw
+OSError(ELOOP) refusal also becomes a SecurityError naming the reason.
+
+**Q (2026-09-23, continued):** `PersonalLibraryManager.scan_library` updates
+the DB for new and modified files. What happens to files deleted from disk?
+**A:** Nothing -- they stayed in `library_db["files"]` forever. Measured:
+scan a library with one .wav, delete the file, rescan -- total_files
+still 1, search("gone") still returned the ghost entry with a checksum
+pointing at nothing. The result dict now reports removed_files/removed,
+and entries not seen on disk are pruned. Same audit pass: the `added`
+field stored the file's own st_mtime (a file created last year and
+scanned today looked a year old in the DB -- the same mislabeled-
+timestamp pattern create_playlist's "created" already fixed), and
+`search`'s docstring promised "filename, tags, or metadata" while the
+loop never looked at metadata, so an artist/title-only query returned
+nothing; both now do what they say.
+
+**Q (2026-09-23, continued):** `TableFormatter.format_table` -- what does a
+ragged row do? And `quick_setup`'s custom-path prompt plus the alias files
+it generates?
+**A:** Three measured defects. (1) A row longer than the headers died on a
+bare IndexError in the width loop, and a shorter row silently emitted a
+line missing cells -- ragged input now raises a ValueError naming the
+shape ("row 0 has 3 cells for 2 headers") rather than a meaningless
+index error or misleading alignment. (2) `quick_setup` stored the
+custom-path answer verbatim -- a `~/music` reply stayed unexpanded, so
+Path(cfg.audio_library).mkdir created a directory literally named `~`
+under the CWD and the saved config pointed at a path that never works;
+now expanduser'd before storing. (3) `create_quick_commands` embedded
+config paths inside one single-quoted alias body -- an apostrophe in
+the path ("/data/o'brien/music") made aliases.sh syntactically invalid
+(`bash -n` exit 2) in the very file the user is told to `source`, and
+the .ps1 had the same class of hole via `"`/`$` inside double-quoted
+strings. Paths now go through shlex.quote for the shell file and
+single-quoted-escaped literals for PowerShell.

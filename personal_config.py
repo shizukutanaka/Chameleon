@@ -7,6 +7,7 @@ Simplified setup with maximum security and features
 import sys
 import os
 import json
+import shlex
 from pathlib import Path
 from typing import Dict, Any, Optional
 from dataclasses import dataclass, asdict, fields
@@ -150,7 +151,11 @@ class PersonalSetup:
         print(f"   Default: {config.audio_library}")
         custom_path = input("   Custom path (or press Enter): ").strip()
         if custom_path:
-            config.audio_library = custom_path
+            # Store the expanded path: keeping `~/...` verbatim made every
+            # later Path() call create/look for a directory literally named
+            # "~" under the CWD (measured: a `~/my-audio-lib` answer produced
+            # ./~ and never touched the real home directory).
+            config.audio_library = str(Path(custom_path).expanduser())
 
         # Performance mode
         print(f"\n⚡ Performance Mode")
@@ -219,24 +224,33 @@ class PersonalSetup:
         # the new shell) a literal `python` does not resolve and every alias
         # fails with "command not found". sys.executable is also venv-aware,
         # so the aliases keep working without `chameleon-activate` first.
+        #
+        # Every interpolated path goes through shlex.quote: the previous
+        # hand-rolled quoting embedded the path inside one single-quoted
+        # alias body, so an apostrophe anywhere in it ("/data/o'brien/music")
+        # produced a file `bash -n` rejects outright (exit 2, "unexpected
+        # token") -- and the user is told to `source` that file. shlex.quote
+        # emits a complete, valid shell token for any path.
+        q = shlex.quote
+        main_py = Path.cwd() / "main.py"
         aliases = f"""#!/bin/bash
 # Chameleon Audio - Personal Quick Commands
 
 # Activate virtual environment
-alias chameleon-activate='source {Path.cwd()}/.venv/bin/activate'
+alias chameleon-activate={q(f"source {Path.cwd()}/.venv/bin/activate")}
 
 # Quick operations
-alias audio-analyze='"{sys.executable}" "{Path.cwd()}/main.py" analyze'
-alias audio-normalize='"{sys.executable}" "{Path.cwd()}/main.py" process --normalize'
-alias audio-denoise='"{sys.executable}" "{Path.cwd()}/main.py" process --denoise'
-alias audio-batch='"{sys.executable}" "{Path.cwd()}/main.py" batch "{config.audio_library}"'
+alias audio-analyze={q(f'{q(sys.executable)} {q(str(main_py))} analyze')}
+alias audio-normalize={q(f'{q(sys.executable)} {q(str(main_py))} process --normalize')}
+alias audio-denoise={q(f'{q(sys.executable)} {q(str(main_py))} process --denoise')}
+alias audio-batch={q(f'{q(sys.executable)} {q(str(main_py))} batch {q(config.audio_library)}')}
 
 # Personal library management
-alias audio-lib='cd {config.audio_library}'
-alias audio-processed='cd {config.output_directory}'
+alias audio-lib={q(f'cd {config.audio_library}')}
+alias audio-processed={q(f'cd {config.output_directory}')}
 
 # Server
-alias audio-server='"{sys.executable}" "{Path.cwd()}/main.py" server --host 127.0.0.1 --port 8080'
+alias audio-server={q(f'{q(sys.executable)} {q(str(main_py))} server --host 127.0.0.1 --port 8080')}
 """
 
         _atomic_write_text(aliases_file, aliases)
@@ -247,37 +261,44 @@ alias audio-server='"{sys.executable}" "{Path.cwd()}/main.py" server --host 127.
         # Raw f-string: the Windows paths inside are written with literal
         # backslashes (\m, \S, ...), which CPython 3.12+ reports as invalid
         # escape sequences.
-        ps_script = rf"""# Chameleon Audio - Personal Quick Commands
+        # Paths are single-quoted PowerShell literals (inner ' doubled):
+        # interpolating them inside "..." left `"` or `$` in a path free
+        # to break or expand inside the generated script.
+        def _psq(s: str) -> str:
+            return "'" + s.replace("'", "''") + "'"
+
+        ps_main = _psq(str(main_py))
+        ps_script = f"""# Chameleon Audio - Personal Quick Commands
 
 # Activate virtual environment
 function Chameleon-Activate {{
-    & "{Path.cwd()}\.venv\Scripts\Activate.ps1"
+    & {_psq(str(Path.cwd() / '.venv' / 'Scripts' / 'Activate.ps1'))}
 }}
 
 # Quick operations
 function Audio-Analyze {{
-    & "{sys.executable}" "{Path.cwd()}\main.py" analyze $args
+    & {_psq(sys.executable)} {ps_main} analyze $args
 }}
 
 function Audio-Normalize {{
-    & "{sys.executable}" "{Path.cwd()}\main.py" process --normalize $args
+    & {_psq(sys.executable)} {ps_main} process --normalize $args
 }}
 
 function Audio-Denoise {{
-    & "{sys.executable}" "{Path.cwd()}\main.py" process --denoise $args
+    & {_psq(sys.executable)} {ps_main} process --denoise $args
 }}
 
 function Audio-Batch {{
-    & "{sys.executable}" "{Path.cwd()}\main.py" batch "{config.audio_library}" $args
+    & {_psq(sys.executable)} {ps_main} batch {_psq(config.audio_library)} $args
 }}
 
 # Directory shortcuts
 function Audio-Lib {{
-    Set-Location "{config.audio_library}"
+    Set-Location {_psq(config.audio_library)}
 }}
 
 function Audio-Processed {{
-    Set-Location "{config.output_directory}"
+    Set-Location {_psq(config.output_directory)}
 }}
 """
 
@@ -332,9 +353,16 @@ class PersonalLibraryManager:
         new_files = []
         updated_files = []
 
+        # Files scanned this pass -- anything left over in the DB
+        # afterwards was deleted from disk and must be pruned. Until now a
+        # removed file stayed in the database forever: it was still counted
+        # in total_files and still returned by search(), with a checksum
+        # pointing at nothing.
+        seen_keys = set()
         for ext in self.config.supported_formats:
             for file_path in self.library_path.rglob(f"*{ext}"):
                 file_key = str(file_path.relative_to(self.library_path))
+                seen_keys.add(file_key)
 
                 # Check if file is new or modified
                 if file_key not in self.library_db["files"]:
@@ -346,7 +374,12 @@ class PersonalLibraryManager:
                         "checksum": result.checksum_sha256,
                         "size": result.size_bytes,
                         "metadata": result.metadata,
-                        "added": str(Path(file_path).stat().st_mtime),
+                        # When the file entered the library, not the file's
+                        # own mtime -- st_mtime made a file created last
+                        # year and scanned today look a year "old" in the
+                        # database (same mislabeled-timestamp pattern as
+                        # create_playlist's "created" field).
+                        "added": datetime.now(timezone.utc).isoformat(),
                         "tags": []
                     }
                     new_files.append(file_key)
@@ -364,14 +397,20 @@ class PersonalLibraryManager:
                         })
                         updated_files.append(file_key)
 
+        removed_keys = sorted(set(self.library_db["files"]) - seen_keys)
+        for file_key in removed_keys:
+            del self.library_db["files"][file_key]
+
         self._save_db()
 
         return {
             "total_files": len(self.library_db["files"]),
             "new_files": len(new_files),
             "updated_files": len(updated_files),
+            "removed_files": len(removed_keys),
             "new": new_files[:10],  # Show first 10
-            "updated": updated_files[:10]
+            "updated": updated_files[:10],
+            "removed": removed_keys[:10]
         }
 
     def add_tags(self, file_pattern: str, tags: list) -> None:
@@ -410,6 +449,15 @@ class PersonalLibraryManager:
             if any(query.lower() in tag.lower() for tag in file_info.get("tags", [])):
                 results.append(file_key)
                 continue
+
+            # Search in metadata -- the docstring has always promised it
+            # ("filename, tags, or metadata") but the loop never looked at
+            # file_info["metadata"], so a query matching only an artist or
+            # title returned nothing.
+            metadata = file_info.get("metadata") or {}
+            if any(query.lower() in str(value).lower()
+                   for value in metadata.values()):
+                results.append(file_key)
 
         return results
 

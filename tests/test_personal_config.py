@@ -263,8 +263,11 @@ def test_generated_quick_commands_invoke_the_running_interpreter(home):
 
     sh = (home / ".chameleon" / "aliases.sh").read_text()
     ps1 = (home / ".chameleon" / "aliases.ps1").read_text()
-    assert f'"{sys.executable}"' in sh
-    assert f'"{sys.executable}"' in ps1
+    # Quoting style may change (shlex.quote now wraps the whole alias
+    # command); the property that matters is the literal interpreter path
+    # reaching the generated files.
+    assert sys.executable in sh
+    assert sys.executable in ps1
 
 
 def test_quick_setup_only_prints_aliases_it_actually_created(home, capsys):
