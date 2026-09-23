@@ -2471,3 +2471,25 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22, continued):** Should the §4 fantasy-claim guard treat "ML
+features" in product source as the violation it already is in the docs?
+**A:** Yes -- and it was live. `tests/test_no_fantasy_features.py` has
+banned "advanced spectral/ML processing" claims in user-facing documents
+since the README overclaim prompted DOC_FORBIDDEN, but FORBIDDEN_PATTERNS
+(the source scan) only covered imports, GPU toggles and neural-network
+mentions. So `main.py` shipped two active claims the guard could not see:
+the `analyze_audio` docstring "Comprehensive audio analysis with ML
+features" (the method computes spectral centroid, ZCR and tempo -- all
+deterministic DSP) and the librosa-missing debug line "ML features will
+be limited", which asserts ML features exist that could be degraded.
+The test file's own docstring states the principle the scan violated: a
+claim does not become true by moving to a file the guard skips. Both
+lines are reworded honestly, and FORBIDDEN_PATTERNS now carries the
+textual-claim subset of DOC_FORBIDDEN (`ML features/models/pipeline/
+processing`, `machine learning`, `deep learning`, `AI-powered/driven/
+based`). The one line that newly needed it -- the `ml`-command removal
+comment mentioning "machine-learning" -- now carries the `non-goal`
+marker the guard's per-line exemption contract requires. `source
+separation` stays out of the source scan: core.py's honest disclaimer
+discusses it legitimately, unlike a marketing claim.

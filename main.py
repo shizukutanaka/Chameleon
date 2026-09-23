@@ -392,7 +392,7 @@ try:
     HAS_LIBROSA = True
 except ImportError:
     HAS_LIBROSA = False
-    _optional_dep_logger.debug("Librosa not installed. ML features will be limited.")
+    _optional_dep_logger.debug("Librosa not installed. Extended analysis features will be limited.")
 
 try:
     import soundfile as sf
@@ -786,7 +786,7 @@ class AudioProcessor:
         raise ValueError("Could not parse WAV file")
 
     def analyze_audio(self, audio: np.ndarray, sr: int) -> AudioMetadata:
-        """Comprehensive audio analysis with ML features"""
+        """Comprehensive audio analysis; adds librosa spectral features when present"""
         metadata = AudioMetadata(
             duration=len(audio) / sr if audio.ndim == 1 else audio.shape[1] / sr,
             sample_rate=sr,
@@ -2264,9 +2264,9 @@ def create_cli():
     # The `ml` command was removed in 2026-08. Its one operation, `enhance`,
     # called remove_noise() then normalize_audio() -- two pieces of
     # deterministic DSP, no model and no learning -- and was exactly
-    # `process --denoise --normalize`. A machine-learning name over
-    # spectral subtraction is the §4 claim this project mechanizes against,
-    # sitting on the first screen a user reads. See CHARTER.md §9.
+    # `process --denoise --normalize`. A non-goal machine-learning name
+    # over spectral subtraction is the §4 claim this project mechanizes
+    # against, sitting on the first screen a user reads. See CHARTER.md §9.
 
     # MIDI command
     midi = subparsers.add_parser("midi", help="MIDI analysis and composition")
