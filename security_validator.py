@@ -298,7 +298,11 @@ class SecurityValidator:
         if len(sanitized) > 255:
             name, ext = os.path.splitext(sanitized)
             sanitized = name[:255 - len(ext)] + ext
-        return sanitized or "untitled"
+        # A name that is only dots ('.', '..', '...') is either a no-op or
+        # resolves to the parent directory when joined under an output dir.
+        if not sanitized or not sanitized.strip('.'):
+            return "untitled"
+        return sanitized
 
     @_hybridmethod
     def resolve_unique_paths(self, paths: Iterable) -> List[Path]:

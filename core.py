@@ -17,6 +17,7 @@ import os
 import sys
 import time
 import json
+import math
 import datetime
 import struct
 import shutil
@@ -839,26 +840,35 @@ class WAVProcessor:
 
 
     def _calculate_levels_safe(self, file_path: str, info: AudioInfo) -> Tuple[float, float]:
-        """Calculate peak and RMS levels with enhanced bit depth support and memory protection."""
+        """Calculate peak and RMS over the WHOLE data payload.
+
+        An earlier version stopped after 1M channel-samples (~10-21 s at
+        44.1/48 kHz) and still reported the result as the file's levels, so a
+        file whose loud part starts later reported peak 0.0 -- and a different
+        answer than the numpy path gives for the same input. Levels are cheap
+        to stream, so the whole payload is measured: 8/16/32-bit depths
+        accumulate in the integer domain via memoryview casts (~85M
+        samples/s), 24-bit falls back to per-sample decode.
+        """
         try:
+            bytes_per_sample = max(1, info.bit_depth // 8) if info.bit_depth != 8 else 1
+            frame_size = bytes_per_sample * max(1, info.channels)
+
+            if frame_size == 0 or info.data_size <= 0:
+                return 0.0, 0.0
+
+            scale = float(1 << (info.bit_depth - 1))
+            max_int = 0
+            sum_squares = 0.0
+            sample_count = 0
+
             with open(file_path, 'rb') as f:
                 # Seek to the actual data payload (not a hardcoded byte 44).
                 f.seek(info.data_offset)
                 remaining = info.data_size
 
-                max_val = 0.0
-                sum_squares = 0.0
-                sample_count = 0
-                max_samples = 1000000  # Limit per-channel samples for safety
-
-                bytes_per_sample = max(1, info.bit_depth // 8) if info.bit_depth != 8 else 1
-                frame_size = bytes_per_sample * max(1, info.channels)
-
-                if frame_size == 0 or remaining <= 0:
-                    return 0.0, 0.0
-
                 carry = b''
-                while sample_count < max_samples and remaining > 0:
+                while remaining > 0:
                     data = f.read(min(CHUNK_SIZE, remaining))
                     if not data:
                         break
@@ -870,28 +880,52 @@ class WAVProcessor:
                     if available == 0:
                         continue
 
-                    mv = memoryview(chunk[:available])
-                    for frame_offset in range(0, available, frame_size):
-                        for channel in range(info.channels):
-                            if sample_count >= max_samples:
-                                break
-                            sample_offset = frame_offset + channel * bytes_per_sample
-                            sample_bytes = mv[sample_offset:sample_offset + bytes_per_sample].tobytes()
-                            sample_value = self._decode_sample_bytes(sample_bytes, info.bit_depth)
-                            if sample_value is None:
-                                continue
-                            normalized_sample = self._normalize_amplitude(sample_value, info.bit_depth)
-                            max_val = max(max_val, normalized_sample)
-                            sum_squares += normalized_sample * normalized_sample
-                            sample_count += 1
-
-                    del mv
+                    block = chunk[:available]
+                    if info.bit_depth == 8:
+                        # 8-bit PCM is unsigned centred at 128. The peak of
+                        # |v - 128| sits at an extreme byte, so min/max find
+                        # it without a per-sample pass.
+                        peak8 = max(max(block) - 128, 128 - min(block))
+                        max_int = max(max_int, peak8)
+                        total = 0
+                        total_sq = 0
+                        for v in block:
+                            total += v
+                            total_sq += v * v
+                        # Sum (v-128)^2 = Sum v^2 - 256 Sum v + 128^2 * n
+                        n = len(block)
+                        sum_squares += total_sq - 256 * total + 16384 * n
+                        sample_count += n
+                    elif info.bit_depth == 16:
+                        samples = memoryview(block).cast('h')
+                        max_int = max(max_int, max(map(abs, samples)))
+                        sum_squares += math.fsum(v * v for v in samples)
+                        sample_count += len(samples)
+                    elif info.bit_depth == 32:
+                        samples = memoryview(block).cast('i')
+                        max_int = max(max_int, max(map(abs, samples)))
+                        sum_squares += math.fsum(v * v for v in samples)
+                        sample_count += len(samples)
+                    else:  # 24-bit: 3-byte samples can't cast; decode per sample
+                        mv = memoryview(block)
+                        for frame_offset in range(0, available, frame_size):
+                            for channel in range(info.channels):
+                                sample_offset = frame_offset + channel * bytes_per_sample
+                                sample_bytes = mv[sample_offset:sample_offset + bytes_per_sample].tobytes()
+                                sample_value = self._decode_sample_bytes(sample_bytes, info.bit_depth)
+                                if sample_value is None:
+                                    continue
+                                max_int = max(max_int, abs(sample_value))
+                                sum_squares += sample_value * sample_value
+                                sample_count += 1
+                        del mv
 
                 if sample_count == 0:
                     return 0.0, 0.0
 
-                rms = (sum_squares / sample_count) ** 0.5
-                return max_val, rms
+                rms = (sum_squares / sample_count) ** 0.5 / scale
+                peak = min(1.0, max_int / scale)
+                return peak, rms
 
         except Exception:
             return 0.0, 0.0
@@ -1074,12 +1108,13 @@ class WAVProcessor:
         with open(input_path, 'rb') as src, open_secure(output_path, 'wb') as dst:
             self._copy_patched_header(src, dst, info, new_data_size)
 
-            processed_samples = 0
-            max_samples = 10000000  # Safety limit per-channel
             to_consume = new_data_size
             carry = b''
 
-            while to_consume > 0 and processed_samples < max_samples:
+            # The loop is bounded by to_consume, which strictly decreases on
+            # every read; there is no arbitrary sample cap. Files the size
+            # validator accepts (up to the configured max) must normalize.
+            while to_consume > 0:
                 data = src.read(min(CHUNK_SIZE, to_consume))
                 if not data:
                     break
@@ -1108,10 +1143,6 @@ class WAVProcessor:
                             # rounds to nearest. Same op, same quantization.
                             new_sample = int(round(sample_value * gain))
                             processed_chunk.extend(self._encode_sample_value(new_sample, info.bit_depth))
-
-                        processed_samples += 1
-                        if processed_samples >= max_samples:
-                            raise ValueError("Too many samples processed - possible corruption")
 
                 if processed_chunk:
                     dst.write(processed_chunk)
@@ -1167,7 +1198,7 @@ class WAVProcessor:
                         mono_chunk.extend(mv[frame_offset:frame_offset + bytes_per_sample].tobytes())
                         continue
 
-                    avg_sample = int(sum(samples) / len(samples))
+                    avg_sample = int(round(sum(samples) / len(samples)))
                     mono_chunk.extend(self._encode_sample_value(avg_sample, info.bit_depth))
 
                 if mono_chunk:

@@ -1,10 +1,10 @@
 # Chameleon — Product Analysis (Strengths, Weaknesses, Improvement Backlog)
 
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
-**Version:** 1.1.0 · **Tests:** re-run 2026-09-21 on Python 3.12, green in
-all three configurations — **477 passed** on a bare install (stdlib only,
-33 skipped), **557** with numpy (scipy/librosa/soundfile blocked, 33
-skipped), **662** with numpy + scipy + librosa + soundfile + fastapi
+**Version:** 1.1.0 · **Tests:** re-run 2026-09-23 on Python 3.12, green in
+all three configurations — **484 passed** on a bare install (stdlib only,
+33 skipped), **564** with numpy (scipy/librosa/soundfile blocked, 33
+skipped), **669** with numpy + scipy + librosa + soundfile + fastapi
 (5 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
@@ -190,6 +190,18 @@ All of these were fixed in this pass (see §2 "Resolved"), except where noted.
   it by string (`uvicorn.run("api_server:app", …)`) and guards the uvicorn
   import — so it is a latent fragility, not a live bug. Covered by
   `tests/test_api_routes.py` / `tests/test_api_fallback.py`.
+- ~~**`analyze` reported peak/RMS from only the first ~10-21 s of audio.**~~
+  **RESOLVED 2026-09-23.** `_calculate_levels_safe` stopped decoding after 1M
+  channel-samples but still returned the partial result as the file's
+  levels — a 40 s file silent for its first ~29 s reported `peak_level=0.0`
+  while peaking at 0.9, and the stdlib path disagreed with the numpy path on
+  the same input. It now streams the whole payload (integer-domain
+  accumulation; ~85M samples/s for 16-bit). Same audit: `normalize` refused
+  files past an arbitrary 10M channel-sample counter (a 110 s stereo file —
+  ~39% of the size limit the validator accepts) with "possible corruption";
+  the redundant counter is removed, and `sanitize_filename("..")` no longer
+  returns a parent-directory reference. See `CHARTER.md` §9 and
+  `tests/test_core_measurement_bounds.py`.
 
 ### Honesty residue (docstring/metadata overclaims) — RESOLVED 2026-07-18
 The three overclaims below were fixed in the same pass that produced this

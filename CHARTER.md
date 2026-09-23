@@ -2471,3 +2471,57 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-23, continued):** `analyze` prints `peak_level`/`rms_level` for
+the file. Measured over all of it, or just the beginning?
+**A:** Just the beginning. `_calculate_levels_safe` stopped decoding after 1M
+channel-samples -- about 10.4 s of 48 kHz stereo, 20.8 s of mono -- and
+still returned the partial number as the file's levels. Probe: a 40 s file
+silent for its first ~29 s then holding 0.9 FS reported
+`peak_level=0.0, rms_level=0.0`. The numpy analysis path
+(`main.py`'s `analyze_audio`) always measured the whole array, so the same
+command gave different answers depending on which extras were installed --
+the same interop defect class as the STFT frame grid. The rewrite streams
+the entire payload in integer domain: `memoryview.cast` for 16/32-bit
+(~85M samples/s measured), min/max on the raw bytes plus the
+Sum(v-128)^2 = Sum v^2 - 256 Sum v + 128^2 n identity for unsigned 8-bit,
+per-sample decode kept only for 24-bit. `except Exception: return 0,0` is
+kept deliberately -- levels are informational and `analyze` must not fail
+because a metric could not be computed; the honest fix was measuring the
+file, not refusing to.
+
+**Q (2026-09-23, continued):** `normalize` on an ordinary stereo music file
+-- say two minutes at 48 kHz. Does it complete?
+**A:** No, measured: a 110 s stereo file failed with "Too many samples
+processed - possible corruption". `_apply_gain_safe` counted
+channel-samples against a hardcoded 10M ceiling (~104 s stereo), so roughly
+39% of the payload the 500 MB size validator accepts could not be
+normalized -- and the message called a perfectly ordinary file corrupt.
+The counter was also redundant: the loop is already bounded by
+`to_consume`, which strictly decreases on every read; the sample count can
+never exceed the frames declared in data_size. Both removed. In the same
+pass `_convert_to_mono` picked up `int(round(...))` so it quantizes the
+same way the gain path does instead of truncating toward zero.
+
+**Q (2026-09-23, continued):** `SecurityValidator.sanitize_filename` scrubs
+the dangerous characters. What does it return for "..", and where does a
+caller that joins it under an output directory land?
+**A:** It returned ".." verbatim -- a parent-directory reference, not a
+filename. Today's call sites re-check containment after joining (the API's
+`_resolve_uploaded_path` compares `candidate.parent` to the upload root),
+but a sanitizer is exactly the primitive the next caller will trust not to
+do this. Names made only of dots ('.', '..', '...', '....') now collapse to
+'untitled'; 'a..b' and 'mix..final.wav' are untouched since '..' inside a
+name is not a path segment. Verified at join level: every scrubbed output
+stays inside its base directory.
+
+**Q (2026-09-23, continued):** The orphan-guard test reads pyproject.toml
+with `tomllib`. CI runs Python 3.8-3.11 and `requires-python` says >=3.8 --
+does the guard even collect on the older interpreters?
+**A:** No -- measured in CI on the Python 3.9 ubuntu job: `import tomllib`
+raised ModuleNotFoundError at collection and interrupted the whole run.
+tomllib is stdlib only from 3.11. The test now falls back to `tomli`
+(the same API, added to the `dev` extra pinned to
+`python_version < '3.11'`) and skips with a reason only when neither is
+importable, so a bare interpreter runs everything else instead of erroring
+at collection.

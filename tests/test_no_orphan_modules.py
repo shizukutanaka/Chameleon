@@ -25,10 +25,17 @@ and say why in the dict below.
 """
 
 import ast
-import tomllib
 from pathlib import Path
 
 import pytest
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # stdlib tomllib is Python 3.11+
+    try:
+        import tomli as tomllib
+    except ModuleNotFoundError:
+        tomllib = None
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -61,6 +68,9 @@ ALLOWED_ORPHANS = {
 
 
 def _packaged_modules():
+    if tomllib is None:
+        pytest.skip("no TOML reader available (stdlib tomllib needs Python "
+                    "3.11+, or install tomli)")
     with open(REPO_ROOT / "pyproject.toml", "rb") as handle:
         config = tomllib.load(handle)
     return set(config["tool"]["setuptools"]["py-modules"])
