@@ -3252,3 +3252,23 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22, continued):** The midi compose path was hardened across
+several audits (beat->second rescale, non-finite flags, key/mode wiring)
+-- but does `--length` actually mean what the help text claims, and does
+the extractor's velocity field carry information?
+**A:** Two defects. (1) `--length` arrives in seconds but was handed to
+`generate_melody`'s beat counter raw, so `--length 3 --tempo 120`
+produced 3 beats = 1.5 s of music (verified: track ended at tick 1440,
+not 2880). The compose handler now converts `length * tempo / 60` before
+calling `compose_melody`; the fixed 4-chord progression (8 beats) remains
+the upper bound -- a `--length` beyond it yields the progression's span,
+which is honest once the units agree. (2) `parse_midi_from_audio` scaled
+velocity as `int(energy * 1000)` on a frame-length-dependent sum, so any
+audible level (~-9 dBFS and up) pegged 127: a 0.5-amplitude sine and a
+0.1-amplitude sine produced identical velocity (verified). Velocity now
+follows RMS amplitude (`rms*sqrt(2)*127`), floored at 1 since velocity 0
+reads as note-off. Both regions checked against open PRs: the rescale,
+non-finite rejection, key/mode wiring and output writability fixes are
+already merged; `parse_midi_from_audio`'s scaling was untouched since the
+big refactor.
