@@ -96,7 +96,12 @@ def _inverse_real_transform(spectrum: Sequence[complex], length: int) -> List[fl
         return restored.astype(float).tolist()
 
     mirrored: List[complex] = list(spectrum)
-    for value in reversed(spectrum[1:-1]):
+    # The mirror excludes bin 0 always and the Nyquist bin only when it
+    # exists -- which is only for even-length inputs. For odd length the
+    # last rfft bin is a real bin whose conjugate is required, so dropping
+    # spectrum[-1] there misreconstructs every odd tail block.
+    mirror = spectrum[1:-1] if length % 2 == 0 else spectrum[1:]
+    for value in reversed(mirror):
         mirrored.append(value.conjugate())
 
     size = len(mirrored)

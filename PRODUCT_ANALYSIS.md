@@ -238,11 +238,18 @@ bugs to fix but problems without a known-good answer in this codebase.
   and never created the `aliases.sh` file its own documented next step tells
   you to source. 23 tests total, one of them a real, unmocked run of the
   onboarding flow end to end. See `CHARTER.md` §9.
-- **The orphaned modules' DSP is still untested.** `spectral_editor.py` and
-  `batch_automation.py` have import-safety coverage
-  (`tests/test_orphaned_import_safety.py`, `tests/test_smoke.py`) but nothing
-  exercises what they compute. The `audio_restoration` audit is the reason to
-  care: every defect it turned up was in code that imported cleanly.
+- **The orphaned modules' DSP is now partly exercised.** `spectral_editor.py`
+  and `batch_automation.py` had only import-safety coverage
+  (`tests/test_orphaned_import_safety.py`, `tests/test_smoke.py`) until
+  2026-09-23, when the first real tests landed — and immediately paid off:
+  the manual STFT produced a different frame count than the librosa path it
+  replaces, the ISTFT ignored the `window` argument and mis-cropped its
+  output, an empty noise selection wrote NaN everywhere while reporting
+  success, the DAG scheduler silently dropped undeclared/cyclic/failed
+  dependents, and importing the module created `~/.chameleon/logs`. All
+  fixed (see `CHARTER.md` §9). Coverage is still thin beyond the tested
+  paths — the `audio_restoration` audit remains the reason to care: every
+  defect it turned up was in code that imported cleanly.
 
 ### Infrastructure / architecture (need a human or a big investment)
 - **The active CI workflow is broken and cannot be fixed by the automation
