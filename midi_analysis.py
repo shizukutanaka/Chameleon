@@ -564,6 +564,27 @@ class MIDIAnalyzer:
         every player defaults to 120 BPM and a requested tempo would have no
         effect on the produced file."""
         try:
+            # Every byte after a note status must be < 0x80 -- a data byte
+            # with the high bit set is read as a new status and the stream
+            # desyncs -- and the channel lives in the status nibble, so it
+            # must fit in 4 bits. Negative times are unrepresentable too:
+            # their deltas clamp to 0 and the note is silently relocated.
+            # Reject the write rather than emit a file that claims to be
+            # MIDI but is not parseable, or that moves the notes it was
+            # asked to encode.
+            for note in notes:
+                if not (0 <= note.pitch <= 127
+                        and 0 <= note.velocity <= 127
+                        and 0 <= note.channel <= 15
+                        and note.start_time >= 0
+                        and note.duration >= 0):
+                    print(f"Error generating MIDI file: unrepresentable note "
+                          f"(pitch={note.pitch}, velocity={note.velocity}, "
+                          f"channel={note.channel}, start={note.start_time}, "
+                          f"duration={note.duration}); pitch/velocity must be "
+                          f"0-127, channel 0-15, times non-negative")
+                    return False
+
             # Basic MIDI file structure
             midi_data = bytearray()
 
@@ -594,25 +615,26 @@ class MIDIAnalyzer:
             ticks_per_second = 480.0 * tempo_bpm / 60.0
             events = []
             for note in sorted_notes:
-                events.append((note.start_time, 'note_on', note.pitch, note.velocity))
+                events.append((note.start_time, 'note_on', note.pitch,
+                               note.velocity, note.channel))
                 events.append((note.start_time + note.duration, 'note_off',
-                               note.pitch, 0))
+                               note.pitch, 0, note.channel))
 
             # Sort all events by time
             events.sort(key=lambda e: e[0])
 
             # Write events to track
             last_time = 0
-            for event_time, event_type, pitch, velocity in events:
+            for event_time, event_type, pitch, velocity, channel in events:
                 delta_ticks = int((event_time - last_time) * ticks_per_second)
 
                 # Write variable-length delta time
                 track_data.extend(self._write_variable_length(delta_ticks))
 
                 if event_type == 'note_on':
-                    track_data.extend([0x90, pitch, velocity])  # Note on, channel 0
+                    track_data.extend([0x90 | channel, pitch, velocity])  # Note on
                 else:  # note_off
-                    track_data.extend([0x80, pitch, velocity])  # Note off, channel 0
+                    track_data.extend([0x80 | channel, pitch, velocity])  # Note off
 
                 last_time = event_time
 

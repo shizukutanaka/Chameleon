@@ -247,3 +247,44 @@ def test_analyze_harmony_names_the_key_not_a_pitch_class():
     harmony = analyzer.analyze_harmony(chords, key)
 
     assert harmony["key"] == "C major"
+
+
+def test_generate_midi_rejects_unrepresentable_notes(tmp_path):
+    """pitch/velocity >= 128 wrote a data byte with the high bit set -- it is
+    read as a new status byte and the stream desyncs -- yet the function
+    returned True. channel >= 16 overflew the status nibble; negative times
+    clamped to delta 0, relocating the note. None may produce a file."""
+    analyzer = MIDIAnalyzer()
+    bad_notes = [
+        MIDINote(pitch=128, velocity=80, start_time=0.0, duration=0.5),
+        MIDINote(pitch=60, velocity=200, start_time=0.0, duration=0.5),
+        MIDINote(pitch=60, velocity=80, start_time=0.0, duration=0.5, channel=16),
+        MIDINote(pitch=60, velocity=80, start_time=-0.5, duration=0.5),
+    ]
+    for i, note in enumerate(bad_notes):
+        out = tmp_path / f"bad{i}.mid"
+        assert analyzer.generate_midi_file([note], str(out)) is False
+        assert not out.exists()
+
+    # The range boundary itself must stay writable.
+    ok = tmp_path / "ok.mid"
+    assert analyzer.generate_midi_file(
+        [MIDINote(pitch=127, velocity=127, start_time=0.0, duration=0.5,
+                  channel=15)],
+        str(ok)) is True
+    assert ok.exists()
+
+
+def test_generate_midi_writes_the_channel_it_was_given(tmp_path):
+    """MIDINote.channel was silently dropped: every note was emitted on
+    channel 0 regardless of the field. The status byte is 0x9c/0x8c."""
+    out = tmp_path / "ch.mid"
+    assert MIDIAnalyzer().generate_midi_file(
+        [MIDINote(pitch=60, velocity=80, start_time=0.0, duration=0.5,
+                  channel=5)],
+        str(out)) is True
+
+    track = out.read_bytes()
+    track = track[track.find(b"MTrk") + 8:]
+    assert b"\x95\x3c\x50" in track  # note_on ch5, pitch 60, vel 80
+    assert b"\x85\x3c\x00" in track  # note_off ch5, pitch 60
