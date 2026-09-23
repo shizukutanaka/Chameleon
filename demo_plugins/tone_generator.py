@@ -67,6 +67,15 @@ class ToneGeneratorPlugin(AudioGeneratorPlugin):
         amplitude = params.get('amplitude', 0.5)
         phase_degrees = params.get('phase', 0.0)
 
+        # An unadvertised waveform used to fall through to sine, so a
+        # caller asking for e.g. "noise" got a sine tone labelled as
+        # the thing they requested. Name the miss instead.
+        if waveform not in ('sine', 'square', 'sawtooth', 'triangle'):
+            raise ValueError(
+                f"Unknown waveform {waveform!r}; expected one of "
+                "sine, square, sawtooth, triangle"
+            )
+
         # Convert phase to radians
         phase = math.radians(phase_degrees)
 
@@ -92,7 +101,7 @@ class ToneGeneratorPlugin(AudioGeneratorPlugin):
                 else:
                     sample = 3.0 - 4.0 * normalized
             else:
-                sample = math.sin(angle)  # Default to sine
+                raise AssertionError("unreachable: waveform validated above")
 
             # Apply amplitude
             sample *= amplitude

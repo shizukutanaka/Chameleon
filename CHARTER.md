@@ -3252,3 +3252,16 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22, continued):** The committed demo plugins are shipped as
+working references -- do they honor their own advertised contracts?
+**A:** Two did not. `tone_generator` advertised four waveforms in its
+metadata but an unadvertised name fell through to sine silently, so a
+caller asking for e.g. "noise" got a sine tone labelled as their request;
+it now names the miss (same refusal class as `create_mastering_preset`
+and `restore(mode)`). `simple_reverb` carried its delay buffer on the
+instance across `process_audio` calls, so a second call's output began
+with the previous signal's tail (verified: silence returned [0.81, ...]
+-- the first call's last samples echoing); each call now starts the
+buffer clean, one call = one independent signal -- the same leak the
+mastering Compressor had. Both fixes mutation-verified.
