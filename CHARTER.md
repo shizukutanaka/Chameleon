@@ -3252,3 +3252,16 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22):** `.github/dependabot.yml` declares `automerge` for the
+github-actions update -- does GitHub-native Dependabot have such an
+option?
+**A:** No. Automerge existed only on the dependabot.com predecessor and
+was dropped at the GitHub-native migration; the v2 schema's `update`
+object lists 23 keys with `additionalProperties: false`, so the entry
+fails config validation while claiming a behavior that cannot happen.
+Removed the block and left a comment naming the real mechanism (repo
+"Allow auto-merge" plus a workflow). New
+`tests/test_dependabot_config.py` validates every top-level and
+per-update key against the published schema allowlist; it skips in the
+bare-stdlib config where PyYAML is absent.
