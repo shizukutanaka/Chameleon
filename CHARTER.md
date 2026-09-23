@@ -2471,3 +2471,19 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** `EnhancedSecurityValidator.validate_path_secure` gates on
+`ALLOWED_DIRECTORIES` -- does its containment check actually contain?
+**A:** No, in both directions. It compared the *resolved* path against the
+*unresolved* configured dir via raw `str.startswith`: `ALLOWED_DIRECTORIES=
+/data/in` admitted `/data/incoming/evil.wav` (verified: the sibling-prefix
+path returned True), while `ALLOWED_DIRECTORIES=/tmp/x` rejected every file
+inside `/tmp/x` on macOS because the resolved path is `/private/tmp/x` and
+never matches the configured string (verified over-reject). Both sides are
+now resolved and containment is `root in path.parents` -- the same
+containment model `CHAMELEON_TRUSTED_ROOTS` uses -- so the gate contains in
+both directions. The class ships no callers (PRODUCT_ANALYSIS dead-code
+list), but it is public API surface and audit-61 already fixed this file's
+other internals on the same "shipped code must be honest" rule.
+`tests/test_enhanced_security_validator.py` pins both directions plus the
+blank-entry semantics; the two directional cases are mutation-verified.

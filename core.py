@@ -2093,9 +2093,21 @@ class EnhancedSecurityValidator:
                 return False
 
             # Check if path is within allowed directories (if configured)
-            allowed_dirs = os.getenv('ALLOWED_DIRECTORIES', '').split(',')
-            if allowed_dirs and allowed_dirs[0]:
-                if not any(str(path).startswith(allowed) for allowed in allowed_dirs):
+            allowed_dirs = [d.strip() for d in
+                            os.getenv('ALLOWED_DIRECTORIES', '').split(',')
+                            if d.strip()]
+            if allowed_dirs:
+                # Compare resolved roots, not string prefixes. A raw
+                # startswith admitted sibling directories that share the
+                # prefix -- ALLOWED_DIRECTORIES=/data/in passed
+                # /data/incoming/evil.wav. And comparing the *resolved*
+                # path against an *unresolved* configured dir rejected
+                # legitimate files whenever the configured path crosses a
+                # symlink (macOS maps /tmp -> /private/tmp, so a file under
+                # /tmp/x resolved to /private/tmp/x and never matched).
+                allowed_roots = [Path(d).resolve() for d in allowed_dirs]
+                if not any(path == root or root in path.parents
+                           for root in allowed_roots):
                     return False
 
             return True
