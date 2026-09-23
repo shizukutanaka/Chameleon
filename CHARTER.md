@@ -2471,3 +2471,18 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22, continued):** Audit-108 regenerated templates/*.py and
+enforced the live plugin's gain, but demo_plugins/ is the third place
+generated plugin artifacts live. Are any committed demos still lying
+about their parameters?
+**A:** One: demo_plugins/peak_analyzer.py declared a `gain` parameter
+(min 0.0, max 2.0, "Gain level") that its peak detector never reads --
+stale output of the template bug audits 106-108 removed, sitting in a
+default discovery directory where `plugins list` presents it as a
+real, audited plugin. It now declares `parameters={}` per the
+audit-107 convention (its code reads nothing). Every other committed
+plugin -- simple_gain, simple_reverb, spectrum_analyzer, tone_generator,
+mycustomeffect -- was verified to declare exactly what it consumes; a
+swept contract test now pins declared==consumed across both discovery
+directories so the next stale artifact cannot slip back in.

@@ -304,3 +304,30 @@ def test_load_plugin_limits_all_plugin_code_sites(tmp_path, hang_site):
     with pytest.raises(TimeoutError, match="timed out"):
         loader.load_plugin(plugin)
     assert time.monotonic() - t0 < 10
+
+
+def test_every_committed_plugin_declares_exactly_the_params_it_consumes():
+    """demo_plugins/ and plugins/ are the live discovery directories, so a
+    committed plugin whose metadata declares a param its code never reads
+    -- or reads one it never declares -- is presented to users as a real,
+    audited plugin while lying about its own contract. peak_analyzer
+    declared a `gain` its peak detector never read (stale output of the
+    buggy template generator audits 106-108 cleaned up). Sweep every
+    committed plugin through the real loader and pin declared==consumed."""
+    import re
+    repo_root = Path(__file__).resolve().parent.parent
+    loader = PluginLoader(PluginConfig())
+    checked = 0
+    for directory in ("demo_plugins", "plugins"):
+        for path in sorted((repo_root / directory).glob("*.py")):
+            if path.name == "__init__.py":
+                continue
+            source = path.read_text()
+            declared = set(re.findall(r'"(\w+)":\s*\{', source))
+            consumed = set(re.findall(r"params\.get\('(\w+)'", source))
+            assert declared == consumed, (
+                f"{path.name}: declared {sorted(declared)} != "
+                f"consumed {sorted(consumed)}")
+            assert loader.load_plugin(str(path)) is not None, path.name
+            checked += 1
+    assert checked >= 5  # the committed set exists; an empty glob would pass vacuously
