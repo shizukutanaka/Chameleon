@@ -3252,3 +3252,18 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22, continued):** Does every operation refuse when its extra
+is missing, or does one fake it?
+**A:** `--denoise` was the hole. `AudioProcessor.remove_noise` silently
+returned the input array when `HAS_SCIPY` was false -- `batch_process` on a
+numpy-only install then wrote a bit-identical `in_denoised.wav` and
+reported `output` with no error (verified end-to-end). Every other
+missing-extra path already refuses: `apply_effects` -> _EFFECT_REQUIREMENTS,
+`repair_audio` -> _require_restoration_deps, `master`/`mono_freq` gates.
+The op now raises `UnsupportedOperationError` naming the missing package
+and the `[audio]` extra, so `_error_kind` still classifies it `internal`
+(a broken install, not bad input) and the batch result carries the honest
+error instead of a silent copy. Same defect class as audit-79's scipy-gated
+interpolate_selection no-op and audit-121's decorative config fields: a
+code path that reported capability it did not have.
