@@ -311,6 +311,11 @@ class MIDIAnalyzer:
 
     def detect_chords(self, notes: List[MIDINote], window_size: float = 1.0) -> List[Chord]:
         """Detect chords from MIDI notes"""
+        if not notes:
+            # max() over an empty sequence raises ValueError; the sibling
+            # APIs (analyze_rhythm, analyze_harmony) already treat empty
+            # input as "nothing to report" rather than an exception.
+            return []
         chords = []
         current_time = 0.0
 
@@ -594,9 +599,17 @@ class MIDIAnalyzer:
             ticks_per_second = 480.0 * tempo_bpm / 60.0
             events = []
             for note in sorted_notes:
-                events.append((note.start_time, 'note_on', note.pitch, note.velocity))
+                # Pitch and velocity are single MIDI data bytes (0-127); an
+                # out-of-range MIDINote passed in by a caller emitted the
+                # raw value verbatim -- a byte >= 0x80 in a data position
+                # makes the rest of the stream unparseable to readers (and
+                # a negative value aborted the write outright). Clamp like
+                # _write_variable_length does for negative deltas.
+                pitch = max(0, min(127, note.pitch))
+                velocity = max(0, min(127, note.velocity))
+                events.append((note.start_time, 'note_on', pitch, velocity))
                 events.append((note.start_time + note.duration, 'note_off',
-                               note.pitch, 0))
+                               pitch, 0))
 
             # Sort all events by time
             events.sort(key=lambda e: e[0])
@@ -655,7 +668,7 @@ class MIDIAnalyzer:
     def analyze_rhythm(self, notes: List[MIDINote]) -> Dict[str, Any]:
         """Analyze rhythmic patterns"""
         if not notes:
-            return {"tempo": 0, "time_signature": (4, 4), "patterns": []}
+            return {"tempo": 0, "time_signature": self.config.time_signature, "patterns": []}
 
         # Calculate inter-onset intervals
         onsets = sorted([note.start_time for note in notes])

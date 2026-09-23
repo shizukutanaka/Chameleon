@@ -1,10 +1,10 @@
 # Chameleon — Product Analysis (Strengths, Weaknesses, Improvement Backlog)
 
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
-**Version:** 1.1.0 · **Tests:** re-run 2026-09-21 on Python 3.12, green in
-all three configurations — **477 passed** on a bare install (stdlib only,
-33 skipped), **557** with numpy (scipy/librosa/soundfile blocked, 33
-skipped), **662** with numpy + scipy + librosa + soundfile + fastapi
+**Version:** 1.1.0 · **Tests:** re-run 2026-09-23 on Python 3.12, green in
+all three configurations — **488 passed** on a bare install (stdlib only,
+35 skipped), **570** with numpy (scipy/librosa/soundfile blocked, 33
+skipped), **675** with numpy + scipy + librosa + soundfile + fastapi
 (5 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
@@ -190,6 +190,23 @@ All of these were fixed in this pass (see §2 "Resolved"), except where noted.
   it by string (`uvicorn.run("api_server:app", …)`) and guards the uvicorn
   import — so it is a latent fragility, not a live bug. Covered by
   `tests/test_api_routes.py` / `tests/test_api_fallback.py`.
+- ~~**Batch summary double-counted errors; enhanced integrity checks
+  rejected every file; MIDI edges crashed or emitted illegal bytes.**~~
+  **RESOLVED 2026-09-23.** Measured on the then-current tree:
+  `process_directory`'s exception path appended the same analysis to
+  `summary["errors"]` twice (1 failure → 2 entries, so the persisted batch
+  state overstated failures 2x); `EnhancedSecurityValidator.check_file_integrity`
+  compared `mode & 0o777` against the FULL `st_mode` (which carries
+  file-type bits) so it was True for 100% of files, and its
+  `_calculate_file_entropy` crashed calling `float.bit_length()` — that
+  class is dormant but exported API; `detect_chords([])` raised ValueError
+  on `max()`; `analyze_rhythm([])` hardcoded (4,4) while the sibling
+  empty-input paths honor `config.time_signature`; `generate_midi_file`
+  wrote out-of-range pitch/velocity verbatim (≥0x80 in a data position =
+  unparseable stream, negative = abort); `BatchJobRequest` accepted an
+  empty `files` list (job completes instantly at progress 0.0). Proven by
+  `tests/test_summary_and_format_integrity.py` — 7 of its tests fail on
+  the pre-fix code.
 
 ### Honesty residue (docstring/metadata overclaims) — RESOLVED 2026-07-18
 The three overclaims below were fixed in the same pass that produced this

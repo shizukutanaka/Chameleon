@@ -2471,3 +2471,53 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-23, continued):** `BatchProcessor.process_directory` wraps each
+file's exception into result.data['analysis'] and also appends it to
+summary['errors'] in the except block -- then the post-loop code appends
+result.data['analysis'] to summary['errors'] again. Same failure counted
+twice?
+**A:** Yes -- measured: one failing file produced failed=1 but
+len(summary['errors']) == 2, so every persisted batch-state JSON overstated
+the failure count 2x for exception-path failures. (Validation-path failures
+don't hit the except block, so they were counted once -- the double count
+was specific to exceptions.) Fixed by letting the failure path below pick
+the analysis up exactly once.
+
+**Q (2026-09-23, continued):** `EnhancedSecurityValidator.check_file_integrity`
+rejects files with "suspicious permissions" via `mode & 0o777 != mode`, and
+rejects high-entropy files via `_calculate_file_entropy`. Are those checks
+real?
+**A:** Both were vacuous/broken. `st_mode` carries the file-type bits
+(0o100000+) above the permission bits, so `mode & 0o777 != mode` is True
+for every file -- check_file_integrity returned False for 100% of inputs
+(the class is dormant today but is exported API surface). And the entropy
+loop called `p.bit_length()` on a float -- AttributeError on the first
+non-empty file, so the "simplified" expression was neither Shannon entropy
+nor ever executed. Now: flag the special bits (0o6000: setuid/setgid/
+sticky) and compute real Shannon entropy in bits/byte so the existing 7.5
+threshold is meaningful (measured: 0.0 for a constant file, 7.98 for
+os.urandom(10000)).
+
+**Q (2026-09-23, continued):** midi_analysis edge cases -- detect_chords([]),
+analyze_rhythm([]) with a configured time signature, and generate_midi_file
+given an out-of-range pitch/velocity. Anything real?
+**A:** Three defects. detect_chords([]) raised ValueError on `max()` over
+the empty note list while analyze_rhythm/analyze_harmony already treated
+empty input as "nothing to report" -- now returns []. analyze_rhythm([])
+hardcoded time_signature (4, 4) while its one-note and no-usable-interval
+paths return self.config.time_signature -- a configured (3, 4) came back
+(4, 4) only when the input happened to be empty; now consistent.
+generate_midi_file wrote note.pitch/note.velocity verbatim: pitch 200
+emitted byte 200 (>= 0x80) in a data position, which makes everything
+after it unparseable to a real MIDI reader, and a negative pitch aborted
+the write -- MIDI data bytes are 7-bit, 0-127, so they're now clamped
+like _write_variable_length clamps negative deltas.
+
+**Q (2026-09-23, continued):** The API's BatchJobRequest validates
+`operation` against a pattern -- what about an empty `files` list?
+**A:** `POST /batch` accepted `{"files": []}` and created a job that
+completed instantly reporting progress 0.0 -- a persistent record of work
+never requested. `files` now requires a minimum length of one via the
+dual-version keyword (`min_items` on pydantic v1, `min_length` on v2,
+same pattern as `_PATTERN_KW`); an empty body gets the standard 422.

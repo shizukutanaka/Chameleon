@@ -17,6 +17,7 @@ import os
 import sys
 import time
 import json
+import math
 import datetime
 import struct
 import shutil
@@ -1702,7 +1703,9 @@ class BatchProcessor:
                     "operation": operation,
                     "analysis": analysis,
                 }
-                summary["errors"].append(analysis)
+                # Not appended to summary["errors"] here: the failure path
+                # below picks result.data["analysis"] up once, so appending
+                # now would count every exception twice.
 
             if result.message:
                 result.message = self._sanitize_message(result.message, Path(file_path))
@@ -2156,11 +2159,13 @@ class EnhancedSecurityValidator:
             if stat.st_mtime > time.time():
                 return False  # Future modification time
 
-            # Check for suspicious file permissions
-            if os.name == 'posix':
-                mode = stat.st_mode
-                if mode & 0o777 != mode:  # Check for special permissions
-                    return False
+            # Check for special permission bits (setuid/setgid/sticky) --
+            # the previous comparison (`mode & 0o777 != mode`) held the
+            # permission bits against the FULL st_mode, which also carries
+            # the file-type bits (~0o100000+), so it was true for every
+            # file on disk and the check always returned False.
+            if os.name == 'posix' and stat.st_mode & 0o6000:
+                return False
 
             # Check file entropy for encrypted/compressed content
             entropy = EnhancedSecurityValidator._calculate_file_entropy(file_path)
@@ -2186,13 +2191,17 @@ class EnhancedSecurityValidator:
                 for byte in data:
                     byte_counts[byte] += 1
 
-                # Calculate entropy
+                # Shannon entropy in bits/byte (0-8, matching the 7.5
+                # threshold above). The previous expression called
+                # `p.bit_length()` on a float -- an AttributeError on every
+                # non-empty file -- and approximated nothing useful even
+                # before that crash.
                 entropy = 0.0
                 length = len(data)
                 for count in byte_counts:
                     if count > 0:
                         p = count / length
-                        entropy -= p * (p.bit_length() if p > 0 else 0)  # Simplified
+                        entropy -= p * math.log2(p)
 
                 return entropy
 
