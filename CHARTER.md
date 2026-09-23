@@ -2471,3 +2471,21 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22, continued):** `midi extract` printed "No MIDI notes
+extracted" and exited 0 -- was that always the truth?
+**A:** Twice removed from it. When midi_analysis.py is absent (a trimmed
+checkout, which the module-guard comments explicitly support), extract_midi
+warned once and returned [], so the CLI reported an honest empty result for
+a missing analyzer. And any crash inside parse_midi_from_audio was caught
+by `except Exception: return []` -- the same fake "no notes" for a real
+bug (both verified end-to-end: HAS_MIDI=False -> "No MIDI notes extracted"
+rc 0; a forced RuntimeError -> identical output, rc 0). A script checking
+$? sees success and concludes the input was unmusical. The missing module
+now raises UnsupportedOperationError ("requires midi_analysis.py to be
+importable") so _error_kind still files it under internal, and the
+analyzer crash keeps its audit-log line but propagates -- the project's
+stated convention that genuine bugs show their traceback
+(test_cli_error_surface). analyze_music needs no change: it checks
+HAS_MIDI first and its own except already converts to an honest error
+dict -> ERROR exit.

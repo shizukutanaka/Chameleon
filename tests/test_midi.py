@@ -247,3 +247,40 @@ def test_analyze_harmony_names_the_key_not_a_pitch_class():
     harmony = analyzer.analyze_harmony(chords, key)
 
     assert harmony["key"] == "C major"
+
+
+def test_extract_midi_refuses_when_midi_analysis_is_missing(monkeypatch):
+    """With midi_analysis absent, extract_midi used to warn and return [] --
+    `midi extract` then printed "No MIDI notes extracted" and exited 0, a
+    fake truthful result indistinguishable from a genuinely unmusical file
+    (verified end-to-end). It must refuse like every other missing-capability
+    path; UnsupportedOperationError keeps _error_kind classifying the broken
+    install as internal, not bad input."""
+    import main
+    import pytest
+
+    monkeypatch.setattr(main, "HAS_MIDI", False)
+    processor = main.AudioProcessor(main.ProcessingConfig())
+    with pytest.raises(main.UnsupportedOperationError, match="midi_analysis"):
+        processor.extract_midi([0.0] * 2048, 44100)
+    try:
+        processor.extract_midi([0.0] * 2048, 44100)
+    except main.UnsupportedOperationError as exc:
+        assert main._error_kind(exc) == "internal"
+
+
+def test_extract_midi_analyzer_crash_surfaces_instead_of_empty_result(monkeypatch):
+    """A crash inside parse_midi_from_audio used to be logged then swallowed
+    into the same fake "no notes" result. It must propagate so the failure
+    is distinguishable from an honest empty extraction."""
+    import main
+    import pytest
+
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(
+        main.MIDIAnalyzer, "parse_midi_from_audio", _boom
+    )
+    with pytest.raises(RuntimeError, match="boom"):
+        main.AudioProcessor(main.ProcessingConfig()).extract_midi([0.0] * 2048, 44100)

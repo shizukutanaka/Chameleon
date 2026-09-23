@@ -1373,8 +1373,10 @@ class AudioProcessor:
     def extract_midi(self, audio: np.ndarray, sr: int, config: Optional[MIDIConfig] = None) -> List[MIDINote]:
         """Extract MIDI notes from audio"""
         if not HAS_MIDI:
-            self.logger.warning("MIDI analysis not available")
-            return []
+            raise UnsupportedOperationError(
+                "MIDI extraction requires midi_analysis.py to be importable "
+                "(missing from this install)."
+            )
 
         try:
             # Convert to list for MIDI analyzer
@@ -1388,7 +1390,7 @@ class AudioProcessor:
 
         except Exception as e:
             self.logger.error(f"MIDI extraction failed: {e}")
-            return []
+            raise
 
     def analyze_music(self, audio: np.ndarray, sr: int) -> Dict[str, Any]:
         """Comprehensive musical analysis"""
