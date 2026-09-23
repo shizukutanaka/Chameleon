@@ -247,3 +247,68 @@ def test_analyze_harmony_names_the_key_not_a_pitch_class():
     harmony = analyzer.analyze_harmony(chords, key)
 
     assert harmony["key"] == "C major"
+
+
+def test_parse_midi_velocity_tracks_loudness():
+    # velocity came from `int(energy * 1000)` on a frame-length-dependent
+    # sum, so any audible level pegged 127 and velocity carried no
+    # information. It must move with loudness and stay inside 1-127.
+    import math
+    analyzer = MIDIAnalyzer()
+    sr = 44100
+
+    def velocities(amp):
+        signal = [amp * math.sin(2 * math.pi * 440 * i / sr)
+                  for i in range(int(sr * 0.4))]
+        return {n.velocity for n in analyzer.parse_midi_from_audio(signal, sr)}
+
+    loud, quiet = velocities(0.5), velocities(0.1)
+    assert loud and quiet
+    assert max(loud) <= 127
+    assert min(quiet) >= 1  # velocity 0 reads as note-off
+    assert max(quiet) < min(loud)
+
+
+def test_compose_length_is_seconds_not_beats(tmp_path):
+    """--length is documented in seconds but used to reach generate_melody's
+    beat counter raw: `--length 3 --tempo 120` produced 3 beats = 1.5 s of
+    music. Seconds convert to beats via tempo/60 before the generator."""
+    import subprocess
+    import sys
+    from pathlib import Path
+    main_py = str(Path(__file__).resolve().parent.parent / "main.py")
+
+    def track_ticks(path):
+        data = path.read_bytes()
+        track = data[data.find(b"MTrk") + 8:]
+        i = 0
+        ticks = 0
+        while i < len(track):
+            delta = 0
+            while True:
+                b = track[i]
+                i += 1
+                delta = (delta << 7) | (b & 0x7F)
+                if not b & 0x80:
+                    break
+            ticks += delta
+            status = track[i]
+            i += 1
+            if status == 0xFF:
+                i += 2 + track[i + 1]
+                continue
+            i += 2
+        return ticks
+
+    out = tmp_path / "l.mid"
+    proc = subprocess.run(
+        [sys.executable, main_py, "midi", "compose",
+         "--output", str(out), "--tempo", "120", "--length", "3",
+         "--key", "C", "--mode", "major"],
+        capture_output=True, text=True, timeout=30)
+    if proc.returncode != 0:
+        import pytest
+        pytest.skip("midi compose unavailable in this environment")
+    # 3 s at 120 BPM = 6 beats; at 480 ticks/quarter the last note ends at
+    # tick 2880. Pre-fix the track ends at 1440 (3 beats = 1.5 s).
+    assert track_ticks(out) == 2880

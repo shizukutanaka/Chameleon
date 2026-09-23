@@ -175,7 +175,12 @@ class MIDIAnalyzer:
 
                     if pitch_hz is not None:
                         midi_pitch = self._hz_to_midi(pitch_hz)
-                        velocity = min(127, int(energy * 1000))
+                        # energy is a sum over the whole frame; divide by the
+                        # frame length for RMS, then estimate peak amplitude
+                        # (sine: rms*sqrt(2)) and scale to the 1-127 velocity
+                        # range. Velocity 0 reads as note-off, so floor at 1.
+                        amplitude = (energy / len(frame)) ** 0.5 * math.sqrt(2)
+                        velocity = max(1, min(127, int(amplitude * 127)))
 
                         notes.append(MIDINote(
                             pitch=midi_pitch,

@@ -3240,7 +3240,11 @@ async def main():
 
             key_info = {"tonic": tonic, "mode": mode, "confidence": 1.0}
 
-            melody = processor.compose_melody(basic_chords, key_info, length)
+            # generate_melody counts `length` in beats (positions below are
+            # rescaled for the writer); --length arrives in seconds, so
+            # convert or `--length 8` makes 4 seconds of music at 120 BPM.
+            melody = processor.compose_melody(
+                basic_chords, key_info, length * tempo / 60.0)
 
             # generate_melody works in beats (note_duration=0.5 = an eighth
             # note); the MIDI writer expects seconds, so rescale by the
