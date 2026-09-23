@@ -598,3 +598,36 @@ def test_convert_bit_depth_32_writes_pcm_not_float(tmp_path):
     assert fmt_off > 0
     format_tag = int.from_bytes(body[fmt_off + 8:fmt_off + 10], "little")
     assert format_tag == 1  # PCM, not IEEE float (3)
+
+
+def test_convert_bit_depth_outside_set_refuses_on_direct_api(tmp_path):
+    """The CLI bounds --convert-bit-depth with choices=[16,24,32], but the
+    direct API coerced instead: batch_process(convert, bit_depth=8) wrote a
+    16-bit file and reported bit_depth:16 with no error, and bit_depth=0
+    slipped past `or 16` as falsy -- convert_audio's own ValueError was
+    unreachable from the batch path (verified end-to-end)."""
+    if not main.HAS_NUMPY:
+        pytest.skip("convert requires numpy")
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    processor = main.AudioProcessor(main.ProcessingConfig())
+    for bad in (8, 0):
+        res = processor.batch_process([str(wav)], "convert",
+                                      output_dir=str(tmp_path), bit_depth=bad)
+        assert res[0].get("kind") == "input", res
+        assert "16, 24, 32" in res[0]["error"], res
+
+
+def test_convert_sample_rate_above_cap_refuses_on_direct_api(tmp_path):
+    """--convert-sample-rate is capped at MAX_TARGET_SAMPLE_RATE in argparse,
+    but the direct API had no cap: batch_process(convert,
+    sample_rate=768001) resampled and wrote a 768001 Hz file (verified).
+    convert_audio now enforces the bound for every caller."""
+    if not main.HAS_NUMPY:
+        pytest.skip("convert requires numpy")
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    processor = main.AudioProcessor(main.ProcessingConfig())
+    res = processor.batch_process(
+        [str(wav)], "convert", output_dir=str(tmp_path),
+        sample_rate=main.MAX_TARGET_SAMPLE_RATE + 1)
+    assert res[0].get("kind") == "input", res
+    assert str(main.MAX_TARGET_SAMPLE_RATE) in res[0]["error"], res

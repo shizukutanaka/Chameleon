@@ -1297,8 +1297,10 @@ class AudioProcessor:
             except (TypeError, ValueError) as exc:
                 raise ValueError("Target sample rate must be an integer.") from exc
 
-            if parsed_sr <= 0:
-                raise ValueError("Target sample rate must be positive.")
+            if parsed_sr <= 0 or parsed_sr > MAX_TARGET_SAMPLE_RATE:
+                raise ValueError(
+                    f"Target sample rate must be within "
+                    f"(0, {MAX_TARGET_SAMPLE_RATE}], got {parsed_sr}.")
 
             if parsed_sr != sr:
                 if converted.size == 0:
@@ -1882,22 +1884,21 @@ class AudioProcessor:
         elif operation == "convert":
             target_format = kwargs.get("format", "wav") or "wav"
             target_sample_rate = kwargs.get("sample_rate")
-            bit_depth = kwargs.get("bit_depth") or 16
+            bit_depth = kwargs.get("bit_depth")
+            if bit_depth is None:
+                bit_depth = 16
 
             try:
                 bit_depth = int(bit_depth)
             except (TypeError, ValueError) as exc:
                 raise ValueError("Bit depth must be an integer value.") from exc
 
+            if bit_depth not in {16, 24, 32}:
+                raise ValueError(f"Bit depth must be one of {{16, 24, 32}}, got {bit_depth}.")
+
             suffix_components = ["converted"]
             planned_sr = target_sample_rate or sr
-            try:
-                resolved_bit_depth = int(bit_depth)
-            except (TypeError, ValueError):
-                resolved_bit_depth = 16
-
-            if resolved_bit_depth not in {16, 24, 32}:
-                resolved_bit_depth = 16
+            resolved_bit_depth = bit_depth
 
             if planned_sr != sr:
                 suffix_components.append(f"{planned_sr}Hz")
