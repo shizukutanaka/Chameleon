@@ -247,3 +247,26 @@ def test_analyze_harmony_names_the_key_not_a_pitch_class():
     harmony = analyzer.analyze_harmony(chords, key)
 
     assert harmony["key"] == "C major"
+
+
+def test_parse_midi_onset_gate_is_sample_rate_independent():
+    # The onset gate summed energy over the whole frame, so its threshold
+    # depended on frame length -- which scales with the sample rate at a
+    # fixed ~23 ms window. A -55 dBFS tone was detected at 44.1 kHz but
+    # silently dropped at 8 kHz. The gate now compares the frame's mean
+    # square level (~-60 dBFS).
+    import math
+    analyzer = MIDIAnalyzer()
+    amp = 0.00178  # just above the -60 dBFS gate
+
+    def note_count(sr):
+        signal = [amp * math.sin(2 * math.pi * 440 * i / sr)
+                  for i in range(int(sr * 0.3))]
+        return len(analyzer.parse_midi_from_audio(signal, sr))
+
+    assert note_count(44100) > 0
+    assert note_count(8000) > 0
+    # A genuinely quiet signal stays below the gate at both rates.
+    quiet = [0.0008 * math.sin(2 * math.pi * 440 * i / 8000)
+             for i in range(int(8000 * 0.3))]
+    assert analyzer.parse_midi_from_audio(quiet, 8000) == []
