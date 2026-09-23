@@ -80,6 +80,61 @@ def test_template_expression_rejects_oversized_results():
     assert _evaluate_template_expression('[1, 2] + [3]', {}) == [1, 2, 3]
 
 
+def test_dag_rejects_cyclic_dependencies():
+    # A cycle can never reach in_degree 0: its tasks were simply never
+    # queued, so `results` came back missing them and the workflow read
+    # as a success (verified: 2 declared tasks -> {} returned).
+    def f():
+        return 1
+
+    tasks = [
+        ba.BatchTask(id="a", name="a", function=f, inputs={}, dependencies=["b"]),
+        ba.BatchTask(id="b", name="b", function=f, inputs={}, dependencies=["a"]),
+    ]
+    workflow = ba.Workflow(id="w", name="w", tasks=tasks,
+                           type=ba.WorkflowType.DAG)
+    with pytest.raises(ValueError, match="[Cc]yclic|unschedulable"):
+        ba.WorkflowEngine().execute_workflow(workflow)
+
+
+def test_dag_rejects_self_loop():
+    def f():
+        return 1
+
+    tasks = [ba.BatchTask(id="a", name="a", function=f, inputs={},
+                          dependencies=["a"])]
+    workflow = ba.Workflow(id="w", name="w", tasks=tasks,
+                           type=ba.WorkflowType.DAG)
+    with pytest.raises(ValueError, match="[Cc]yclic|unschedulable"):
+        ba.WorkflowEngine().execute_workflow(workflow)
+
+
+def test_loop_requires_positive_integer_iterations():
+    def f():
+        return 1
+
+    for bad in ("many", 0, -3, 1.5):
+        workflow = ba.Workflow(
+            id="w", name="w",
+            tasks=[ba.BatchTask(id="t", name="t", function=f, inputs={})],
+            type=ba.WorkflowType.LOOP, metadata={"iterations": bad})
+        with pytest.raises(ValueError, match="iterations"):
+            ba.WorkflowEngine().execute_workflow(workflow)
+
+
+def test_loop_runs_declared_iterations():
+    def f():
+        return 1
+
+    workflow = ba.Workflow(
+        id="w", name="w",
+        tasks=[ba.BatchTask(id="t", name="t", function=f, inputs={})],
+        type=ba.WorkflowType.LOOP, metadata={"iterations": 3})
+    results = ba.WorkflowEngine().execute_workflow(workflow)
+    assert set(results) == {"t_iter_0", "t_iter_1", "t_iter_2"}
+    assert all(r.status is ba.TaskStatus.COMPLETED for r in results.values())
+
+
 def test_scheduler_fails_loudly_without_schedule_package():
     # 'schedule' is in no installable extra, so HAS_SCHEDULE is always
     # False today -- a warning-and-return left callers believing the job

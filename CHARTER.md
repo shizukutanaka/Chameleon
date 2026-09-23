@@ -2471,3 +2471,24 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22, continued):** `batch_automation.py` was never read
+end-to-end -- does its DAG runner honour "run what was declared", and does
+the LOOP executor validate its own knobs?
+**A:** Two defects. (1) A cyclic workflow's stuck tasks were silently
+dropped: a cycle means its members never reach in_degree 0, so the seeding
+loop never queued them and `execute_workflow` returned `results` missing
+them -- read as success with tasks that never ran (verified: 2 declared,
+{} returned). `_execute_dag` now runs a Kahn pass
+(`DependencyGraph.unschedulable_tasks()`) before seeding and raises
+ValueError naming the stuck tasks. (2) `iterations` in
+`workflow.metadata` was trusted: 'many' died on TypeError inside
+`range()`, and 0/-3 returned {} -- a "successful" run of zero iterations.
+`_execute_loop` now requires a positive integer and raises ValueError
+otherwise. Adjacent regions verified already-owned or honest: the
+undeclared-dependency guard, failed-dep blocking and engine reentrancy
+fixes live on open PR #177; `from_dict` task validation on #219;
+`simple`-condition unknown ids on #201; the safe-expression evaluators
+(AST whitelist, node cap, result-size cap), `script_executor` quoting and
+the honest ImportError for missing `schedule`/`yaml` are all correct as
+written.

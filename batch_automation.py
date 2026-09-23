@@ -541,6 +541,22 @@ class DependencyGraph:
 
         return newly_ready
 
+    def unschedulable_tasks(self) -> List[str]:
+        """Task ids that can never reach in_degree 0 (dependency cycles).
+
+        Runs a Kahn pass over a copy of the in-degree map: any node left
+        with a positive degree is part of, or downstream of, a cycle and
+        can never become ready."""
+        in_degree = dict(self.in_degree)
+        frontier = [t for t, d in in_degree.items() if d == 0]
+        while frontier:
+            node = frontier.pop()
+            for dependent in self.graph.get(node, []):
+                in_degree[dependent] -= 1
+                if in_degree[dependent] == 0:
+                    frontier.append(dependent)
+        return sorted(t for t, d in in_degree.items() if d > 0)
+
 class TaskExecutor:
     """Execute individual tasks"""
 
@@ -673,6 +689,16 @@ class WorkflowEngine:
 
         # Create task map
         task_map = {task.id: task for task in workflow.tasks}
+
+        # A cycle means its tasks can never reach in_degree 0: the loop
+        # below simply never queues them and they end up absent from
+        # `results` -- reported as success with tasks silently dropped.
+        # Detect unschedulable tasks before running anything.
+        stuck = self.dep_graph.unschedulable_tasks()
+        if stuck:
+            raise ValueError(
+                f"Cyclic task dependencies make tasks unschedulable: {stuck}")
+
         results = {}
         running_tasks = {}
 
@@ -739,6 +765,13 @@ class WorkflowEngine:
         """Execute loop workflow"""
         results = {}
         iterations = workflow.metadata.get('iterations', 1)
+        if not isinstance(iterations, int) or isinstance(iterations, bool) \
+                or iterations < 1:
+            # 'many' died on TypeError; 0/-3 silently ran nothing and
+            # reported success -- either way the workflow config is wrong.
+            raise ValueError(
+                f"Loop workflow 'iterations' must be a positive integer, "
+                f"got {iterations!r}")
 
         for i in range(iterations):
             for task in workflow.tasks:
