@@ -3252,3 +3252,21 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22, continued):** `MIDIAnalyzer.generate_midi_file` -- does the
+file it writes always parse as MIDI, and does it encode what the caller
+gave it? The CLI only feeds it extractor/composer output (pitches bounded
+by the 80-2000 Hz YIN range), but the writer is also a direct API.
+**A:** No on both counts. A `MIDINote(pitch=128)` or `velocity=200` was
+written verbatim into the event stream: every byte after a status must be
+< 0x80, so the "pitch" byte was read by parsers as a new status and the
+rest of the track desynced -- while the function returned True and the
+caller saw a "MIDI file saved" success. The same silence applied to
+`channel >= 16`, and negative `start_time`/`duration` clamped to delta 0
+and quietly relocated the note to tick 0. Notes outside the encodable
+ranges (pitch/velocity 0-127, channel 0-15, non-negative times) now fail
+the write with an error naming the fields -- no file produced. Also:
+`MIDINote.channel` was accepted but never written, so every note landed
+on channel 0; the status byte is now `0x90|ch`/`0x8c|ch`. Verified: pitch
+130 generated a 130 data byte pre-fix and a strict sequential parse hit
+an unknown status; both new tests fail against the pre-fix writer.
