@@ -209,6 +209,34 @@ def test_process_does_not_produce_nan_for_a_clip_shorter_than_one_block():
     assert info['input_analysis']['lufs'] == float('-inf')
 
 
+@requires_scipy_bs1770
+def test_process_actually_applies_the_auto_generated_eq_bands():
+    # auto_adjust fills an empty eq_bands with generated mastering bands,
+    # but process() only wired the adjusted compressor back -- self.eq was
+    # built once in __init__ and never saw the suggestion, so the chain
+    # logged "Applied EQ" while running a zero-filter EQ.
+    sample_rate = 44100
+    tone = _sine(200.0, sample_rate, int(sample_rate * 0.5), amplitude=0.3)
+
+    config = mastering_chain.MasteringConfig()
+    config.auto_gain = True
+    config.eq_enabled = True
+    config.eq_bands = []                 # triggers auto-generation
+    config.compressor_enabled = False
+    config.limiter_enabled = False
+    config.stereo_enabled = False
+    config.harmonic_enhancement = 0.0
+    config.dither_enabled = False
+
+    chain = mastering_chain.MasteringChain(config, sample_rate=sample_rate)
+    assert chain.eq.filters == []        # precondition: nothing configured
+
+    processed, _info = chain.process(tone)
+
+    assert len(chain.eq.filters) == len(chain.auto_adjust(tone).eq_bands) > 0
+    assert not np.allclose(processed, tone)  # the EQ ran, not a reported no-op
+
+
 # --- dither: unknown types fall back instead of silently no-opping --------
 
 def test_unknown_dither_type_falls_back_to_tpdf_not_silence(caplog):

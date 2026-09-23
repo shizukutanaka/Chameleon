@@ -3252,3 +3252,19 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22, continued):** Should `MasteringChain.process` apply the
+whole `auto_adjust` result or only the compressor slice?
+**A:** The whole thing -- it was silently dropping the EQ half. When
+`auto_gain` is on and `eq_bands` is empty, `auto_adjust` generates four
+default mastering bands into the returned config -- but `process` wired
+only `adjusted_config.compressor` back onto the live processor. `self.eq`
+is built once in `__init__` from `config.eq_bands` (empty exactly when
+auto-generation kicks in), so the suggested bands were computed then
+dropped: the debug log still claimed "Applied EQ" while a zero-filter
+ParametricEQ returned the input bit-identical (verified: generated 4
+bands, 0 applied, max diff 0.0 vs 0.142 with the bands actually run).
+process now rebuilds `self.eq.filters` from `adjusted_config.eq_bands`
+each run -- the wholesale-apply twin of the compressor.config line beside
+it: idempotent when bands were already configured (they are the same
+bands), real when they were generated.
