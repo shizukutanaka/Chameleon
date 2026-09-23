@@ -860,14 +860,26 @@ class AudioProcessor:
         if audio.size == 0:
             return audio
 
-        # Find current peak
-        current_peak = np.abs(audio).max()
+        # Non-finite samples are corrupted content, not a level: a single
+        # NaN otherwise poisons the peak into NaN and the multiply below
+        # turns every sample NaN, so the file comes back all-NaN while
+        # still reporting success. Measure the finite samples and leave
+        # the corrupted ones untouched -- they stay visibly wrong instead
+        # of being amplified into more corruption.
+        finite_mask = np.isfinite(audio)
+        if finite_mask.all():
+            current_peak = np.abs(audio).max()
+        elif finite_mask.any():
+            current_peak = np.abs(audio[finite_mask]).max()
+        else:
+            return audio
         if current_peak == 0:
             return audio
 
         # Apply normalization
         gain = target_peak / current_peak
-        normalized = audio * gain
+        normalized = audio.copy()
+        normalized[finite_mask] = audio[finite_mask] * gain
 
         # Apply soft clipping if needed
         if self.config.quality == "high":

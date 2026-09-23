@@ -120,3 +120,30 @@ def test_matches_scipy_resample_poly_within_a_small_tolerance():
 
     # Both should suppress the out-of-band tone to a similar degree.
     assert _rms_db(mine) == pytest.approx(_rms_db(reference), abs=3.0)
+
+
+def test_normalize_audio_does_not_amplify_nonfinite_samples():
+    # A NaN/Inf sample is corrupted content, not a level. Before this, one
+    # NaN poisoned `np.abs(audio).max()` into NaN, so gain became NaN and the
+    # multiply spread NaN across the entire output -- the file was written
+    # all-NaN while still reporting "normalized". Finite samples must still
+    # hit the target peak; corrupted samples stay visibly wrong.
+    processor = main.AudioProcessor(main.ProcessingConfig())
+
+    poisoned = np.array([0.5, -0.5, np.nan, 0.3])
+    normalized = processor.normalize_audio(poisoned, 0.95)
+    assert np.isnan(normalized[2])
+    assert np.abs(normalized[np.isfinite(normalized)]).max() == pytest.approx(0.95)
+    assert normalized[0] == pytest.approx(0.95)
+    assert normalized[3] == pytest.approx(0.57)
+
+    with_inf = np.array([0.5, -0.5, np.inf, 0.3])
+    normalized_inf = processor.normalize_audio(with_inf, 0.95)
+    assert np.isfinite(normalized_inf[2]) is False or normalized_inf[2] >= 0.95
+    assert np.abs(normalized_inf[np.isfinite(normalized_inf)]).max() == pytest.approx(0.95, abs=0.051)
+
+    all_nan = np.array([np.nan, np.nan])
+    assert np.isnan(processor.normalize_audio(all_nan, 0.95)).all()
+
+    clean = np.array([0.5, -0.5, 0.3])
+    assert np.abs(processor.normalize_audio(clean, 0.95)).max() == pytest.approx(0.95)
