@@ -3252,3 +3252,24 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22, continued):** Does the `CHAMELEON_TRUSTED_ROOTS` /
+`CHAMELEON_MAX_FILE_SIZE` configuration actually reach the code that uses
+it? The docstring for `SecurityConfig` says trusted roots are "populated
+from CHAMELEON_TRUSTED_ROOTS / ALLOWED_DIRECTORIES when read from the
+environment" -- but who reads it?
+**A:** Nobody in the core path. `core.py` built its shared validator as
+`SecurityValidator(SecurityConfig())`; `__init__` is `config or
+from_environment()`, and a bare config object is truthy, so the
+environment was never consulted -- the env vars were dead configuration
+for every core op (verified: `CHAMELEON_TRUSTED_ROOTS=/x` left
+`trusted_roots` empty and mono/normalize both wrote outside it).
+`SecurityValidator()` with no argument reads the environment, so the fix
+is the call site, not the constructor: callers that pass an explicit
+config (batch_automation's .yaml-only validator, plugin_system's .py-only
+one) are deliberately narrowing policy and stay as-is. Once the roots
+were live, a second gap became exploitable: `convert_to_mono` validated
+its input path but never its output path, while `normalize` and
+`trim_silence` check both -- verified writing outside the trusted root
+with `success=True`. It now refuses output outside the policy the same
+way its siblings do. Two pin-tests in test_security.py cover each half.

@@ -196,8 +196,9 @@ class ProcessingResult:
     duration_ms: int = 0
 
 
-# Initialize the security validator with a default configuration
-security_validator = SecurityValidator(SecurityConfig())
+# Initialize the security validator with the configured policy (the
+# CHAMELEON_* environment variables feed SecurityConfig.from_environment).
+security_validator = SecurityValidator()
 
 
 class MemoryManager:
@@ -672,6 +673,9 @@ class WAVProcessor:
             return ProcessingResult(
                 False, "Input and output paths are the same file; "
                 "in-place processing is not supported")
+
+        if not security_validator.validate_path(output_path):
+            return ProcessingResult(False, "Invalid output path")
 
         try:
             info = self._read_wav_header(input_path)
