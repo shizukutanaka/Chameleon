@@ -994,7 +994,13 @@ class AudioProcessor:
     def remove_noise(self, audio: np.ndarray, sr: int, noise_profile: Optional[np.ndarray] = None) -> np.ndarray:
         """Advanced noise reduction using spectral subtraction"""
         if not HAS_SCIPY:
-            return audio
+            # Returning the input unmodified writes a "denoised" file that
+            # was never denoised -- refuse like every other missing-extra
+            # path (apply_effects, repair_audio, master).
+            raise UnsupportedOperationError(
+                "Cannot apply denoise (needs scipy). "
+                "Install the optional audio extra: pip install -e .[audio]"
+            )
         if audio.size == 0:
             # Empty input: an identity return (like normalize/mono) -- the
             # spectral machinery crashes on 0 samples.

@@ -217,3 +217,21 @@ def test_save_audio_silent_when_in_range(tmp_path):
         logger.removeHandler(handler)
 
     assert not any("hard-clip" in m for m in records)
+
+
+def test_denoise_without_scipy_refuses_instead_of_silent_identity(monkeypatch):
+    """Without scipy, `remove_noise` used to return the input unmodified:
+    batch_process then wrote a bit-identical file labelled 'denoised' and
+    reported success -- a fake repair (verified: identical output array,
+    result dict carried an output and no error). Every other
+    missing-extra path (apply_effects, repair_audio, master) refuses, so
+    this one must too -- and as UnsupportedOperationError, so _error_kind
+    classifies the missing extra as internal rather than bad input."""
+    monkeypatch.setattr(main, "HAS_SCIPY", False)
+    audio = np.random.RandomState(0).rand(20000).astype(np.float32) * 0.5
+    with pytest.raises(main.UnsupportedOperationError, match="scipy"):
+        _processor().remove_noise(audio, SAMPLE_RATE)
+    try:
+        _processor().remove_noise(audio, SAMPLE_RATE)
+    except main.UnsupportedOperationError as exc:
+        assert main._error_kind(exc) == "internal"
