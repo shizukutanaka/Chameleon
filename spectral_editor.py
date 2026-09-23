@@ -73,6 +73,20 @@ class SpectrogramConfig:
     overlap: float = 0.75
     zero_padding: int = 0
 
+    def __post_init__(self):
+        # overlap and zero_padding are declared but the STFT/ISTFT paths read
+        # only n_fft/hop_length/win_length/window -- accepting a non-default
+        # value would report a configuration that changes nothing.
+        if self.overlap != 0.75:
+            raise ValueError(
+                "SpectrogramConfig.overlap is not implemented; the frame "
+                f"step comes from hop_length (got overlap={self.overlap!r})"
+            )
+        if self.zero_padding:
+            raise ValueError(
+                "SpectrogramConfig.zero_padding is not implemented"
+            )
+
 @dataclass
 class SpectralEditConfig:
     """Configuration for spectral editing operations"""
@@ -81,6 +95,16 @@ class SpectralEditConfig:
     edge_smoothing: bool = True
     preserve_phase: bool = True
     quality: str = "high"
+
+    def __post_init__(self):
+        # precision and quality are declared but no operation reads them --
+        # interpolation/edge_smoothing/preserve_phase are the real knobs.
+        for name in ("precision", "quality"):
+            if getattr(self, name) != "high":
+                raise ValueError(
+                    f"SpectralEditConfig.{name} is not implemented "
+                    f"(got {getattr(self, name)!r})"
+                )
 
 class SpectrogramProcessor:
     """High-quality spectrogram computation and manipulation"""

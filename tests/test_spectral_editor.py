@@ -109,3 +109,27 @@ def test_harmonic_enhance_stays_inside_selection():
     assert changed.size > 0
     times = ed.times
     assert all(0.4 <= times[c[1]] <= 0.5 for c in changed)
+
+
+def test_spectrogram_config_refuses_unimplemented_overlap():
+    """overlap is declared but nothing reads it -- the frame step comes from
+    hop_length. A caller tuning overlap=0.9 previously got a config that
+    silently changed nothing."""
+    with pytest.raises(ValueError, match="overlap"):
+        spectral_editor.SpectrogramConfig(overlap=0.9)
+    spectral_editor.SpectrogramConfig()  # defaults still construct
+
+
+def test_spectrogram_config_refuses_unimplemented_zero_padding():
+    with pytest.raises(ValueError, match="zero_padding"):
+        spectral_editor.SpectrogramConfig(zero_padding=1024)
+
+
+def test_spectral_edit_config_refuses_unimplemented_precision_quality():
+    """precision and quality are declared but no operation reads them --
+    the real knobs are interpolation/edge_smoothing/preserve_phase."""
+    with pytest.raises(ValueError, match="precision"):
+        spectral_editor.SpectralEditConfig(precision="low")
+    with pytest.raises(ValueError, match="quality"):
+        spectral_editor.SpectralEditConfig(quality="standard")
+    spectral_editor.SpectralEditConfig()

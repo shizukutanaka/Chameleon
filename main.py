@@ -2071,8 +2071,13 @@ class AudioProcessor:
             destination = Path(explicit_path)
         else:
             if output_dir:
-                if not SecurityValidator.validate_directory(output_dir):
-                    raise ValueError(f"Unsafe output directory: {output_dir}")
+                # validate_directory refuses by raising SecurityError, never
+                # by returning falsy -- an `if not` here could never reach the
+                # ValueError, so catch and re-raise it on this API's terms.
+                try:
+                    SecurityValidator.validate_directory(output_dir)
+                except SecurityError:
+                    raise ValueError(f"Unsafe output directory: {output_dir}") from None
                 destination_dir = Path(output_dir)
                 if create_dirs:
                     destination_dir.mkdir(parents=True, exist_ok=True)
