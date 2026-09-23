@@ -2471,3 +2471,16 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22):** The progress bar's ETA helper splits a duration into
+"Xm Ys" -- does every second value it can print exist?
+**A:** No. `ProgressBar._format_time` formatted `seconds / 60` and
+`seconds % 60` independently, so 59.5-59.9-second remainders rounded to
+"60" while the minute field stayed one short: 119.7 -> "2m 60s",
+3599.6 -> "60m 60s" -- nonexistent times printed inside the ETA of a
+real batch run. Same defect class as `format_duration`'s carry bug
+(fixed on another open branch); this is the second, distinct site --
+a copy of the formula, not a shared helper. It now rounds the seconds
+component first and carries when it hits 60 ("2m 0s"). The hour branch
+cannot produce minutes=60 (integer floor of `seconds % 3600 / 60` is at
+most 59), so it needed no change.

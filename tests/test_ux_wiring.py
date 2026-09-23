@@ -50,3 +50,20 @@ def test_batch_process_show_progress_false_by_default_matches_cli_non_tty(tmp_pa
 
     results = processor.batch_process([str(wav)], "analyze")
     assert results and "error" not in results[0]
+
+
+def test_progress_bar_eta_format_carries_minutes():
+    """The ETA helper's minutes+seconds split must carry: formatting
+    ``seconds / 60`` and ``seconds % 60`` independently printed a second
+    field of "60" whenever the seconds fraction rounded up (119.7 ->
+    "2m 60s", 3599.6 -> "60m 60s") -- a duration that does not exist."""
+    from ux_improvements import ProgressBar
+
+    fmt = ProgressBar._format_time
+
+    assert fmt(119.7) == "2m 0s"   # was "2m 60s"
+    assert fmt(3599.6) == "60m 0s"  # was "60m 60s"
+    # Below the carry window the split is unchanged.
+    assert fmt(59.4) == "59s"
+    assert fmt(119.4) == "1m 59s"
+    assert fmt(60.0) == "1m 0s"

@@ -101,7 +101,14 @@ class ProgressBar:
         if seconds < 60:
             return f"{seconds:.0f}s"
         elif seconds < 3600:
-            return f"{seconds/60:.0f}m {seconds%60:.0f}s"
+            minutes = int(seconds / 60)
+            secs = int(round(seconds % 60))
+            # Rounding 59.5+ up to "60" needs a carry -- "2m 60s" is not a
+            # duration.
+            if secs == 60:
+                minutes += 1
+                secs = 0
+            return f"{minutes}m {secs}s"
         else:
             hours = int(seconds / 3600)
             minutes = int((seconds % 3600) / 60)
