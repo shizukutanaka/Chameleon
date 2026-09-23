@@ -3252,3 +3252,22 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-22, continued):** `MemoryManager` is already flagged as
+dead weight in PRODUCT_ANALYSIS.md -- but dead code still ships, so does
+its internal contract hold? And do the remaining demo plugins honor the
+bounds they advertise?
+**A:** Two did not. `vectorized_cache` accumulated one numpy array per
+cached file and was never evicted or cleared -- verified 1500 entries
+after the bounded LRU had already shrunk to its 1000 cap, and
+`get_vectorized_audio` has no callers, so the copies were pure leak.
+Eviction/clear now follows the source bytes (a derivative dies with
+what it was derived from; prep runs after `cache_data` so a replace
+does not drop the fresh twin). `simple_gain` advertised `gain` 0.0-2.0
+in metadata but applied the raw value: `gain=100` overdrove, `gain=-1`
+silently phase-inverted, `gain='loud'` died on TypeError -- the same
+honored-versus-advertised gap as audit-105's waveform fallback. It now
+enforces its own declared range. Both fixes mutation-verified. The
+deletion question stays open: `MemoryManager`, `ParallelBatchProcessor`,
+and `StructuredLogger` remain flagged in §2 pending explicit
+confirmation.
