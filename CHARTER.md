@@ -2471,3 +2471,19 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-22, continued):** Audit-107 fixed the plugin template
+generator, but the generator's output is committed in two places --
+templates/ (what users scaffold from) and plugins/ (the live discovery
+directory). Are the committed artifacts still the buggy generation?
+**A:** Yes, both. The four templates/*.py files were stale output: the
+analyzer and utility declared a `gain` parameter their code never
+reads, the generator declared `gain` while reading (and never bounding)
+`frequency`, and the effect applied `gain` unchecked -- the audit-106
+defect in committed form. They are regenerated to match the fixed
+generator's output. Separately, plugins/mycustomeffect_plugin.py --
+loaded and audited as a real plugin because plugins/ is a default
+discovery path -- advertised gain 0.0-2.0 while applying the raw value;
+it now enforces the range it declares (the same class audit-106 fixed
+in demo_plugins/simple_gain.py). PR-218 touched that file's docstring
+and metadata only, so this edit lands on disjoint lines.

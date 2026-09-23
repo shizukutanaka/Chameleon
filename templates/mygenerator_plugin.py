@@ -20,12 +20,12 @@ class MyGeneratorPlugin(AudioGeneratorPlugin):
             category="generator",
             tags=["generator", "audio"],
             parameters={
-                "gain": {
+                "frequency": {
                     "type": "float",
-                    "default": 1.0,
-                    "min": 0.0,
-                    "max": 2.0,
-                    "description": "Gain level"
+                    "default": 440.0,
+                    "min": 20.0,
+                    "max": 20000.0,
+                    "description": "Tone frequency in Hz"
                 }
             }
         )
@@ -45,9 +45,11 @@ class MyGeneratorPlugin(AudioGeneratorPlugin):
     def generate_audio(self, duration: float, sample_rate: int, **params) -> List[float]:
         """Generate audio data"""
         # TODO: Implement your audio generator here
-        # Example: sine wave
+        # Example: sine wave, enforcing the range it advertises
         import math
         frequency = params.get('frequency', 440.0)
+        if not isinstance(frequency, (int, float)) or not 20.0 <= frequency <= 20000.0:
+            raise ValueError(f"frequency must be in 20-20000 Hz, got {frequency!r}")
         samples = []
         for i in range(int(duration * sample_rate)):
             t = i / sample_rate

@@ -304,3 +304,59 @@ def test_load_plugin_limits_all_plugin_code_sites(tmp_path, hang_site):
     with pytest.raises(TimeoutError, match="timed out"):
         loader.load_plugin(plugin)
     assert time.monotonic() - t0 < 10
+
+
+def test_committed_templates_tell_the_truth_about_their_params():
+    """The generated examples committed under templates/ are what users
+    copy when scaffolding a plugin -- they were stale output of the
+    template generator and carried the audit-106/107 dishonesty: an
+    unchecked `gain` in the effect, a `gain` declared but never read by
+    the analyzer and utility, and a generator that declared `gain` while
+    reading (and not bounding) `frequency`. Each committed file must
+    load through the real sandbox path, declare exactly the params its
+    code consumes, and enforce the bounds it advertises."""
+    import re
+    repo_root = Path(__file__).resolve().parent.parent
+    expectations = {
+        "myeffect_plugin.py": ({"gain"}, {"gain"}),
+        "myanalyzer_plugin.py": (set(), set()),
+        "mygenerator_plugin.py": ({"frequency"}, {"frequency"}),
+        "myutility_plugin.py": (set(), set()),
+    }
+    loader = PluginLoader(PluginConfig())
+    for filename, (declared, consumed) in expectations.items():
+        path = repo_root / "templates" / filename
+        source = path.read_text()
+        assert set(re.findall(r'"(\w+)":\s*\{', source)) == declared, filename
+        assert set(re.findall(r"params\.get\('(\w+)'", source)) == consumed, filename
+        assert loader.load_plugin(str(path)) is not None, filename
+
+    effect = PluginLoader(PluginConfig()).load_plugin(
+        str(repo_root / "templates" / "myeffect_plugin.py"))
+    with pytest.raises(ValueError):
+        effect.process_audio([0.5, -0.5], 44100, gain=100.0)
+    assert effect.process_audio([0.5], 44100, gain=2.0) == [1.0]
+
+    generator = PluginLoader(PluginConfig()).load_plugin(
+        str(repo_root / "templates" / "mygenerator_plugin.py"))
+    with pytest.raises(ValueError):
+        generator.generate_audio(0.001, 44100, frequency=-440.0)
+    assert len(generator.generate_audio(0.001, 44100, frequency=440.0)) == 44
+
+
+def test_committed_live_plugin_enforces_its_advertised_gain():
+    """plugins/ is a default discovery directory, so the committed
+    mycustomeffect example is listed and audited as a real plugin -- and
+    its metadata advertises gain 0.0-2.0 while process_audio applied the
+    raw value (gain=100 overdrove, gain=-1 inverted, gain='loud' died on
+    TypeError). Same defect class audit-106 fixed in demo_plugins and
+    audit-107 in the generator. This test is a contract pin for the
+    committed file: it fails on the pre-fix body and passes post-fix."""
+    repo_root = Path(__file__).resolve().parent.parent
+    plugin = PluginLoader(PluginConfig()).load_plugin(
+        str(repo_root / "plugins" / "mycustomeffect_plugin.py"))
+    assert plugin is not None
+    assert plugin.process_audio([0.5, -0.25], 44100, gain=2.0) == [1.0, -0.5]
+    for bad in (100.0, -1.0, "loud"):
+        with pytest.raises(ValueError):
+            plugin.process_audio([0.5], 44100, gain=bad)

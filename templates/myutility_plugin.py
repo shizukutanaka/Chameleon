@@ -19,15 +19,7 @@ class MyUtilityPlugin(UtilityPlugin):
             description="Description of MyUtility plugin",
             category="utility",
             tags=["utility", "audio"],
-            parameters={
-                "gain": {
-                    "type": "float",
-                    "default": 1.0,
-                    "min": 0.0,
-                    "max": 2.0,
-                    "description": "Gain level"
-                }
-            }
+            parameters={}
         )
 
     def initialize(self, config: Dict[str, Any]) -> bool:
