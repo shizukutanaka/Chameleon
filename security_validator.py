@@ -297,7 +297,10 @@ class SecurityValidator:
         sanitized = _FILENAME_SCRUB.sub("_", filename)
         if len(sanitized) > 255:
             name, ext = os.path.splitext(sanitized)
-            sanitized = name[:255 - len(ext)] + ext
+            # The extension can itself be longer than the whole budget (or
+            # the name can be all extension); name[:negative] then returns ""
+            # and the over-long ext survives. Clamp the composed result too.
+            sanitized = (name[:255 - len(ext)] + ext)[:255]
         return sanitized or "untitled"
 
     @_hybridmethod
@@ -332,13 +335,22 @@ class SecureFileOperations:
         Write/append modes create the file with restrictive 0o600 permissions and
         refuse to follow symlinks (mirrors ``core.open_secure``).
         """
-        writing = "w" in mode or "a" in mode
+        # '+' modes (r+, w+, a+) are write-capable and 'x' creates
+        # exclusively; classifying by 'w'/'a' alone sent all of those through
+        # the plain open() branch, which follows a symlinked final component
+        # that the O_NOFOLLOW open below refuses.
+        writing = any(flag in mode for flag in "wax+")
         operation = "write" if writing else "read"
         self.validator.validate_file_path(path, operation=operation)
 
         if writing:
-            flags = os.O_WRONLY
-            flags |= os.O_CREAT | (os.O_APPEND if "a" in mode else os.O_TRUNC)
+            flags = os.O_RDWR if "+" in mode else os.O_WRONLY
+            if "a" in mode:
+                flags |= os.O_CREAT | os.O_APPEND
+            elif "x" in mode:
+                flags |= os.O_CREAT | os.O_EXCL
+            elif "w" in mode:
+                flags |= os.O_CREAT | os.O_TRUNC
             if hasattr(os, "O_NOFOLLOW"):
                 flags |= os.O_NOFOLLOW
             if hasattr(os, "O_BINARY"):

@@ -2111,10 +2111,11 @@ class EnhancedSecurityValidator:
         # Remove or replace dangerous characters
         sanitized = re.sub(r'[<>:"/\\|?*\x00-\x1f\x7f-\x9f]', '_', filename)
 
-        # Limit length
+        # Limit length. The extension can itself exceed the whole budget
+        # (name[:negative] returns ""), so clamp the composed result too.
         if len(sanitized) > 255:
             name, ext = os.path.splitext(sanitized)
-            sanitized = name[:255-len(ext)] + ext
+            sanitized = (name[:255 - len(ext)] + ext)[:255]
 
         return sanitized or "untitled"
 
