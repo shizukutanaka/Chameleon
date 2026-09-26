@@ -93,3 +93,42 @@ def test_scheduler_fails_loudly_without_schedule_package():
     scheduler = BatchScheduler()
     with pytest.raises(ImportError):
         scheduler.start()
+
+
+@pytest.mark.parametrize("bogus_type", ["expresion", "always", "complex", None])
+def test_conditional_workflow_with_unrecognised_condition_type_runs_nothing(
+        bogus_type):
+    # 'expresion' is a typo for 'expression'. A guard the engine cannot
+    # evaluate cannot be satisfied -- until now the fall-through returned
+    # True and the task ran unconditionally with its guard silently dropped.
+    res = _run_dict({
+        "id": "w", "name": "d", "type": "conditional",
+        "conditions": {"t": {"type": bogus_type}},
+        "tasks": [{
+            "id": "t", "name": "pow",
+            "function": {"type": "builtin", "module": "math", "name": "pow"},
+            "inputs": {"x": 2, "y": 3},
+        }],
+    })
+    assert res == {}
+
+
+def test_conditional_workflow_recognised_conditions_unchanged():
+    # 'simple' on a completed dependency still runs the guarded task --
+    # tightening the unknown-type fall-through must not break the real
+    # condition kinds.
+    res = _run_dict({
+        "id": "w", "name": "d", "type": "conditional",
+        "conditions": {"b": {"type": "simple", "task_id": "a"}},
+        "tasks": [
+            {"id": "a", "name": "pow",
+             "function": {"type": "builtin", "module": "math", "name": "pow"},
+             "inputs": {"x": 2, "y": 3}},
+            {"id": "b", "name": "sqrt",
+             "function": {"type": "builtin", "module": "math", "name": "sqrt"},
+             "inputs": {"x": 16}},
+        ],
+    })
+    assert res["a"].status is ba.TaskStatus.COMPLETED
+    assert res["b"].status is ba.TaskStatus.COMPLETED
+    assert res["b"].output == 4.0

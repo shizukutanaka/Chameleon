@@ -768,6 +768,15 @@ class WorkflowEngine:
         """Evaluate workflow condition"""
         condition_type = condition.get('type', 'simple')
 
+        # An unrecognised condition type cannot be satisfied -- falling
+        # through to True would disable the guard silently, running the
+        # task unconditionally.
+        if condition_type not in ('simple', 'expression'):
+            self.logger.warning(
+                "Skipping guarded task: unrecognised condition type %r",
+                condition_type)
+            return False
+
         if condition_type == 'simple':
             # Check if previous task succeeded
             task_id = condition.get('task_id')

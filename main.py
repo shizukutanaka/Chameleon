@@ -857,6 +857,18 @@ class AudioProcessor:
 
     def normalize_audio(self, audio: np.ndarray, target_peak: float = 0.95) -> np.ndarray:
         """Normalize audio with advanced algorithms"""
+        # The CLI gates target_peak to (0, 1]; the direct-API path
+        # (batch_process kwargs) used to skip that gate -- target_peak=0
+        # wrote an all-zero file, -1 a phase-inverted one, NaN a garbage
+        # one, all reported as successful normalization. Same contract
+        # here as at the CLI boundary.
+        if (not isinstance(target_peak, (int, float))
+                or not math.isfinite(target_peak)
+                or not 0.0 < target_peak <= 1.0):
+            raise ValueError(
+                f"target_peak must be a finite number in (0, 1], "
+                f"got {target_peak!r}")
+
         if audio.size == 0:
             return audio
 
