@@ -1357,19 +1357,18 @@ class RecoveryManager:
         temp_root = Path(tempfile.gettempdir())
         for candidate in temp_root.glob("chameleon_*"):
             try:
-                if candidate.is_file():
+                if candidate.is_symlink():
+                    # Temp dirs are shared on multi-user systems: a
+                    # "chameleon_*" symlink aimed at a victim directory must
+                    # never let this loop unlink the target's contents.
+                    # Delete the link itself, not what it points at.
+                    candidate.unlink()
+                elif candidate.is_file():
                     candidate.unlink()
                 elif candidate.is_dir():
-                    for child in candidate.glob("**/*"):
-                        if child.is_file():
-                            try:
-                                child.unlink()
-                            except OSError:
-                                continue
-                    try:
-                        candidate.rmdir()
-                    except OSError:
-                        continue
+                    # rmtree does not follow symlinked children either --
+                    # it unlinks the links themselves.
+                    shutil.rmtree(candidate)
             except OSError:
                 continue
 
