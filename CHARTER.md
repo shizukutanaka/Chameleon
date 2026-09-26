@@ -2471,3 +2471,17 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-26, audit 133):** Does the WAV write path handle non-finite
+samples honestly -- a float pipeline stage that emits NaN/inf (buggy
+effect, corrupt float input)?
+**A:** It did not. `np.clip` passes NaN through untouched, so a NaN
+reached `sf.write` and became a silent 0 mid-file -- no warning, while a
++inf sample did get the "|x| > 1 will hard-clip" report. Worse, the
+soundfile-free fallback `_save_wav_basic` cast NaN to int16, producing
+platform-dependent garbage under a RuntimeWarning that -- with the
+gate's `-W error::RuntimeWarning` -- is an outright crash. Both write
+sites now substitute defined values (NaN -> silence, +/-inf -> the clip
+rails) and `save_audio` reports the count so a corrupt upstream stage
+surfaces instead of hiding inside the output. `_save_wav_basic` does the
+substitution unconditionally so direct callers get defined PCM too.

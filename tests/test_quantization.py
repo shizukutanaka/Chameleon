@@ -12,6 +12,7 @@ different bytes when the user opts in.
 """
 
 import tempfile
+import warnings
 import wave
 from pathlib import Path
 
@@ -131,3 +132,64 @@ def test_full_scale_input_does_not_wrap_around():
 
     assert written.max() <= 32767
     assert written.min() >= 0  # no wrap to negative
+
+
+def test_non_finite_samples_write_defined_pcm_not_garbage():
+    # The int16 cast cannot represent NaN/inf -- without substitution they
+    # become platform-dependent garbage under a RuntimeWarning. The writer
+    # substitutes defined values: NaN -> 0 (silence), +/-inf -> the rails.
+    # (On this platform the garbage cast happens to yield the same PCM, so
+    # the written values alone cannot pin the fix -- the RuntimeWarning is
+    # the observable difference. Catch it explicitly.)
+    signal = np.array([0.5, np.nan, -np.inf, np.inf, 0.25], dtype=np.float32)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        written = _write_and_read(signal)
+
+    assert not [w for w in caught if issubclass(w.category, RuntimeWarning)]
+    assert written[0] == round(0.5 * 32767)
+    assert written[1] == 0          # NaN -> silence
+    assert written[2] == -32767     # -inf -> lower rail
+    assert written[3] == 32767      # +inf -> upper rail
+    assert written[4] == round(0.25 * 32767)
+    assert np.isfinite(written).all()
+
+
+class _CollectingLogger:
+    def __init__(self):
+        self.warnings = []
+
+    def warning(self, message, *args):
+        self.warnings.append(message % args if args else message)
+
+
+def test_save_audio_warns_on_non_finite_samples():
+    # Silent substitution would hide a corrupt pipeline stage; the write must
+    # report how many samples were NaN/inf.
+    config = main.ProcessingConfig()
+    processor = main.AudioProcessor(config)
+    collector = _CollectingLogger()
+    processor.logger = collector
+    path = Path(tempfile.mkdtemp()) / "out.wav"
+
+    processor.save_audio(
+        np.array([0.5, np.nan, 0.25], dtype=np.float32), str(path), 48000
+    )
+
+    assert any("non-finite" in message for message in collector.warnings)
+
+
+def test_save_audio_does_not_warn_on_finite_audio():
+    # The non-finite warning must not fire on clean input.
+    config = main.ProcessingConfig()
+    processor = main.AudioProcessor(config)
+    collector = _CollectingLogger()
+    processor.logger = collector
+    path = Path(tempfile.mkdtemp()) / "out.wav"
+
+    processor.save_audio(
+        np.array([0.5, -0.5, 0.25], dtype=np.float32), str(path), 48000
+    )
+
+    assert not any("non-finite" in message for message in collector.warnings)
