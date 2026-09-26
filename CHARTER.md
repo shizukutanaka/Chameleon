@@ -2471,3 +2471,24 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-26, audit 132):** Does `trim_silence`'s threshold gate
+survive the parameters a caller can actually reach it with, and do the
+two batch front doors agree with the operation they feed?
+**A:** Three related findings on the same contract. (1) `trim_silence`
+guarded `threshold <= 0 or >= 1` with a bare comparison -- NaN compares
+False against everything, so `threshold=nan` ran the full scan and
+reported "No audio content found above threshold" on a file that did
+have content (a bad parameter misreported as a property of the file),
+while a non-numeric threshold like "loud" crashed on TypeError. The gate
+now requires a finite number strictly inside (0, 1). (2) `BatchProcessor.
+process_directory`'s submission-time preflight accepted the boundaries
+(`0.0 <= t <= 1.0`) that the operations reject -- `threshold=0` or
+`target_peak=0` passed validation and then failed every file; preflight
+now matches the enforced bounds exactly. (3) The async path
+(`batch_process_async` -> `ParallelBatchProcessor.process_directory_async`)
+has never had preflight and forwards kwargs raw into the per-file ops --
+rejection there is honest now that the op-level gate exists, so the fix
+was (1) rather than new plumbing. `trim_silence`'s old error text also
+claimed "(0.01-0.99)" while enforcing (0,1); the message now names the
+real bounds.
