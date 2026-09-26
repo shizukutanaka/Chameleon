@@ -2471,3 +2471,25 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-26):** `analyze` is supposed to report what it measured. A WAV
+whose level pass fails -- mid-read I/O error, TOCTOU replacement, a decode
+crash -- reports Peak Level and RMS Level of exactly 0.000, and `--export`
+emits `"peak_level": 0.0`. Is a failed measurement distinguishable from
+measured silence anywhere downstream?
+**A:** It was not. Two layers conspired: `_calculate_levels_safe` caught
+every exception and returned (0.0, 0.0), and `AudioInfo.peak_level` /
+`rms_level` defaulted to 0.0, so even the caller's "continue without level
+info" path printed and exported the defaults as real numbers. Verified on a
+loud sine: peak 0.366 measured, then 0.0 after a simulated mid-read failure
+-- the same value true silence produces. The codebase already identifies
+this defect class by name -- "a default presented as a measurement" was the
+documented reason `frequency_range`/`tempo` export as null and the API model
+carries `Optional[float]`. The fix applies the same convention in core:
+levels are `Optional[float] = None`, the helper propagates (callers handle
+honestly: analyze warns and leaves levels unset, normalize fails as
+"Normalization failed" rather than lying "No audio signal found"), the CLI
+prints "not measured", and dynamic_range joins them -- measured silence
+keeps the pinned 0.0 dB placeholder, unmeasured omits the line. This also
+resolves the ambiguity that forced the `(0.0, 0.0) -> null` special case in
+`_json_export_default`: 0.0 now means measured, always.

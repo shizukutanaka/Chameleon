@@ -524,9 +524,10 @@ class AudioMetadata:
     size_bytes: int
     format: str
     codec: Optional[str] = None
-    peak_level: float = 0.0
-    rms_level: float = 0.0
-    dynamic_range: float = 0.0
+    # None = the level pass failed or never ran; 0.0 = measured silence.
+    peak_level: Optional[float] = None
+    rms_level: Optional[float] = None
+    dynamic_range: Optional[float] = None
     frequency_range: Tuple[float, float] = (0.0, 0.0)
     tempo: Optional[float] = None
     key: Optional[str] = None
@@ -796,17 +797,22 @@ class AudioProcessor:
             format="array"
         )
 
-        # Basic statistics -- an empty (0-frame) file has no peak/RMS to
-        # measure; leave them at 0.0 rather than letting np.max() raise on
-        # an identity-less reduction. The stdlib path already reports all
-        # zeros for this input.
+        # Basic statistics -- a 0-frame file measures as silence (0.0), the
+        # same value the stdlib path reports for it. None is reserved for a
+        # level pass that failed, which cannot happen here: the audio is
+        # already decoded in memory.
         if audio.size:
             metadata.peak_level = float(np.abs(audio).max())
             metadata.rms_level = float(np.sqrt(np.mean(audio**2)))
+        else:
+            metadata.peak_level = metadata.rms_level = 0.0
 
-        # Dynamic range
-        if metadata.rms_level > 0:
+        # Dynamic range -- a measured-silent file reports the 0.0 dB
+        # placeholder; only a level pass that never ran leaves it None.
+        if metadata.rms_level is not None and metadata.rms_level > 0:
             metadata.dynamic_range = 20 * np.log10(metadata.peak_level / metadata.rms_level)
+        elif metadata.peak_level is not None:
+            metadata.dynamic_range = 0.0
 
         # Advanced features with librosa
         if HAS_LIBROSA and audio.size:
@@ -1974,7 +1980,8 @@ class AudioProcessor:
                 # sine whose crest factor is 3.01 dB -- a default presented as
                 # a measurement, on the install this project leads with.
                 dynamic_range=(20 * math.log10(info.peak_level / info.rms_level)
-                               if info.rms_level > 0 and info.peak_level > 0 else 0.0),
+                               if info.rms_level and info.peak_level
+                               else (0.0 if info.peak_level is not None else None)),
             )
             return {"file": file_path, "metadata": metadata,
                     "time": time.time() - start_time, "dry_run": dry_run}
@@ -2387,11 +2394,15 @@ async def main():
                 print(f"  Duration: {metadata.duration:.2f}s")
                 print(f"  Sample Rate: {metadata.sample_rate}Hz")
                 print(f"  Channels: {metadata.channels}")
-                print(f"  Peak Level: {metadata.peak_level:.3f}")
-                print(f"  RMS Level: {metadata.rms_level:.3f}")
+                if metadata.peak_level is None:
+                    print("  Peak Level: not measured")
+                else:
+                    print(f"  Peak Level: {metadata.peak_level:.3f}")
+                    print(f"  RMS Level: {metadata.rms_level:.3f}")
 
                 if args.detailed:
-                    print(f"  Dynamic Range: {metadata.dynamic_range:.1f}dB")
+                    if metadata.dynamic_range is not None:
+                        print(f"  Dynamic Range: {metadata.dynamic_range:.1f}dB")
                     # Only librosa populates this, and librosa is in no extra,
                     # so for almost every install the line used to read
                     # "Frequency Range: 0.0-0.0Hz" -- the dataclass default

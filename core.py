@@ -150,8 +150,9 @@ class AudioInfo:
     channels: int
     bit_depth: int
     size_bytes: int
-    peak_level: float = 0.0
-    rms_level: float = 0.0
+    # None = the level pass failed or never ran; 0.0 = measured silence.
+    peak_level: Optional[float] = None
+    rms_level: Optional[float] = None
     data_offset: int = 44
     data_size: int = 0
     fmt_offset: int = 20
@@ -840,61 +841,57 @@ class WAVProcessor:
 
     def _calculate_levels_safe(self, file_path: str, info: AudioInfo) -> Tuple[float, float]:
         """Calculate peak and RMS levels with enhanced bit depth support and memory protection."""
-        try:
-            with open(file_path, 'rb') as f:
-                # Seek to the actual data payload (not a hardcoded byte 44).
-                f.seek(info.data_offset)
-                remaining = info.data_size
+        with open(file_path, 'rb') as f:
+            # Seek to the actual data payload (not a hardcoded byte 44).
+            f.seek(info.data_offset)
+            remaining = info.data_size
 
-                max_val = 0.0
-                sum_squares = 0.0
-                sample_count = 0
-                max_samples = 1000000  # Limit per-channel samples for safety
+            max_val = 0.0
+            sum_squares = 0.0
+            sample_count = 0
+            max_samples = 1000000  # Limit per-channel samples for safety
 
-                bytes_per_sample = max(1, info.bit_depth // 8) if info.bit_depth != 8 else 1
-                frame_size = bytes_per_sample * max(1, info.channels)
+            bytes_per_sample = max(1, info.bit_depth // 8) if info.bit_depth != 8 else 1
+            frame_size = bytes_per_sample * max(1, info.channels)
 
-                if frame_size == 0 or remaining <= 0:
-                    return 0.0, 0.0
+            if frame_size == 0 or remaining <= 0:
+                return 0.0, 0.0
 
-                carry = b''
-                while sample_count < max_samples and remaining > 0:
-                    data = f.read(min(CHUNK_SIZE, remaining))
-                    if not data:
-                        break
-                    remaining -= len(data)
-                    chunk = carry + data
+            carry = b''
+            while sample_count < max_samples and remaining > 0:
+                data = f.read(min(CHUNK_SIZE, remaining))
+                if not data:
+                    break
+                remaining -= len(data)
+                chunk = carry + data
 
-                    available = (len(chunk) // frame_size) * frame_size
-                    carry = chunk[available:]  # keep the split frame for the next read
-                    if available == 0:
-                        continue
+                available = (len(chunk) // frame_size) * frame_size
+                carry = chunk[available:]  # keep the split frame for the next read
+                if available == 0:
+                    continue
 
-                    mv = memoryview(chunk[:available])
-                    for frame_offset in range(0, available, frame_size):
-                        for channel in range(info.channels):
-                            if sample_count >= max_samples:
-                                break
-                            sample_offset = frame_offset + channel * bytes_per_sample
-                            sample_bytes = mv[sample_offset:sample_offset + bytes_per_sample].tobytes()
-                            sample_value = self._decode_sample_bytes(sample_bytes, info.bit_depth)
-                            if sample_value is None:
-                                continue
-                            normalized_sample = self._normalize_amplitude(sample_value, info.bit_depth)
-                            max_val = max(max_val, normalized_sample)
-                            sum_squares += normalized_sample * normalized_sample
-                            sample_count += 1
+                mv = memoryview(chunk[:available])
+                for frame_offset in range(0, available, frame_size):
+                    for channel in range(info.channels):
+                        if sample_count >= max_samples:
+                            break
+                        sample_offset = frame_offset + channel * bytes_per_sample
+                        sample_bytes = mv[sample_offset:sample_offset + bytes_per_sample].tobytes()
+                        sample_value = self._decode_sample_bytes(sample_bytes, info.bit_depth)
+                        if sample_value is None:
+                            continue
+                        normalized_sample = self._normalize_amplitude(sample_value, info.bit_depth)
+                        max_val = max(max_val, normalized_sample)
+                        sum_squares += normalized_sample * normalized_sample
+                        sample_count += 1
 
-                    del mv
+                del mv
 
-                if sample_count == 0:
-                    return 0.0, 0.0
+            if sample_count == 0:
+                return 0.0, 0.0
 
-                rms = (sum_squares / sample_count) ** 0.5
-                return max_val, rms
-
-        except Exception:
-            return 0.0, 0.0
+            rms = (sum_squares / sample_count) ** 0.5
+            return max_val, rms
 
     def get_samples_for_analysis(self, file_path: str, max_samples: int = 65536,
                                  separate_channels: bool = False) -> "ProcessingResult":
@@ -2307,8 +2304,11 @@ if __name__ == "__main__":
             print(f"Sample Rate: {info.sample_rate}Hz")
             print(f"Channels: {info.channels}")
             print(f"Bit Depth: {info.bit_depth}")
-            print(f"Peak Level: {info.peak_level:.3f}")
-            print(f"RMS Level: {info.rms_level:.3f}")
+            if info.peak_level is None:
+                print("Peak Level: not measured")
+            else:
+                print(f"Peak Level: {info.peak_level:.3f}")
+                print(f"RMS Level: {info.rms_level:.3f}")
             print(f"File Size: {info.size_bytes:,} bytes")
         else:
             print(f"Error: {result.message}")
