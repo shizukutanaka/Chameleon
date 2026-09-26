@@ -247,3 +247,41 @@ def test_analyze_harmony_names_the_key_not_a_pitch_class():
     harmony = analyzer.analyze_harmony(chords, key)
 
     assert harmony["key"] == "C major"
+
+
+def test_parse_midi_from_audio_propagates_analyzer_crash(monkeypatch):
+    """A crashed pitch estimator used to print one line and return [] --
+    indistinguishable from a genuinely unmusical input, so `midi extract`
+    reported "No MIDI notes extracted" on an internal bug. Extraction
+    failures propagate now; the caller decides how to surface them."""
+    import math
+    analyzer = MIDIAnalyzer()
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(analyzer, "_estimate_pitch", _boom)
+    audio = [0.3 * math.sin(2 * math.pi * 440 * i / 44100)
+             for i in range(44100)]
+
+    import pytest
+    with pytest.raises(RuntimeError, match="boom"):
+        analyzer.parse_midi_from_audio(audio, 44100)
+
+
+def test_estimate_pitch_propagates_non_audio_input():
+    """Per-frame estimation legitimately returns None for unpitched frames;
+    a frame that is not numeric at all is a caller bug, not unpitchedness,
+    and must not collapse into the same None."""
+    analyzer = MIDIAnalyzer()
+
+    import pytest
+    with pytest.raises(TypeError):
+        analyzer._estimate_pitch([None] * 2048, 44100)
+
+
+def test_estimate_pitch_none_on_silence_is_genuine():
+    # Contract pin: None on silence is the YIN unvoiced verdict (the
+    # periodicity fallback), not a swallowed error -- keep it.
+    analyzer = MIDIAnalyzer()
+    assert analyzer._estimate_pitch([0.0] * 2048, 44100) is None
