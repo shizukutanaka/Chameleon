@@ -2471,3 +2471,19 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-26, audit 137):** `TaskQueue.remove_task` reported success but
+the queue entry survived -- is the fix a lazy tombstone or a real delete?
+Also: two tasks in one workflow sharing an `id` -- drop silently, or refuse?
+**A:** Lazy tombstone. `PriorityQueue` has no delete, so `remove_task` can
+only clear `task_map`; the queued item then made `get_task` raise KeyError
+on `del task_map[task.id]` (verified), and absent the crash the "removed"
+task would still execute. `get_task` now skips entries whose id is gone
+from `task_map` -- the map entry is the tombstone. For duplicate ids the
+fix is refusal at `execute_workflow`: results are keyed by task id, so a
+DAG run executed only the *second* duplicate (the first never ran, yet the
+workflow "completed" with one fewer entry than declared) while sequential/
+parallel overwrote the first task's result. A ValueError naming the dupes
+is raised before dispatch for every engine type. Not touched:
+`DependencyGraph`/`_execute_dag` internals and `retry_count`/`condition`
+handling remain owned by open PR branches (#177/#264/#201/#284).
