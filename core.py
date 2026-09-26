@@ -24,6 +24,7 @@ import tempfile
 import logging
 import warnings
 import gc
+import math
 from pathlib import Path
 import asyncio
 from typing import Union, Optional, Dict, List, Any, Tuple, Callable
@@ -682,8 +683,10 @@ class WAVProcessor:
         if not security_validator.validate_path(output_path):
             return ProcessingResult(False, "Invalid output path")
 
-        if threshold <= 0 or threshold >= 1.0:
-            return ProcessingResult(False, "Invalid threshold (0.01-0.99)")
+        if (not isinstance(threshold, (int, float))
+                or not math.isfinite(threshold)
+                or threshold <= 0 or threshold >= 1.0):
+            return ProcessingResult(False, "Invalid threshold (must be in (0, 1), exclusive)")
 
         if not security_validator.validate_file_size(input_path):
             return ProcessingResult(False, "Input file too large or empty")
@@ -1592,8 +1595,8 @@ class BatchProcessor:
                 target_peak = float(target_peak)
             except (TypeError, ValueError):
                 return [ProcessingResult(False, "target_peak must be numeric")]
-            if not 0.0 <= target_peak <= 1.0:
-                return [ProcessingResult(False, "target_peak must be between 0.0 and 1.0")]
+            if not 0.0 < target_peak <= 1.0:
+                return [ProcessingResult(False, "target_peak must be in (0.0, 1.0]")]
 
         threshold = kwargs.get("threshold")
         if threshold is not None:
@@ -1601,8 +1604,9 @@ class BatchProcessor:
                 threshold = float(threshold)
             except (TypeError, ValueError):
                 return [ProcessingResult(False, "threshold must be numeric")]
-            if not 0.0 <= threshold <= 1.0:
-                return [ProcessingResult(False, "threshold must be between 0.0 and 1.0")]
+            if not 0.0 < threshold < 1.0:
+                return [ProcessingResult(
+                    False, "threshold must be greater than 0.0 and less than 1.0")]
 
         skip_errors = kwargs.get("skip_errors", False)
         max_files = kwargs.get("max_files")
