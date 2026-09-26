@@ -2471,3 +2471,30 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-26, audit 139):** `python personal_config.py setup` is the
+onboarding step both `quick_install.sh` and `quick_install.ps1` tell a new
+user to run. What happens when the wizard's `input()` prompts cannot be
+answered, or when the path it accepts cannot be created?
+**A:** Two raw tracebacks. With stdin closed or drained (piped, redirected,
+no controlling terminal -- e.g. `ssh host` without `-t`, CI, `docker run`
+without `-it`) the first `input()` raised `EOFError` mid-banner, and a
+custom library path naming an existing *file* reached
+`Path.mkdir(parents=True, exist_ok=True)` -- which refuses files -- as a
+`FileExistsError` mid-wizard (verified: traceback in both cases, exit 1).
+The catches live at the `__main__` call site rather than inside
+`quick_setup`, so a programmatic caller still receives the specific
+exception types (`EOFError`, `OSError`) while the documented entry point
+answers with one line and exit 1. `KeyboardInterrupt` (Ctrl+C mid-wizard)
+gets the same treatment. Piped stdin that *does* carry answers still works
+-- the refusal triggers on actual EOF, not on `isatty()`, which would have
+broken scripted provisioning that feeds the prompts. Nothing is persisted
+on an abort: the mkdirs and `config.save()` run only after every prompt has
+been answered. Also audited and found honest this round: the canonical WAV
+chunk walker (odd-size pads, EXTENSIBLE subformat GUIDs, lying data sizes,
+huge chunk fields all handled), `process_batch_job`'s remaining tail, the
+batch/analyze/server command handlers, `_load_effects`, the auth-token
+derivation (session secret is defense-in-depth behind an already-secret
+bearer token), and the rate-limit window cleanup. Roughly twenty
+remaining-candidate surfaces traced to fixes already pending on open PR
+branches -- the audit frontier is now the merged backlog, not the code.
