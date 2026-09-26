@@ -2471,3 +2471,16 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-26, continued):** Audit 130 closed the NaN-comparison hole in
+`core.normalize` -- but the same `x <= 0` / `x < 0` idiom appears in
+`spectral_utils`, the dependency-free spectral API the project exports.
+Do those guards also let NaN/inf through?
+**A:** Yes, all three. `normalize_peak(x, nan)` returned an all-NaN
+"normalized" signal (and all-inf for `inf`); `apply_spectral_mask(...,
+gain=nan)` NaN'd the block; `analyze_spectrum(x, nan)` returned a report
+whose bandwidth/peak fields were nan/inf while rms stayed real -- a
+silently bogus spectrum reading. Each validator now requires
+`math.isfinite(...)`, keeping the ValueError contract identical for real
+values. `linear_resample`/`sliding_window_rms` NaN inputs already crash
+honestly (int() of nan raises), so no change there.
