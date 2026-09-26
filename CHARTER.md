@@ -2471,3 +2471,23 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-26):** `batch --target-peak` was audited before -- but does
+the *direct* API path (`AudioProcessor.batch_process(files, "normalize",
+target_peak=...)`, the API surface the parity work wired) honour the same
+(0, 1] contract the CLI enforces at argparse time?
+**A:** No -- the same parameter-leak class as audits 101 and 124. The CLI
+gates `--target-peak` to (0, 1] at parse, but `normalize_audio` consumed
+`kwargs["target_peak"]` unvalidated: `target_peak=0` wrote an all-zero
+file reported as "normalized", `-0.5` a phase-inverted overdriven one,
+`NaN` a garbage one (NaN defeats `<=`/`>` range checks). The numpy path
+now validates at the consuming function -- `normalize_audio` raises
+ValueError for non-finite or out-of-range values, matching the CLI
+contract. The stdlib twin `core.normalize` had the same NaN hole in its
+`tp <= 0 or tp > 1.0` gate; it now checks `isfinite` + `0 < tp <= 1`
+explicitly. Same audit, unrelated surface: `WorkflowEngine._evaluate_condition`
+treated any unrecognised `condition.type` (`'expresion'`, `'always'`,
+`None`) as satisfied -- a workflow guard the engine could not evaluate ran
+its task unconditionally. It now returns False with a warning for types
+outside `('simple', 'expression')`, leaving the audit-52 'simple' +
+unknown-task_id policy (owned elsewhere) untouched.
