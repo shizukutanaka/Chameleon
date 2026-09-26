@@ -3252,3 +3252,21 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-26):** Two defects in `spectral_utils`' pure-Python fallback
+surface. `_inverse_real_transform` mirrors `spectrum[1:-1]` to rebuild the
+conjugate half of the rfft output -- correct only for even lengths, where
+the last bin is the unpaired Nyquist bin. And `sliding_window_rms` clamps
+`window_size` to `len(buffer)` before checking for empty input. What
+happens on odd-length blocks and empty input?
+**A:** Odd-length blocks corrupted: for odd N every bin past DC has a
+conjugate twin, so mirroring `[1:-1]` dropped the top bin *and* left the
+reconstruction grid one point short -- `apply_spectral_mask` with unity
+gains returned a 7-sample sine with max error 0.97 instead of
+round-tripping. The existing tail-preservation test used a 4096+904
+(even) tail, so it never saw it. The fallback now mirrors `bins[1:]` for
+odd lengths, restoring machine-epsilon round-trips (verified for 3, 5, 7,
+9, 4095, 4097). Empty input crashed: `sliding_window_rms([], 4)` clamped
+window_size to 0 and divided by it (ZeroDivisionError); it now returns
+`[]` like every sibling helper. Both defects hit only the no-numpy
+install -- the dependency-free half the project exists for.

@@ -214,3 +214,22 @@ def test_sliding_window_rms_values():
     assert spectral_utils.sliding_window_rms([2.0] * 8, 4) == [2.0] * 5
     # A window wider than the signal clamps to one full-length window.
     assert spectral_utils.sliding_window_rms([3.0, -3.0], 10) == [3.0]
+
+
+def test_stdlib_inverse_transform_roundtrips_odd_lengths(monkeypatch):
+    # rfft of an odd-length signal has no unpaired Nyquist bin, so the
+    # pure-Python fallback must mirror bins[1:] rather than bins[1:-1].
+    # Mirroring [1:-1] dropped the top bin and rebuilt on an N-1 grid --
+    # unity-gain blocks returned with ~1.0 absolute error.
+    monkeypatch.setattr(spectral_utils, "HAS_NUMPY", False)
+    for length in (3, 7, 4095, 4097):
+        src = [math.sin(2 * math.pi * i / 13.0) for i in range(length)]
+        out = spectral_utils.apply_spectral_mask(src, 8000)
+        assert len(out) == length
+        assert max(abs(a - b) for a, b in zip(src, out)) < 1e-6
+
+
+def test_sliding_window_rms_returns_empty_for_empty_input():
+    # Sibling helpers all return [] on empty input; this one used to
+    # clamp window_size to 0 and divide by it (ZeroDivisionError).
+    assert spectral_utils.sliding_window_rms([], 4) == []
