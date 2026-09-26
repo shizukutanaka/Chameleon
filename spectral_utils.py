@@ -89,8 +89,13 @@ def _inverse_real_transform(spectrum: Sequence[complex], length: int) -> List[fl
         restored = np.fft.irfft(np.asarray(spectrum, dtype=complex), n=length)
         return restored.astype(float).tolist()
 
+    # rfft layout: for even lengths the last bin is the unpaired Nyquist
+    # bin, so only bins[1:-1] have conjugate twins; for odd lengths every
+    # bin past DC does. Mirroring bins[1:-1] unconditionally dropped the
+    # top bin and left the grid one point short for odd lengths.
+    tail = spectrum[1:-1] if length % 2 == 0 else spectrum[1:]
     mirrored: List[complex] = list(spectrum)
-    for value in reversed(spectrum[1:-1]):
+    for value in reversed(tail):
         mirrored.append(value.conjugate())
 
     size = len(mirrored)
@@ -330,6 +335,8 @@ def sliding_window_rms(samples: Sequence[float], window_size: int) -> List[float
         raise ValueError("window_size must be positive")
 
     buffer = _to_float_sequence(samples)
+    if not buffer:
+        return []
     if window_size > len(buffer):
         window_size = len(buffer)
 
