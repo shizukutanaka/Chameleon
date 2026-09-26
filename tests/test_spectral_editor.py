@@ -109,3 +109,42 @@ def test_harmonic_enhance_stays_inside_selection():
     assert changed.size > 0
     times = ed.times
     assert all(0.4 <= times[c[1]] <= 0.5 for c in changed)
+
+
+def test_select_region_rejects_non_finite_bounds():
+    # max/min clamping silently absorbs NaN: every comparison is False, so a
+    # NaN bound returns the file's own limit -- select_region(nan, nan, ...)
+    # used to produce a FULL-FILE selection that delete_selection would then
+    # act on. Non-finite bounds must be rejected, not widened.
+    ed = spectral_editor.SpectralEditor()
+    ed.load_audio(_sine(440), SAMPLE_RATE)
+
+    for bad in (float("nan"), float("inf"), float("-inf")):
+        with pytest.raises(ValueError):
+            ed.select_region(bad, 0.5, 0, 22050)
+        with pytest.raises(ValueError):
+            ed.select_region(0.1, bad, 0, 22050)
+        with pytest.raises(ValueError):
+            ed.select_region(0.1, 0.5, bad, 22050)
+        with pytest.raises(ValueError):
+            ed.select_region(0.1, 0.5, 0, bad)
+
+
+def test_select_region_rejects_non_numeric_bounds():
+    ed = spectral_editor.SpectralEditor()
+    ed.load_audio(_sine(440), SAMPLE_RATE)
+
+    with pytest.raises(ValueError):
+        ed.select_region("middle", 0.5, 0, 22050)
+
+
+def test_select_region_clamps_finite_out_of_range_bounds():
+    # Clamping itself is the contract -- only non-finite values are refused.
+    ed = spectral_editor.SpectralEditor()
+    ed.load_audio(_sine(440), SAMPLE_RATE)
+
+    sel = ed.select_region(-5.0, 99.0, -1.0, 10 ** 9)
+    assert sel.time_start == 0
+    assert sel.time_end == ed.times[-1]
+    assert sel.freq_start == ed.freqs[0]
+    assert sel.freq_end == ed.freqs[-1]
