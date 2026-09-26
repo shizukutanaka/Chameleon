@@ -117,3 +117,24 @@ def test_mastering_rejects_multichannel_instead_of_dropping_channels():
     )
     with pytest.raises(ValueError, match="mono or stereo"):
         chain.process(quad)
+
+
+
+def _mastering():
+    np = pytest.importorskip("numpy")
+    import mastering_chain
+    return np, mastering_chain
+
+
+def test_stereo_width_rejects_non_finite_and_negative():
+    # width multiplies the side channel directly: a non-finite width turned
+    # every output sample to NaN with no error (verified pre-fix).
+    np, mc = _mastering()
+
+    for bad_width in (float("nan"), float("inf"), -0.5):
+        with pytest.raises(ValueError):
+            mc.StereoProcessor(mc.StereoConfig(width=bad_width), 44100)
+
+    proc = mc.StereoProcessor(mc.StereoConfig(width=1.0, bass_mono=False), 44100)
+    sig = np.stack([np.ones(1000), -np.ones(1000)]) * 0.2
+    assert np.isfinite(proc.process(sig)).all()
