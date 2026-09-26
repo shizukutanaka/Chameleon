@@ -165,3 +165,34 @@ def test_main_block_self_test_writes_no_state_into_the_real_home(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "Verification: True" in result.stdout
     assert not (home / ".chameleon").exists()
+
+
+def test_create_manifest_warns_instead_of_silently_dropping_missing(tmp_path, caplog):
+    """A nonexistent input used to be skipped without a word -- and, being
+    absent from the manifest, verify_manifest could never even report it
+    'Missing:'. The omission must be visible."""
+    import logging
+    from advanced_validation import IntegrityVerifier
+
+    real = tmp_path / "real.wav"
+    write_sine_wave(real)
+    missing = tmp_path / "typo.wav"
+
+    verifier = IntegrityVerifier(manifest_dir=tmp_path / "manifests")
+    with caplog.at_level(logging.WARNING):
+        verifier.create_manifest([real, missing], "m")
+
+    assert "typo.wav" in caplog.text
+
+
+def test_create_manifest_still_covers_existing_files(tmp_path):
+    import json
+    from advanced_validation import IntegrityVerifier
+
+    real = tmp_path / "real.wav"
+    write_sine_wave(real)
+
+    verifier = IntegrityVerifier(manifest_dir=tmp_path / "manifests")
+    path = verifier.create_manifest([real], "m")
+    manifest = json.loads(path.read_text())
+    assert len(manifest) == 1 and str(real) in manifest

@@ -691,6 +691,11 @@ class StereoProcessor:
     """Stereo width and enhancement processing"""
 
     def __init__(self, config: StereoConfig, sample_rate: int = 44100):
+        # width is a plain multiplier on the side channel: a non-finite
+        # value turned every output sample to NaN with no error.
+        if not math.isfinite(config.width) or config.width < 0:
+            raise ValueError(f"stereo width must be a finite value >= 0, "
+                             f"got {config.width!r}")
         self.config = config
         self.sample_rate = sample_rate
         self.setup_filters()

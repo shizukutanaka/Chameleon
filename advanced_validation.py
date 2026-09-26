@@ -395,6 +395,12 @@ class IntegrityVerifier:
 
         for file_path in files:
             if not file_path.exists():
+                # A skipped path is excluded from the manifest AND from
+                # verify_manifest's "Missing:" reporting -- the caller
+                # believed N files were tracked and gets N-1. Warn so the
+                # omission is visible.
+                logger.warning(
+                    "Skipping non-existent file in manifest: %s", file_path)
                 continue
 
             inspector = DeepFileInspector()
