@@ -165,3 +165,49 @@ def test_main_block_self_test_writes_no_state_into_the_real_home(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "Verification: True" in result.stdout
     assert not (home / ".chameleon").exists()
+
+
+def test_sanitize_preserves_data_after_odd_sized_fmt(tmp_path):
+    # The keep path writes the RIFF pad byte for an odd-sized kept chunk but
+    # must also consume the source's pad -- otherwise the next chunk header
+    # is read one byte early and the data chunk after an odd-sized fmt is
+    # stripped (an odd-sized fmt is legal RIFF: size 17 with a pad byte).
+    import struct as _st
+    from advanced_validation import SanitizationEngine
+
+    fmt = _st.pack("<HHIIHH", 1, 1, 44100, 88200, 2, 16) + b"\x00"
+    payload = _st.pack("<4h", 100, 200, 300, 400)
+    body = (b"fmt " + _st.pack("<I", 17) + fmt + b"\x00"
+            + b"data" + _st.pack("<I", len(payload)) + payload)
+    src = tmp_path / "oddfmt.wav"
+    src.write_bytes(b"RIFF" + _st.pack("<I", 4 + len(body)) + b"WAVE" + body)
+
+    dst = tmp_path / "clean.wav"
+    SanitizationEngine.sanitize_wav_metadata(src, dst)
+
+    with wave.open(str(dst)) as w:
+        assert w.readframes(4) == payload
+
+
+def test_inspector_does_not_flag_standard_sample_rates(tmp_path):
+    # The "Non-standard sample rate" warning is for rates genuinely off the
+    # ladder -- a 192 kHz or 32 kHz file is a normal hi-res/broadcast file,
+    # not a curiosity, and flagging it lands a false claim in the library
+    # metadata personal_config persists.
+    import struct as _st
+    inspector = DeepFileInspector()
+
+    def _wav_at(rate: int) -> Path:
+        fmt = _st.pack("<HHIIHH", 1, 1, rate, rate * 2, 2, 16)
+        body = (b"fmt " + _st.pack("<I", 16) + fmt
+                + b"data" + _st.pack("<I", 4) + b"\x00\x00\x00\x00")
+        path = tmp_path / f"r{rate}.wav"
+        path.write_bytes(b"RIFF" + _st.pack("<I", 4 + len(body)) + b"WAVE" + body)
+        return path
+
+    for rate in (32000, 44100, 88200, 192000):
+        meta = inspector._validate_wav_structure(_wav_at(rate))
+        assert "warning" not in meta, (rate, meta["warning"])
+
+    meta = inspector._validate_wav_structure(_wav_at(12345))
+    assert "12345" in meta["warning"]

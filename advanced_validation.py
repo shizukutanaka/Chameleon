@@ -352,7 +352,13 @@ class DeepFileInspector:
                             if channels < 1 or channels > 8:
                                 metadata["warning"] = f"Unusual channel count: {channels}"
 
-                            if sample_rate not in [8000, 11025, 16000, 22050, 44100, 48000, 96000]:
+                            # The full standard ladder: telephony/broadcast
+                            # (8k-32k), consumer (44.1k/48k and halves), and
+                            # the hi-res multiples up to 192k. Anything off
+                            # the ladder -- 12345 Hz, say -- is the warning.
+                            if sample_rate not in (8000, 11025, 16000, 22050, 24000,
+                                                   32000, 44100, 48000, 88200,
+                                                   96000, 176400, 192000):
                                 metadata["warning"] = f"Non-standard sample rate: {sample_rate}"
 
                         # Skip any unread remainder of an oversized fmt body.
@@ -493,8 +499,12 @@ class SanitizationEngine:
                     outfile.write(chunk_data)
                     total_size += 8 + chunk_size
 
-                    # Pad to even boundary
+                    # Pad to even boundary -- and consume the source's pad
+                    # byte too: leaving it unread makes the next header
+                    # start one byte early, desyncing the chunk walk the
+                    # same way an unconsumed pad on the skip path did.
                     if chunk_size % 2:
+                        infile.read(1)
                         outfile.write(b'\x00')
                         total_size += 1
                 else:
