@@ -2013,6 +2013,20 @@ class AudioProcessor:
         if audio.dtype != np.float32:
             audio = audio.astype(np.float32)
 
+        # int PCM cannot represent non-finite samples, so the write
+        # substitutes before clipping: NaN -> 0 (silence), +/-inf -> the
+        # clip rail, and the substitution is reported so a corrupt pipeline
+        # stage surfaces instead of hiding inside the output.
+        nonfinite = int(np.count_nonzero(~np.isfinite(audio)))
+        if nonfinite and self.logger:
+            self.logger.warning(
+                "%d non-finite samples (NaN/inf) in %s; writing NaN as "
+                "silence and clipping inf to full scale",
+                nonfinite, file_path,
+            )
+        if nonfinite:
+            audio = np.nan_to_num(audio, nan=0.0, posinf=1.0, neginf=-1.0)
+
         # Values beyond [-1, 1] hard-clip on int PCM write -- report the
         # count so an overdriven effects chain surfaces as a warning
         # instead of silent distortion.
@@ -2108,6 +2122,11 @@ class AudioProcessor:
         if audio.dtype != np.float32:
             audio = audio.astype(np.float32)
 
+        # int16 cast cannot represent non-finite values: NaN/inf become
+        # platform-dependent garbage with an "invalid value" warning.
+        # save_audio substitutes + reports upstream; do it here too so a
+        # direct call writes defined PCM (NaN -> 0, +/-inf -> the rails).
+        audio = np.nan_to_num(audio, nan=0.0, posinf=1.0, neginf=-1.0)
         scaled = np.clip(audio, -1.0, 1.0) * 32767.0
 
         if getattr(self.config, "apply_dither", False):
