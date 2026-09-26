@@ -93,3 +93,65 @@ def test_scheduler_fails_loudly_without_schedule_package():
     scheduler = BatchScheduler()
     with pytest.raises(ImportError):
         scheduler.start()
+
+
+def test_remove_task_tombstones_the_queue_entry():
+    # remove_task could only clear task_map -- PriorityQueue has no
+    # delete -- leaving a stale item that crashed get_task with KeyError
+    # (and, absent the crash, would still have run the "removed" task).
+    q = ba.TaskQueue()
+    for task_id in ("gone", "kept"):
+        q.add_task(ba.BatchTask(
+            id=task_id, name=task_id, function=lambda: None, inputs={},
+            dependencies=[], retry_count=0, timeout=None, priority=0,
+            tags=[]))
+
+    assert q.remove_task("gone") is True
+
+    first = q.get_task()
+    assert first is not None and first.id == "kept"
+    assert q.get_task() is None  # tombstone dropped, no KeyError
+
+
+def test_duplicate_task_ids_are_rejected():
+    # results are keyed by task id: in a DAG the map kept only the last
+    # task object, so the first duplicate was never executed and the
+    # workflow still "completed" with one fewer entry than declared.
+    calls = []
+    for tag in ("first", "second"):
+        calls.append(tag)
+
+    tasks = [
+        ba.BatchTask(id="dup", name="first",
+                     function=lambda: "first", inputs={},
+                     dependencies=[], retry_count=0, timeout=None,
+                     priority=0, tags=[]),
+        ba.BatchTask(id="dup", name="second",
+                     function=lambda: "second", inputs={},
+                     dependencies=[], retry_count=0, timeout=None,
+                     priority=0, tags=[]),
+    ]
+    workflow = ba.Workflow(
+        id="w", name="w", tasks=tasks, type=ba.WorkflowType.DAG,
+        schedule=None, max_parallel=1, conditions={}, metadata={})
+
+    with pytest.raises(ValueError, match="duplicate task id"):
+        ba.WorkflowEngine().execute_workflow(workflow)
+
+
+def test_duplicate_task_ids_rejected_on_sequential_too():
+    # The overwrite was silent on every engine type, not just DAG.
+    tasks = [
+        ba.BatchTask(id="dup", name="a", function=lambda: "a", inputs={},
+                     dependencies=[], retry_count=0, timeout=None,
+                     priority=0, tags=[]),
+        ba.BatchTask(id="dup", name="b", function=lambda: "b", inputs={},
+                     dependencies=[], retry_count=0, timeout=None,
+                     priority=0, tags=[]),
+    ]
+    workflow = ba.Workflow(
+        id="w", name="w", tasks=tasks, type=ba.WorkflowType.SEQUENTIAL,
+        schedule=None, max_parallel=1, conditions={}, metadata={})
+
+    with pytest.raises(ValueError, match="duplicate task id"):
+        ba.WorkflowEngine().execute_workflow(workflow)
