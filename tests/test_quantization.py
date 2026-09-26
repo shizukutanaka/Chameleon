@@ -131,3 +131,69 @@ def test_full_scale_input_does_not_wrap_around():
 
     assert written.max() <= 32767
     assert written.min() >= 0  # no wrap to negative
+
+
+def _save_and_read_via_save_audio(signal, *, apply_dither=False, bit_depth=16):
+    """Drive the primary write path (soundfile when present) and read the
+    PCM back with the stdlib wave module."""
+    config = main.ProcessingConfig()
+    config.apply_dither = apply_dither
+    processor = main.AudioProcessor(config)
+
+    directory = Path(tempfile.mkdtemp())
+    path = directory / "out.wav"
+    written = processor.save_audio(
+        np.asarray(signal, dtype=np.float32), str(path), 48000,
+        bit_depth=bit_depth)
+    assert written == bit_depth
+
+    with wave.open(str(path)) as handle:
+        raw = handle.readframes(handle.getnframes())
+        width = handle.getsampwidth()
+    if width == 2:
+        return np.frombuffer(raw, dtype=np.int16).astype(float)
+    # 24-bit PCM: unpack manually (little-endian, sign-extended)
+    a = np.frombuffer(raw, dtype=np.uint8).reshape(-1, 3)
+    ints = (a[:, 0].astype(np.int32)
+            | (a[:, 1].astype(np.int32) << 8)
+            | (a[:, 2].astype(np.int32) << 16))
+    ints = np.where(ints & 0x800000, ints - 0x1000000, ints)
+    return ints.astype(float)
+
+
+def test_apply_dither_also_dithers_on_the_soundfile_path():
+    # Before this fix, apply_dither only existed in the soundfile-free
+    # fallback: on a full install the same config silently wrote undithered
+    # output. A constant between two codes must decorrelate on BOTH paths.
+    if not main.HAS_SOUNDFILE:
+        pytest.skip("soundfile not installed")
+
+    signal = np.full(20000, 9830.43 / 32767.0, dtype=np.float32)
+    undithered = _save_and_read_via_save_audio(signal)
+    dithered = _save_and_read_via_save_audio(signal, apply_dither=True)
+
+    # Without dither every sample quantises to one code; with TPDF dither
+    # the codes spread and the mean sits within an LSB of the true
+    # 9830.43 (libsndfile's own float->int quantizer is not plain
+    # round-to-nearest, so we don't pin a tighter convergence).
+    assert set(undithered.tolist()) == {9830.0}
+    assert len(set(dithered.tolist())) >= 2
+    assert abs(dithered.mean() - 9830.43) < 1.0
+    assert not np.array_equal(undithered, dithered)
+
+
+def test_apply_dither_scales_to_24_bit_depth():
+    # At 24-bit the LSB is ~2e-7 in float; 16-bit-scaled dither would sit
+    # hundreds of codes above the quantisation floor.
+    if not main.HAS_SOUNDFILE:
+        pytest.skip("soundfile not installed")
+
+    signal = np.full(20000, 0.3, dtype=np.float32)
+    codes = _save_and_read_via_save_audio(
+        signal, apply_dither=True, bit_depth=24)
+    ideal = 0.3 * 8388607.0
+
+    # The spread that proves dithering happened, but bounded at +-3 LSB of
+    # THIS depth -- 16-bit-scaled dither would sit ~512 codes wide.
+    assert len(set(codes.tolist())) >= 2
+    assert np.abs(codes - ideal).max() <= 3.0
