@@ -2471,3 +2471,29 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-26, audit 142):** pyproject.toml declares
+`requires-python = ">=3.8"` and the `[api]` extra (fastapi<0.100,
+pydantic<2, uvicorn) resolves on 3.8 -- but does `api_server.py` itself
+actually import there?
+**A:** It did not. The module carried two PEP 585 annotations --
+`_load_dev_credentials() -> tuple[Optional[str], Optional[str]]` and
+`_get_allowed_origins() -> list[str]` -- without
+`from __future__ import annotations`, so on 3.8 the function definitions
+themselves raise `TypeError: 'type' object is not subscriptable` and the
+whole module (i.e. `chameleon server`) is unimportable on a floor the
+packaging still advertises. Seven sibling modules already stringify
+annotations via the future import; api_server now does too. The scan for
+the same class found no other violator among packaged modules, and
+`tests/test_no_orphan_modules.py` gained an AST guard
+(`test_packaged_modules_respect_the_declared_python_floor`) that flags
+any packaged module using PEP 585 (`tuple[...]`-style) or PEP 604
+(`X | Y`) annotations without the lazy-annotations import. Considered and
+skipped this round: `ParallelBatchProcessor(max_workers=0)` looked like a
+`Semaphore(0)` hang, but `max_workers or default` coalesces 0 to the
+default -- verified by running it, no defect; the token-signature scheme
+is tautological (the presented token must match the stored one before the
+HMAC check runs, so it can only fail when `session_timeout` changes and
+re-derives the secret -- silently logging everyone out with "Token
+signature invalid"), which is a design wart rather than a reachable
+hazard, noted here rather than patched inside the auth path.
