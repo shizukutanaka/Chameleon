@@ -3252,3 +3252,20 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-26):** `RecoveryManager._cleanup_temp_files` runs inside
+`tempfile.gettempdir()` -- world-writable `/tmp` on multi-user systems --
+when a batch retry sees a disk-space OSError. Its hand-rolled walk did
+`candidate.is_dir()` (which follows symlinks) then unlinked every file the
+recursive glob returned. What stops a planted `chameleon_*` symlink from
+aiming that deletion at a victim directory?
+**A:** Nothing did. A `chameleon_evil -> victim/` symlink in the temp dir
+caused the cleanup to unlink `victim`'s files (verified: important.txt and
+nested/deep.txt deleted, symlink left behind, legit `chameleon_*` file
+removed). Symlinked children *inside* a real temp dir were followed too --
+the glob recurses through them. The cleanup now unlinks symlinked
+`chameleon_*` entries themselves (the link is temp junk; its target is not
+ours) and delegates real directories to `shutil.rmtree`, which never
+follows symlinks -- it unlinks the links. BatchProcessor reaches this path
+via `recovery.execute` on any OSError whose message mentions "disk" or
+"space", so the planted-symlink window is real.
