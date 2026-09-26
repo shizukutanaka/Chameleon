@@ -2471,3 +2471,21 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-26, audit 136):** `ProcessingConfig.apply_dither` is a real,
+documented opt-in flag. Did it do the same thing on every install?
+**A:** No -- it only reached the stdlib fallback writer
+(`_save_wav_basic`), so the identical config produced TPDF-dithered
+output on a minimal install and undithered output on a full one.
+`save_audio` now applies the same 2-LSB-peak-to-peak TPDF dither in the
+float domain before `sf.write`, scaled to the target bit depth
+(2 LSB at 16-bit is ~512 codes wide at 24-bit -- the amplitude must
+follow the quantizer). 32-bit PCM skips it: its LSB is below float32
+resolution, so there is nothing to dither. Notable non-change: the
+*dither itself* stays unseeded. That is a pinned, deliberate choice --
+`tests/test_quantization.py` documents that opting in trades CHARTER
+§1's byte-reproducibility for a better noise floor -- unlike the
+mastering_chain dither audits (#199/#204/#229), whose seeds were fixes
+because there deterministic output was the contract. Same flag name,
+different contract; consistency here would mean breaking a tested
+guarantee, not restoring one.
