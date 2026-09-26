@@ -841,15 +841,31 @@ class BatchScheduler:
                 "The 'schedule' package is not installed; the batch "
                 "scheduler cannot run without it")
 
+        if self.running:
+            # A second loop thread would run every pending job twice per
+            # interval, and stop() could only join the latest thread.
+            raise RuntimeError("Scheduler is already running")
+
         self.running = True
         self.thread = threading.Thread(target=self._run_scheduler)
         self.thread.start()
 
     def _run_scheduler(self) -> None:
         """Run scheduler loop"""
-        while self.running:
-            schedule.run_pending()
-            time.sleep(1)
+        try:
+            while self.running:
+                try:
+                    schedule.run_pending()
+                except Exception:
+                    # A job that raises (an invalid workflow, an
+                    # engine-level error) must not kill the loop: the
+                    # thread would die leaving every other scheduled job
+                    # dead while 'running' still reports True.
+                    self.logger.exception(
+                        "Scheduled job raised; scheduler continues")
+                time.sleep(1)
+        finally:
+            self.running = False
 
     def stop(self) -> None:
         """Stop scheduler"""

@@ -2471,3 +2471,22 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-26, audit 138):** `BatchScheduler` is library-only (no CLI
+caller) but the contract still matters -- does one bad scheduled workflow,
+or a caller pressing `start()` twice, take the whole scheduler down?
+**A:** Two real defects, both demonstrated live against a stubbed
+`schedule` module: (1) `_run_scheduler` ran `schedule.run_pending()`
+unprotected -- a job that raises (an invalid workflow definition, an
+engine-level error) propagated out of the loop, killed the thread, and
+left `running == True` while every scheduled job was silently dead;
+the loop now logs the failure and continues, and a `finally` clears
+`running` on any exit so the flag can never outlive the thread.
+(2) `start()` had no re-entry guard -- a second call spawned a second
+loop thread, so every pending job executed twice per interval and
+`stop()` could only join the most recent thread (measured: 6 ticks in
+2.4 s where one thread would tick ~2); a double start now raises
+RuntimeError, matching the loud-refusal style the audit established for
+a missing `schedule` package. The per-tick catch is `Exception`-scoped:
+BaseException (KeyboardInterrupt/SystemExit) still ends the loop -- now
+honestly, with `running` cleared -- rather than being swallowed.
