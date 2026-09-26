@@ -2471,3 +2471,17 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-26):** The `midi extract` wrapper was hardened to propagate a
+crashed analyzer instead of printing "No MIDI notes extracted." Does the
+analyzer itself still fabricate that same empty result?
+**A:** It did, at two levels. `parse_midi_from_audio` wrapped its whole body in
+`except Exception: print(...); return []` -- a crashed pitch estimator came
+back as an empty list, printed once, indistinguishable from unmusical input.
+One level deeper, `_estimate_pitch` swallowed *any* exception into `None`,
+the same verdict it returns for a legitimately unpitched frame -- so a
+systematic crash read as "every frame unvoiced" rather than a failure. Both
+catches are gone: crashes propagate to the caller that owns the error
+policy (`extract_midi` logs and reports), while `None` remains the honest
+verdict for silence and unvoiced frames (the periodicity fallback below the
+0.5 threshold), which a dedicated test now pins.
