@@ -81,3 +81,85 @@ def test_missing_dependency_op_is_internal_not_input(tmp_path):
         pytest.skip("numpy present; the unsupported path does not trigger")
     except main.UnsupportedOperationError as exc:
         assert main._error_kind(exc) == "internal"
+
+
+def _failing_level_pass(*_args, **_kwargs):
+    raise OSError("simulated mid-read failure")
+
+
+def test_level_measurement_failure_marks_levels_unmeasured(tmp_path, monkeypatch):
+    """A failed level pass must not read as silence: analyze used to stamp
+    the 0.0 dataclass defaults, so a loud file whose measurement crashed
+    printed "Peak Level: 0.000" and exported "peak_level": 0.0 -- a default
+    presented as a measurement."""
+    import json
+
+    import core
+
+    wav = write_sine_wave(tmp_path / "tone.wav", duration=0.3)
+    monkeypatch.setattr(
+        core._processor, "_calculate_levels_safe", _failing_level_pass
+    )
+
+    result = _processor()._process_single_file_stdlib(
+        str(wav), "analyze", time.time()
+    )
+
+    assert "error" not in result, result
+    meta = result["metadata"]
+    assert meta.peak_level is None
+    assert meta.rms_level is None
+    assert meta.dynamic_range is None
+    payload = json.loads(json.dumps(meta, default=main._json_export_default))
+    assert payload["peak_level"] is None
+    assert payload["rms_level"] is None
+
+
+def test_level_helper_propagates_io_errors(tmp_path):
+    """_calculate_levels_safe used to catch every exception and return
+    (0.0, 0.0) -- a crashed measurement indistinguishable from measured
+    silence. Callers decide what a failure means; the helper reports it."""
+    import core
+
+    processor = core.WAVProcessor()
+    info = core.AudioInfo(
+        duration=0.0, sample_rate=44100, channels=1,
+        bit_depth=16, size_bytes=0,
+    )
+
+    # open() on a directory raises IsADirectoryError (an OSError).
+    with pytest.raises(OSError):
+        processor._calculate_levels_safe(str(tmp_path), info)
+
+
+def test_zero_frame_wav_still_reports_measured_silence(tmp_path):
+    """0.0 is the honest answer for a file containing no samples; only a
+    *failed* measurement may report None."""
+    import core
+
+    wav = write_sine_wave(tmp_path / "empty.wav", duration=0.0)
+
+    result = core.analyze(str(wav))
+
+    assert result.success
+    assert result.data.peak_level == 0.0
+    assert result.data.rms_level == 0.0
+
+
+def test_normalize_fails_honestly_when_level_pass_fails(tmp_path, monkeypatch):
+    """normalize used to turn a crashed level pass into "No audio signal
+    found" -- a claim about the audio's content it never measured. The
+    failure now reports as a failure."""
+    import core
+
+    src = write_sine_wave(tmp_path / "in.wav", duration=0.3)
+    out = tmp_path / "out.wav"
+    monkeypatch.setattr(
+        core._processor, "_calculate_levels_safe", _failing_level_pass
+    )
+
+    result = core.normalize(str(src), str(out))
+
+    assert not result.success
+    assert "No audio signal" not in result.message
+    assert "Normalization failed" in result.message
