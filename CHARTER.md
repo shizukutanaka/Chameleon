@@ -2471,3 +2471,17 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-26, audit 149):** Same `with open(in) + open(out,'wb')`
+truncation pattern outside core.py -- does `SanitizationEngine.
+sanitize_wav_metadata` have it?
+**A:** Yes, and worse: `sanitize_wav_metadata(p, p)` zeroed the input and
+then *returned success* -- the walk read nothing (the file was already
+truncated), wrote a 4-byte stub, and logged "Sanitized" (verified:
+1644-byte WAV became a 4-byte file). The same-path case now raises
+ValueError before anything opens, decided by `os.path.samefile` so
+aliases/symlinks/hardlinks count too. This was the last unguarded
+streaming in-out site in the tree (audit-148 covers core.py's three);
+`IntegrityVerifier` writes only manifests, `personal_config.backup`
+copies into a separate destination tree, and the API server namespaces
+every output with a uuid.
