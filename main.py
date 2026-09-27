@@ -125,6 +125,15 @@ def _assert_unique_paths(paths: List[str], field_name: str) -> None:
         raise ValueError(message) from exc
 
 
+def _paths_are_same_file(a: str, b: str) -> bool:
+    """Whether two paths resolve to the same file, counting ./-aliases,
+    symlinks and hardlinks. A missing path can't be anyone's input."""
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        return False
+
+
 def _preflight_output_dir(output_dir: Optional[str]) -> Optional[str]:
     """An output dir that is actually a file -- or whose parent chain hits
     one -- only fails later, inside per-file processing, as a raw OSError
@@ -2568,6 +2577,11 @@ async def main():
             # the whole family (missing dir, directory-as-file, permissions).
             try:
                 export_path = _sanitize_cli_input(args.export, "export path")
+                for input_file in files:
+                    if _paths_are_same_file(export_path, input_file):
+                        raise ValueError(
+                            f"export path '{args.export}' is an analyzed "
+                            "input file; exporting would overwrite it")
                 with open(export_path, 'w') as f:
                     json.dump(results, f, indent=2, default=_json_export_default)
             except (OSError, ValueError) as exc:
@@ -3140,6 +3154,12 @@ async def main():
             if os.path.isdir(output_path) or not os.path.isdir(parent):
                 print(f"Error: cannot write MIDI output to '{output_path}' "
                       f"(missing parent directory, or path is a directory)",
+                      file=sys.stderr)
+                return ExitCode.INPUT
+            if (args.operation == "extract" and args.input
+                    and _paths_are_same_file(output_path, args.input)):
+                print(f"Error: MIDI output '{args.output}' is the extract "
+                      "input file; writing it would overwrite the audio",
                       file=sys.stderr)
                 return ExitCode.INPUT
             if not os.access(parent, os.W_OK | os.X_OK):

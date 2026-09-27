@@ -3252,3 +3252,18 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-26, audit 150):** Audits 148-149 closed the same-file
+truncation hole in the streaming processors and the sanitizer -- do the
+*CLI-level* writers have it too?
+**A:** Two did, and both returned exit 0 while destroying the input.
+`analyze --export <analyzed file>` opened the JSON destination 'w' after
+analysis -- the WAV was replaced by its own report (verified: 16 KB to
+823 bytes). `midi extract --output <the .wav>` built the .mid in memory
+and wrote it over the audio it had just read (16 KB to a 42-byte stub).
+Both now refuse with INPUT(3) before any write, decided by
+`os.path.samefile` so `./`-aliases, symlinks and hardlinks count; a
+nonexistent export/output path still proceeds. `process`/`batch` outputs
+get suffixed names under --output-dir and cannot collide with their
+inputs; `midi compose/generate --output` writes files that were never
+inputs, so overwriting them is normal behaviour and left alone.

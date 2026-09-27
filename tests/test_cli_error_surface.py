@@ -141,3 +141,51 @@ def test_unexpected_exceptions_are_not_swallowed():
 
     assert "except Exception" not in code
     assert "except (ValueError, FileNotFoundError)" in code
+
+
+def test_analyze_export_to_the_input_itself_is_refused(tmp_path):
+    # --export <the file being analyzed> used to overwrite the WAV with JSON:
+    # the export opened 'w' after analysis, so the source was gone by the time
+    # anyone noticed. INPUT(3), and the file must survive untouched.
+    source = write_sine_wave(tmp_path / "song.wav")
+    before = source.read_bytes()
+
+    result = subprocess.run(
+        [sys.executable, "main.py", "analyze", str(source),
+         "--export", str(source)],
+        capture_output=True, text=True, cwd=str(REPO_ROOT),
+    )
+
+    assert result.returncode == 3
+    assert source.read_bytes() == before
+
+
+def test_analyze_export_to_an_input_alias_is_refused(tmp_path):
+    source = write_sine_wave(tmp_path / "song.wav")
+    before = source.read_bytes()
+
+    result = subprocess.run(
+        [sys.executable, "main.py", "analyze", str(source),
+         "--export", str(tmp_path / "." / "song.wav")],
+        capture_output=True, text=True, cwd=str(REPO_ROOT),
+    )
+
+    assert result.returncode == 3
+    assert source.read_bytes() == before
+
+
+def test_midi_extract_output_to_the_input_itself_is_refused(tmp_path):
+    # `midi extract --output <the input .wav>` built the .mid in memory and
+    # then opened the destination 'wb' -- a 16 KB WAV became a 42-byte stub
+    # with exit code 0. INPUT(3); the audio must survive.
+    source = write_sine_wave(tmp_path / "song.wav")
+    before = source.read_bytes()
+
+    result = subprocess.run(
+        [sys.executable, "main.py", "midi", "extract",
+         "--input", str(source), "--output", str(source)],
+        capture_output=True, text=True, cwd=str(REPO_ROOT),
+    )
+
+    assert result.returncode == 3
+    assert source.read_bytes() == before
