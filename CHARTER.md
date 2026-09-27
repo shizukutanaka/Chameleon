@@ -2471,3 +2471,18 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-26, audit 150):** Audits 148-149 closed the same-file
+truncation hole in the streaming processors and the sanitizer -- do the
+*CLI-level* writers have it too?
+**A:** Two did, and both returned exit 0 while destroying the input.
+`analyze --export <analyzed file>` opened the JSON destination 'w' after
+analysis -- the WAV was replaced by its own report (verified: 16 KB to
+823 bytes). `midi extract --output <the .wav>` built the .mid in memory
+and wrote it over the audio it had just read (16 KB to a 42-byte stub).
+Both now refuse with INPUT(3) before any write, decided by
+`os.path.samefile` so `./`-aliases, symlinks and hardlinks count; a
+nonexistent export/output path still proceeds. `process`/`batch` outputs
+get suffixed names under --output-dir and cannot collide with their
+inputs; `midi compose/generate --output` writes files that were never
+inputs, so overwriting them is normal behaviour and left alone.
