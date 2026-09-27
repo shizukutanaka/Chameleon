@@ -2471,3 +2471,20 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-26, audit 148):** What happens when a write operation's input
+and output paths are the same file?
+**A:** Data loss. `_apply_gain_safe`, `_convert_to_mono` and
+`_extract_audio_range` all stream `open(input)` + `open_secure(output,
+"wb")` in one `with` -- the output is O_TRUNC'ed before the input's first
+read, so `normalize(p, p)` left `p` at zero bytes and failed with "Invalid
+WAV header" (reproduced: 1644-byte file became 0). All three public ops
+(`normalize`, `convert_to_mono`, `trim_silence`) now refuse same-file
+input/output up front via `os.path.samefile`, which also catches
+`./x.wav` aliases, symlinks and hardlinks; a nonexistent output can never
+be the input's file. The numpy-based process ops (denoise/master/effects/
+convert) read the whole input into memory before `save_audio` opens the
+output, so in-place there already works correctly and is left supported.
+Note `to_mono` on an already-mono file previously escaped corruption only
+because `shutil.copyfile` refuses same-file copies -- the guard makes the
+refusal uniform and early.
