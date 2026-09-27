@@ -193,6 +193,11 @@ class SecurityValidator:
             return False
         if not self._extension_allowed(resolved):
             return False
+        if resolved.exists() and not resolved.is_file():
+            # Directories, FIFOs, sockets and devices all pass every check
+            # above; opening a FIFO for reading would then block forever
+            # waiting for a writer that may never come.
+            return False
         if resolved.exists() and resolved.is_file():
             try:
                 if resolved.stat().st_size > self.config.max_file_size:

@@ -3252,3 +3252,14 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-09-26, audit 151):** `SecurityValidator.validate_path` is the
+gate every input AND output path passes through -- does it ever admit a
+path that open() cannot use?
+**A:** Yes: any path that *exists but is not a regular file*. The size
+check only ran on `is_file()` hits, so a FIFO, socket or device passed
+validation and the following `open(..., 'rb')` blocked forever waiting
+for a writer (verified: `analyze` on a named pipe never returned). An
+existing non-regular path is now refused; a not-yet-created output path
+is unaffected (it does not exist, so nothing changes), and a directory
+input fails at the same gate rather than deeper inside the WAV parser.
