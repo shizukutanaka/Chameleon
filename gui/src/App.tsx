@@ -311,7 +311,7 @@ function App() {
           onClose={handleCloseAlert}
           anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
         >
-          {currentAlert && (
+          {currentAlert ? (
             <Alert
               onClose={handleCloseAlert}
               severity={currentAlert.type}
@@ -320,7 +320,7 @@ function App() {
             >
               {currentAlert.message}
             </Alert>
-          )}
+          ) : undefined}
         </Snackbar>
       </Router>
     </ThemeProvider>

@@ -2471,3 +2471,18 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-26, audit 156):** Does the gui/ tree build at all on main?
+**A:** No, in three stacked ways. (1) `gui/tsconfig.json` was never
+committed, so `npm run build` died at module resolution
+("Can't resolve './App'") before any type checking -- CRA auto-writes
+tsconfig for `npm start` but not for `npm run build`. (2) The
+`TuneIcon`/`AnalyticsIcon` imports are not real @mui/icons-material@5
+exports -- already fixed on the audit-68 branch (open PR #217).
+(3) `App.tsx`'s snackbar used `{currentAlert && (...)}`, which yields
+`Element | null` where Snackbar children need `ReactElement | undefined`
+-- a TS2322 under CRA's strict tsconfig that audit-68's plain-tsc pass
+could not see (it had no tsconfig to check against). This branch fixes
+(1) and (3); combined with #217's icon fixes the production build was
+verified green locally (281 kB bundle). Until #217 lands, `npm run build`
+still stops at the icon imports -- that error is that PR's to own.
