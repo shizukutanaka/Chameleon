@@ -330,3 +330,42 @@ class TestSecurityConfigFromEnvironment:
         with pytest.warns(UserWarning, match="does not exist"):
             cfg = SecurityConfig.from_environment()
         assert str(tmp_path / "ghost") in cfg.trusted_roots
+
+
+class TestNonRegularFiles:
+    """A path that exists but is not a regular file used to pass
+    validate_path: the size check only ran on is_file() hits, so a FIFO or
+    device sailed through to open() -- which blocks forever on a FIFO
+    waiting for a writer. Existence must now mean 'regular file'."""
+
+    def test_fifo_rejected_and_analyze_refuses_without_blocking(self, tmp_path):
+        import threading
+
+        import core
+
+        fifo = tmp_path / "pipe.wav"
+        os.mkfifo(fifo)
+
+        assert SecurityValidator.validate_path(str(fifo)) is False
+
+        # The regression: analyze() used to hang inside open(). Bound the
+        # wait so a regression fails the test instead of hanging the suite.
+        outcome = []
+        done = threading.Event()
+
+        def run():
+            outcome.append(core.WAVProcessor().analyze(str(fifo)))
+            done.set()
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        assert done.wait(timeout=10)
+        assert outcome[0].success is False
+
+    def test_directory_rejected(self, tmp_path):
+        assert SecurityValidator.validate_path(str(tmp_path)) is False
+
+    def test_not_yet_created_output_still_accepted(self, tmp_path):
+        # Output paths legitimately do not exist at validation time.
+        assert SecurityValidator.validate_path(
+            str(tmp_path / "sub" / "out.wav")) is True
