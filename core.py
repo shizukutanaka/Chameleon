@@ -2111,17 +2111,18 @@ class EnhancedSecurityValidator:
         # Remove or replace dangerous characters
         sanitized = re.sub(r'[<>:"/\\|?*\x00-\x1f\x7f-\x9f]', '_', filename)
 
-        # Same reserved-stem rule as security_validator's copy: Windows
-        # refuses these device names (stem before the first dot, case-
-        # insensitive) in every directory, extension or not.
-        stem = sanitized.split(".", 1)[0].strip(" .")
-        if stem.lower() in _RESERVED_DEVICE_NAMES:
-            return "untitled"
-
         # Limit length
         if len(sanitized) > 255:
             name, ext = os.path.splitext(sanitized)
             sanitized = name[:255-len(ext)] + ext
+
+        # Same reserved-stem rule as security_validator's copy: Windows
+        # refuses these device names (stem before the first dot, case-
+        # insensitive) in every directory, extension or not. Checked
+        # after the cap because truncation can recreate a reserved stem.
+        stem = sanitized.split(".", 1)[0].strip(" .")
+        if stem.lower() in _RESERVED_DEVICE_NAMES:
+            sanitized = ("untitled" + os.path.splitext(sanitized)[1])[:255]
 
         return sanitized or "untitled"
 

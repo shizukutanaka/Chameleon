@@ -2504,3 +2504,16 @@ SecurityValidator from it). A parity test pins the two copies to identical
 outputs on reserved and near-miss names -- mutation-verified (7 reserved
 names disagreed on the pre-fix twin). Gate re-run: 510 bare / 590 numpy /
 695 full, compileall clean, validation_test 6/6.
+
+**Q (2026-09-29, audit 224 review follow-up):** Can the 255-char cap and
+the extension-less fallback undermine the reserved-stem check?
+**A:** Yes, twice. The reserved check ran *before* the length cap, so
+`'con' + 'x'*300 + '.' + 'z'*251` passed the check as a long stem and the
+cap then truncated the basename to exactly `con` -- a device name again.
+And the `untitled` fallback dropped the extension, so `CON.wav` produced
+an extension-less name that the upload path's `.wav`-only policy rejected.
+The check now runs after the cap and preserves the extension
+(`CON.wav` -> `untitled.wav`). Applied to both copies (the core.py twin
+drifts when fixes land in only one -- same lesson as audit-140's cap).
+Mutation-verified on the pre-fix ordering. Gate: 511 bare / 591 numpy /
+696 full, compileall clean, validation_test 6/6.

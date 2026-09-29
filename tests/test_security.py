@@ -303,17 +303,32 @@ class TestSanitizeFilename:
     def test_empty_name_falls_back_to_untitled(self):
         assert SecurityValidator.sanitize_filename("") == "untitled"
 
-    @pytest.mark.parametrize("name", [
-        "CON", "con", "PRN", "AUX", "NUL",
-        "COM1", "com9", "LPT3", "lpt9",
-        "CON.wav", "nul.txt", "aux.bin.wav", "Com1.md",
-        "com¹", "com²", "com³", "lpt¹", "lpt²", "lpt³",
-        " CON ", "con .wav",
+    @pytest.mark.parametrize("name,expected", [
+        ("CON", "untitled"), ("con", "untitled"), ("PRN", "untitled"),
+        ("AUX", "untitled"), ("NUL", "untitled"),
+        ("COM1", "untitled"), ("com9", "untitled"),
+        ("LPT3", "untitled"), ("lpt9", "untitled"),
+        ("CON.wav", "untitled.wav"), ("nul.txt", "untitled.txt"),
+        ("aux.bin.wav", "untitled.wav"), ("Com1.md", "untitled.md"),
+        ("com¹", "untitled"), ("com²", "untitled"), ("com³", "untitled"),
+        ("lpt¹", "untitled"), ("lpt²", "untitled"), ("lpt³", "untitled"),
+        (" CON ", "untitled"), ("con .wav", "untitled.wav"),
     ])
-    def test_windows_reserved_device_names_fall_back(self, name):
+    def test_windows_reserved_device_names_fall_back(self, name, expected):
         # Windows reserves these stems directory-wide, extension or not;
         # the sanitized output must not be a name Windows cannot open.
-        assert SecurityValidator.sanitize_filename(name) == "untitled"
+        # The fallback keeps the extension so allowlisted-type consumers
+        # (e.g. the upload path's .wav policy) still accept the result.
+        assert SecurityValidator.sanitize_filename(name) == expected
+
+    def test_length_cap_cannot_recreate_reserved_stem(self):
+        # A long stem starting 'con' is capped to exactly 'con' by the
+        # 255-char limit; the reserved check must run after the cap or the
+        # returned name is a device name again.
+        name = "con" + "x" * 300 + "." + "z" * 251
+        out = SecurityValidator.sanitize_filename(name)
+        assert out.split(".", 1)[0] == "untitled"
+        assert len(out) <= 255
 
     @pytest.mark.parametrize("name", [
         "console.wav", "combat.wav", "auxiliary.wav", "null.wav",

@@ -307,15 +307,19 @@ class SecurityValidator:
     def sanitize_filename(self, filename: str) -> str:
         """Strip dangerous characters from a filename component."""
         sanitized = _FILENAME_SCRUB.sub("_", filename)
-        # A scrubbed name Windows still cannot hold: the FS compares the
-        # stem before the first dot, so 'NUL.txt' and 'nul' are equally
-        # reserved and any open() for them fails or targets the device.
-        stem = sanitized.split(".", 1)[0].strip(" .")
-        if stem.lower() in _RESERVED_DEVICE_NAMES:
-            return "untitled"
         if len(sanitized) > 255:
             name, ext = os.path.splitext(sanitized)
             sanitized = name[:255 - len(ext)] + ext
+        # A scrubbed name Windows still cannot hold: the FS compares the
+        # stem before the first dot, so 'NUL.txt' and 'nul' are equally
+        # reserved and any open() for them fails or targets the device.
+        # Checked after the length cap because truncation can recreate a
+        # reserved stem ('con' + padding -> 'con.<ext>'). The extension
+        # survives the fallback so an allowlisted-type destination (e.g.
+        # '<uuid>_untitled.wav') still passes the upload extension policy.
+        stem = sanitized.split(".", 1)[0].strip(" .")
+        if stem.lower() in _RESERVED_DEVICE_NAMES:
+            sanitized = ("untitled" + os.path.splitext(sanitized)[1])[:255]
         return sanitized or "untitled"
 
     @_hybridmethod
