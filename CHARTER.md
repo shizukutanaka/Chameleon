@@ -2491,3 +2491,16 @@ both directions -- reserved names rejected, near-misses like
 `console.wav`/`com0.wav`/`acon.wav` kept -- mutation-verified against
 the pre-fix code. Gate: 509 bare / 589 numpy / 694 full (+32 each),
 compileall clean, validation_test 6/6.
+
+**Q (2026-09-29, audit 224 continued):** `sanitize_filename` exists twice --
+`security_validator.py` and the `EnhancedSecurityValidator` twin in
+`core.py`. Does the second copy share the reserved-name fix?
+**A:** It did not -- the twin is a verbatim copy of the pre-fix helper
+(zero in-tree callers but a public library surface), so it still emitted
+`CON`/`com1`/`lpt9.txt` verbatim. It now applies the same check against
+the single `_RESERVED_DEVICE_NAMES` constant, imported from
+security_validator rather than duplicated (core.py already imported
+SecurityValidator from it). A parity test pins the two copies to identical
+outputs on reserved and near-miss names -- mutation-verified (7 reserved
+names disagreed on the pre-fix twin). Gate re-run: 510 bare / 590 numpy /
+695 full, compileall clean, validation_test 6/6.
