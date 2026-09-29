@@ -303,6 +303,26 @@ class TestSanitizeFilename:
     def test_empty_name_falls_back_to_untitled(self):
         assert SecurityValidator.sanitize_filename("") == "untitled"
 
+    @pytest.mark.parametrize("name", [
+        "CON", "con", "PRN", "AUX", "NUL",
+        "COM1", "com9", "LPT3", "lpt9",
+        "CON.wav", "nul.txt", "aux.bin.wav", "Com1.md",
+        "com¹", "com²", "com³", "lpt¹", "lpt²", "lpt³",
+        " CON ", "con .wav",
+    ])
+    def test_windows_reserved_device_names_fall_back(self, name):
+        # Windows reserves these stems directory-wide, extension or not;
+        # the sanitized output must not be a name Windows cannot open.
+        assert SecurityValidator.sanitize_filename(name) == "untitled"
+
+    @pytest.mark.parametrize("name", [
+        "console.wav", "combat.wav", "auxiliary.wav", "null.wav",
+        "com0.wav", "lpt0.wav", "xcon.wav", "acon.wav", "con_x.wav",
+        "some.com1", "file.lpt9.bak.txt",
+    ])
+    def test_non_reserved_names_pass_through(self, name):
+        assert SecurityValidator.sanitize_filename(name) == name
+
 
 class TestSecurityConfigFromEnvironment:
     def test_invalid_max_file_size_falls_back_to_default(self, monkeypatch):

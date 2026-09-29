@@ -41,6 +41,18 @@ _TRAVERSAL_PATTERNS = ('../', '..\\', '/..', '\\..', '%2e%2e', '%2f', '..%2f', '
 _SUSPICIOUS_CHARS = ('<', '>', '|', '"', '?', '*', '\0')
 _FILENAME_SCRUB = re.compile(r'[<>:"/\\|?*\x00-\x1f\x7f-\x9f]')
 
+# Device names Windows reserves in every directory, with or without an
+# extension ('CON.wav' still opens the console). The filesystem compares
+# only the stem up to the first dot, case-insensitively; the superscript
+# variants are reserved too. These are ordinary filenames on POSIX, so
+# nothing on a non-Windows host reveals the name is unwritable on a
+# platform the project ships to (quick_install.ps1, the CI matrix).
+_RESERVED_DEVICE_NAMES = frozenset(
+    {"con", "prn", "aux", "nul"}
+    | {f"{p}{i}" for p in ("com", "lpt") for i in range(1, 10)}
+    | {"com¹", "com²", "com³", "lpt¹", "lpt²", "lpt³"}
+)
+
 
 class SecurityError(Exception):
     """Raised when a path or file fails a security check."""
@@ -295,6 +307,12 @@ class SecurityValidator:
     def sanitize_filename(self, filename: str) -> str:
         """Strip dangerous characters from a filename component."""
         sanitized = _FILENAME_SCRUB.sub("_", filename)
+        # A scrubbed name Windows still cannot hold: the FS compares the
+        # stem before the first dot, so 'NUL.txt' and 'nul' are equally
+        # reserved and any open() for them fails or targets the device.
+        stem = sanitized.split(".", 1)[0].strip(" .")
+        if stem.lower() in _RESERVED_DEVICE_NAMES:
+            return "untitled"
         if len(sanitized) > 255:
             name, ext = os.path.splitext(sanitized)
             sanitized = name[:255 - len(ext)] + ext

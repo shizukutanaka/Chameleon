@@ -2471,3 +2471,23 @@ env-tunable 500MB cap and the API's fixed 100MB upload cap are both
 enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
+
+**Q (2026-09-29, audit 224):** `SecurityValidator.sanitize_filename`
+scrubs characters that are dangerous in a path component. Does the
+output name a file the tool can actually create on every platform it
+ships to?
+**A:** Not on Windows, and nothing on the dev host reveals it. `CON`,
+`PRN`, `AUX`, `NUL`, `COM1`-`COM9`, `LPT1`-`LPT9` (plus the superscript
+`com¹`-`com³`/`lpt¹`-`lpt³` variants) passed the scrub verbatim --
+verified `'CON.wav' -> 'CON.wav'`, `'com1' -> 'com1'` -- yet Windows
+reserves those stems directory-wide, extension or not: `open()` on the
+joined path fails or, for `NUL`, silently discards the write. The names
+are legal on POSIX, so the hazard is invisible where the code is
+developed while remaining live on a platform the project ships to
+(`quick_install.ps1`, the `windows-latest` CI matrix). The sanitizer now
+falls back to `"untitled"` for reserved stems (compared up to the first
+dot, case-insensitively, as the filesystem does). 32 new tests cover
+both directions -- reserved names rejected, near-misses like
+`console.wav`/`com0.wav`/`acon.wav` kept -- mutation-verified against
+the pre-fix code. Gate: 509 bare / 589 numpy / 694 full (+32 each),
+compileall clean, validation_test 6/6.
