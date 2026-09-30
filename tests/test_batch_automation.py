@@ -11,6 +11,7 @@ do what it claims. Two of its public paths could never have worked:
   job was then registered in scheduled_jobs and never ran.
 """
 
+import time
 import types
 
 import pytest
@@ -93,3 +94,58 @@ def test_scheduler_fails_loudly_without_schedule_package():
     scheduler = BatchScheduler()
     with pytest.raises(ImportError):
         scheduler.start()
+
+
+def _install_fake_schedule(monkeypatch, run_pending):
+    monkeypatch.setattr(ba, "HAS_SCHEDULE", True)
+    monkeypatch.setattr(
+        ba, "schedule", types.SimpleNamespace(run_pending=run_pending),
+        raising=False)
+    real_sleep = time.sleep
+    monkeypatch.setattr(time, "sleep", lambda s: real_sleep(0.005))
+    return real_sleep
+
+
+def test_scheduler_loop_survives_a_raising_job(monkeypatch):
+    # A scheduled workflow that raises (an invalid definition, an
+    # engine-level error) used to kill the scheduler thread outright --
+    # 'running' stayed True while every scheduled job was silently dead.
+    ticks = []
+
+    def run_pending():
+        ticks.append(1)
+        if len(ticks) == 2:
+            raise ValueError("bad workflow")
+
+    real_sleep = _install_fake_schedule(monkeypatch, run_pending)
+    scheduler = ba.BatchScheduler()
+    scheduler.start()
+    try:
+        deadline = time.time() + 2
+        while len(ticks) < 6 and time.time() < deadline:
+            real_sleep(0.01)
+        assert len(ticks) >= 6  # ticking continued past the raise
+        assert scheduler.thread.is_alive()
+        assert scheduler.running
+    finally:
+        scheduler.stop()
+    assert not scheduler.running
+
+
+def test_scheduler_refuses_a_second_start(monkeypatch):
+    # start() had no guard: a second call spawned another loop thread, so
+    # every pending job ran twice per interval and stop() could only join
+    # the latest thread.
+    _install_fake_schedule(monkeypatch, lambda: None)
+    scheduler = ba.BatchScheduler()
+    scheduler.start()
+    try:
+        with pytest.raises(RuntimeError, match="already running"):
+            scheduler.start()
+    finally:
+        scheduler.stop()
+    assert not scheduler.thread.is_alive()
+
+    # Restartable after a clean stop.
+    scheduler.start()
+    scheduler.stop()
