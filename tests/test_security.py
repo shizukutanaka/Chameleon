@@ -15,7 +15,12 @@ from pathlib import Path
 
 import pytest
 
-from security_validator import SecurityConfig, SecurityValidator, SecurityError
+from security_validator import (
+    SecurityConfig,
+    SecurityValidator,
+    SecurityError,
+    SecureFileOperations,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -24,6 +29,12 @@ from security_validator import SecurityConfig, SecurityValidator, SecurityError
 
 def _validator(**kwargs) -> SecurityValidator:
     return SecurityValidator(SecurityConfig(**kwargs))
+
+
+def _core_enhanced():
+    # core.py carries a twin sanitize_filename; keep both honest.
+    from core import EnhancedSecurityValidator
+    return EnhancedSecurityValidator
 
 
 def _write_wav(path: Path, n_samples: int = 100) -> Path:
@@ -302,6 +313,49 @@ class TestSanitizeFilename:
 
     def test_empty_name_falls_back_to_untitled(self):
         assert SecurityValidator.sanitize_filename("") == "untitled"
+
+    def test_overlong_extension_cannot_exceed_budget(self):
+        # splitext hands back the *whole* tail as ext; name[:255-len(ext)]
+        # is "" when ext alone exceeds the budget, and the result used to
+        # come back over 255 chars -- a name the filesystem then rejects
+        # with ENAMETOOLONG in the upload path that trusted this helper.
+        for cls in (SecurityValidator, _core_enhanced()):
+            out = cls.sanitize_filename("a." + "x" * 300)
+            assert len(out) <= 255
+            out = cls.sanitize_filename("." + "y" * 400)
+            assert len(out) <= 255
+
+
+class TestSecureOpen:
+    def test_update_mode_does_not_follow_symlink(self, tmp_path):
+        # "r+b" is a write-capable mode: plain open() follows a symlinked
+        # final component, which is exactly what the O_NOFOLLOW path in
+        # secure_open exists to refuse for "wb"/"a".
+        victim = tmp_path / "victim.bin"
+        victim.write_bytes(b"precious")
+        link = tmp_path / "innocent.bin"
+        try:
+            link.symlink_to(victim)
+        except (OSError, NotImplementedError):
+            pytest.skip("symlinks unavailable on this platform")
+
+        ops = SecureFileOperations(_validator())
+        with pytest.raises(OSError):
+            with ops.secure_open(link, "r+b") as handle:
+                handle.write(b"PWNED")
+        assert victim.read_bytes() == b"precious"
+
+    def test_exclusive_create_mode_works(self, tmp_path):
+        # 'x' is a creating mode but contains neither 'w' nor 'a'; it used
+        # to be validated as a read and so could never succeed.
+        target = tmp_path / "fresh.bin"
+        ops = SecureFileOperations(_validator())
+        with ops.secure_open(target, "x") as handle:
+            handle.write("payload")
+        assert target.read_text() == "payload"
+        with pytest.raises(FileExistsError):
+            with ops.secure_open(target, "x"):
+                pass
 
 
 class TestSecurityConfigFromEnvironment:

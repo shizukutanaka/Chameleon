@@ -2490,3 +2490,63 @@ RuntimeError, matching the loud-refusal style the audit established for
 a missing `schedule` package. The per-tick catch is `Exception`-scoped:
 BaseException (KeyboardInterrupt/SystemExit) still ends the loop -- now
 honestly, with `running` cleared -- rather than being swallowed.
+
+**Q (2026-09-26, audit 140):** `SecureFileOperations.secure_open` claims
+"write/append modes ... refuse to follow symlinks". `r+b` is a
+write-capable mode -- does it refuse too?
+**A:** No. Write-mode detection was `"w" in mode or "a" in mode`, so `r+`,
+`w+`, `a+` and `x` all fell into the plain `open()` branch -- which
+follows a symlinked final component that the O_NOFOLLOW path refuses for
+`wb`. Verified: `secure_open(link, "wb")` refused with ELOOP while
+`secure_open(link, "r+b")` opened the same symlink and wrote through to
+the victim. Write-mode detection now covers `w`/`a`/`x`/`+`, with the
+flag mapping each mode actually means (`r+` gets O_RDWR with no create or
+truncate, `x` gets O_CREAT|O_EXCL) so update modes keep their semantics
+inside the hardened open rather than being redirected into the
+unhardened one. Same function, second defect: `x` was classified "read",
+which made a documented stdlib mode permanently unusable -- the
+read-validation requires the file to exist, and exclusive-create exists
+to create it. It now works, and second opens still get FileExistsError.
+
+Same file, second defect: `sanitize_filename` capped names at 255 chars
+via `name[:255-len(ext)] + ext` -- but splitext hands the whole tail back
+as `ext`, so when the extension alone exceeds the budget `name[:negative]`
+is `""` and the returned name is still >255 (verified: 301 chars). The
+upload path's `_sanitize_uploaded_name` equality check cannot catch it
+(buggy sanitize is the identity on those names), so an approved name
+failed at os.open with ENAMETOOLONG -> 500 instead of a clean answer.
+Both copies of the helper (security_validator.py and the
+EnhancedSecurityValidator twin in core.py) now clamp the composed result
+to 255. Deliberately not pinned: which 255 characters survive -- the
+contract is the length bound, not where the cut lands.
+
+**Q (2026-09-26, audit 148):** What happens when a write operation's input
+and output paths are the same file?
+**A:** Data loss. `_apply_gain_safe`, `_convert_to_mono` and
+`_extract_audio_range` all stream `open(input)` + `open_secure(output,
+"wb")` in one `with` -- the output is O_TRUNC'ed before the input's first
+read, so `normalize(p, p)` left `p` at zero bytes and failed with "Invalid
+WAV header" (reproduced: 1644-byte file became 0). All three public ops
+(`normalize`, `convert_to_mono`, `trim_silence`) now refuse same-file
+input/output up front via `os.path.samefile`, which also catches
+`./x.wav` aliases, symlinks and hardlinks; a nonexistent output can never
+be the input's file. The numpy-based process ops (denoise/master/effects/
+convert) read the whole input into memory before `save_audio` opens the
+output, so in-place there already works correctly and is left supported.
+Note `to_mono` on an already-mono file previously escaped corruption only
+because `shutil.copyfile` refuses same-file copies -- the guard makes the
+refusal uniform and early.
+
+**Q (2026-09-26, audit 149):** Same `with open(in) + open(out,'wb')`
+truncation pattern outside core.py -- does `SanitizationEngine.
+sanitize_wav_metadata` have it?
+**A:** Yes, and worse: `sanitize_wav_metadata(p, p)` zeroed the input and
+then *returned success* -- the walk read nothing (the file was already
+truncated), wrote a 4-byte stub, and logged "Sanitized" (verified:
+1644-byte WAV became a 4-byte file). The same-path case now raises
+ValueError before anything opens, decided by `os.path.samefile` so
+aliases/symlinks/hardlinks count too. This was the last unguarded
+streaming in-out site in the tree (audit-148 covers core.py's three);
+`IntegrityVerifier` writes only manifests, `personal_config.backup`
+copies into a separate destination tree, and the API server namespaces
+every output with a uuid.
