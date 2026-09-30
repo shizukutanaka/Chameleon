@@ -165,3 +165,19 @@ def test_main_block_self_test_writes_no_state_into_the_real_home(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "Verification: True" in result.stdout
     assert not (home / ".chameleon").exists()
+
+
+def test_sanitize_to_same_path_refuses_and_preserves_input(tmp_path):
+    # The sanitizer opens the output O_TRUNC inside the same `with` that
+    # opens the input for reading, so sanitize(p, p) zeroed the file before
+    # the first read -- and then returned success over a 4-byte stub.
+    from advanced_validation import SanitizationEngine
+    import pytest as _pt
+
+    src = tmp_path / "in.wav"
+    write_sine_wave(src)
+    before = src.read_bytes()
+
+    with _pt.raises(ValueError, match="same file"):
+        SanitizationEngine.sanitize_wav_metadata(src, src)
+    assert src.read_bytes() == before
