@@ -479,13 +479,20 @@ class TaskQueue:
 
     def get_task(self) -> Optional[BatchTask]:
         """Get next task from queue"""
-        try:
-            _, _, task = self.queue.get_nowait()
+        while True:
+            try:
+                _, _, task = self.queue.get_nowait()
+            except queue.Empty:
+                return None
             with self.lock:
-                del self.task_map[task.id]
-            return task
-        except queue.Empty:
-            return None
+                if task.id in self.task_map:
+                    del self.task_map[task.id]
+                    return task
+            # PriorityQueue has no delete, so remove_task can only clear
+            # the map entry -- the queue item becomes a tombstone to drop
+            # here. Without the skip, a removal crashed this method with
+            # KeyError and would otherwise have run the "removed" task.
+            continue
 
     def remove_task(self, task_id: str) -> bool:
         """Remove task from queue"""
@@ -623,6 +630,17 @@ class WorkflowEngine:
 
     def execute_workflow(self, workflow: Workflow) -> Dict[str, TaskResult]:
         """Execute complete workflow"""
+        task_ids = [task.id for task in workflow.tasks]
+        if len(set(task_ids)) != len(task_ids):
+            # results are keyed by task id: a duplicate silently dropped the
+            # first task in a DAG (task_map kept only the last) or silently
+            # overwrote the first task's result in sequential/parallel.
+            dupes = sorted({tid for tid in task_ids
+                            if task_ids.count(tid) > 1})
+            raise ValueError(
+                f"Workflow '{workflow.id}' has duplicate task id(s): "
+                f"{', '.join(dupes)}")
+
         if workflow.type == WorkflowType.SEQUENTIAL:
             return self._execute_sequential(workflow)
         elif workflow.type == WorkflowType.PARALLEL:
@@ -768,6 +786,15 @@ class WorkflowEngine:
         """Evaluate workflow condition"""
         condition_type = condition.get('type', 'simple')
 
+        # An unrecognised condition type cannot be satisfied -- falling
+        # through to True would disable the guard silently, running the
+        # task unconditionally.
+        if condition_type not in ('simple', 'expression'):
+            self.logger.warning(
+                "Skipping guarded task: unrecognised condition type %r",
+                condition_type)
+            return False
+
         if condition_type == 'simple':
             # Check if previous task succeeded
             task_id = condition.get('task_id')
@@ -841,15 +868,31 @@ class BatchScheduler:
                 "The 'schedule' package is not installed; the batch "
                 "scheduler cannot run without it")
 
+        if self.running:
+            # A second loop thread would run every pending job twice per
+            # interval, and stop() could only join the latest thread.
+            raise RuntimeError("Scheduler is already running")
+
         self.running = True
         self.thread = threading.Thread(target=self._run_scheduler)
         self.thread.start()
 
     def _run_scheduler(self) -> None:
         """Run scheduler loop"""
-        while self.running:
-            schedule.run_pending()
-            time.sleep(1)
+        try:
+            while self.running:
+                try:
+                    schedule.run_pending()
+                except Exception:
+                    # A job that raises (an invalid workflow, an
+                    # engine-level error) must not kill the loop: the
+                    # thread would die leaving every other scheduled job
+                    # dead while 'running' still reports True.
+                    self.logger.exception(
+                        "Scheduled job raised; scheduler continues")
+                time.sleep(1)
+        finally:
+            self.running = False
 
     def stop(self) -> None:
         """Stop scheduler"""

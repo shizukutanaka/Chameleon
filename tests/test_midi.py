@@ -285,3 +285,38 @@ def test_estimate_pitch_none_on_silence_is_genuine():
     # periodicity fallback), not a swallowed error -- keep it.
     analyzer = MIDIAnalyzer()
     assert analyzer._estimate_pitch([0.0] * 2048, 44100) is None
+
+
+def test_analyze_harmony_reports_each_template_types_real_quality():
+    # The quality map only knew minor/min7/min9 and dim; every other
+    # detectable type fell into the 'major' bucket -- a detected Amin6 was
+    # reported as quality 'major' with an uppercase 'VI', and an Aaug the
+    # same. Assert the full vocabulary maps to its true quality and the
+    # roman numeral's case tracks triad quality (lower = minor-family).
+    from midi_analysis import Chord, MusicalKey
+    analyzer = MIDIAnalyzer()
+    key = MusicalKey(tonic=0, mode="major", confidence=0.9)
+
+    expected = {
+        "major": ("major", "VI"),
+        "minor": ("minor", "vi"),
+        "dim": ("diminished", "vi°"),
+        "aug": ("augmented", "VI+"),
+        "maj7": ("major", "VI"),
+        "min7": ("minor", "vi"),
+        "dom7": ("dominant", "VI"),
+        "maj9": ("major", "VI"),
+        "min9": ("minor", "vi"),
+        "sus2": ("suspended", "VI"),
+        "sus4": ("suspended", "VI"),
+        "add9": ("major", "VI"),
+        "6": ("major", "VI"),
+        "min6": ("minor", "vi"),
+    }
+    for chord_type, (quality, roman) in expected.items():
+        chord = Chord(root=9, chord_type=chord_type, notes=[9, 12, 16],
+                      start_time=0.0, duration=2.0, confidence=0.9)
+        result = analyzer.analyze_harmony([chord], key)
+        entry = result["progression"][0]
+        assert entry["quality"] == quality, f"{chord_type}: {entry['quality']}"
+        assert entry["roman"] == roman, f"{chord_type}: {entry['roman']}"

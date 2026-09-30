@@ -490,13 +490,25 @@ class MIDIAnalyzer:
             # Calculate scale degree
             degree = (chord.root - key.tonic) % 12
 
-            # Determine quality based on chord type and key
-            if chord.chord_type in ["minor", "min7", "min9"]:
+            # Determine quality based on chord type and key. The map must
+            # cover the whole template vocabulary: min6 is minor-quality and
+            # aug is neither major nor minor -- before this, an Amin6 was
+            # reported as quality "major" with an uppercase "VI".
+            if chord.chord_type in ["minor", "min6", "min7", "min9"]:
                 quality = "minor"
                 roman = roman_numerals[degree].lower()
             elif chord.chord_type in ["dim"]:
                 quality = "diminished"
                 roman = roman_numerals[degree].lower() + "°"
+            elif chord.chord_type == "aug":
+                quality = "augmented"
+                roman = roman_numerals[degree] + "+"
+            elif chord.chord_type in ("sus2", "sus4"):
+                quality = "suspended"
+                roman = roman_numerals[degree]
+            elif chord.chord_type == "dom7":
+                quality = "dominant"
+                roman = roman_numerals[degree]
             else:
                 quality = "major"
                 roman = roman_numerals[degree]
