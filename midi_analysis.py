@@ -155,43 +155,38 @@ class MIDIAnalyzer:
 
     def parse_midi_from_audio(self, audio_data: List[float], sample_rate: int) -> List[MIDINote]:
         """Extract MIDI notes from audio using onset detection and pitch tracking"""
-        try:
-            # Basic onset detection using energy changes
-            frame_size = int(sample_rate * 0.023)  # 23ms frames
-            hop_size = frame_size // 4
+        # Basic onset detection using energy changes
+        frame_size = int(sample_rate * 0.023)  # 23ms frames
+        hop_size = frame_size // 4
 
-            notes = []
-            current_time = 0.0
+        notes = []
+        current_time = 0.0
 
-            for i in range(0, len(audio_data) - frame_size, hop_size):
-                frame = audio_data[i:i + frame_size]
+        for i in range(0, len(audio_data) - frame_size, hop_size):
+            frame = audio_data[i:i + frame_size]
 
-                # Simple energy-based onset detection
-                energy = sum(x * x for x in frame)
+            # Simple energy-based onset detection
+            energy = sum(x * x for x in frame)
 
-                if energy > 0.001:  # Threshold for note detection
-                    # Estimate fundamental frequency using autocorrelation
-                    pitch_hz = self._estimate_pitch(frame, sample_rate)
+            if energy > 0.001:  # Threshold for note detection
+                # Estimate fundamental frequency using autocorrelation
+                pitch_hz = self._estimate_pitch(frame, sample_rate)
 
-                    if pitch_hz is not None:
-                        midi_pitch = self._hz_to_midi(pitch_hz)
-                        velocity = min(127, int(energy * 1000))
+                if pitch_hz is not None:
+                    midi_pitch = self._hz_to_midi(pitch_hz)
+                    velocity = min(127, int(energy * 1000))
 
-                        notes.append(MIDINote(
-                            pitch=midi_pitch,
-                            velocity=velocity,
-                            start_time=current_time,
-                            duration=0.1,  # Default duration
-                            channel=0
-                        ))
+                    notes.append(MIDINote(
+                        pitch=midi_pitch,
+                        velocity=velocity,
+                        start_time=current_time,
+                        duration=0.1,  # Default duration
+                        channel=0
+                    ))
 
-                current_time += hop_size / sample_rate
+            current_time += hop_size / sample_rate
 
-            return self._merge_overlapping_notes(notes)
-
-        except Exception as e:
-            print(f"Error in MIDI extraction: {e}")
-            return []
+        return self._merge_overlapping_notes(notes)
 
     def _estimate_pitch(self, frame: List[float], sample_rate: int) -> Optional[float]:
         """Estimate fundamental frequency using the YIN algorithm.
@@ -203,79 +198,76 @@ class MIDIAnalyzer:
         parabolic interpolation recovers sub-sample period resolution. Pure
         standard library — no NumPy required.
         """
-        try:
-            n = len(frame)
-            if n < 8:
+        n = len(frame)
+        if n < 8:
+            return None
+
+        f_min, f_max = 80.0, 2000.0
+        window = n // 2  # integration window
+        tau_min = max(1, int(sample_rate / f_max))
+        tau_max = min(window, int(sample_rate / f_min))
+        if tau_max <= tau_min or window < 2:
+            return None
+
+        # Step 1: difference function d(tau) over a fixed integration window.
+        diff = [0.0] * (tau_max + 1)
+        for tau in range(1, tau_max + 1):
+            total = 0.0
+            for i in range(window):
+                delta = frame[i] - frame[i + tau]
+                total += delta * delta
+            diff[tau] = total
+
+        # Step 2: cumulative mean normalised difference (CMND).
+        cmnd = [1.0] * (tau_max + 1)
+        running = 0.0
+        for tau in range(1, tau_max + 1):
+            running += diff[tau]
+            cmnd[tau] = diff[tau] * tau / running if running > 0 else 1.0
+
+        # Step 3: absolute threshold — first dip below threshold, descended
+        # to its local minimum (this is what defeats octave errors).
+        threshold = 0.1
+        tau_est: Optional[int] = None
+        tau = tau_min
+        while tau <= tau_max:
+            if cmnd[tau] < threshold:
+                while tau + 1 <= tau_max and cmnd[tau + 1] < cmnd[tau]:
+                    tau += 1
+                tau_est = tau
+                break
+            tau += 1
+
+        # Fallback: global minimum in range, rejected if not periodic enough.
+        if tau_est is None:
+            best = tau_min
+            for tau in range(tau_min, tau_max + 1):
+                if cmnd[tau] < cmnd[best]:
+                    best = tau
+            if cmnd[best] >= 0.5:
                 return None
+            tau_est = best
 
-            f_min, f_max = 80.0, 2000.0
-            window = n // 2  # integration window
-            tau_min = max(1, int(sample_rate / f_max))
-            tau_max = min(window, int(sample_rate / f_min))
-            if tau_max <= tau_min or window < 2:
-                return None
-
-            # Step 1: difference function d(tau) over a fixed integration window.
-            diff = [0.0] * (tau_max + 1)
-            for tau in range(1, tau_max + 1):
-                total = 0.0
-                for i in range(window):
-                    delta = frame[i] - frame[i + tau]
-                    total += delta * delta
-                diff[tau] = total
-
-            # Step 2: cumulative mean normalised difference (CMND).
-            cmnd = [1.0] * (tau_max + 1)
-            running = 0.0
-            for tau in range(1, tau_max + 1):
-                running += diff[tau]
-                cmnd[tau] = diff[tau] * tau / running if running > 0 else 1.0
-
-            # Step 3: absolute threshold — first dip below threshold, descended
-            # to its local minimum (this is what defeats octave errors).
-            threshold = 0.1
-            tau_est: Optional[int] = None
-            tau = tau_min
-            while tau <= tau_max:
-                if cmnd[tau] < threshold:
-                    while tau + 1 <= tau_max and cmnd[tau + 1] < cmnd[tau]:
-                        tau += 1
-                    tau_est = tau
-                    break
-                tau += 1
-
-            # Fallback: global minimum in range, rejected if not periodic enough.
-            if tau_est is None:
-                best = tau_min
-                for tau in range(tau_min, tau_max + 1):
-                    if cmnd[tau] < cmnd[best]:
-                        best = tau
-                if cmnd[best] >= 0.5:
-                    return None
-                tau_est = best
-
-            # Step 4: parabolic interpolation around the chosen period.
-            if tau_min < tau_est < tau_max:
-                x0, x1, x2 = cmnd[tau_est - 1], cmnd[tau_est], cmnd[tau_est + 1]
-                denominator = x0 - 2.0 * x1 + x2
-                if denominator != 0:
-                    shift = 0.5 * (x0 - x2) / denominator
-                    tau_refined = tau_est + shift if -1.0 < shift < 1.0 else float(tau_est)
-                else:
-                    tau_refined = float(tau_est)
+        # Step 4: parabolic interpolation around the chosen period.
+        if tau_min < tau_est < tau_max:
+            x0, x1, x2 = cmnd[tau_est - 1], cmnd[tau_est], cmnd[tau_est + 1]
+            denominator = x0 - 2.0 * x1 + x2
+            if denominator != 0:
+                shift = 0.5 * (x0 - x2) / denominator
+                tau_refined = tau_est + shift if -1.0 < shift < 1.0 else float(tau_est)
             else:
                 tau_refined = float(tau_est)
+        else:
+            tau_refined = float(tau_est)
 
-            if tau_refined <= 0:
-                return None
-            frequency = sample_rate / tau_refined
-
-            if f_min <= frequency <= f_max:
-                return frequency
+        if tau_refined <= 0:
             return None
+        frequency = sample_rate / tau_refined
 
-        except Exception:
-            return None
+        if f_min <= frequency <= f_max:
+            return frequency
+        return None
+
 
     def _hz_to_midi(self, frequency: float) -> int:
         """Convert frequency to MIDI note number"""
