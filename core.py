@@ -136,6 +136,21 @@ def open_secure(path: Union[str, Path], mode: str = "wb", *, encoding: Optional[
     return os.fdopen(fd, mode, encoding=encoding)
 
 
+def _paths_refer_to_same_file(input_path: str, output_path: str) -> bool:
+    """Whether two paths resolve to the same file.
+
+    The streaming writers open the output with O_TRUNC in the same ``with``
+    that opens the input for reading, so an identical source/destination
+    truncates the input before its first read -- the operation then fails
+    on the now-empty header and leaves the user's file at zero bytes.
+    ``samefile`` also catches ``./a.wav`` vs ``a.wav``, symlinks and
+    hardlinks; a nonexistent output can never be the input's file."""
+    try:
+        return os.path.samefile(input_path, output_path)
+    except OSError:
+        return False
+
+
 @dataclass
 class AudioInfo:
     """Essential audio information - no bloat.
@@ -586,6 +601,11 @@ class WAVProcessor:
         if not security_validator.validate_path(output_path):
             return ProcessingResult(False, "Invalid output path")
 
+        if _paths_refer_to_same_file(input_path, output_path):
+            return ProcessingResult(
+                False, "Input and output paths are the same file; "
+                "in-place processing is not supported")
+
         if target_peak <= 0 or target_peak > 1.0:
             return ProcessingResult(False, "Invalid target peak (0-1.0)")
 
@@ -636,6 +656,11 @@ class WAVProcessor:
         if not security_validator.validate_path(input_path):
             return ProcessingResult(False, "Invalid input path")
 
+        if _paths_refer_to_same_file(input_path, output_path):
+            return ProcessingResult(
+                False, "Input and output paths are the same file; "
+                "in-place processing is not supported")
+
         try:
             info = self._read_wav_header(input_path)
             if not info:
@@ -681,6 +706,11 @@ class WAVProcessor:
 
         if not security_validator.validate_path(output_path):
             return ProcessingResult(False, "Invalid output path")
+
+        if _paths_refer_to_same_file(input_path, output_path):
+            return ProcessingResult(
+                False, "Input and output paths are the same file; "
+                "in-place processing is not supported")
 
         if threshold <= 0 or threshold >= 1.0:
             return ProcessingResult(False, "Invalid threshold (0.01-0.99)")
