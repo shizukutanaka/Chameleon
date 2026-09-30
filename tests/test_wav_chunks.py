@@ -186,3 +186,48 @@ def test_load_wav_basic_8bit_unsigned_offset(tmp_path):
     audio, sr = main.AudioProcessor()._load_wav_basic(str(wav))
     assert audio[0] == pytest.approx(0.0, abs=0.01)
     assert audio[2] == pytest.approx(-1.0, abs=0.01)
+
+
+# ------------------------------------------------- same-file in-place guard --
+
+def test_in_place_normalize_refuses_instead_of_truncating_input(tmp_path):
+    # normalize/trim/mono stream input -> output inside one `with` that opens
+    # the output O_TRUNC: the same path on both sides zeroed the user's file
+    # before the first read (reproduced: file left at 0 bytes, op reporting
+    # "Invalid WAV header"). The ops must refuse, and the input must survive.
+    src, _ = write_wav_raw(tmp_path / "in.wav", frames=TONE)
+    before = src.read_bytes()
+
+    result = core.normalize(str(src), str(src), 0.5)
+    assert not result.success
+    assert "same file" in result.message
+    assert src.read_bytes() == before
+
+
+def test_in_place_trim_and_stereo_mono_refuse_and_preserve_input(tmp_path):
+    stereo = sine_frames(count=2205, channels=2)
+    src, _ = write_wav_raw(tmp_path / "st.wav", frames=stereo, channels=2)
+    padded, _ = write_wav_raw(tmp_path / "pd.wav",
+                              frames=[0] * 2000 + sine_frames(count=2000))
+    before = {p: p.read_bytes() for p in (src, padded)}
+
+    assert not core.to_mono(str(src), str(src)).success
+    assert not core.trim_silence(str(padded), str(padded), 0.05).success
+    assert all(p.read_bytes() == b for p, b in before.items())
+
+
+def test_in_place_via_alias_and_symlink_also_refused(tmp_path):
+    # samefile(), not string equality, must decide: './x.wav', a symlink and a
+    # hardlink to the input are all the same file.
+    src, _ = write_wav_raw(tmp_path / "x.wav", frames=TONE)
+    before = src.read_bytes()
+    (tmp_path / "sub").mkdir()
+    link = tmp_path / "sub" / "link.wav"
+    os.symlink(os.path.abspath(src), link)
+    hard = tmp_path / "hard.wav"
+    os.link(src, hard)
+
+    for alias in (str(tmp_path / "sub" / ".." / "x.wav"), str(link), str(hard)):
+        result = core.normalize(str(src), alias, 0.5)
+        assert not result.success, alias
+        assert src.read_bytes() == before

@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Dict, List, Any, Tuple
 from dataclasses import dataclass
 import logging
+import math
 import warnings
 
 try:
@@ -269,6 +270,15 @@ class SpectralEditor:
     def select_region(self, time_start: float, time_end: float,
                      freq_start: float, freq_end: float) -> SpectralSelection:
         """Create spectral selection"""
+        # NaN/inf bounds cannot be clamped: Python's max/min comparisons
+        # with NaN return the bound, so a non-finite bound silently widens
+        # to the file's full range -- and the operation that follows
+        # (delete, enhance) then acts on audio the caller never selected.
+        for name, value in (("time_start", time_start), ("time_end", time_end),
+                            ("freq_start", freq_start), ("freq_end", freq_end)):
+            if not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise ValueError(f"{name} must be a finite number, got {value!r}")
+
         selection = SpectralSelection(
             time_start=max(0, time_start),
             time_end=min(self.times[-1], time_end),
