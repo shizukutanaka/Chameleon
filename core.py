@@ -24,6 +24,7 @@ import tempfile
 import logging
 import warnings
 import gc
+import math
 from pathlib import Path
 import asyncio
 from typing import Union, Optional, Dict, List, Any, Tuple, Callable
@@ -606,7 +607,9 @@ class WAVProcessor:
                 False, "Input and output paths are the same file; "
                 "in-place processing is not supported")
 
-        if target_peak <= 0 or target_peak > 1.0:
+        if (not isinstance(target_peak, (int, float))
+                or not math.isfinite(target_peak)
+                or not 0.0 < target_peak <= 1.0):
             return ProcessingResult(False, "Invalid target peak (0-1.0)")
 
         try:
