@@ -2488,3 +2488,17 @@ output, so in-place there already works correctly and is left supported.
 Note `to_mono` on an already-mono file previously escaped corruption only
 because `shutil.copyfile` refuses same-file copies -- the guard makes the
 refusal uniform and early.
+
+**Q (2026-09-26, audit 149):** Same `with open(in) + open(out,'wb')`
+truncation pattern outside core.py -- does `SanitizationEngine.
+sanitize_wav_metadata` have it?
+**A:** Yes, and worse: `sanitize_wav_metadata(p, p)` zeroed the input and
+then *returned success* -- the walk read nothing (the file was already
+truncated), wrote a 4-byte stub, and logged "Sanitized" (verified:
+1644-byte WAV became a 4-byte file). The same-path case now raises
+ValueError before anything opens, decided by `os.path.samefile` so
+aliases/symlinks/hardlinks count too. This was the last unguarded
+streaming in-out site in the tree (audit-148 covers core.py's three);
+`IntegrityVerifier` writes only manifests, `personal_config.backup`
+copies into a separate destination tree, and the API server namespaces
+every output with a uuid.
