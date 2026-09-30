@@ -419,3 +419,57 @@ def test_backup_workflow_verifies_an_intact_copy(tmp_path, monkeypatch, capsys):
 
     assert (dest_dir / "a.wav").exists()
     assert "verified successfully" in capsys.readouterr().out
+
+
+# --- setup wizard's non-interactive edges ----------------------------------
+# `python personal_config.py setup` is the onboarding step both
+# quick_install.sh and quick_install.ps1 point a new user at. It is only
+# reachable through __main__, so these run the module as a subprocess with a
+# fake HOME (keeping the real ~/.chameleon untouched).
+
+import os
+import subprocess
+import sys
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _run_setup(stdin_data, home):
+    env = dict(os.environ)
+    # Path.home() consults HOME on POSIX and USERPROFILE on Windows.
+    env["HOME"] = str(home)
+    env["USERPROFILE"] = str(home)
+    kwargs = {"stdin": subprocess.DEVNULL} if stdin_data is None \
+        else {"input": stdin_data}
+    return subprocess.run(
+        [sys.executable, str(_REPO_ROOT / "personal_config.py"), "setup"],
+        capture_output=True, text=True, env=env, **kwargs)
+
+
+def test_setup_aborts_cleanly_when_stdin_is_empty(tmp_path):
+    # Closed/drained stdin used to end the wizard on a raw EOFError
+    # traceback mid-banner.
+    result = _run_setup(None, tmp_path / "home")
+
+    assert result.returncode != 0
+    assert "Traceback" not in result.stderr
+    assert "interactive terminal" in result.stderr
+    # Refusal before any prompt is answered must not persist a config the
+    # user never confirmed.
+    assert not (tmp_path / "home" / ".chameleon"
+                / "personal_config.json").exists()
+
+
+def test_setup_reports_an_unusable_library_path_cleanly(tmp_path):
+    # A custom path that exists as a regular file reached
+    # Path.mkdir(parents=True, exist_ok=True), which refuses files with
+    # FileExistsError -- a traceback halfway through the wizard.
+    blocker = tmp_path / "not_a_dir"
+    blocker.write_text("x")
+    result = _run_setup(f"{blocker}\n\n\n", tmp_path / "home")
+
+    assert result.returncode != 0
+    assert "Traceback" not in result.stderr
+    assert "Setup failed" in result.stderr
+    assert not (tmp_path / "home" / ".chameleon"
+                / "personal_config.json").exists()
