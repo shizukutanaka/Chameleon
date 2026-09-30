@@ -41,6 +41,18 @@ _TRAVERSAL_PATTERNS = ('../', '..\\', '/..', '\\..', '%2e%2e', '%2f', '..%2f', '
 _SUSPICIOUS_CHARS = ('<', '>', '|', '"', '?', '*', '\0')
 _FILENAME_SCRUB = re.compile(r'[<>:"/\\|?*\x00-\x1f\x7f-\x9f]')
 
+# Device names Windows reserves in every directory, with or without an
+# extension ('CON.wav' still opens the console). The filesystem compares
+# only the stem up to the first dot, case-insensitively; the superscript
+# variants are reserved too. These are ordinary filenames on POSIX, so
+# nothing on a non-Windows host reveals the name is unwritable on a
+# platform the project ships to (quick_install.ps1, the CI matrix).
+_RESERVED_DEVICE_NAMES = frozenset(
+    {"con", "prn", "aux", "nul"}
+    | {f"{p}{i}" for p in ("com", "lpt") for i in range(1, 10)}
+    | {"com¹", "com²", "com³", "lpt¹", "lpt²", "lpt³"}
+)
+
 
 class SecurityError(Exception):
     """Raised when a path or file fails a security check."""
@@ -297,7 +309,20 @@ class SecurityValidator:
         sanitized = _FILENAME_SCRUB.sub("_", filename)
         if len(sanitized) > 255:
             name, ext = os.path.splitext(sanitized)
-            sanitized = name[:255 - len(ext)] + ext
+            # The extension can itself be longer than the whole budget (or
+            # the name can be all extension); name[:negative] then returns ""
+            # and the over-long ext survives. Clamp the composed result too.
+            sanitized = (name[:255 - len(ext)] + ext)[:255]
+        # A scrubbed name Windows still cannot hold: the FS compares the
+        # stem before the first dot, so 'NUL.txt' and 'nul' are equally
+        # reserved and any open() for them fails or targets the device.
+        # Checked after the length cap because truncation can recreate a
+        # reserved stem ('con' + padding -> 'con.<ext>'). The extension
+        # survives the fallback so an allowlisted-type destination (e.g.
+        # '<uuid>_untitled.wav') still passes the upload extension policy.
+        stem = sanitized.split(".", 1)[0].strip(" .")
+        if stem.lower() in _RESERVED_DEVICE_NAMES:
+            sanitized = ("untitled" + os.path.splitext(sanitized)[1])[:255]
         return sanitized or "untitled"
 
     @_hybridmethod
@@ -332,13 +357,22 @@ class SecureFileOperations:
         Write/append modes create the file with restrictive 0o600 permissions and
         refuse to follow symlinks (mirrors ``core.open_secure``).
         """
-        writing = "w" in mode or "a" in mode
+        # '+' modes (r+, w+, a+) are write-capable and 'x' creates
+        # exclusively; classifying by 'w'/'a' alone sent all of those through
+        # the plain open() branch, which follows a symlinked final component
+        # that the O_NOFOLLOW open below refuses.
+        writing = any(flag in mode for flag in "wax+")
         operation = "write" if writing else "read"
         self.validator.validate_file_path(path, operation=operation)
 
         if writing:
-            flags = os.O_WRONLY
-            flags |= os.O_CREAT | (os.O_APPEND if "a" in mode else os.O_TRUNC)
+            flags = os.O_RDWR if "+" in mode else os.O_WRONLY
+            if "a" in mode:
+                flags |= os.O_CREAT | os.O_APPEND
+            elif "x" in mode:
+                flags |= os.O_CREAT | os.O_EXCL
+            elif "w" in mode:
+                flags |= os.O_CREAT | os.O_TRUNC
             if hasattr(os, "O_NOFOLLOW"):
                 flags |= os.O_NOFOLLOW
             if hasattr(os, "O_BINARY"):

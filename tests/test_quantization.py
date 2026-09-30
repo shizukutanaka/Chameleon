@@ -12,6 +12,7 @@ different bytes when the user opts in.
 """
 
 import tempfile
+import warnings
 import wave
 from pathlib import Path
 
@@ -131,3 +132,130 @@ def test_full_scale_input_does_not_wrap_around():
 
     assert written.max() <= 32767
     assert written.min() >= 0  # no wrap to negative
+
+
+def test_non_finite_samples_write_defined_pcm_not_garbage():
+    # The int16 cast cannot represent NaN/inf -- without substitution they
+    # become platform-dependent garbage under a RuntimeWarning. The writer
+    # substitutes defined values: NaN -> 0 (silence), +/-inf -> the rails.
+    # (On this platform the garbage cast happens to yield the same PCM, so
+    # the written values alone cannot pin the fix -- the RuntimeWarning is
+    # the observable difference. Catch it explicitly.)
+    signal = np.array([0.5, np.nan, -np.inf, np.inf, 0.25], dtype=np.float32)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        written = _write_and_read(signal)
+
+    assert not [w for w in caught if issubclass(w.category, RuntimeWarning)]
+    assert written[0] == round(0.5 * 32767)
+    assert written[1] == 0          # NaN -> silence
+    assert written[2] == -32767     # -inf -> lower rail
+    assert written[3] == 32767      # +inf -> upper rail
+    assert written[4] == round(0.25 * 32767)
+    assert np.isfinite(written).all()
+
+
+class _CollectingLogger:
+    def __init__(self):
+        self.warnings = []
+
+    def warning(self, message, *args):
+        self.warnings.append(message % args if args else message)
+
+
+def test_save_audio_warns_on_non_finite_samples():
+    # Silent substitution would hide a corrupt pipeline stage; the write must
+    # report how many samples were NaN/inf.
+    config = main.ProcessingConfig()
+    processor = main.AudioProcessor(config)
+    collector = _CollectingLogger()
+    processor.logger = collector
+    path = Path(tempfile.mkdtemp()) / "out.wav"
+
+    processor.save_audio(
+        np.array([0.5, np.nan, 0.25], dtype=np.float32), str(path), 48000
+    )
+
+    assert any("non-finite" in message for message in collector.warnings)
+
+
+def test_save_audio_does_not_warn_on_finite_audio():
+    # The non-finite warning must not fire on clean input.
+    config = main.ProcessingConfig()
+    processor = main.AudioProcessor(config)
+    collector = _CollectingLogger()
+    processor.logger = collector
+    path = Path(tempfile.mkdtemp()) / "out.wav"
+
+    processor.save_audio(
+        np.array([0.5, -0.5, 0.25], dtype=np.float32), str(path), 48000
+    )
+
+    assert not any("non-finite" in message for message in collector.warnings)
+
+
+def _save_and_read_via_save_audio(signal, *, apply_dither=False, bit_depth=16):
+    """Drive the primary write path (soundfile when present) and read the
+    PCM back with the stdlib wave module."""
+    config = main.ProcessingConfig()
+    config.apply_dither = apply_dither
+    processor = main.AudioProcessor(config)
+
+    directory = Path(tempfile.mkdtemp())
+    path = directory / "out.wav"
+    written = processor.save_audio(
+        np.asarray(signal, dtype=np.float32), str(path), 48000,
+        bit_depth=bit_depth)
+    assert written == bit_depth
+
+    with wave.open(str(path)) as handle:
+        raw = handle.readframes(handle.getnframes())
+        width = handle.getsampwidth()
+    if width == 2:
+        return np.frombuffer(raw, dtype=np.int16).astype(float)
+    # 24-bit PCM: unpack manually (little-endian, sign-extended)
+    a = np.frombuffer(raw, dtype=np.uint8).reshape(-1, 3)
+    ints = (a[:, 0].astype(np.int32)
+            | (a[:, 1].astype(np.int32) << 8)
+            | (a[:, 2].astype(np.int32) << 16))
+    ints = np.where(ints & 0x800000, ints - 0x1000000, ints)
+    return ints.astype(float)
+
+
+def test_apply_dither_also_dithers_on_the_soundfile_path():
+    # Before this fix, apply_dither only existed in the soundfile-free
+    # fallback: on a full install the same config silently wrote undithered
+    # output. A constant between two codes must decorrelate on BOTH paths.
+    if not main.HAS_SOUNDFILE:
+        pytest.skip("soundfile not installed")
+
+    signal = np.full(20000, 9830.43 / 32767.0, dtype=np.float32)
+    undithered = _save_and_read_via_save_audio(signal)
+    dithered = _save_and_read_via_save_audio(signal, apply_dither=True)
+
+    # Without dither every sample quantises to one code; with TPDF dither
+    # the codes spread and the mean sits within an LSB of the true
+    # 9830.43 (libsndfile's own float->int quantizer is not plain
+    # round-to-nearest, so we don't pin a tighter convergence).
+    assert set(undithered.tolist()) == {9830.0}
+    assert len(set(dithered.tolist())) >= 2
+    assert abs(dithered.mean() - 9830.43) < 1.0
+    assert not np.array_equal(undithered, dithered)
+
+
+def test_apply_dither_scales_to_24_bit_depth():
+    # At 24-bit the LSB is ~2e-7 in float; 16-bit-scaled dither would sit
+    # hundreds of codes above the quantisation floor.
+    if not main.HAS_SOUNDFILE:
+        pytest.skip("soundfile not installed")
+
+    signal = np.full(20000, 0.3, dtype=np.float32)
+    codes = _save_and_read_via_save_audio(
+        signal, apply_dither=True, bit_depth=24)
+    ideal = 0.3 * 8388607.0
+
+    # The spread that proves dithering happened, but bounded at +-3 LSB of
+    # THIS depth -- 16-bit-scaled dither would sit ~512 codes wide.
+    assert len(set(codes.tolist())) >= 2
+    assert np.abs(codes - ideal).max() <= 3.0

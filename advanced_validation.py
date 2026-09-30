@@ -352,7 +352,13 @@ class DeepFileInspector:
                             if channels < 1 or channels > 8:
                                 metadata["warning"] = f"Unusual channel count: {channels}"
 
-                            if sample_rate not in [8000, 11025, 16000, 22050, 44100, 48000, 96000]:
+                            # The full standard ladder: telephony/broadcast
+                            # (8k-32k), consumer (44.1k/48k and halves), and
+                            # the hi-res multiples up to 192k. Anything off
+                            # the ladder -- 12345 Hz, say -- is the warning.
+                            if sample_rate not in (8000, 11025, 16000, 22050, 24000,
+                                                   32000, 44100, 48000, 88200,
+                                                   96000, 176400, 192000):
                                 metadata["warning"] = f"Non-standard sample rate: {sample_rate}"
 
                         # Skip any unread remainder of an oversized fmt body.
@@ -395,6 +401,12 @@ class IntegrityVerifier:
 
         for file_path in files:
             if not file_path.exists():
+                # A skipped path is excluded from the manifest AND from
+                # verify_manifest's "Missing:" reporting -- the caller
+                # believed N files were tracked and gets N-1. Warn so the
+                # omission is visible.
+                logger.warning(
+                    "Skipping non-existent file in manifest: %s", file_path)
                 continue
 
             inspector = DeepFileInspector()
@@ -464,6 +476,18 @@ class SanitizationEngine:
 
         KEEP_CHUNKS = {b'RIFF', b'WAVE', b'fmt ', b'data'}
 
+        # The `with` below opens the output O_TRUNC alongside the input:
+        # a same-file pair would zero the source before its first read and
+        # then report success over a 4-byte stub (verified). Refuse it.
+        try:
+            if os.path.samefile(file_path, output_path):
+                raise ValueError(
+                    "input and output paths are the same file; "
+                    "in-place sanitization is not supported")
+        except OSError:
+            # A nonexistent output can never be the input's file.
+            pass
+
         with open(file_path, 'rb') as infile, open(output_path, 'wb') as outfile:
             # Read and write RIFF header
             riff_header = infile.read(12)
@@ -493,8 +517,12 @@ class SanitizationEngine:
                     outfile.write(chunk_data)
                     total_size += 8 + chunk_size
 
-                    # Pad to even boundary
+                    # Pad to even boundary -- and consume the source's pad
+                    # byte too: leaving it unread makes the next header
+                    # start one byte early, desyncing the chunk walk the
+                    # same way an unconsumed pad on the skip path did.
                     if chunk_size % 2:
+                        infile.read(1)
                         outfile.write(b'\x00')
                         total_size += 1
                 else:
