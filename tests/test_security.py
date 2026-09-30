@@ -314,6 +314,41 @@ class TestSanitizeFilename:
     def test_empty_name_falls_back_to_untitled(self):
         assert SecurityValidator.sanitize_filename("") == "untitled"
 
+    @pytest.mark.parametrize("name,expected", [
+        ("CON", "untitled"), ("con", "untitled"), ("PRN", "untitled"),
+        ("AUX", "untitled"), ("NUL", "untitled"),
+        ("COM1", "untitled"), ("com9", "untitled"),
+        ("LPT3", "untitled"), ("lpt9", "untitled"),
+        ("CON.wav", "untitled.wav"), ("nul.txt", "untitled.txt"),
+        ("aux.bin.wav", "untitled.wav"), ("Com1.md", "untitled.md"),
+        ("com¹", "untitled"), ("com²", "untitled"), ("com³", "untitled"),
+        ("lpt¹", "untitled"), ("lpt²", "untitled"), ("lpt³", "untitled"),
+        (" CON ", "untitled"), ("con .wav", "untitled.wav"),
+    ])
+    def test_windows_reserved_device_names_fall_back(self, name, expected):
+        # Windows reserves these stems directory-wide, extension or not;
+        # the sanitized output must not be a name Windows cannot open.
+        # The fallback keeps the extension so allowlisted-type consumers
+        # (e.g. the upload path's .wav policy) still accept the result.
+        assert SecurityValidator.sanitize_filename(name) == expected
+
+    def test_length_cap_cannot_recreate_reserved_stem(self):
+        # A long stem starting 'con' is capped to exactly 'con' by the
+        # 255-char limit; the reserved check must run after the cap or the
+        # returned name is a device name again.
+        name = "con" + "x" * 300 + "." + "z" * 251
+        out = SecurityValidator.sanitize_filename(name)
+        assert out.split(".", 1)[0] == "untitled"
+        assert len(out) <= 255
+
+    @pytest.mark.parametrize("name", [
+        "console.wav", "combat.wav", "auxiliary.wav", "null.wav",
+        "com0.wav", "lpt0.wav", "xcon.wav", "acon.wav", "con_x.wav",
+        "some.com1", "file.lpt9.bak.txt",
+    ])
+    def test_non_reserved_names_pass_through(self, name):
+        assert SecurityValidator.sanitize_filename(name) == name
+
     def test_overlong_extension_cannot_exceed_budget(self):
         # splitext hands back the *whole* tail as ext; name[:255-len(ext)]
         # is "" when ext alone exceeds the budget, and the result used to

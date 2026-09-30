@@ -18,7 +18,14 @@ import unittest
 import wave
 from pathlib import Path
 
-from core import analyze, normalize, to_mono, trim_silence, open_secure
+from core import (
+    analyze,
+    normalize,
+    to_mono,
+    trim_silence,
+    open_secure,
+    EnhancedSecurityValidator,
+)
 from security_validator import (
     SecurityValidator,
     SecurityConfig,
@@ -122,6 +129,18 @@ class SecurityValidatorTests(unittest.TestCase):
         cleaned = SecurityValidator.sanitize_filename('a/b:c*?.wav')
         self.assertNotIn("/", cleaned)
         self.assertNotIn("*", cleaned)
+
+    def test_enhanced_copy_agrees_on_reserved_names(self) -> None:
+        # core.EnhancedSecurityValidator ships a second sanitize_filename;
+        # it must not return a name its sibling already calls untitled.
+        for name in ('CON', 'con.wav', 'NUL.txt', 'com1', 'LPT9.md',
+                     'aux.bin.wav', 'com\u00b9', 'console.wav', 'com0.wav',
+                     'null.wav', 'acon.wav'):
+            with self.subTest(name=name):
+                self.assertEqual(
+                    EnhancedSecurityValidator.sanitize_filename(name),
+                    SecurityValidator.sanitize_filename(name),
+                )
 
     def test_resolve_unique_paths_detects_duplicates(self) -> None:
         wav = _write_sine_wave(self.tmp_path / "dup.wav")

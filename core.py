@@ -29,7 +29,7 @@ from pathlib import Path
 import asyncio
 from typing import Union, Optional, Dict, List, Any, Tuple, Callable
 from dataclasses import dataclass
-from security_validator import SecurityValidator, SecurityConfig
+from security_validator import SecurityValidator, SecurityConfig, _RESERVED_DEVICE_NAMES
 
 # Module logger. Previously sourced from a separate "advanced_logging" module
 # that no longer exists; a standard logger keeps behaviour identical for the
@@ -2149,6 +2149,14 @@ class EnhancedSecurityValidator:
         if len(sanitized) > 255:
             name, ext = os.path.splitext(sanitized)
             sanitized = (name[:255 - len(ext)] + ext)[:255]
+
+        # Same reserved-stem rule as security_validator's copy: Windows
+        # refuses these device names (stem before the first dot, case-
+        # insensitive) in every directory, extension or not. Checked
+        # after the cap because truncation can recreate a reserved stem.
+        stem = sanitized.split(".", 1)[0].strip(" .")
+        if stem.lower() in _RESERVED_DEVICE_NAMES:
+            sanitized = ("untitled" + os.path.splitext(sanitized)[1])[:255]
 
         return sanitized or "untitled"
 

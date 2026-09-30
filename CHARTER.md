@@ -2472,6 +2472,52 @@ enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
 
+**Q (2026-09-29, audit 224):** `SecurityValidator.sanitize_filename`
+scrubs characters that are dangerous in a path component. Does the
+output name a file the tool can actually create on every platform it
+ships to?
+**A:** Not on Windows, and nothing on the dev host reveals it. `CON`,
+`PRN`, `AUX`, `NUL`, `COM1`-`COM9`, `LPT1`-`LPT9` (plus the superscript
+`com¹`-`com³`/`lpt¹`-`lpt³` variants) passed the scrub verbatim --
+verified `'CON.wav' -> 'CON.wav'`, `'com1' -> 'com1'` -- yet Windows
+reserves those stems directory-wide, extension or not: `open()` on the
+joined path fails or, for `NUL`, silently discards the write. The names
+are legal on POSIX, so the hazard is invisible where the code is
+developed while remaining live on a platform the project ships to
+(`quick_install.ps1`, the `windows-latest` CI matrix). The sanitizer now
+falls back to `"untitled"` for reserved stems (compared up to the first
+dot, case-insensitively, as the filesystem does). 32 new tests cover
+both directions -- reserved names rejected, near-misses like
+`console.wav`/`com0.wav`/`acon.wav` kept -- mutation-verified against
+the pre-fix code. Gate: 509 bare / 589 numpy / 694 full (+32 each),
+compileall clean, validation_test 6/6.
+
+**Q (2026-09-29, audit 224 continued):** `sanitize_filename` exists twice --
+`security_validator.py` and the `EnhancedSecurityValidator` twin in
+`core.py`. Does the second copy share the reserved-name fix?
+**A:** It did not -- the twin is a verbatim copy of the pre-fix helper
+(zero in-tree callers but a public library surface), so it still emitted
+`CON`/`com1`/`lpt9.txt` verbatim. It now applies the same check against
+the single `_RESERVED_DEVICE_NAMES` constant, imported from
+security_validator rather than duplicated (core.py already imported
+SecurityValidator from it). A parity test pins the two copies to identical
+outputs on reserved and near-miss names -- mutation-verified (7 reserved
+names disagreed on the pre-fix twin). Gate re-run: 510 bare / 590 numpy /
+695 full, compileall clean, validation_test 6/6.
+
+**Q (2026-09-29, audit 224 review follow-up):** Can the 255-char cap and
+the extension-less fallback undermine the reserved-stem check?
+**A:** Yes, twice. The reserved check ran *before* the length cap, so
+`'con' + 'x'*300 + '.' + 'z'*251` passed the check as a long stem and the
+cap then truncated the basename to exactly `con` -- a device name again.
+And the `untitled` fallback dropped the extension, so `CON.wav` produced
+an extension-less name that the upload path's `.wav`-only policy rejected.
+The check now runs after the cap and preserves the extension
+(`CON.wav` -> `untitled.wav`). Applied to both copies (the core.py twin
+drifts when fixes land in only one -- same lesson as audit-140's cap).
+Mutation-verified on the pre-fix ordering. Gate: 511 bare / 591 numpy /
+696 full, compileall clean, validation_test 6/6.
+
 **Q (2026-09-26, audit 135):** Which mastering params and manifest inputs
 still failed silently?
 **A:** `StereoConfig(width=nan)` multiplied the side channel directly, so
