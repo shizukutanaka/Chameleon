@@ -247,3 +247,76 @@ def test_analyze_harmony_names_the_key_not_a_pitch_class():
     harmony = analyzer.analyze_harmony(chords, key)
 
     assert harmony["key"] == "C major"
+
+
+def test_parse_midi_from_audio_propagates_analyzer_crash(monkeypatch):
+    """A crashed pitch estimator used to print one line and return [] --
+    indistinguishable from a genuinely unmusical input, so `midi extract`
+    reported "No MIDI notes extracted" on an internal bug. Extraction
+    failures propagate now; the caller decides how to surface them."""
+    import math
+    analyzer = MIDIAnalyzer()
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(analyzer, "_estimate_pitch", _boom)
+    audio = [0.3 * math.sin(2 * math.pi * 440 * i / 44100)
+             for i in range(44100)]
+
+    import pytest
+    with pytest.raises(RuntimeError, match="boom"):
+        analyzer.parse_midi_from_audio(audio, 44100)
+
+
+def test_estimate_pitch_propagates_non_audio_input():
+    """Per-frame estimation legitimately returns None for unpitched frames;
+    a frame that is not numeric at all is a caller bug, not unpitchedness,
+    and must not collapse into the same None."""
+    analyzer = MIDIAnalyzer()
+
+    import pytest
+    with pytest.raises(TypeError):
+        analyzer._estimate_pitch([None] * 2048, 44100)
+
+
+def test_estimate_pitch_none_on_silence_is_genuine():
+    # Contract pin: None on silence is the YIN unvoiced verdict (the
+    # periodicity fallback), not a swallowed error -- keep it.
+    analyzer = MIDIAnalyzer()
+    assert analyzer._estimate_pitch([0.0] * 2048, 44100) is None
+
+
+def test_analyze_harmony_reports_each_template_types_real_quality():
+    # The quality map only knew minor/min7/min9 and dim; every other
+    # detectable type fell into the 'major' bucket -- a detected Amin6 was
+    # reported as quality 'major' with an uppercase 'VI', and an Aaug the
+    # same. Assert the full vocabulary maps to its true quality and the
+    # roman numeral's case tracks triad quality (lower = minor-family).
+    from midi_analysis import Chord, MusicalKey
+    analyzer = MIDIAnalyzer()
+    key = MusicalKey(tonic=0, mode="major", confidence=0.9)
+
+    expected = {
+        "major": ("major", "VI"),
+        "minor": ("minor", "vi"),
+        "dim": ("diminished", "vi°"),
+        "aug": ("augmented", "VI+"),
+        "maj7": ("major", "VI"),
+        "min7": ("minor", "vi"),
+        "dom7": ("dominant", "VI"),
+        "maj9": ("major", "VI"),
+        "min9": ("minor", "vi"),
+        "sus2": ("suspended", "VI"),
+        "sus4": ("suspended", "VI"),
+        "add9": ("major", "VI"),
+        "6": ("major", "VI"),
+        "min6": ("minor", "vi"),
+    }
+    for chord_type, (quality, roman) in expected.items():
+        chord = Chord(root=9, chord_type=chord_type, notes=[9, 12, 16],
+                      start_time=0.0, duration=2.0, confidence=0.9)
+        result = analyzer.analyze_harmony([chord], key)
+        entry = result["progression"][0]
+        assert entry["quality"] == quality, f"{chord_type}: {entry['quality']}"
+        assert entry["roman"] == roman, f"{chord_type}: {entry['roman']}"

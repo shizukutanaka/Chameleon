@@ -499,8 +499,23 @@ if __name__ == "__main__":
     import sys
 
     if len(sys.argv) > 1 and sys.argv[1] == "setup":
-        # Run interactive setup
-        PersonalSetup.quick_setup()
+        # Run interactive setup. The wizard asks questions through
+        # input(): when stdin is a closed or empty channel (piped,
+        # redirected, no controlling terminal) the prompts cannot be
+        # answered, and silently applying the defaults is not the same
+        # thing as the user accepting them. Likewise a path the user
+        # typed that exists as a file turns the mkdir step into a raw
+        # FileExistsError. Refuse or report cleanly instead of dying on
+        # a traceback in the documented first-run step.
+        try:
+            PersonalSetup.quick_setup()
+        except EOFError:
+            sys.exit("Setup needs an interactive terminal; stdin produced "
+                     "no input. Nothing was saved.")
+        except KeyboardInterrupt:
+            sys.exit("Setup cancelled; nothing was saved.")
+        except OSError as exc:
+            sys.exit(f"Setup failed: {exc}")
     else:
         # Load existing config
         config = PersonalConfig.load()

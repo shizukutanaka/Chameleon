@@ -2485,3 +2485,328 @@ sites now substitute defined values (NaN -> silence, +/-inf -> the clip
 rails) and `save_audio` reports the count so a corrupt upstream stage
 surfaces instead of hiding inside the output. `_save_wav_basic` does the
 substitution unconditionally so direct callers get defined PCM too.
+
+**Q (2026-09-26):** The `midi extract` wrapper was hardened to propagate a
+crashed analyzer instead of printing "No MIDI notes extracted." Does the
+analyzer itself still fabricate that same empty result?
+**A:** It did, at two levels. `parse_midi_from_audio` wrapped its whole body in
+`except Exception: print(...); return []` -- a crashed pitch estimator came
+back as an empty list, printed once, indistinguishable from unmusical input.
+One level deeper, `_estimate_pitch` swallowed *any* exception into `None`,
+the same verdict it returns for a legitimately unpitched frame -- so a
+systematic crash read as "every frame unvoiced" rather than a failure. Both
+catches are gone: crashes propagate to the caller that owns the error
+policy (`extract_midi` logs and reports), while `None` remains the honest
+verdict for silence and unvoiced frames (the periodicity fallback below the
+0.5 threshold), which a dedicated test now pins.
+
+**Q (2026-09-26, audit 132):** Does `trim_silence`'s threshold gate
+survive the parameters a caller can actually reach it with, and do the
+two batch front doors agree with the operation they feed?
+**A:** Three related findings on the same contract. (1) `trim_silence`
+guarded `threshold <= 0 or >= 1` with a bare comparison -- NaN compares
+False against everything, so `threshold=nan` ran the full scan and
+reported "No audio content found above threshold" on a file that did
+have content (a bad parameter misreported as a property of the file),
+while a non-numeric threshold like "loud" crashed on TypeError. The gate
+now requires a finite number strictly inside (0, 1). (2) `BatchProcessor.
+process_directory`'s submission-time preflight accepted the boundaries
+(`0.0 <= t <= 1.0`) that the operations reject -- `threshold=0` or
+`target_peak=0` passed validation and then failed every file; preflight
+now matches the enforced bounds exactly. (3) The async path
+(`batch_process_async` -> `ParallelBatchProcessor.process_directory_async`)
+has never had preflight and forwards kwargs raw into the per-file ops --
+rejection there is honest now that the op-level gate exists, so the fix
+was (1) rather than new plumbing. `trim_silence`'s old error text also
+claimed "(0.01-0.99)" while enforcing (0,1); the message now names the
+real bounds.
+
+**Q (2026-09-26, audit 136):** `ProcessingConfig.apply_dither` is a real,
+documented opt-in flag. Did it do the same thing on every install?
+**A:** No -- it only reached the stdlib fallback writer
+(`_save_wav_basic`), so the identical config produced TPDF-dithered
+output on a minimal install and undithered output on a full one.
+`save_audio` now applies the same 2-LSB-peak-to-peak TPDF dither in the
+float domain before `sf.write`, scaled to the target bit depth
+(2 LSB at 16-bit is ~512 codes wide at 24-bit -- the amplitude must
+follow the quantizer). 32-bit PCM skips it: its LSB is below float32
+resolution, so there is nothing to dither. Notable non-change: the
+*dither itself* stays unseeded. That is a pinned, deliberate choice --
+`tests/test_quantization.py` documents that opting in trades CHARTER
+§1's byte-reproducibility for a better noise floor -- unlike the
+mastering_chain dither audits (#199/#204/#229), whose seeds were fixes
+because there deterministic output was the contract. Same flag name,
+different contract; consistency here would mean breaking a tested
+guarantee, not restoring one.
+
+**Q (2026-09-26, audit 147):** `analyze_harmony`'s quality map knew only
+minor/min7/min9 and dim -- what do the other ten template types report?
+**A:** They fell into the `else` bucket: `quality="major"` with an
+uppercase roman numeral. Verified empirically that a detected Amin6 (the
+chord *name* string itself reads "Amin6") was reported as quality "major"
+/ roman "VI", and an Aaug likewise. The map now covers the full template
+vocabulary: min6 joins minor-family (lowercase roman), aug reports
+"augmented" with a "+" suffix, sus2/sus4 report "suspended", dom7 reports
+"dominant", and major/maj7/maj9/add9/6 keep "major". Roman numeral case
+still tracks triad quality. The degree field's semitone+1 mislabel is
+deliberately untouched -- that fix is owned by an existing unmerged
+branch (audit-51). A new test enumerates all 14 template types and pins
+each one's quality+roman, so a future template addition without a map
+entry fails loudly.
+
+**Q (2026-09-29, audit 224):** `SecurityValidator.sanitize_filename`
+scrubs characters that are dangerous in a path component. Does the
+output name a file the tool can actually create on every platform it
+ships to?
+**A:** Not on Windows, and nothing on the dev host reveals it. `CON`,
+`PRN`, `AUX`, `NUL`, `COM1`-`COM9`, `LPT1`-`LPT9` (plus the superscript
+`com¹`-`com³`/`lpt¹`-`lpt³` variants) passed the scrub verbatim --
+verified `'CON.wav' -> 'CON.wav'`, `'com1' -> 'com1'` -- yet Windows
+reserves those stems directory-wide, extension or not: `open()` on the
+joined path fails or, for `NUL`, silently discards the write. The names
+are legal on POSIX, so the hazard is invisible where the code is
+developed while remaining live on a platform the project ships to
+(`quick_install.ps1`, the `windows-latest` CI matrix). The sanitizer now
+falls back to `"untitled"` for reserved stems (compared up to the first
+dot, case-insensitively, as the filesystem does). 32 new tests cover
+both directions -- reserved names rejected, near-misses like
+`console.wav`/`com0.wav`/`acon.wav` kept -- mutation-verified against
+the pre-fix code. Gate: 509 bare / 589 numpy / 694 full (+32 each),
+compileall clean, validation_test 6/6.
+
+**Q (2026-09-29, audit 224 continued):** `sanitize_filename` exists twice --
+`security_validator.py` and the `EnhancedSecurityValidator` twin in
+`core.py`. Does the second copy share the reserved-name fix?
+**A:** It did not -- the twin is a verbatim copy of the pre-fix helper
+(zero in-tree callers but a public library surface), so it still emitted
+`CON`/`com1`/`lpt9.txt` verbatim. It now applies the same check against
+the single `_RESERVED_DEVICE_NAMES` constant, imported from
+security_validator rather than duplicated (core.py already imported
+SecurityValidator from it). A parity test pins the two copies to identical
+outputs on reserved and near-miss names -- mutation-verified (7 reserved
+names disagreed on the pre-fix twin). Gate re-run: 510 bare / 590 numpy /
+695 full, compileall clean, validation_test 6/6.
+
+**Q (2026-09-29, audit 224 review follow-up):** Can the 255-char cap and
+the extension-less fallback undermine the reserved-stem check?
+**A:** Yes, twice. The reserved check ran *before* the length cap, so
+`'con' + 'x'*300 + '.' + 'z'*251` passed the check as a long stem and the
+cap then truncated the basename to exactly `con` -- a device name again.
+And the `untitled` fallback dropped the extension, so `CON.wav` produced
+an extension-less name that the upload path's `.wav`-only policy rejected.
+The check now runs after the cap and preserves the extension
+(`CON.wav` -> `untitled.wav`). Applied to both copies (the core.py twin
+drifts when fixes land in only one -- same lesson as audit-140's cap).
+Mutation-verified on the pre-fix ordering. Gate: 511 bare / 591 numpy /
+696 full, compileall clean, validation_test 6/6.
+
+**Q (2026-09-26, audit 135):** Which mastering params and manifest inputs
+still failed silently?
+**A:** `StereoConfig(width=nan)` multiplied the side channel directly, so
+every output sample went NaN with no error; negative width produced a
+phase-flipped side silently. StereoProcessor now rejects non-finite or
+negative width. (`add_band` param rejection is owned by the audit-74 /
+socratic-hardening-r3 branches, Compressor/Limiter config validation by
+e8c9af91, and mono_freq range by audit 103 -- none duplicated here.) And
+`IntegrityVerifier.create_manifest` skipped nonexistent inputs with no
+message -- the skipped file was excluded from the manifest AND from
+verify_manifest's "Missing:" reporting, so a typo'd path silently lost
+integrity tracking. It now logs a warning per skipped file.
+
+**Q (2026-09-26):** `batch --target-peak` was audited before -- but does
+the *direct* API path (`AudioProcessor.batch_process(files, "normalize",
+target_peak=...)`, the API surface the parity work wired) honour the same
+(0, 1] contract the CLI enforces at argparse time?
+**A:** No -- the same parameter-leak class as audits 101 and 124. The CLI
+gates `--target-peak` to (0, 1] at parse, but `normalize_audio` consumed
+`kwargs["target_peak"]` unvalidated: `target_peak=0` wrote an all-zero
+file reported as "normalized", `-0.5` a phase-inverted overdriven one,
+`NaN` a garbage one (NaN defeats `<=`/`>` range checks). The numpy path
+now validates at the consuming function -- `normalize_audio` raises
+ValueError for non-finite or out-of-range values, matching the CLI
+contract. The stdlib twin `core.normalize` had the same NaN hole in its
+`tp <= 0 or tp > 1.0` gate; it now checks `isfinite` + `0 < tp <= 1`
+explicitly. Same audit, unrelated surface: `WorkflowEngine._evaluate_condition`
+treated any unrecognised `condition.type` (`'expresion'`, `'always'`,
+`None`) as satisfied -- a workflow guard the engine could not evaluate ran
+its task unconditionally. It now returns False with a warning for types
+outside `('simple', 'expression')`, leaving the audit-52 'simple' +
+unknown-task_id policy (owned elsewhere) untouched.
+
+**Q (2026-09-26, audit 139):** `python personal_config.py setup` is the
+onboarding step both `quick_install.sh` and `quick_install.ps1` tell a new
+user to run. What happens when the wizard's `input()` prompts cannot be
+answered, or when the path it accepts cannot be created?
+**A:** Two raw tracebacks. With stdin closed or drained (piped, redirected,
+no controlling terminal -- e.g. `ssh host` without `-t`, CI, `docker run`
+without `-it`) the first `input()` raised `EOFError` mid-banner, and a
+custom library path naming an existing *file* reached
+`Path.mkdir(parents=True, exist_ok=True)` -- which refuses files -- as a
+`FileExistsError` mid-wizard (verified: traceback in both cases, exit 1).
+The catches live at the `__main__` call site rather than inside
+`quick_setup`, so a programmatic caller still receives the specific
+exception types (`EOFError`, `OSError`) while the documented entry point
+answers with one line and exit 1. `KeyboardInterrupt` (Ctrl+C mid-wizard)
+gets the same treatment. Piped stdin that *does* carry answers still works
+-- the refusal triggers on actual EOF, not on `isatty()`, which would have
+broken scripted provisioning that feeds the prompts. Nothing is persisted
+on an abort: the mkdirs and `config.save()` run only after every prompt has
+been answered. Also audited and found honest this round: the canonical WAV
+chunk walker (odd-size pads, EXTENSIBLE subformat GUIDs, lying data sizes,
+huge chunk fields all handled), `process_batch_job`'s remaining tail, the
+batch/analyze/server command handlers, `_load_effects`, the auth-token
+derivation (session secret is defense-in-depth behind an already-secret
+bearer token), and the rate-limit window cleanup. Roughly twenty
+remaining-candidate surfaces traced to fixes already pending on open PR
+branches -- the audit frontier is now the merged backlog, not the code.
+
+**Q (2026-09-26, audit 142):** pyproject.toml declares
+`requires-python = ">=3.8"` and the `[api]` extra (fastapi<0.100,
+pydantic<2, uvicorn) resolves on 3.8 -- but does `api_server.py` itself
+actually import there?
+**A:** It did not. The module carried two PEP 585 annotations --
+`_load_dev_credentials() -> tuple[Optional[str], Optional[str]]` and
+`_get_allowed_origins() -> list[str]` -- without
+`from __future__ import annotations`, so on 3.8 the function definitions
+themselves raise `TypeError: 'type' object is not subscriptable` and the
+whole module (i.e. `chameleon server`) is unimportable on a floor the
+packaging still advertises. Seven sibling modules already stringify
+annotations via the future import; api_server now does too. The scan for
+the same class found no other violator among packaged modules, and
+`tests/test_no_orphan_modules.py` gained an AST guard
+(`test_packaged_modules_respect_the_declared_python_floor`) that flags
+any packaged module using PEP 585 (`tuple[...]`-style) or PEP 604
+(`X | Y`) annotations without the lazy-annotations import. Considered and
+skipped this round: `ParallelBatchProcessor(max_workers=0)` looked like a
+`Semaphore(0)` hang, but `max_workers or default` coalesces 0 to the
+default -- verified by running it, no defect; the token-signature scheme
+is tautological (the presented token must match the stored one before the
+HMAC check runs, so it can only fail when `session_timeout` changes and
+re-derives the secret -- silently logging everyone out with "Token
+signature invalid"), which is a design wart rather than a reachable
+hazard, noted here rather than patched inside the auth path.
+
+**Q (2026-09-26):** The sanitizer's chunk-copy loop already consumed the RIFF
+pad byte when *skipping* a chunk -- a fix recorded earlier in this file for the
+desync it caused. Was the *keep* path held to the same rule? And is the
+inspector's "Non-standard sample rate" warning the ladder the trade actually
+uses?
+**A:** It was not, and it was not. A kept chunk with an odd size (a 17-byte
+`fmt `, legal RIFF) got its pad byte *written* to the output but never *read*
+from the source, so the next header was taken one byte early and the chunk
+walk desynced -- the data chunk after it was silently stripped and
+`wave.open` could not read the sanitized file at all. The keep path now
+consumes the source pad byte exactly as the skip path has since the fix that
+documented the class. And `_validate_wav_structure` whitelisted only
+8000-48000: a routine 32 kHz broadcast file or a 192 kHz hi-res master came
+back "Non-standard sample rate," a false claim persisted into the library
+metadata personal_config stores. The whitelist now spans the real ladder
+(8000 through 192000 including the telephony, broadcast and hi-res
+multiples); genuinely off-ladder rates still warn.
+
+**Q (2026-09-26, audit 137):** `TaskQueue.remove_task` reported success but
+the queue entry survived -- is the fix a lazy tombstone or a real delete?
+Also: two tasks in one workflow sharing an `id` -- drop silently, or refuse?
+**A:** Lazy tombstone. `PriorityQueue` has no delete, so `remove_task` can
+only clear `task_map`; the queued item then made `get_task` raise KeyError
+on `del task_map[task.id]` (verified), and absent the crash the "removed"
+task would still execute. `get_task` now skips entries whose id is gone
+from `task_map` -- the map entry is the tombstone. For duplicate ids the
+fix is refusal at `execute_workflow`: results are keyed by task id, so a
+DAG run executed only the *second* duplicate (the first never ran, yet the
+workflow "completed" with one fewer entry than declared) while sequential/
+parallel overwrote the first task's result. A ValueError naming the dupes
+is raised before dispatch for every engine type. Not touched:
+`DependencyGraph`/`_execute_dag` internals and `retry_count`/`condition`
+handling remain owned by open PR branches (#177/#264/#201/#284).
+
+**Q (2026-09-26, audit 134):** Does `SpectralEditor.select_region`'s
+clamping survive non-finite bounds?
+**A:** No -- NaN cannot be clamped. `max(0, nan)` and
+`min(times[-1], nan)` both return the bound (every comparison with NaN is
+False), so `select_region(nan, nan, nan, nan)` silently produced a
+full-file selection and a following `delete_selection` would mute audio
+the caller never selected. select_region now rejects non-finite (and
+non-numeric) bounds with ValueError; finite out-of-range bounds still
+clamp, which is the documented contract. The empty-selection rejection
+remains audit-62's concern on its own branch and is deliberately not
+duplicated here.
+
+**Q (2026-09-26, audit 138):** `BatchScheduler` is library-only (no CLI
+caller) but the contract still matters -- does one bad scheduled workflow,
+or a caller pressing `start()` twice, take the whole scheduler down?
+**A:** Two real defects, both demonstrated live against a stubbed
+`schedule` module: (1) `_run_scheduler` ran `schedule.run_pending()`
+unprotected -- a job that raises (an invalid workflow definition, an
+engine-level error) propagated out of the loop, killed the thread, and
+left `running == True` while every scheduled job was silently dead;
+the loop now logs the failure and continues, and a `finally` clears
+`running` on any exit so the flag can never outlive the thread.
+(2) `start()` had no re-entry guard -- a second call spawned a second
+loop thread, so every pending job executed twice per interval and
+`stop()` could only join the most recent thread (measured: 6 ticks in
+2.4 s where one thread would tick ~2); a double start now raises
+RuntimeError, matching the loud-refusal style the audit established for
+a missing `schedule` package. The per-tick catch is `Exception`-scoped:
+BaseException (KeyboardInterrupt/SystemExit) still ends the loop -- now
+honestly, with `running` cleared -- rather than being swallowed.
+
+**Q (2026-09-26, audit 140):** `SecureFileOperations.secure_open` claims
+"write/append modes ... refuse to follow symlinks". `r+b` is a
+write-capable mode -- does it refuse too?
+**A:** No. Write-mode detection was `"w" in mode or "a" in mode`, so `r+`,
+`w+`, `a+` and `x` all fell into the plain `open()` branch -- which
+follows a symlinked final component that the O_NOFOLLOW path refuses for
+`wb`. Verified: `secure_open(link, "wb")` refused with ELOOP while
+`secure_open(link, "r+b")` opened the same symlink and wrote through to
+the victim. Write-mode detection now covers `w`/`a`/`x`/`+`, with the
+flag mapping each mode actually means (`r+` gets O_RDWR with no create or
+truncate, `x` gets O_CREAT|O_EXCL) so update modes keep their semantics
+inside the hardened open rather than being redirected into the
+unhardened one. Same function, second defect: `x` was classified "read",
+which made a documented stdlib mode permanently unusable -- the
+read-validation requires the file to exist, and exclusive-create exists
+to create it. It now works, and second opens still get FileExistsError.
+
+Same file, second defect: `sanitize_filename` capped names at 255 chars
+via `name[:255-len(ext)] + ext` -- but splitext hands the whole tail back
+as `ext`, so when the extension alone exceeds the budget `name[:negative]`
+is `""` and the returned name is still >255 (verified: 301 chars). The
+upload path's `_sanitize_uploaded_name` equality check cannot catch it
+(buggy sanitize is the identity on those names), so an approved name
+failed at os.open with ENAMETOOLONG -> 500 instead of a clean answer.
+Both copies of the helper (security_validator.py and the
+EnhancedSecurityValidator twin in core.py) now clamp the composed result
+to 255. Deliberately not pinned: which 255 characters survive -- the
+contract is the length bound, not where the cut lands.
+
+**Q (2026-09-26, audit 148):** What happens when a write operation's input
+and output paths are the same file?
+**A:** Data loss. `_apply_gain_safe`, `_convert_to_mono` and
+`_extract_audio_range` all stream `open(input)` + `open_secure(output,
+"wb")` in one `with` -- the output is O_TRUNC'ed before the input's first
+read, so `normalize(p, p)` left `p` at zero bytes and failed with "Invalid
+WAV header" (reproduced: 1644-byte file became 0). All three public ops
+(`normalize`, `convert_to_mono`, `trim_silence`) now refuse same-file
+input/output up front via `os.path.samefile`, which also catches
+`./x.wav` aliases, symlinks and hardlinks; a nonexistent output can never
+be the input's file. The numpy-based process ops (denoise/master/effects/
+convert) read the whole input into memory before `save_audio` opens the
+output, so in-place there already works correctly and is left supported.
+Note `to_mono` on an already-mono file previously escaped corruption only
+because `shutil.copyfile` refuses same-file copies -- the guard makes the
+refusal uniform and early.
+
+**Q (2026-09-26, audit 149):** Same `with open(in) + open(out,'wb')`
+truncation pattern outside core.py -- does `SanitizationEngine.
+sanitize_wav_metadata` have it?
+**A:** Yes, and worse: `sanitize_wav_metadata(p, p)` zeroed the input and
+then *returned success* -- the walk read nothing (the file was already
+truncated), wrote a 4-byte stub, and logged "Sanitized" (verified:
+1644-byte WAV became a 4-byte file). The same-path case now raises
+ValueError before anything opens, decided by `os.path.samefile` so
+aliases/symlinks/hardlinks count too. This was the last unguarded
+streaming in-out site in the tree (audit-148 covers core.py's three);
+`IntegrityVerifier` writes only manifests, `personal_config.backup`
+copies into a separate destination tree, and the API server namespaces
+every output with a uuid.

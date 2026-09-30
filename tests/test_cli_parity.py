@@ -598,3 +598,32 @@ def test_convert_bit_depth_32_writes_pcm_not_float(tmp_path):
     assert fmt_off > 0
     format_tag = int.from_bytes(body[fmt_off + 8:fmt_off + 10], "little")
     assert format_tag == 1  # PCM, not IEEE float (3)
+
+
+def test_direct_api_normalize_rejects_out_of_range_target_peak(tmp_path):
+    # The CLI gates --target-peak to (0, 1], but the kwargs path into
+    # _process_single_file skipped that gate entirely: target_peak=0 wrote
+    # an all-zero "normalized" file, -0.5 a phase-inverted one, and NaN
+    # garbage -- each reported as success.
+    wav = write_sine_wave(tmp_path / "tone.wav")
+    out_dir = tmp_path / "out"
+    processor = main.AudioProcessor()
+
+    for bad in (0.0, -0.5, float("nan"), 2.0):
+        results = processor.batch_process(
+            [str(wav)], "normalize",
+            output_dir=str(out_dir), target_peak=bad)
+        assert "error" in results[0], (bad, results)
+        # numpy path raises "target_peak must be ..."; the stdlib core
+        # reports "Invalid target peak (0-1.0)".
+        assert "target_peak" in results[0]["error"] \
+            or "target peak" in results[0]["error"].lower()
+
+    out_file = out_dir / "tone_normalized.wav"
+    assert not out_file.exists()
+
+    results = processor.batch_process(
+        [str(wav)], "normalize",
+        output_dir=str(out_dir), target_peak=0.5)
+    assert "error" not in results[0], results
+    assert 0.49 < _peak(out_file) < 0.51

@@ -857,6 +857,18 @@ class AudioProcessor:
 
     def normalize_audio(self, audio: np.ndarray, target_peak: float = 0.95) -> np.ndarray:
         """Normalize audio with advanced algorithms"""
+        # The CLI gates target_peak to (0, 1]; the direct-API path
+        # (batch_process kwargs) used to skip that gate -- target_peak=0
+        # wrote an all-zero file, -1 a phase-inverted one, NaN a garbage
+        # one, all reported as successful normalization. Same contract
+        # here as at the CLI boundary.
+        if (not isinstance(target_peak, (int, float))
+                or not math.isfinite(target_peak)
+                or not 0.0 < target_peak <= 1.0):
+            raise ValueError(
+                f"target_peak must be a finite number in (0, 1], "
+                f"got {target_peak!r}")
+
         if audio.size == 0:
             return audio
 
@@ -2047,9 +2059,23 @@ class AudioProcessor:
             subtype_map = {16: "PCM_16", 24: "PCM_24", 32: "PCM_32"}
             subtype = subtype_map.get(target_bit_depth)
             try:
+                write_audio = audio
+                if getattr(self.config, "apply_dither", False) and \
+                        target_bit_depth < 32:
+                    # TPDF dither at 2 LSB peak-to-peak of the target depth,
+                    # applied in float: the flag used to take effect only on
+                    # the stdlib fallback path, so the same config produced
+                    # dithered output on a minimal install and undithered
+                    # output on a full one. 32-bit PCM has nothing to
+                    # dither -- its LSB is far below float32 resolution.
+                    lsb = 2.0 ** (1 - target_bit_depth)
+                    rng = np.random.default_rng()
+                    write_audio = write_audio + (
+                        rng.random(audio.shape) - rng.random(audio.shape)
+                    ) * lsb
                 sf.write(
                     file_path,
-                    audio.T if audio.ndim > 1 else audio,
+                    write_audio.T if write_audio.ndim > 1 else write_audio,
                     sr,
                     subtype=subtype
                 )
