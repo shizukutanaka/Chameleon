@@ -2472,6 +2472,24 @@ enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
 
+**Q (2026-09-26):** The sanitizer's chunk-copy loop already consumed the RIFF
+pad byte when *skipping* a chunk -- a fix recorded earlier in this file for the
+desync it caused. Was the *keep* path held to the same rule? And is the
+inspector's "Non-standard sample rate" warning the ladder the trade actually
+uses?
+**A:** It was not, and it was not. A kept chunk with an odd size (a 17-byte
+`fmt `, legal RIFF) got its pad byte *written* to the output but never *read*
+from the source, so the next header was taken one byte early and the chunk
+walk desynced -- the data chunk after it was silently stripped and
+`wave.open` could not read the sanitized file at all. The keep path now
+consumes the source pad byte exactly as the skip path has since the fix that
+documented the class. And `_validate_wav_structure` whitelisted only
+8000-48000: a routine 32 kHz broadcast file or a 192 kHz hi-res master came
+back "Non-standard sample rate," a false claim persisted into the library
+metadata personal_config stores. The whitelist now spans the real ladder
+(8000 through 192000 including the telephony, broadcast and hi-res
+multiples); genuinely off-ladder rates still warn.
+
 **Q (2026-09-26, audit 137):** `TaskQueue.remove_task` reported success but
 the queue entry survived -- is the fix a lazy tombstone or a real delete?
 Also: two tasks in one workflow sharing an `id` -- drop silently, or refuse?
