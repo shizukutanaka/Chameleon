@@ -85,6 +85,72 @@ def test_batch_skips_unsupported_file_types(tmp_path):
     assert results[0].success is True
 
 
+def test_sync_batch_preflight_matches_operation_bounds(tmp_path):
+    # BatchProcessor.process_directory's preflight accepted the boundary
+    # values 0.0 and 1.0 while trim_silence/normalize enforce exclusive
+    # bounds -- a batch submitted with threshold=0 passed validation and
+    # then failed every file. Boundaries now reject at submission.
+    src = tmp_path / "in"
+    src.mkdir()
+    write_sine_wave(src / "a.wav", duration=0.2, amplitude=4000)
+    out = tmp_path / "out"
+    out.mkdir()
+
+    for bad in (0.0, 1.0):
+        results = core.BatchProcessor().process_directory(
+            str(src), "trim", output_dir=str(out), threshold=bad)
+        assert not results[0].success
+        assert "must be" in results[0].message.lower(), results
+
+    results = core.BatchProcessor().process_directory(
+        str(src), "normalize", output_dir=str(out), target_peak=0.0)
+    assert not results[0].success
+    assert "must be" in results[0].message.lower(), results
+
+    results = core.BatchProcessor().process_directory(
+        str(src), "normalize", output_dir=str(out), target_peak=0.5)
+    assert results[0].success
+
+
+def test_async_batch_rejects_out_of_bounds_per_file(tmp_path):
+    # The async path has no preflight; rejection happens per file through
+    # the operation's own gate. NaN and 0.0 previously reached
+    # trim_silence, which reported "No audio content found" -- a bad
+    # parameter misreported as a property of the file.
+    src = tmp_path / "in"
+    src.mkdir()
+    write_sine_wave(src / "a.wav", duration=0.2, amplitude=4000)
+
+    for bad in (0.0, 1.0, float("nan"), "loud"):
+        results = _run_batch(src, "trim", threshold=bad)
+        assert not results[0].success
+        assert "threshold" in results[0].message.lower(), results
+
+    for bad in (0.0, float("nan")):
+        results = _run_batch(src, "normalize", target_peak=bad)
+        assert not results[0].success
+
+    # Legitimate values still reach the operation.
+    results = _run_batch(src, "normalize", target_peak=0.5)
+    assert results[0].success
+
+
+def test_trim_silence_rejects_non_numeric_and_nan_threshold(tmp_path):
+    # Direct API: 'loud' crashed TypeError inside the function and NaN
+    # slipped the 't <= 0 or t >= 1' gate into "No audio content" -- a
+    # bad parameter reported as a property of the file.
+    wav = write_sine_wave(tmp_path / "tone.wav", duration=0.2, amplitude=4000)
+    out = tmp_path / "out.wav"
+
+    for bad in (float("nan"), "loud", 0.0, 1.0, -0.5):
+        result = core.trim_silence(str(wav), str(out), bad)
+        assert not result.success, (bad, result)
+        assert "threshold" in result.message.lower()
+    assert not out.exists()
+
+    assert core.trim_silence(str(wav), str(out), 0.05).success
+
+
 def test_async_normalize_rejects_nan_target_peak(tmp_path):
     # core.normalize's gate was 'tp <= 0 or tp > 1.0' -- NaN fails both
     # comparisons and slipped through, producing a NaN-gain output file.
