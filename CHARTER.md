@@ -2472,6 +2472,19 @@ enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
 
+**Q (2026-09-26, audit 135):** Which mastering params and manifest inputs
+still failed silently?
+**A:** `StereoConfig(width=nan)` multiplied the side channel directly, so
+every output sample went NaN with no error; negative width produced a
+phase-flipped side silently. StereoProcessor now rejects non-finite or
+negative width. (`add_band` param rejection is owned by the audit-74 /
+socratic-hardening-r3 branches, Compressor/Limiter config validation by
+e8c9af91, and mono_freq range by audit 103 -- none duplicated here.) And
+`IntegrityVerifier.create_manifest` skipped nonexistent inputs with no
+message -- the skipped file was excluded from the manifest AND from
+verify_manifest's "Missing:" reporting, so a typo'd path silently lost
+integrity tracking. It now logs a warning per skipped file.
+
 **Q (2026-09-26):** `batch --target-peak` was audited before -- but does
 the *direct* API path (`AudioProcessor.batch_process(files, "normalize",
 target_peak=...)`, the API surface the parity work wired) honour the same
