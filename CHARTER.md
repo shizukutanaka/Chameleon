@@ -2472,6 +2472,21 @@ enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
 
+**Q (2026-09-26, audit 147):** `analyze_harmony`'s quality map knew only
+minor/min7/min9 and dim -- what do the other ten template types report?
+**A:** They fell into the `else` bucket: `quality="major"` with an
+uppercase roman numeral. Verified empirically that a detected Amin6 (the
+chord *name* string itself reads "Amin6") was reported as quality "major"
+/ roman "VI", and an Aaug likewise. The map now covers the full template
+vocabulary: min6 joins minor-family (lowercase roman), aug reports
+"augmented" with a "+" suffix, sus2/sus4 report "suspended", dom7 reports
+"dominant", and major/maj7/maj9/add9/6 keep "major". Roman numeral case
+still tracks triad quality. The degree field's semitone+1 mislabel is
+deliberately untouched -- that fix is owned by an existing unmerged
+branch (audit-51). A new test enumerates all 14 template types and pins
+each one's quality+roman, so a future template addition without a map
+entry fails loudly.
+
 **Q (2026-09-29, audit 224):** `SecurityValidator.sanitize_filename`
 scrubs characters that are dangerous in a path component. Does the
 output name a file the tool can actually create on every platform it
