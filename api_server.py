@@ -5,6 +5,8 @@ A thin, authenticated REST adapter over the stdlib WAV-processing core.
 See CHARTER.md §5 for the threat model this defends against.
 """
 
+from __future__ import annotations
+
 import os
 import asyncio
 import logging

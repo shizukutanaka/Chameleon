@@ -2498,3 +2498,154 @@ derivation (session secret is defense-in-depth behind an already-secret
 bearer token), and the rate-limit window cleanup. Roughly twenty
 remaining-candidate surfaces traced to fixes already pending on open PR
 branches -- the audit frontier is now the merged backlog, not the code.
+
+**Q (2026-09-26, audit 142):** pyproject.toml declares
+`requires-python = ">=3.8"` and the `[api]` extra (fastapi<0.100,
+pydantic<2, uvicorn) resolves on 3.8 -- but does `api_server.py` itself
+actually import there?
+**A:** It did not. The module carried two PEP 585 annotations --
+`_load_dev_credentials() -> tuple[Optional[str], Optional[str]]` and
+`_get_allowed_origins() -> list[str]` -- without
+`from __future__ import annotations`, so on 3.8 the function definitions
+themselves raise `TypeError: 'type' object is not subscriptable` and the
+whole module (i.e. `chameleon server`) is unimportable on a floor the
+packaging still advertises. Seven sibling modules already stringify
+annotations via the future import; api_server now does too. The scan for
+the same class found no other violator among packaged modules, and
+`tests/test_no_orphan_modules.py` gained an AST guard
+(`test_packaged_modules_respect_the_declared_python_floor`) that flags
+any packaged module using PEP 585 (`tuple[...]`-style) or PEP 604
+(`X | Y`) annotations without the lazy-annotations import. Considered and
+skipped this round: `ParallelBatchProcessor(max_workers=0)` looked like a
+`Semaphore(0)` hang, but `max_workers or default` coalesces 0 to the
+default -- verified by running it, no defect; the token-signature scheme
+is tautological (the presented token must match the stored one before the
+HMAC check runs, so it can only fail when `session_timeout` changes and
+re-derives the secret -- silently logging everyone out with "Token
+signature invalid"), which is a design wart rather than a reachable
+hazard, noted here rather than patched inside the auth path.
+
+**Q (2026-09-26):** The sanitizer's chunk-copy loop already consumed the RIFF
+pad byte when *skipping* a chunk -- a fix recorded earlier in this file for the
+desync it caused. Was the *keep* path held to the same rule? And is the
+inspector's "Non-standard sample rate" warning the ladder the trade actually
+uses?
+**A:** It was not, and it was not. A kept chunk with an odd size (a 17-byte
+`fmt `, legal RIFF) got its pad byte *written* to the output but never *read*
+from the source, so the next header was taken one byte early and the chunk
+walk desynced -- the data chunk after it was silently stripped and
+`wave.open` could not read the sanitized file at all. The keep path now
+consumes the source pad byte exactly as the skip path has since the fix that
+documented the class. And `_validate_wav_structure` whitelisted only
+8000-48000: a routine 32 kHz broadcast file or a 192 kHz hi-res master came
+back "Non-standard sample rate," a false claim persisted into the library
+metadata personal_config stores. The whitelist now spans the real ladder
+(8000 through 192000 including the telephony, broadcast and hi-res
+multiples); genuinely off-ladder rates still warn.
+
+**Q (2026-09-26, audit 137):** `TaskQueue.remove_task` reported success but
+the queue entry survived -- is the fix a lazy tombstone or a real delete?
+Also: two tasks in one workflow sharing an `id` -- drop silently, or refuse?
+**A:** Lazy tombstone. `PriorityQueue` has no delete, so `remove_task` can
+only clear `task_map`; the queued item then made `get_task` raise KeyError
+on `del task_map[task.id]` (verified), and absent the crash the "removed"
+task would still execute. `get_task` now skips entries whose id is gone
+from `task_map` -- the map entry is the tombstone. For duplicate ids the
+fix is refusal at `execute_workflow`: results are keyed by task id, so a
+DAG run executed only the *second* duplicate (the first never ran, yet the
+workflow "completed" with one fewer entry than declared) while sequential/
+parallel overwrote the first task's result. A ValueError naming the dupes
+is raised before dispatch for every engine type. Not touched:
+`DependencyGraph`/`_execute_dag` internals and `retry_count`/`condition`
+handling remain owned by open PR branches (#177/#264/#201/#284).
+
+**Q (2026-09-26, audit 134):** Does `SpectralEditor.select_region`'s
+clamping survive non-finite bounds?
+**A:** No -- NaN cannot be clamped. `max(0, nan)` and
+`min(times[-1], nan)` both return the bound (every comparison with NaN is
+False), so `select_region(nan, nan, nan, nan)` silently produced a
+full-file selection and a following `delete_selection` would mute audio
+the caller never selected. select_region now rejects non-finite (and
+non-numeric) bounds with ValueError; finite out-of-range bounds still
+clamp, which is the documented contract. The empty-selection rejection
+remains audit-62's concern on its own branch and is deliberately not
+duplicated here.
+
+**Q (2026-09-26, audit 138):** `BatchScheduler` is library-only (no CLI
+caller) but the contract still matters -- does one bad scheduled workflow,
+or a caller pressing `start()` twice, take the whole scheduler down?
+**A:** Two real defects, both demonstrated live against a stubbed
+`schedule` module: (1) `_run_scheduler` ran `schedule.run_pending()`
+unprotected -- a job that raises (an invalid workflow definition, an
+engine-level error) propagated out of the loop, killed the thread, and
+left `running == True` while every scheduled job was silently dead;
+the loop now logs the failure and continues, and a `finally` clears
+`running` on any exit so the flag can never outlive the thread.
+(2) `start()` had no re-entry guard -- a second call spawned a second
+loop thread, so every pending job executed twice per interval and
+`stop()` could only join the most recent thread (measured: 6 ticks in
+2.4 s where one thread would tick ~2); a double start now raises
+RuntimeError, matching the loud-refusal style the audit established for
+a missing `schedule` package. The per-tick catch is `Exception`-scoped:
+BaseException (KeyboardInterrupt/SystemExit) still ends the loop -- now
+honestly, with `running` cleared -- rather than being swallowed.
+
+**Q (2026-09-26, audit 140):** `SecureFileOperations.secure_open` claims
+"write/append modes ... refuse to follow symlinks". `r+b` is a
+write-capable mode -- does it refuse too?
+**A:** No. Write-mode detection was `"w" in mode or "a" in mode`, so `r+`,
+`w+`, `a+` and `x` all fell into the plain `open()` branch -- which
+follows a symlinked final component that the O_NOFOLLOW path refuses for
+`wb`. Verified: `secure_open(link, "wb")` refused with ELOOP while
+`secure_open(link, "r+b")` opened the same symlink and wrote through to
+the victim. Write-mode detection now covers `w`/`a`/`x`/`+`, with the
+flag mapping each mode actually means (`r+` gets O_RDWR with no create or
+truncate, `x` gets O_CREAT|O_EXCL) so update modes keep their semantics
+inside the hardened open rather than being redirected into the
+unhardened one. Same function, second defect: `x` was classified "read",
+which made a documented stdlib mode permanently unusable -- the
+read-validation requires the file to exist, and exclusive-create exists
+to create it. It now works, and second opens still get FileExistsError.
+
+Same file, second defect: `sanitize_filename` capped names at 255 chars
+via `name[:255-len(ext)] + ext` -- but splitext hands the whole tail back
+as `ext`, so when the extension alone exceeds the budget `name[:negative]`
+is `""` and the returned name is still >255 (verified: 301 chars). The
+upload path's `_sanitize_uploaded_name` equality check cannot catch it
+(buggy sanitize is the identity on those names), so an approved name
+failed at os.open with ENAMETOOLONG -> 500 instead of a clean answer.
+Both copies of the helper (security_validator.py and the
+EnhancedSecurityValidator twin in core.py) now clamp the composed result
+to 255. Deliberately not pinned: which 255 characters survive -- the
+contract is the length bound, not where the cut lands.
+
+**Q (2026-09-26, audit 148):** What happens when a write operation's input
+and output paths are the same file?
+**A:** Data loss. `_apply_gain_safe`, `_convert_to_mono` and
+`_extract_audio_range` all stream `open(input)` + `open_secure(output,
+"wb")` in one `with` -- the output is O_TRUNC'ed before the input's first
+read, so `normalize(p, p)` left `p` at zero bytes and failed with "Invalid
+WAV header" (reproduced: 1644-byte file became 0). All three public ops
+(`normalize`, `convert_to_mono`, `trim_silence`) now refuse same-file
+input/output up front via `os.path.samefile`, which also catches
+`./x.wav` aliases, symlinks and hardlinks; a nonexistent output can never
+be the input's file. The numpy-based process ops (denoise/master/effects/
+convert) read the whole input into memory before `save_audio` opens the
+output, so in-place there already works correctly and is left supported.
+Note `to_mono` on an already-mono file previously escaped corruption only
+because `shutil.copyfile` refuses same-file copies -- the guard makes the
+refusal uniform and early.
+
+**Q (2026-09-26, audit 149):** Same `with open(in) + open(out,'wb')`
+truncation pattern outside core.py -- does `SanitizationEngine.
+sanitize_wav_metadata` have it?
+**A:** Yes, and worse: `sanitize_wav_metadata(p, p)` zeroed the input and
+then *returned success* -- the walk read nothing (the file was already
+truncated), wrote a 4-byte stub, and logged "Sanitized" (verified:
+1644-byte WAV became a 4-byte file). The same-path case now raises
+ValueError before anything opens, decided by `os.path.samefile` so
+aliases/symlinks/hardlinks count too. This was the last unguarded
+streaming in-out site in the tree (audit-148 covers core.py's three);
+`IntegrityVerifier` writes only manifests, `personal_config.backup`
+copies into a separate destination tree, and the API server namespaces
+every output with a uuid.

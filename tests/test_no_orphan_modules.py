@@ -150,3 +150,60 @@ def test_setup_py_and_pyproject_agree_on_the_module_list():
         f"only in setup.py {sorted(listed - _packaged_modules())}, "
         f"only in pyproject.toml {sorted(_packaged_modules() - listed)}"
     )
+
+
+# pyproject.toml declares requires-python >= 3.8. On 3.8/3.9, annotations are
+# evaluated eagerly at definition time, so `tuple[...]` (PEP 585, 3.9+) raises
+# TypeError at *import* and `X | Y` (PEP 604, 3.10+) the same. A packaged
+# module using either must carry `from __future__ import annotations`, which
+# stringifies all annotations and is also the convention seven sibling
+# modules already follow.
+_PEP585_NAMES = {"list", "dict", "tuple", "set", "frozenset", "type"}
+
+
+def _annotation_exprs(tree):
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for arg in (*node.args.posonlyargs, *node.args.args,
+                        *node.args.kwonlyargs):
+                if arg.annotation is not None:
+                    yield arg.annotation
+            for extra in (node.args.vararg, node.args.kwarg):
+                if extra is not None and extra.annotation is not None:
+                    yield extra.annotation
+            if node.returns is not None:
+                yield node.returns
+        elif isinstance(node, ast.AnnAssign):
+            yield node.annotation
+
+
+def _exceeds_py38(expr):
+    for node in ast.walk(expr):
+        if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) \
+                and node.value.id in _PEP585_NAMES:
+            return True
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+            return True
+    return False
+
+
+def test_packaged_modules_respect_the_declared_python_floor():
+    violators = []
+    for module in sorted(_packaged_modules()):
+        source = REPO_ROOT / f"{module}.py"
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        lazy_annotations = any(
+            isinstance(node, ast.ImportFrom) and node.module == "__future__"
+            and any(alias.name == "annotations" for alias in node.names)
+            for node in tree.body
+        )
+        if lazy_annotations:
+            continue
+        if any(_exceeds_py38(expr) for expr in _annotation_exprs(tree)):
+            violators.append(module)
+    assert not violators, (
+        f"{violators} use PEP 585 (`tuple[...]`) or PEP 604 (`X | Y`) "
+        "annotations without `from __future__ import annotations` -- the "
+        "module fails to import on Python 3.8, which pyproject.toml still "
+        "declares as supported (requires-python = \">=3.8\")."
+    )
