@@ -149,3 +149,20 @@ def test_trim_silence_rejects_non_numeric_and_nan_threshold(tmp_path):
     assert not out.exists()
 
     assert core.trim_silence(str(wav), str(out), 0.05).success
+
+
+def test_async_normalize_rejects_nan_target_peak(tmp_path):
+    # core.normalize's gate was 'tp <= 0 or tp > 1.0' -- NaN fails both
+    # comparisons and slipped through, producing a NaN-gain output file.
+    src = tmp_path / "in"
+    src.mkdir()
+    write_sine_wave(src / "a.wav", duration=0.2, amplitude=4000)
+    out = tmp_path / "out"
+    out.mkdir()
+
+    results = _run_batch(src, "normalize", output_dir=str(out),
+                         target_peak=float("nan"))
+
+    assert not results[0].success
+    assert "target peak" in results[0].message.lower()
+    assert not (src / "a.normalized.wav").exists()
