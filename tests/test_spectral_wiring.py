@@ -110,3 +110,45 @@ def test_apply_spectral_mask_does_not_renormalize():
         src, 44100, low_gain=0.5, mid_gain=0.5, high_gain=0.5
     )
     assert max(abs(x) for x in out) < 0.3
+
+
+def test_normalize_peak_rejects_non_finite_target():
+    # 'target_peak <= 0' let NaN through (nan <= 0 is False), producing an
+    # all-NaN "normalized" signal; +inf produced all-inf. Both are now
+    # rejected -- the same isfinite hole fixed in core.normalize.
+    src = [0.25, -0.25] * 16
+    for bad in (float("nan"), float("inf")):
+        try:
+            spectral_utils.normalize_peak(src, bad)
+        except ValueError:
+            continue
+        raise AssertionError(f"target_peak={bad} accepted")
+    assert spectral_utils.normalize_peak(src, 0.5) == [
+        0.5 if s > 0 else -0.5 for s in src]
+
+
+def test_apply_spectral_mask_rejects_non_finite_gains():
+    # 'gain < 0' let NaN through -- a NaN gain silently NaN'd the block.
+    src = [0.5 * math.sin(2 * math.pi * 440 * i / 44100) for i in range(512)]
+    for kw in ({"low_gain": float("nan")}, {"mid_gain": float("inf")},
+               {"high_gain": float("nan")}):
+        try:
+            spectral_utils.apply_spectral_mask(src, 44100, **kw)
+        except ValueError:
+            continue
+        raise AssertionError(f"{kw} accepted")
+    assert spectral_utils.apply_spectral_mask(src, 44100) != []
+
+
+def test_analyze_spectrum_rejects_non_finite_sample_rate():
+    # 'sample_rate <= 0' let NaN/inf through; the report then carried
+    # nan/inf in every frequency-derived field while rms stayed real.
+    src = [0.5 * math.sin(2 * math.pi * 440 * i / 44100) for i in range(512)]
+    for bad in (float("nan"), float("inf")):
+        try:
+            spectral_utils.analyze_spectrum(src, bad)
+        except ValueError:
+            continue
+        raise AssertionError(f"sample_rate={bad} accepted")
+    report = spectral_utils.analyze_spectrum(src, 44100)
+    assert report.sample_rate == 44100

@@ -187,7 +187,7 @@ def analyze_spectrum(
 ) -> SpectrumReport:
     """Compute spectral statistics for a mono signal."""
 
-    if sample_rate <= 0:
+    if not math.isfinite(sample_rate) or sample_rate <= 0:
         raise ValueError("sample_rate must be a positive integer")
 
     buffer = _to_float_sequence(samples)
@@ -226,7 +226,7 @@ def analyze_spectrum(
 def normalize_peak(samples: Sequence[float], target_peak: float = 0.95) -> List[float]:
     """Scale a signal to the requested peak value."""
 
-    if target_peak <= 0:
+    if not math.isfinite(target_peak) or target_peak <= 0:
         raise ValueError("target_peak must be positive")
 
     buffer = _to_float_sequence(samples)
@@ -304,7 +304,8 @@ def apply_spectral_mask(
 ) -> List[float]:
     """Apply a lightweight three-band equaliser."""
 
-    if any(gain < 0 for gain in (low_gain, mid_gain, high_gain)):
+    if any(not math.isfinite(gain) or gain < 0
+           for gain in (low_gain, mid_gain, high_gain)):
         raise ValueError("gain factors must be non-negative")
 
     buffer = _to_float_sequence(samples)
