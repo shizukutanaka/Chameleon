@@ -2472,6 +2472,18 @@ enforced and the README already documents the divergence; `analyze
 --loudness` reports "below measurement gate" for too-short material
 rather than fabricating LUFS.
 
+**Q (2026-09-26, audit 134):** Does `SpectralEditor.select_region`'s
+clamping survive non-finite bounds?
+**A:** No -- NaN cannot be clamped. `max(0, nan)` and
+`min(times[-1], nan)` both return the bound (every comparison with NaN is
+False), so `select_region(nan, nan, nan, nan)` silently produced a
+full-file selection and a following `delete_selection` would mute audio
+the caller never selected. select_region now rejects non-finite (and
+non-numeric) bounds with ValueError; finite out-of-range bounds still
+clamp, which is the documented contract. The empty-selection rejection
+remains audit-62's concern on its own branch and is deliberately not
+duplicated here.
+
 **Q (2026-09-26, audit 138):** `BatchScheduler` is library-only (no CLI
 caller) but the contract still matters -- does one bad scheduled workflow,
 or a caller pressing `start()` twice, take the whole scheduler down?
