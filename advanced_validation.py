@@ -470,6 +470,18 @@ class SanitizationEngine:
 
         KEEP_CHUNKS = {b'RIFF', b'WAVE', b'fmt ', b'data'}
 
+        # The `with` below opens the output O_TRUNC alongside the input:
+        # a same-file pair would zero the source before its first read and
+        # then report success over a 4-byte stub (verified). Refuse it.
+        try:
+            if os.path.samefile(file_path, output_path):
+                raise ValueError(
+                    "input and output paths are the same file; "
+                    "in-place sanitization is not supported")
+        except OSError:
+            # A nonexistent output can never be the input's file.
+            pass
+
         with open(file_path, 'rb') as infile, open(output_path, 'wb') as outfile:
             # Read and write RIFF header
             riff_header = infile.read(12)
