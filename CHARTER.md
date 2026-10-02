@@ -2823,3 +2823,17 @@ streaming in-out site in the tree (audit-148 covers core.py's three);
 `IntegrityVerifier` writes only manifests, `personal_config.backup`
 copies into a separate destination tree, and the API server namespaces
 every output with a uuid.
+
+**Q (2026-10-02, audit 250):** The two workflow expression evaluators
+raise their own typed errors (`ConditionEvaluationError`,
+`TemplateEvaluationError`) for every malformed expression -- do the
+arithmetic paths keep that contract?
+**A:** No. `_LiteralExpressionEvaluator` let `1/0` leak
+ZeroDivisionError, `'a'-1`/`'a'+1` and `-'a'`/`+'a'` leak TypeError;
+`_ConditionExpressionEvaluator` let `'x' in <non-iterable>` (e.g. a
+boolean `results["t"].success`) leak TypeError -- all reproduced. A
+workflow lambda like `inputs['a'] / inputs['b']` with b=0 therefore
+crashed with a raw error where the API promises a template diagnostic.
+Both evaluators now map TypeError/ZeroDivisionError to their typed
+error; `not in` gets the same guard as `in`, and `==`/`is` (which
+cannot raise on these operand types) are left bare.
