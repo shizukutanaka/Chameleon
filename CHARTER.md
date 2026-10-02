@@ -2823,3 +2823,17 @@ streaming in-out site in the tree (audit-148 covers core.py's three);
 `IntegrityVerifier` writes only manifests, `personal_config.backup`
 copies into a separate destination tree, and the API server namespaces
 every output with a uuid.
+
+**Q (2026-10-02, audit 254):** `create_plugin_template` interpolates
+`plugin_name` into both the output filename and the generated class
+declaration -- what happens on names that are not identifiers?
+**A:** Two verified failures. `"../../escape_probe"` wrote the template
+outside `output_dir` (path traversal through the filename); `"bad-name!"`
+emitted `class bad-name!_plugin(...)` -- a plugin file that can never
+compile, let alone load. Unknown categories silently fell to the
+`else: utility` branch, so a typo'd `--category` generated the wrong
+plugin kind while reporting success. `plugin_name` now must satisfy
+`str.isidentifier()` (rejects separators, traversal and keywords' unsafe
+forms in one rule) and `category` must be one of
+effect/analyzer/generator/utility; both raise ValueError before any
+filesystem write.

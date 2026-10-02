@@ -743,6 +743,15 @@ class PluginManager:
 
     def create_plugin_template(self, plugin_name: str, category: str, output_dir: str = "plugins"):
         """Create a plugin template for development"""
+        # plugin_name is interpolated into both the output filename and the
+        # generated class names. A non-identifier name either escapes
+        # output_dir ("../x") or emits a plugin whose source cannot compile.
+        if not isinstance(plugin_name, str) or not plugin_name.isidentifier():
+            raise ValueError(
+                f"plugin_name must be a valid Python identifier, got {plugin_name!r}")
+        if category not in ("effect", "analyzer", "generator", "utility"):
+            raise ValueError(
+                f"category must be one of effect, analyzer, generator, utility; got {category!r}")
         template = self._generate_plugin_template(plugin_name, category)
 
         output_path = Path(output_dir) / f"{plugin_name.lower()}_plugin.py"
