@@ -189,6 +189,8 @@ def analyze_spectrum(
 
     if not math.isfinite(sample_rate) or sample_rate <= 0:
         raise ValueError("sample_rate must be a positive integer")
+    if not isinstance(max_peaks, int) or max_peaks < 0:
+        raise ValueError("max_peaks must be a non-negative integer")
 
     buffer = _to_float_sequence(samples)
     if not buffer:
@@ -251,8 +253,13 @@ def linear_resample(samples: Sequence[float], source_rate: int, target_rate: int
     use scipy/librosa (the ``[audio]`` extra) for band-limited resampling.
     """
 
-    if source_rate <= 0 or target_rate <= 0:
-        raise ValueError("sample rates must be positive integers")
+    if (
+        not math.isfinite(source_rate)
+        or not math.isfinite(target_rate)
+        or source_rate <= 0
+        or target_rate <= 0
+    ):
+        raise ValueError("sample rates must be positive finite numbers")
 
     buffer = _to_float_sequence(samples)
     if not buffer or source_rate == target_rate:
