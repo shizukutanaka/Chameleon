@@ -152,3 +152,21 @@ def test_analyze_spectrum_rejects_non_finite_sample_rate():
         raise AssertionError(f"sample_rate={bad} accepted")
     report = spectral_utils.analyze_spectrum(src, 44100)
     assert report.sample_rate == 44100
+
+
+def test_apply_spectral_mask_rejects_bad_sample_rate():
+    # bin_width derives every bin's band from sample_rate: nan -> all
+    # high_gain, 0/negative -> all low_gain, inf -> all high_gain -- the
+    # three-band equaliser silently became a flat uniform gain instead of
+    # refusing, unlike analyze_spectrum which already rejects these.
+    src = [0.5 * math.sin(2 * math.pi * 440 * i / 44100) for i in range(512)]
+    for bad in (0, -8000, float("nan"), float("inf")):
+        try:
+            spectral_utils.apply_spectral_mask(src, bad)
+        except ValueError:
+            continue
+        raise AssertionError(f"sample_rate={bad} accepted")
+    # A valid rate still passes and applies per-band gains.
+    out = spectral_utils.apply_spectral_mask(
+        src, 44100, low_gain=0.0, mid_gain=1.0, high_gain=1.0)
+    assert len(out) == len(src)

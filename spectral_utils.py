@@ -304,6 +304,13 @@ def apply_spectral_mask(
 ) -> List[float]:
     """Apply a lightweight three-band equaliser."""
 
+    # Every bin's band comes from sample_rate via bin_width: a non-finite
+    # or non-positive rate maps every bin to a single band (nan -> all
+    # high_gain, 0/negative -> all low_gain), turning the three-band
+    # equaliser into a flat uniform gain. The siblings already reject this.
+    if not math.isfinite(sample_rate) or sample_rate <= 0:
+        raise ValueError("sample_rate must be a positive integer")
+
     if any(not math.isfinite(gain) or gain < 0
            for gain in (low_gain, mid_gain, high_gain)):
         raise ValueError("gain factors must be non-negative")
