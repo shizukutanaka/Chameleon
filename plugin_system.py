@@ -69,8 +69,12 @@ DEFAULT_ALLOWED_IMPORTS: FrozenSet[str] = frozenset({
     "decimal", "random",
     # clocks (runaway plugins are still bounded by the sandbox timeout)
     "time", "datetime", "calendar", "zoneinfo",
-    # misc stdlib with no fs/net/process/introspection surface
-    "warnings", "traceback", "hashlib", "hmac", "secrets",
+    # misc stdlib with no fs/net/process/introspection surface.
+    # `traceback` is deliberately absent: walk_stack()/walk_tb() hand back
+    # live host frames — exactly the introspection surface this allowlist
+    # is defined to exclude (verified: a probe plugin rode walk_stack to
+    # f_globals and then to exec).
+    "warnings", "hashlib", "hmac", "secrets",
     # the documented audio plugin domain
     "numpy", "scipy", "soundfile", "librosa",
 })
@@ -473,6 +477,16 @@ class PluginLoader:
         # drops into pdb -- an interactive interpreter on the host;
         # exit()/quit() kill the host interpreter outright.
         "open", "input", "breakpoint", "exit", "quit", "help",
+        # Access-by-opaque-name primitives: every argument they take is an
+        # attribute name the audit cannot read in context (verified:
+        # operator.attrgetter("__class__.__subclasses__") reached os.system
+        # with zero flagged constructs). Denied outright, as with computed
+        # getattr names.
+        "attrgetter", "itemgetter", "methodcaller",
+        # Code-execution constructors on the allowlisted `types` module:
+        # FunctionType/CodeType build a runnable function from raw bytecode
+        # with no compile() call (verified end to end).
+        "FunctionType", "CodeType", "MethodType",
     })
     _DANGEROUS_REF_NAMES = _DANGEROUS_CALL_NAMES | frozenset({
         # Referenced-but-not-called is the aliasing bypass: `e = eval` or
@@ -485,6 +499,26 @@ class PluginLoader:
         ("importlib", "__import__"),
         ("importlib.util", "spec_from_file_location"),
         ("importlib.util", "module_from_spec"),
+    })
+    # Attribute names no plugin may read, by any access path — the ast walk
+    # checks `.name`, getattr() literal args, and from-import bindings
+    # against this one list so the three paths cannot drift apart (the
+    # previous six-name getattr subset let "f_globals" through).
+    _DANGEROUS_ATTR_NAMES = frozenset({
+        "__globals__", "__builtins__", "__subclasses__", "__mro__",
+        "__bases__", "__base__", "__dict__", "__class__",
+        "__code__", "__getattribute__", "__func__", "__self__",
+        # frame access: e.__traceback__.tb_frame.f_globals needs
+        # no import and reaches __builtins__ (verified: a probe
+        # plugin passed audit with exactly this chain)
+        "__traceback__", "__context__", "__cause__", "tb_frame",
+        "tb_next", "f_globals", "f_builtins", "f_locals",
+        "f_back", "gi_frame", "cr_frame", "ag_frame",
+        # The string-name access primitives are attribute names too —
+        # `operator.attrgetter` must be denied as an attribute so that a
+        # non-call reference (`f = operator.attrgetter`) is caught.
+        "attrgetter", "itemgetter", "methodcaller",
+        "FunctionType", "CodeType", "MethodType",
     })
 
     def _check_module_safety(self, plugin_path: Path):
@@ -516,6 +550,19 @@ class PluginLoader:
                 module_name = (node.module or '').split('.')[0]
                 if module_name and not self.sandbox.is_safe_import(module_name):
                     raise SecurityError(f"Unsafe import detected: {module_name}")
+                for alias in node.names:
+                    # Check the imported name, not the alias: `from operator
+                    # import attrgetter as ag` re-binds a denied name to a
+                    # fresh identifier the walk can no longer see (verified:
+                    # this form reached os.system); '*' imports every name
+                    # invisibly, audited or not.
+                    if (alias.name == "*"
+                            or alias.name in self._DANGEROUS_CALL_NAMES
+                            or alias.name in self._DANGEROUS_ATTR_NAMES):
+                        raise SecurityError(
+                            f"Unsafe import detected: {alias.name} is a "
+                            f"denied name from {module_name or 'the module'}"
+                        )
             elif isinstance(node, ast.Call):
                 func = node.func
                 if isinstance(func, ast.Name) and func.id in self._DANGEROUS_CALL_NAMES:
@@ -530,10 +577,7 @@ class PluginLoader:
                     # than trusted.
                     if len(node.args) >= 2 and (
                         not isinstance(node.args[1], ast.Constant)
-                        or node.args[1].value in (
-                            "__globals__", "__builtins__", "__subclasses__",
-                            "__mro__", "__bases__", "__class__",
-                        )
+                        or node.args[1].value in self._DANGEROUS_ATTR_NAMES
                     ):
                         raise SecurityError(
                             "Unsafe getattr() detected: dynamic or dangerous attribute name"
@@ -544,17 +588,8 @@ class PluginLoader:
                         raise SecurityError(
                             f"Unsafe call detected: {base}.{func.attr}() can bypass the import sandbox"
                         )
-            elif isinstance(node, ast.Attribute) and node.attr in (
-                "__globals__", "__builtins__", "__subclasses__", "__mro__",
-                "__bases__", "__base__", "__dict__", "__class__",
-                "__code__", "__getattribute__", "__func__", "__self__",
-                # frame access: e.__traceback__.tb_frame.f_globals needs
-                # no import and reaches __builtins__ (verified: a probe
-                # plugin passed audit with exactly this chain)
-                "__traceback__", "__context__", "__cause__", "tb_frame",
-                "tb_next", "f_globals", "f_builtins", "f_locals",
-                "f_back", "gi_frame", "cr_frame", "ag_frame",
-            ):
+            elif (isinstance(node, ast.Attribute)
+                    and node.attr in self._DANGEROUS_ATTR_NAMES):
                 raise SecurityError(
                     f"Unsafe attribute access detected: .{node.attr} can be used for sandbox escape"
                 )

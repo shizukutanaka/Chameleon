@@ -2823,3 +2823,25 @@ streaming in-out site in the tree (audit-148 covers core.py's three);
 `IntegrityVerifier` writes only manifests, `personal_config.backup`
 copies into a separate destination tree, and the API server namespaces
 every output with a uuid.
+
+**Q (2026-10-02, audit 294):** The plugin audit denies dangerous attribute
+names — but can the same names be fetched as *strings* the walk never
+sees, or bound under a fresh alias?
+**A:** Yes, three ways, each verified end to end against os.system on
+main. `operator.attrgetter`/`itemgetter`/`methodcaller` turn any denied
+attribute name into an opaque string argument —
+`attrgetter("__class__.__subclasses__")(object)(object)` reached live
+subclasses with zero flagged constructs. `from operator import
+attrgetter as ag` re-bound the same primitive under a name the walk
+cannot see — the ImportFrom branch checked only the module, never the
+imported name. And `getattr(obj, "f_globals")` passed because the literal
+check used a six-name subset of the attribute deny list (drift); with
+`import traceback` allowlisted, `traceback.walk_stack` handed out real
+host frames to read it from. Fixes: one `_DANGEROUS_ATTR_NAMES` set now
+governs attribute access, getattr literal args, and from-import names
+(the primitives plus the `types` code-execution constructors
+FunctionType/CodeType/MethodType join it and the call/ref deny sets);
+star imports are refused; `traceback` leaves the import allowlist — it
+exists only to reach frames, the exact surface the list claims to
+exclude. `types.FunctionType` itself was verified running arbitrary
+bytecode without compile().
