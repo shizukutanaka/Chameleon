@@ -2823,3 +2823,18 @@ streaming in-out site in the tree (audit-148 covers core.py's three);
 `IntegrityVerifier` writes only manifests, `personal_config.backup`
 copies into a separate destination tree, and the API server namespaces
 every output with a uuid.
+
+**Q (2026-10-02, audit 298):** The empty-selection refusal landed for
+delete/enhance/noise_reduce -- do interpolate_selection and
+harmonic_enhance_selection honor the same contract?
+**A:** No. An inverted or out-of-range SpectralSelection (e.g.
+select_region(0.9, 0.1, ...)) produces an all-False mask. On that mask
+both ops returned True, pushed an undo state, logged a history entry for
+work never done -- and still ran compute_istft over the whole
+spectrogram, so a selection that matched nothing rewrote every sample
+with reconstruction error (verified: current_audio changed under an
+empty mask). They now check mask.any() up front and return False before
+consuming undo state, the same contract the earlier fix established for
+its three ops; the check lives in the ops rather than select_region
+because an empty result is a legitimate value for copy_selection, which
+returns data, not a success flag.
