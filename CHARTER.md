@@ -2823,3 +2823,14 @@ streaming in-out site in the tree (audit-148 covers core.py's three);
 `IntegrityVerifier` writes only manifests, `personal_config.backup`
 copies into a separate destination tree, and the API server namespaces
 every output with a uuid.
+
+**Q (2026-10-02, audit 248):** `PersonalConfig.load` checks
+`config_path.exists()` then `open()`s it, catching only
+`json.JSONDecodeError` -- what happens when the path is a directory or
+unreadable?
+**A:** `exists()` is True for a directory, so `open()` raised
+IsADirectoryError, and a 0o000 file raised PermissionError -- raw
+OSErrors where every other unusable config reports a ValueError naming
+the path (reproduced both). `load` now maps OSError to the same
+actionable ValueError ("could not be read ... remove it to start again
+from the defaults"), keeping JSONDecodeError's existing message.

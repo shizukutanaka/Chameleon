@@ -126,6 +126,28 @@ def test_loading_a_bad_file_does_not_overwrite_it(config_path):
     assert config_path.read_text() == "{ not json at all"
 
 
+def test_a_directory_at_the_config_path_is_a_clear_error(tmp_path):
+    # Path.exists() is True for a directory, so open() raised
+    # IsADirectoryError -- a raw OSError where every other unusable
+    # config reports a ValueError that names the path.
+    with pytest.raises(ValueError) as excinfo:
+        personal_config.PersonalConfig.load(tmp_path)
+
+    message = str(excinfo.value)
+    assert str(tmp_path) in message
+    assert "remove" in message.lower()
+
+
+def test_an_unreadable_config_file_is_a_clear_error(config_path):
+    config_path.write_text("{}")
+    config_path.chmod(0o000)
+    try:
+        with pytest.raises(ValueError):
+            personal_config.PersonalConfig.load(config_path)
+    finally:
+        config_path.chmod(0o644)
+
+
 # --- library manager ------------------------------------------------------
 
 @pytest.fixture

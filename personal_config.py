@@ -101,6 +101,14 @@ class PersonalConfig:
                     f"{config_path} is not valid JSON ({exc}). Fix it, or delete "
                     "it to start again from the defaults."
                 ) from exc
+            except OSError as exc:
+                # A directory or unreadable file at the config path is the
+                # same class of problem as corrupt JSON: say which path is
+                # unusable instead of leaking IsADirectoryError/PermissionError.
+                raise ValueError(
+                    f"{config_path} could not be read ({exc}). Fix it, or "
+                    "remove it to start again from the defaults."
+                ) from exc
 
             if not isinstance(data, dict):
                 raise ValueError(
