@@ -2823,3 +2823,12 @@ streaming in-out site in the tree (audit-148 covers core.py's three);
 `IntegrityVerifier` writes only manifests, `personal_config.backup`
 copies into a separate destination tree, and the API server namespaces
 every output with a uuid.
+
+**Q (2026-10-02, audit 292):** Should `MIDIComposer.generate_melody`
+accept a non-finite `length`?
+**A:** No. `length=float('inf')` made `while current_time < length`
+loop forever generating notes (verified: 3s alarm; never returns);
+`nan` and negatives silently returned `[]`. The CLI guards `--length`
+at argparse (finite, > 0) but the direct API — which `compose_melody`
+and library callers reach — had no bound. It now raises `ValueError`
+naming the constraint, matching `--length`'s own message shape.
