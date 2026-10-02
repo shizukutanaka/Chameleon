@@ -320,3 +320,37 @@ def test_analyze_harmony_reports_each_template_types_real_quality():
         entry = result["progression"][0]
         assert entry["quality"] == quality, f"{chord_type}: {entry['quality']}"
         assert entry["roman"] == roman, f"{chord_type}: {entry['roman']}"
+
+
+def test_parse_midi_rejects_nonpositive_or_nonfinite_sample_rate():
+    # The declared rate drives frame_size/hop_size arithmetic: 0 or
+    # negative produced a negative frame_size whose range() either crashed
+    # with "arg 3 must not be zero" (naming range, not the rate) or scanned
+    # nothing and reported "no notes"; nan/inf did the same via int().
+    import math
+    import pytest
+    analyzer = MIDIAnalyzer()
+    for bad in (0, -8000, -1, math.nan, math.inf, -math.inf):
+        with pytest.raises(ValueError, match="sample_rate"):
+            analyzer.parse_midi_from_audio([0.1] * 500, bad)
+
+
+def test_parse_midi_tiny_rate_returns_empty_instead_of_crashing():
+    # Rates below ~174 Hz give frame_size < 4, so frame_size // 4 == 0 and
+    # range(0, n, 0) raised ValueError("arg 3 must not be zero"). A rate the
+    # window cannot resolve should honestly find no notes, not crash.
+    analyzer = MIDIAnalyzer()
+    for tiny in (1, 43, 100):
+        assert analyzer.parse_midi_from_audio([0.1] * 500, tiny) == []
+
+
+def test_parse_midi_normal_rate_still_extracts_notes():
+    # Regression guard: a 440 Hz sine at 44.1 kHz still yields an A4 note,
+    # so the validation did not disturb the working path.
+    import math
+    analyzer = MIDIAnalyzer()
+    sr = 44100
+    audio = [0.5 * math.sin(2 * math.pi * 440 * i / sr) for i in range(sr // 4)]
+    notes = analyzer.parse_midi_from_audio(audio, sr)
+    assert len(notes) >= 1
+    assert any(note.pitch == 69 for note in notes)
