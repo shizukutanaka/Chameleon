@@ -2823,3 +2823,16 @@ streaming in-out site in the tree (audit-148 covers core.py's three);
 `IntegrityVerifier` writes only manifests, `personal_config.backup`
 copies into a separate destination tree, and the API server namespaces
 every output with a uuid.
+
+**Q (2026-10-02, audit 259):** `MIDIComposer.generate_melody` — does the
+melody timeline line up with the supplied progression?
+**A:** No. The melody clock always started at t=0, so a progression that
+begins later than `length` produced an *empty* list and a later-starting
+one produced a partial melody cut off at `length` -- silently, in both
+cases. The shipped `demo_midi_analysis` demonstrates the failure itself:
+its chords live at t=8..16 and the demo prints "Generated Melody:" with
+nothing after it (verified by running it). The melody is "over the chord
+progression", so it now anchors at the first chord's start_time and runs
+`length` beats from there; the note-selection step is likewise relative
+to that anchor. Progressions starting at 0 produce byte-identical output,
+and an empty progression still honestly returns [].

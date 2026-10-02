@@ -320,3 +320,45 @@ def test_analyze_harmony_reports_each_template_types_real_quality():
         entry = result["progression"][0]
         assert entry["quality"] == quality, f"{chord_type}: {entry['quality']}"
         assert entry["roman"] == roman, f"{chord_type}: {entry['roman']}"
+
+
+def test_generate_melody_anchors_to_first_chord():
+    # Chords from real analysis sit where the audio put them (e.g. t=8-16),
+    # not at 0. A melody clock that starts at 0 emits nothing for a
+    # requested length before the first chord -- the shipped demo printed
+    # "Generated Melody:" followed by silence.
+    from midi_analysis import Chord, MusicalKey, MIDIComposer, MIDIConfig
+    composer = MIDIComposer(MIDIConfig())
+    key = MusicalKey(tonic=0, mode="major", confidence=1.0)
+    chords = [
+        Chord(root=0, chord_type="major", notes=[0, 4, 7],
+              start_time=t, duration=2.0, confidence=1.0)
+        for t in (8.0, 10.0, 12.0, 14.0)
+    ]
+    melody = composer.generate_melody(chords, key, length=4.0)
+    assert len(melody) == 8  # half-beat notes across 4 beats
+    assert melody[0].start_time == 8.0
+    assert melody[-1].start_time + melody[-1].duration == 12.0
+
+
+def test_generate_melody_zero_anchored_unchanged():
+    from midi_analysis import Chord, MusicalKey, MIDIComposer, MIDIConfig
+    composer = MIDIComposer(MIDIConfig())
+    key = MusicalKey(tonic=0, mode="major", confidence=1.0)
+    chords = [Chord(root=0, chord_type="major", notes=[0, 4, 7],
+                    start_time=0.0, duration=8.0, confidence=1.0)]
+    melody = composer.generate_melody(chords, key, length=2.0)
+    assert [n.pitch for n in melody] == [60, 64, 67, 60]
+
+
+def test_generate_melody_anchors_on_unsorted_chords():
+    from midi_analysis import Chord, MusicalKey, MIDIComposer, MIDIConfig
+    composer = MIDIComposer(MIDIConfig())
+    key = MusicalKey(tonic=0, mode="major", confidence=1.0)
+    chords = [
+        Chord(root=0, chord_type="major", notes=[0, 4, 7],
+              start_time=t, duration=2.0, confidence=1.0)
+        for t in (14.0, 8.0)  # later chord listed first
+    ]
+    melody = composer.generate_melody(chords, key, length=2.0)
+    assert melody[0].start_time == 8.0
