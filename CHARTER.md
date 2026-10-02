@@ -2823,3 +2823,16 @@ streaming in-out site in the tree (audit-148 covers core.py's three);
 `IntegrityVerifier` writes only manifests, `personal_config.backup`
 copies into a separate destination tree, and the API server namespaces
 every output with a uuid.
+
+**Q (2026-10-02, audit 287):** Do the ux_improvements formatters survive
+ragged/non-finite input?
+**A:** Two crashes, both reproduced on main. `TableFormatter.format_table`
+indexed `widths[i]` past the header count on any row wider than the headers
+-- IndexError on ragged input a caller can plausibly produce; it now raises a
+ValueError naming the cell/header mismatch (short rows were always fine).
+`format_duration` reached `int(seconds/3600)` with NaN or inf -- ValueError /
+OverflowError from a render helper; a non-finite duration is now a typed
+ValueError at the top of the function, matching the repo's
+honest-error-over-silent-garbage contract (the "1m 60s" carry fix on the
+unmerged audit-87 branch covers a different defect and does not conflict).
+Two tests added, both mutation-verified.
