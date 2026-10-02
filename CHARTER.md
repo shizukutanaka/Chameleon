@@ -2823,3 +2823,16 @@ streaming in-out site in the tree (audit-148 covers core.py's three);
 `IntegrityVerifier` writes only manifests, `personal_config.backup`
 copies into a separate destination tree, and the API server namespaces
 every output with a uuid.
+
+**Q (2026-10-02, audit 251):** `record_state` writes the batch summary
+verbatim into `batch_state_*.json` -- what does embedding
+`summary["previous_state"]` do to state-file size over repeated runs?
+**A:** Each file carried the *entire* previous payload, so file n nested
+files 1..n-1 and grew linearly without bound (reproduced: 110 B -> 774 B
+over five runs of an 8-byte summary, nesting depth 5). `max_backups=10`
+caps file count, not file size, and `load_last_state` parses the
+ever-growing newest file on every run. Both call sites
+(`process_directory`, `process_directory_async`) now store
+`StateRecoveryManager._previous_reference(...)` -- timestamp + the three
+processed/successful/failed counters -- which keeps the run-over-run
+comparison honest at ~150 bytes per record.

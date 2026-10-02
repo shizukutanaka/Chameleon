@@ -1572,6 +1572,24 @@ class StateRecoveryManager:
         self._cleanup_old_backups()
         return target_path
 
+    @staticmethod
+    def _previous_reference(previous_state: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        # record_state serialises the batch summary verbatim into the next
+        # state file; embedding the whole previous payload there nests one
+        # complete state file per run and grows every backup without bound.
+        # A timestamp + counters reference keeps the comparison bounded.
+        if not isinstance(previous_state, dict):
+            return None
+        previous_summary = previous_state.get("summary")
+        if not isinstance(previous_summary, dict):
+            return None
+        return {
+            "timestamp": previous_state.get("timestamp"),
+            "processed": previous_summary.get("processed"),
+            "successful": previous_summary.get("successful"),
+            "failed": previous_summary.get("failed"),
+        }
+
     def _cleanup_old_backups(self) -> None:
         try:
             candidates = sorted(self.state_dir.glob("batch_state_*.json"), key=lambda item: item.stat().st_mtime, reverse=True)
@@ -1697,7 +1715,7 @@ class BatchProcessor:
             "errors": [],
             "timed_out": False,
             "service_level": self.degradation.current_level,
-            "previous_state": previous_state,
+            "previous_state": self.state_manager._previous_reference(previous_state),
         }
 
         for index, file_path in enumerate(wav_files, 1):
@@ -1943,7 +1961,7 @@ class BatchProcessor:
                        for item in processed_results if not item.success],
             "timed_out": False,
             "service_level": self.degradation.current_level,
-            "previous_state": previous_state,
+            "previous_state": self.state_manager._previous_reference(previous_state),
             "duration_ms": duration_ms,
             "recovery_metrics": recovery_metrics,
         }
