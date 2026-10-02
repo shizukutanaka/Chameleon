@@ -320,3 +320,40 @@ def test_analyze_harmony_reports_each_template_types_real_quality():
         entry = result["progression"][0]
         assert entry["quality"] == quality, f"{chord_type}: {entry['quality']}"
         assert entry["roman"] == roman, f"{chord_type}: {entry['roman']}"
+
+
+# --- suggest_next_chord transition table -----------------------------------
+
+def test_suggest_next_chord_follows_standard_progressions():
+    # The transition table's own comments promised I -> V, IV, vi; the
+    # semitone entries actually emitted III, V, VI, IV -- indexing off by
+    # the accidental rows of the roman table.
+    from midi_analysis import MIDIComposer, Chord, MusicalKey
+    composer = MIDIComposer()
+    key = MusicalKey(tonic=0, mode="major", confidence=0.9)
+    i_chord = Chord(root=0, chord_type="major", notes=[0, 4, 7],
+                    start_time=0.0, duration=2.0)
+    suggestions = composer.suggest_next_chord([i_chord], key)
+    romans = [r for r, _p in suggestions]
+    assert romans == ["V", "IV", "vi", "ii"]
+
+
+def test_suggest_next_chord_after_dominant_resolves_to_tonic():
+    from midi_analysis import MIDIComposer, Chord, MusicalKey
+    composer = MIDIComposer()
+    key = MusicalKey(tonic=0, mode="major", confidence=0.9)
+    v_chord = Chord(root=7, chord_type="major", notes=[7, 11, 2],
+                    start_time=0.0, duration=2.0)
+    romans = [r for r, _p in composer.suggest_next_chord([v_chord], key)]
+    assert romans[0] == "I"
+
+
+def test_suggest_next_chord_marks_minor_targets_lowercase():
+    # A minor-mode i is a minor tonic -- reporting it "I" would claim major.
+    from midi_analysis import MIDIComposer, Chord, MusicalKey
+    composer = MIDIComposer()
+    key = MusicalKey(tonic=9, mode="minor", confidence=0.9)  # A minor
+    v_chord = Chord(root=9 + 7, chord_type="major", notes=[4, 8, 11],
+                    start_time=0.0, duration=2.0)
+    romans = [r for r, _p in composer.suggest_next_chord([v_chord], key)]
+    assert romans[0] == "i"

@@ -2823,3 +2823,17 @@ streaming in-out site in the tree (audit-148 covers core.py's three);
 `IntegrityVerifier` writes only manifests, `personal_config.backup`
 copies into a separate destination tree, and the API server namespaces
 every output with a uuid.
+
+**Q (2026-10-02, audit 256):** `MIDIComposer.suggest_next_chord` indexes
+`roman_numerals` with semitone degrees -- does the transition table's
+vocabulary match that indexing?
+**A:** No (verified). After a tonic chord it suggested `III` at 0.4
+while its own comment reads "I -> V, IV, vi": the table entries
+`[(4,.4),(7,.3),(9,.2),(5,.1)]` index the roman table by semitone but
+encode scale-degree-ish targets, so I->III was the top suggestion and
+the "V -> I, ii" row sat under degree 4 (III). The minor-quality
+targets it intends (vi, ii) also printed as uppercase "VI"/"II",
+reporting minor suggestions as major. The table is now semitone-true
+to the commented intents (I->V/IV/vi/ii, IV->V/I/ii, V->I/vi/IV,
+vi->IV/I/V) and minor degrees are emitted lowercase, matching
+analyze_harmony's casing convention.
