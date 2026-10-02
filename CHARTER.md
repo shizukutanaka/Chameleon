@@ -2823,3 +2823,14 @@ streaming in-out site in the tree (audit-148 covers core.py's three);
 `IntegrityVerifier` writes only manifests, `personal_config.backup`
 copies into a separate destination tree, and the API server namespaces
 every output with a uuid.
+
+**Q (2026-10-02, audit 289):** Should the `midi compose`/`midi generate`
+progress banners print before the `--key` validation runs?
+**A:** No. Both ops printed their "Generating musical composition…" /
+"Generating MIDI demo…" banners, then validated the key and refused with
+INPUT(3) — output claimed work that never started, the same lying-ordering
+defect audit-78 fixed at the "MIDI operation '<op>'" site (its branch is
+unmerged; these two sites were outside it). The banners now print after
+the last refusal check in each block. Regressions in
+`tests/test_cli_polish.py` assert the banner is absent on refusal and
+present on a valid run.
