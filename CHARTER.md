@@ -2823,3 +2823,14 @@ streaming in-out site in the tree (audit-148 covers core.py's three);
 `IntegrityVerifier` writes only manifests, `personal_config.backup`
 copies into a separate destination tree, and the API server namespaces
 every output with a uuid.
+
+**Q (2026-10-02, audit 282):** Does the status snapshot's "11 HTTP-level
+tests" claim still match `tests/test_api_routes.py`?
+**A:** No -- the file now defines 26 test functions; the "11" was true when
+written and drifted silently (four hand-carried suite counts previously
+drifted the same way, which is why the rule exists). Rather than re-stamp a
+number that will drift again, the count was removed entirely: test counts
+live in exactly one place (the dated header of `PRODUCT_ANALYSIS.md`), so
+the sentence now says only "Ships with HTTP-level tests". A one-line docs
+edit; the three-config gate still ran clean and `validation_test.py`
+passed.

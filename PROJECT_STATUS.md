@@ -39,7 +39,7 @@ action.
   soundfile/pyaudio unlock `--master` (full mastering chain), noise
   reduction, format conversion, real-time streaming.
 - **Optional REST API** (`pip install -e .[api]`): `api_server.py`, a FastAPI
-  JSON REST adapter over the same stdlib core. Ships with 11 HTTP-level
+  JSON REST adapter over the same stdlib core. Ships with HTTP-level
   tests (`tests/test_api_routes.py`).
 - **No web frontend ships.** `gui/` is an experimental, self-admittedly
   unwired React/TypeScript/Electron scaffold — not built by the Dockerfile,
