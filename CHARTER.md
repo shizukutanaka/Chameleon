@@ -2823,3 +2823,16 @@ streaming in-out site in the tree (audit-148 covers core.py's three);
 `IntegrityVerifier` writes only manifests, `personal_config.backup`
 copies into a separate destination tree, and the API server namespaces
 every output with a uuid.
+
+**Q (2026-10-02, audit 291):** Should `sanitize_filename` return the
+literal `'..'` (or other dot/space-only names) as a "sanitized" name?
+**A:** No. Both copies (`security_validator.SecurityValidator` and
+`core.EnhancedSecurityValidator`, kept in parity by test) returned
+`'..'`, `'...'`, and `'  '` unchanged — `'..'` is the parent-directory
+segment, so `dest_dir / sanitize_filename(name)` can escape the
+destination in any naive caller, which is exactly what the function
+exists to prevent. Current in-repo callers are incidentally safe
+(uuid-prefixed names / parent-equality checks), but the contract is
+what gets relied on. Dot/space-only results now fall back to
+`'untitled'` like empty input; names containing real characters
+(`'a..b'`, `'___...'`, `'..wav'`) are unchanged.

@@ -2161,7 +2161,13 @@ class EnhancedSecurityValidator:
         if stem.lower() in _RESERVED_DEVICE_NAMES:
             sanitized = ("untitled" + os.path.splitext(sanitized)[1])[:255]
 
-        return sanitized or "untitled"
+        # Same dot/space-only rule as security_validator's copy: '..' would
+        # traverse upward in a naive `directory / name` join, and trailing
+        # dots/spaces are stripped by the filesystem leaving nothing usable.
+        if not sanitized.strip(" ."):
+            return "untitled"
+
+        return sanitized
 
     @staticmethod
     def validate_audio_content_secure(file_path: str) -> bool:

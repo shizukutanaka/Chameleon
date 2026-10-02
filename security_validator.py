@@ -323,7 +323,12 @@ class SecurityValidator:
         stem = sanitized.split(".", 1)[0].strip(" .")
         if stem.lower() in _RESERVED_DEVICE_NAMES:
             sanitized = ("untitled" + os.path.splitext(sanitized)[1])[:255]
-        return sanitized or "untitled"
+        # A result that is only dots and spaces is not a usable name: '..'
+        # traverses upward in a naive `directory / name` join, and the
+        # filesystem strips trailing dots/spaces leaving nothing usable.
+        if not sanitized.strip(" ."):
+            return "untitled"
+        return sanitized
 
     @_hybridmethod
     def resolve_unique_paths(self, paths: Iterable) -> List[Path]:
