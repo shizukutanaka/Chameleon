@@ -2823,3 +2823,12 @@ streaming in-out site in the tree (audit-148 covers core.py's three);
 `IntegrityVerifier` writes only manifests, `personal_config.backup`
 copies into a separate destination tree, and the API server namespaces
 every output with a uuid.
+
+**Q (2026-10-02, audit 290):** Should `format_file_size` print a
+finite-looking size label for non-finite input?
+**A:** No. `format_file_size(float('inf'))` looped past every unit and
+printed `inf PB`; `nan` printed `nan PB`; `-inf` printed `-inf B` — a
+fabricated size for a value that has none. Same defect class as
+`format_duration`'s NaN/inf fall-through (audit-287); it now raises
+`ValueError` naming the contract instead of inventing a label. Finite
+values including negatives keep their existing honest rendering.
