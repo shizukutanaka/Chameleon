@@ -419,7 +419,6 @@ def test_execute_with_limits_times_out_off_main_thread():
     worker.join(10)
 
     assert result == ["timeout"]
-<<<<<<< HEAD
 
 
 class _PosixRlimit:
@@ -489,7 +488,4 @@ def test_execute_with_limits_restores_memory_off_main_thread(monkeypatch):
 
     assert result == [42]
     assert (state.soft, state.hard) == (4 << 30, 8 << 30)
-||||||| 7bcfad6
-=======
 
->>>>>>> origin/main
