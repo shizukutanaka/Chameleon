@@ -155,9 +155,19 @@ class MIDIAnalyzer:
 
     def parse_midi_from_audio(self, audio_data: List[float], sample_rate: int) -> List[MIDINote]:
         """Extract MIDI notes from audio using onset detection and pitch tracking"""
+        # A WAV fmt chunk can declare any rate, and callers feed it straight
+        # in: a non-finite or non-positive rate maps to a negative frame size,
+        # which either raises range()'s own error (a crash that does not name
+        # the sample rate) or silently scans nothing and reports "no notes".
+        if not math.isfinite(sample_rate) or sample_rate <= 0:
+            raise ValueError("sample_rate must be a positive number")
+
         # Basic onset detection using energy changes
         frame_size = int(sample_rate * 0.023)  # 23ms frames
-        hop_size = frame_size // 4
+        # Very low declared rates make the 23 ms window narrower than a few
+        # samples; a zero hop would crash range() outright, so hop at least
+        # one sample -- the pitch estimator then honestly finds nothing.
+        hop_size = max(1, frame_size // 4)
 
         notes = []
         current_time = 0.0

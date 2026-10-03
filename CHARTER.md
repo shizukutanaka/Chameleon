@@ -2906,6 +2906,21 @@ honest-error-over-silent-garbage contract (the "1m 60s" carry fix on the
 unmerged audit-87 branch covers a different defect and does not conflict).
 Two tests added, both mutation-verified.
 
+
+**Q (2026-10-02, audit 262):** Does `MIDIAnalyzer.parse_midi_from_audio`
+tolerate the arbitrary sample rate a WAV fmt chunk can declare?
+**A:** No -- the declared rate drove frame/hop arithmetic unchecked:
+`int(sample_rate * 0.023)` below ~174 Hz made `hop_size` zero and
+`range(0, n, 0)` crashed with "arg 3 must not be zero" (naming range, not
+the rate), while a zero or negative rate produced a negative frame size
+that scanned nothing and reported "no notes" for audio it never looked
+at. nan/inf took the crash path via int(). The CLI caller catches the
+exception and logs it (audit-129), but the public API contract is the
+same one audit-260 enforced in `apply_spectral_mask`: `sample_rate` must
+be a positive finite number, so it now raises ValueError naming the
+parameter, and `hop_size` clamps at 1 so rates too low for a 23 ms window
+degrade to an honest empty result instead of a zero-step crash.
+
 **Q (2026-10-02, audit 294):** The plugin audit denies dangerous attribute
 names — but can the same names be fetched as *strings* the walk never
 sees, or bound under a fresh alias?
