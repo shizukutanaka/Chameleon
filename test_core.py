@@ -100,6 +100,27 @@ class CoreAudioTests(unittest.TestCase):
         self.assertTrue(target.exists())
         self.assertEqual(target.read_bytes(), b"data")
 
+    def test_to_mono_rounds_half_values_symmetrically(self) -> None:
+        """Downmix averaged the pair then int()-truncated toward zero: a
+        (-1, -2) pair yielded -1 instead of -2 -- a systematic inward bias on
+        every half-value frame, invisible on symmetric test tones."""
+        stereo_path = self.tmp_path / "pairs.wav"
+        pairs = [-1, -2] * 500 + [2, 1] * 500  # L,R: (-1.5 avg, +1.5 avg)
+        with wave.open(str(stereo_path), "wb") as handle:
+            handle.setnchannels(2)
+            handle.setsampwidth(2)
+            handle.setframerate(SAMPLE_RATE)
+            handle.writeframes(struct.pack("<" + "h" * len(pairs), *pairs))
+        mono_path = self.tmp_path / "mono.wav"
+
+        result = to_mono(str(stereo_path), str(mono_path))
+        self.assertTrue(result.success, msg=result.message)
+        with wave.open(str(mono_path), "rb") as handle:
+            data = struct.unpack("<" + "h" * handle.getnframes(),
+                                 handle.readframes(handle.getnframes()))
+        self.assertEqual(data[0], -2)   # round(-1.5) = -2, not trunc(-1.5) = -1
+        self.assertEqual(data[-1], 2)   # round(+1.5) = +2
+
 
 class SecurityValidatorTests(unittest.TestCase):
     """Checks for the canonical security primitives."""

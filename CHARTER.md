@@ -2858,3 +2858,14 @@ empirically from a worker thread. The signal branch now requires
 callers take the existing thread-join fallback, which was verified to
 return results and enforce the timeout there (main-thread SIGALRM path
 unchanged).
+
+**Q (2026-10-02, audit 307):** `_convert_to_mono` averages the channel pair
+with `int(sum(samples) / len(samples))` — does the cast round honestly?
+**A:** No — `int()` truncates toward zero, so a (-1, -2) pair yielded -1
+instead of -2: a systematic inward bias on every half-value frame,
+invisible on symmetric test tones. The same bug class was already fixed
+in the extraction path (audit-119) and the gain path uses `round()` with
+a comment explaining why; this downmix was the remaining truncating
+site. Now `int(round(...))`, so half-values round symmetrically
+(-1.5 → -2, +1.5 → +2). Verified on a constant-pair WAV before and
+after.
