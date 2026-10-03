@@ -320,3 +320,29 @@ def test_analyze_harmony_reports_each_template_types_real_quality():
         entry = result["progression"][0]
         assert entry["quality"] == quality, f"{chord_type}: {entry['quality']}"
         assert entry["roman"] == roman, f"{chord_type}: {entry['roman']}"
+
+
+def test_generate_melody_rejects_non_finite_and_non_positive_length():
+    """generate_melody(length=inf) looped forever (`current_time < inf`
+    is always true); nan and negatives silently returned an empty
+    melody. The CLI guards --length but the direct API did not."""
+    import pytest
+    from midi_analysis import MIDIComposer, Chord, MusicalKey
+    composer = MIDIComposer()
+    key = MusicalKey(tonic=0, mode="major", confidence=1.0,
+                     scale_notes=[0, 2, 4, 5, 7, 9, 11])
+    chord = Chord(root=0, chord_type="major", notes=[0, 4, 7],
+                  start_time=0.0, duration=8.0)
+    for bad in (float("inf"), float("nan"), -1.0, 0.0):
+        with pytest.raises(ValueError, match="positive finite"):
+            composer.generate_melody([chord], key, length=bad)
+
+
+def test_generate_melody_still_generates_for_valid_length():
+    from midi_analysis import MIDIComposer, Chord, MusicalKey
+    composer = MIDIComposer()
+    key = MusicalKey(tonic=0, mode="major", confidence=1.0,
+                     scale_notes=[0, 2, 4, 5, 7, 9, 11])
+    chord = Chord(root=0, chord_type="major", notes=[0, 4, 7],
+                  start_time=0.0, duration=8.0)
+    assert len(composer.generate_melody([chord], key, length=8.0)) == 16
