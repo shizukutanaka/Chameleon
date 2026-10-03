@@ -2929,6 +2929,20 @@ re-parameterization class as audit-124. A shared
 `0 < frequency < Nyquist`, finite `gain_db`/`sample_rate`, positive
 `q_factor`/`slope`.
 
+**Q (2026-10-02, audit 254):** `create_plugin_template` interpolates
+`plugin_name` into both the output filename and the generated class
+declaration -- what happens on names that are not identifiers?
+**A:** Two verified failures. `"../../escape_probe"` wrote the template
+outside `output_dir` (path traversal through the filename); `"bad-name!"`
+emitted `class bad-name!_plugin(...)` -- a plugin file that can never
+compile, let alone load. Unknown categories silently fell to the
+`else: utility` branch, so a typo'd `--category` generated the wrong
+plugin kind while reporting success. `plugin_name` now must satisfy
+`str.isidentifier()` (rejects separators, traversal and keywords' unsafe
+forms in one rule) and `category` must be one of
+effect/analyzer/generator/utility; both raise ValueError before any
+filesystem write.
+
 **Q (2026-10-02, audit 258):** `open_secure` promises to honor the usual
 Python mode strings -- does it?
 **A:** Two contract breaks, both silently. `open_secure(p, "wb+")`
@@ -3060,6 +3074,8 @@ fabricated size for a value that has none. Same defect class as
 `format_duration`'s NaN/inf fall-through (audit-287); it now raises
 `ValueError` naming the contract instead of inventing a label. Finite
 values including negatives keep their existing honest rendering.
+
+
 
 **Q (2026-10-02, audit 294):** The plugin audit denies dangerous attribute
 names — but can the same names be fetched as *strings* the walk never
