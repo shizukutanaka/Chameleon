@@ -243,7 +243,13 @@ class PluginSandbox:
         else:
             signal = None
 
-        if signal is not None and hasattr(signal, 'SIGALRM') and max_time > 0:
+        # SIGALRM delivery exists only in the main thread; on any other
+        # thread signal.signal() raises ValueError before func ever runs.
+        # Off-main-thread callers take the thread-join fallback below.
+        on_main_thread = threading.current_thread() is threading.main_thread()
+
+        if (signal is not None and hasattr(signal, 'SIGALRM')
+                and max_time > 0 and on_main_thread):
             previous_handler = signal.getsignal(signal.SIGALRM)
 
             def timeout_handler(signum, frame):  # pragma: no cover - requires timing
