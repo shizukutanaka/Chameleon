@@ -199,7 +199,13 @@ class PluginSandbox:
             return
 
         try:
-            resource.setrlimit(resource.RLIMIT_AS, (target_limit, target_limit))
+            # Only the soft limit is lowered. Lowering the hard limit is
+            # one-way: a process cannot raise it again without privilege,
+            # so the old (target, target) pair left the whole process --
+            # host included -- capped after every sandboxed call when the
+            # restore below failed EPERM. Keeping the hard limit as found
+            # makes the restore legal for an unprivileged caller.
+            resource.setrlimit(resource.RLIMIT_AS, (target_limit, hard_before))
         except (ValueError, resource.error, OSError) as exc:  # pragma: no cover - platform dependent
             self.logger.warning("Failed to apply memory limit: %s", exc)
             yield
