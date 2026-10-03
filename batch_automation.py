@@ -242,9 +242,17 @@ class _ConditionExpressionEvaluator(ast.NodeVisitor):
             elif isinstance(op, ast.NotEq):
                 comparison = left != right
             elif isinstance(op, ast.In):
-                comparison = left in right
+                try:
+                    comparison = left in right
+                except TypeError as exc:
+                    raise ConditionEvaluationError(
+                        "'in' requires an iterable right-hand side") from exc
             elif isinstance(op, ast.NotIn):
-                comparison = left not in right
+                try:
+                    comparison = left not in right
+                except TypeError as exc:
+                    raise ConditionEvaluationError(
+                        "'not in' requires an iterable right-hand side") from exc
             elif isinstance(op, ast.Is):
                 comparison = left is right
             elif isinstance(op, ast.IsNot):
@@ -355,10 +363,14 @@ class _LiteralExpressionEvaluator(ast.NodeVisitor):
 
     def visit_UnaryOp(self, node: ast.UnaryOp) -> Any:
         operand = self.visit(node.operand)
-        if isinstance(node.op, ast.UAdd):
-            return +operand
-        if isinstance(node.op, ast.USub):
-            return -operand
+        try:
+            if isinstance(node.op, ast.UAdd):
+                return +operand
+            if isinstance(node.op, ast.USub):
+                return -operand
+        except TypeError as exc:
+            raise TemplateEvaluationError(
+                "Unary operator requires a numeric operand") from exc
         raise TemplateEvaluationError("Unsupported unary operator in template")
 
     def visit_BinOp(self, node: ast.BinOp) -> Any:
@@ -373,16 +385,21 @@ class _LiteralExpressionEvaluator(ast.NodeVisitor):
                         and not isinstance(factor, bool) \
                         and factor > 0 and len(seq) * factor > _TEMPLATE_RESULT_LIMIT:
                     raise TemplateEvaluationError("Template result exceeds size limit")
-        if isinstance(node.op, ast.Add):
-            result = left + right
-        elif isinstance(node.op, ast.Sub):
-            result = left - right
-        elif isinstance(node.op, ast.Mult):
-            result = left * right
-        elif isinstance(node.op, ast.Div):
-            result = left / right
-        else:
-            raise TemplateEvaluationError("Unsupported binary operator in template")
+        try:
+            if isinstance(node.op, ast.Add):
+                result = left + right
+            elif isinstance(node.op, ast.Sub):
+                result = left - right
+            elif isinstance(node.op, ast.Mult):
+                result = left * right
+            elif isinstance(node.op, ast.Div):
+                result = left / right
+            else:
+                raise TemplateEvaluationError("Unsupported binary operator in template")
+        except (TypeError, ZeroDivisionError) as exc:
+            raise TemplateEvaluationError(
+                f"{type(node.op).__name__} cannot be applied to these operands"
+            ) from exc
         if isinstance(result, (str, list, tuple, set, dict)) and len(result) > _TEMPLATE_RESULT_LIMIT:
             raise TemplateEvaluationError("Template result exceeds size limit")
         return result
