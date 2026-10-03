@@ -773,10 +773,15 @@ class MIDIComposer:
             raise ValueError(
                 f"length must be a positive finite duration, got {length!r}")
         melody = []
-        current_time = 0.0
+        # The melody runs over the progression, so its clock starts at the
+        # first chord -- anchoring at 0.0 returns an empty list whenever the
+        # supplied chords start later (e.g. analysis output, whose chords
+        # sit where the audio put them).
+        start = min((chord.start_time for chord in chords), default=0.0)
+        current_time = start
         note_duration = 0.5  # Half beat notes
 
-        while current_time < length:
+        while current_time < start + length:
             # Find current chord
             current_chord = None
             for chord in chords:
@@ -786,12 +791,13 @@ class MIDIComposer:
 
             if current_chord:
                 # Choose note from chord or scale
+                step = int((current_time - start) * 2)
                 if len(current_chord.notes) > 0:
                     # Prefer chord tones
-                    pitch_class = current_chord.notes[int(current_time * 2) % len(current_chord.notes)]
+                    pitch_class = current_chord.notes[step % len(current_chord.notes)]
                 else:
                     # Use scale notes
-                    pitch_class = key.scale_notes[int(current_time * 2) % len(key.scale_notes)]
+                    pitch_class = key.scale_notes[step % len(key.scale_notes)]
 
                 # Add octave
                 pitch = pitch_class + 60  # Middle C octave

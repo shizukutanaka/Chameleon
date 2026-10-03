@@ -2865,6 +2865,20 @@ succeeded, leaking the descriptor one bad call at a time -- the fd is
 now closed when fdopen raises. Non-update modes are unchanged, and
 pure-read `r+` stays refused under the write/append contract.
 
+**Q (2026-10-02, audit 259):** `MIDIComposer.generate_melody` — does the
+melody timeline line up with the supplied progression?
+**A:** No. The melody clock always started at t=0, so a progression that
+begins later than `length` produced an *empty* list and a later-starting
+one produced a partial melody cut off at `length` -- silently, in both
+cases. The shipped `demo_midi_analysis` demonstrates the failure itself:
+its chords live at t=8..16 and the demo prints "Generated Melody:" with
+nothing after it (verified by running it). The melody is "over the chord
+progression", so it now anchors at the first chord's start_time and runs
+`length` beats from there; the note-selection step is likewise relative
+to that anchor. Progressions starting at 0 produce byte-identical output,
+and an empty progression still honestly returns [].
+
+
 **Q (2026-10-02, audit 292):** Should `MIDIComposer.generate_melody`
 accept a non-finite `length`?
 **A:** No. `length=float('inf')` made `while current_time < length`
