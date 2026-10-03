@@ -2858,3 +2858,19 @@ empirically from a worker thread. The signal branch now requires
 callers take the existing thread-join fallback, which was verified to
 return results and enforce the timeout there (main-thread SIGALRM path
 unchanged).
+
+**Q (2026-10-03, audit 304):** Should `_to_float_sequence` in
+spectral_utils reject non-finite sample values, or keep passing them
+through since `float()` accepts them?
+
+**A:** Reject with `ValueError`. Every public helper routes samples
+through that converter, and non-finite values poison each consumer
+silently: `analyze_spectrum` reported `nan` rms/dc, `apply_spectral_mask`
+NaN'd the entire output block, `normalize_peak`'s `max(abs())` returned
+`nan` or `inf` (one `inf` sample zeroed the whole signal), and
+`linear_resample`/`sliding_window_rms` spread `nan` across interpolated
+output. Audits 131/253/260 closed the same hole for the scalar
+*parameters* on this API; the *sample content* had no equivalent guard.
+WAV input cannot produce non-finite samples (PCM is integer), so
+rejection costs no legitimate flow and converts a silent corruption into
+a named error at the module boundary.
