@@ -320,6 +320,7 @@ def test_analyze_harmony_reports_each_template_types_real_quality():
         entry = result["progression"][0]
         assert entry["quality"] == quality, f"{chord_type}: {entry['quality']}"
         assert entry["roman"] == roman, f"{chord_type}: {entry['roman']}"
+<<<<<<< HEAD
 
 
 def test_parse_midi_rejects_nonpositive_or_nonfinite_sample_rate():
@@ -354,3 +355,111 @@ def test_parse_midi_normal_rate_still_extracts_notes():
     notes = analyzer.parse_midi_from_audio(audio, sr)
     assert len(notes) >= 1
     assert any(note.pitch == 69 for note in notes)
+||||||| 7bcfad6
+=======
+
+
+def test_generate_melody_anchors_to_first_chord():
+    # Chords from real analysis sit where the audio put them (e.g. t=8-16),
+    # not at 0. A melody clock that starts at 0 emits nothing for a
+    # requested length before the first chord -- the shipped demo printed
+    # "Generated Melody:" followed by silence.
+    from midi_analysis import Chord, MusicalKey, MIDIComposer, MIDIConfig
+    composer = MIDIComposer(MIDIConfig())
+    key = MusicalKey(tonic=0, mode="major", confidence=1.0)
+    chords = [
+        Chord(root=0, chord_type="major", notes=[0, 4, 7],
+              start_time=t, duration=2.0, confidence=1.0)
+        for t in (8.0, 10.0, 12.0, 14.0)
+    ]
+    melody = composer.generate_melody(chords, key, length=4.0)
+    assert len(melody) == 8  # half-beat notes across 4 beats
+    assert melody[0].start_time == 8.0
+    assert melody[-1].start_time + melody[-1].duration == 12.0
+
+
+def test_generate_melody_zero_anchored_unchanged():
+    from midi_analysis import Chord, MusicalKey, MIDIComposer, MIDIConfig
+    composer = MIDIComposer(MIDIConfig())
+    key = MusicalKey(tonic=0, mode="major", confidence=1.0)
+    chords = [Chord(root=0, chord_type="major", notes=[0, 4, 7],
+                    start_time=0.0, duration=8.0, confidence=1.0)]
+    melody = composer.generate_melody(chords, key, length=2.0)
+    assert [n.pitch for n in melody] == [60, 64, 67, 60]
+
+
+def test_generate_melody_anchors_on_unsorted_chords():
+    from midi_analysis import Chord, MusicalKey, MIDIComposer, MIDIConfig
+    composer = MIDIComposer(MIDIConfig())
+    key = MusicalKey(tonic=0, mode="major", confidence=1.0)
+    chords = [
+        Chord(root=0, chord_type="major", notes=[0, 4, 7],
+              start_time=t, duration=2.0, confidence=1.0)
+        for t in (14.0, 8.0)  # later chord listed first
+    ]
+    melody = composer.generate_melody(chords, key, length=2.0)
+    assert melody[0].start_time == 8.0
+
+
+# --- suggest_next_chord transition table -----------------------------------
+
+def test_suggest_next_chord_follows_standard_progressions():
+    # The transition table's own comments promised I -> V, IV, vi; the
+    # semitone entries actually emitted III, V, VI, IV -- indexing off by
+    # the accidental rows of the roman table.
+    from midi_analysis import MIDIComposer, Chord, MusicalKey
+    composer = MIDIComposer()
+    key = MusicalKey(tonic=0, mode="major", confidence=0.9)
+    i_chord = Chord(root=0, chord_type="major", notes=[0, 4, 7],
+                    start_time=0.0, duration=2.0)
+    suggestions = composer.suggest_next_chord([i_chord], key)
+    romans = [r for r, _p in suggestions]
+    assert romans == ["V", "IV", "vi", "ii"]
+
+
+def test_suggest_next_chord_after_dominant_resolves_to_tonic():
+    from midi_analysis import MIDIComposer, Chord, MusicalKey
+    composer = MIDIComposer()
+    key = MusicalKey(tonic=0, mode="major", confidence=0.9)
+    v_chord = Chord(root=7, chord_type="major", notes=[7, 11, 2],
+                    start_time=0.0, duration=2.0)
+    romans = [r for r, _p in composer.suggest_next_chord([v_chord], key)]
+    assert romans[0] == "I"
+
+
+def test_suggest_next_chord_marks_minor_targets_lowercase():
+    # A minor-mode i is a minor tonic -- reporting it "I" would claim major.
+    from midi_analysis import MIDIComposer, Chord, MusicalKey
+    composer = MIDIComposer()
+    key = MusicalKey(tonic=9, mode="minor", confidence=0.9)  # A minor
+    v_chord = Chord(root=9 + 7, chord_type="major", notes=[4, 8, 11],
+                    start_time=0.0, duration=2.0)
+    romans = [r for r, _p in composer.suggest_next_chord([v_chord], key)]
+    assert romans[0] == "i"
+
+
+def test_generate_melody_rejects_non_finite_and_non_positive_length():
+    """generate_melody(length=inf) looped forever (`current_time < inf`
+    is always true); nan and negatives silently returned an empty
+    melody. The CLI guards --length but the direct API did not."""
+    import pytest
+    from midi_analysis import MIDIComposer, Chord, MusicalKey
+    composer = MIDIComposer()
+    key = MusicalKey(tonic=0, mode="major", confidence=1.0,
+                     scale_notes=[0, 2, 4, 5, 7, 9, 11])
+    chord = Chord(root=0, chord_type="major", notes=[0, 4, 7],
+                  start_time=0.0, duration=8.0)
+    for bad in (float("inf"), float("nan"), -1.0, 0.0):
+        with pytest.raises(ValueError, match="positive finite"):
+            composer.generate_melody([chord], key, length=bad)
+
+
+def test_generate_melody_still_generates_for_valid_length():
+    from midi_analysis import MIDIComposer, Chord, MusicalKey
+    composer = MIDIComposer()
+    key = MusicalKey(tonic=0, mode="major", confidence=1.0,
+                     scale_notes=[0, 2, 4, 5, 7, 9, 11])
+    chord = Chord(root=0, chord_type="major", notes=[0, 4, 7],
+                  start_time=0.0, duration=8.0)
+    assert len(composer.generate_melody([chord], key, length=8.0)) == 16
+>>>>>>> origin/main
