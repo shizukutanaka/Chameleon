@@ -2835,3 +2835,37 @@ now requires ``math.isfinite`` on both rates. ``analyze_spectrum`` sliced
 ``peaks[:max_peaks]`` verbatim, so ``max_peaks=-1`` silently dropped the
 weakest peak and ``max_peaks=2.5`` leaked a raw TypeError; both now raise
 ValueError before the transform runs.
+||||||| 72c9c773
+**Q (2026-10-02, audit 294):** The plugin audit denies dangerous attribute
+names — but can the same names be fetched as *strings* the walk never
+sees, or bound under a fresh alias?
+**A:** Yes, three ways, each verified end to end against os.system on
+main. `operator.attrgetter`/`itemgetter`/`methodcaller` turn any denied
+attribute name into an opaque string argument —
+`attrgetter("__class__.__subclasses__")(object)(object)` reached live
+subclasses with zero flagged constructs. `from operator import
+attrgetter as ag` re-bound the same primitive under a name the walk
+cannot see — the ImportFrom branch checked only the module, never the
+imported name. And `getattr(obj, "f_globals")` passed because the literal
+check used a six-name subset of the attribute deny list (drift); with
+`import traceback` allowlisted, `traceback.walk_stack` handed out real
+host frames to read it from. Fixes: one `_DANGEROUS_ATTR_NAMES` set now
+governs attribute access, getattr literal args, and from-import names
+(the primitives plus the `types` code-execution constructors
+FunctionType/CodeType/MethodType join it and the call/ref deny sets);
+star imports are refused; `traceback` leaves the import allowlist — it
+exists only to reach frames, the exact surface the list claims to
+exclude. `types.FunctionType` itself was verified running arbitrary
+bytecode without compile().
+**Q (2026-10-02, audit 295):** `PluginSandbox.execute_with_limits` offers
+a SIGALRM path for POSIX and a worker-thread fallback — does every
+caller actually reach one of them?
+**A:** No — POSIX callers on any non-main thread got a raw ValueError
+("signal only works in main thread") out of signal.signal() before the
+plugin callable ever ran: no timeout, no result, just a crash out of a
+function whose contract is "execute func with limits". Verified
+empirically from a worker thread. The signal branch now requires
+`threading.current_thread() is threading.main_thread()`; off-main-thread
+callers take the existing thread-join fallback, which was verified to
+return results and enforce the timeout there (main-thread SIGALRM path
+unchanged).
