@@ -2824,6 +2824,34 @@ streaming in-out site in the tree (audit-148 covers core.py's three);
 copies into a separate destination tree, and the API server namespaces
 every output with a uuid.
 
+**Q (2026-10-02, audit 255):** `PersonalLibraryManager._load_db` promises
+"the same rigor as PersonalConfig.load" -- does the library DB recover
+from corruption as gracefully as the config does?
+**A:** No, three ways (all verified). A directory or unreadable file at
+`~/.chameleon/library.json` leaked `IsADirectoryError`/`PermissionError`
+(`load` only caught `JSONDecodeError`). A `{}` document passed the
+top-level dict check, then every method died on `KeyError("files")` on
+first use. A record like `"a.wav": "junk"` survived load and crashed
+later with `AttributeError` in `add_tags`/`search`. `_load_db` now
+catches `OSError` into the same actionable `ValueError` audit-248 gave
+`PersonalConfig.load`, and validates shape: absent keys become empty
+sections (recoverable), wrong-typed sections and non-object file records
+raise a `ValueError` naming the file.
+
+**Q (2026-10-02, audit 256):** `MIDIComposer.suggest_next_chord` indexes
+`roman_numerals` with semitone degrees -- does the transition table's
+vocabulary match that indexing?
+**A:** No (verified). After a tonic chord it suggested `III` at 0.4
+while its own comment reads "I -> V, IV, vi": the table entries
+`[(4,.4),(7,.3),(9,.2),(5,.1)]` index the roman table by semitone but
+encode scale-degree-ish targets, so I->III was the top suggestion and
+the "V -> I, ii" row sat under degree 4 (III). The minor-quality
+targets it intends (vi, ii) also printed as uppercase "VI"/"II",
+reporting minor suggestions as major. The table is now semitone-true
+to the commented intents (I->V/IV/vi/ii, IV->V/I/ii, V->I/vi/IV,
+vi->IV/I/V) and minor degrees are emitted lowercase, matching
+analyze_harmony's casing convention.
+
 **Q (2026-10-02, audit 258):** `open_secure` promises to honor the usual
 Python mode strings -- does it?
 **A:** Two contract breaks, both silently. `open_secure(p, "wb+")`
@@ -2836,6 +2864,34 @@ mode string declares. Separately, any mode `os.fdopen` rejects (e.g.
 succeeded, leaking the descriptor one bad call at a time -- the fd is
 now closed when fdopen raises. Non-update modes are unchanged, and
 pure-read `r+` stays refused under the write/append contract.
+
+**Q (2026-10-02, audit 259):** `MIDIComposer.generate_melody` — does the
+melody timeline line up with the supplied progression?
+**A:** No. The melody clock always started at t=0, so a progression that
+begins later than `length` produced an *empty* list and a later-starting
+one produced a partial melody cut off at `length` -- silently, in both
+cases. The shipped `demo_midi_analysis` demonstrates the failure itself:
+its chords live at t=8..16 and the demo prints "Generated Melody:" with
+nothing after it (verified by running it). The melody is "over the chord
+progression", so it now anchors at the first chord's start_time and runs
+`length` beats from there; the note-selection step is likewise relative
+to that anchor. Progressions starting at 0 produce byte-identical output,
+and an empty progression still honestly returns [].
+
+
+**Q (2026-10-02, audit 292):** Should `MIDIComposer.generate_melody`
+accept a non-finite `length`?
+**A:** No. `length=float('inf')` made `while current_time < length`
+loop forever generating notes (verified: 3s alarm; never returns);
+`nan` and negatives silently returned `[]`. The CLI guards `--length`
+at argparse (finite, > 0) but the direct API — which `compose_melody`
+and library callers reach — had no bound. It now raises `ValueError`
+naming the constraint, matching `--length`'s own message shape.
+
+
+
+
+
 
 **Q (2026-10-02, audit 287):** Do the ux_improvements formatters survive
 ragged/non-finite input?
