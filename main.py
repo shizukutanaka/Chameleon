@@ -3238,8 +3238,8 @@ async def main():
                         print(f"  {chord} (probability: {prob:.2f})")
 
         elif args.operation == "compose":
-            # Generate a basic composition
-            print("🎵 Generating musical composition...")
+            # Generate a basic composition. The banner claims composition
+            # started; it must wait until every refusal check passes.
 
             # --key selects the tonic, --mode the scale intervals used by
             # compose_melody; both were previously ignored and every
@@ -3249,6 +3249,8 @@ async def main():
                 print(f"Error: unknown key '{args.key}' "
                       f"(expected e.g. C, F#, Bb)", file=sys.stderr)
                 return ExitCode.INPUT
+
+            print("🎵 Generating musical composition...")
 
             mode = args.mode if args.mode is not None else "major"
             tempo = args.tempo if args.tempo is not None else 120.0
@@ -3314,13 +3316,13 @@ async def main():
                 print("Error: --output required for generate operation", file=sys.stderr)
                 return ExitCode.USAGE
 
-            print("🎼 Generating MIDI demo...")
-
             tonic = _midi_tonic(args.key)
             if tonic is None:
                 print(f"Error: unknown key '{args.key}' "
                       f"(expected e.g. C, F#, Bb)", file=sys.stderr)
                 return ExitCode.INPUT
+
+            print("🎼 Generating MIDI demo...")
 
             mode = args.mode if args.mode is not None else "major"
             tempo = args.tempo if args.tempo is not None else 120.0

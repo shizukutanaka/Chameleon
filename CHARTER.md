@@ -2824,6 +2824,82 @@ streaming in-out site in the tree (audit-148 covers core.py's three);
 copies into a separate destination tree, and the API server namespaces
 every output with a uuid.
 
+**Q (2026-10-02, audit 248):** `PersonalConfig.load` checks
+`config_path.exists()` then `open()`s it, catching only
+`json.JSONDecodeError` -- what happens when the path is a directory or
+unreadable?
+**A:** `exists()` is True for a directory, so `open()` raised
+IsADirectoryError, and a 0o000 file raised PermissionError -- raw
+OSErrors where every other unusable config reports a ValueError naming
+the path (reproduced both). `load` now maps OSError to the same
+actionable ValueError ("could not be read ... remove it to start again
+from the defaults"), keeping JSONDecodeError's existing message.
+
+**Q (2026-10-02, audit 249):** Every `spectral_utils` entry point returns
+`[]` on empty input -- does `sliding_window_rms` keep that contract?
+**A:** No: `sliding_window_rms([], n)` clamped `window_size` to
+`len(buffer)` = 0, then `range(0, 1)` ran one iteration and evaluated
+`sqrt(0 / 0)` -- a ZeroDivisionError (reproduced for any positive
+window). `normalize_peak`, `linear_resample` and `apply_spectral_mask`
+all early-return `[]` on empty input; `sliding_window_rms` now does the
+same before the clamp. The `window_size <= 0` guard still fires first,
+so `([], 0)` remains a ValueError. First test coverage for the function
+was added alongside (constant-signal values, wider-than-signal clamp).
+
+**Q (2026-10-02, audit 255):** `PersonalLibraryManager._load_db` promises
+"the same rigor as PersonalConfig.load" -- does the library DB recover
+from corruption as gracefully as the config does?
+**A:** No, three ways (all verified). A directory or unreadable file at
+`~/.chameleon/library.json` leaked `IsADirectoryError`/`PermissionError`
+(`load` only caught `JSONDecodeError`). A `{}` document passed the
+top-level dict check, then every method died on `KeyError("files")` on
+first use. A record like `"a.wav": "junk"` survived load and crashed
+later with `AttributeError` in `add_tags`/`search`. `_load_db` now
+catches `OSError` into the same actionable `ValueError` audit-248 gave
+`PersonalConfig.load`, and validates shape: absent keys become empty
+sections (recoverable), wrong-typed sections and non-object file records
+raise a `ValueError` naming the file.
+
+**Q (2026-10-02, audit 256):** `MIDIComposer.suggest_next_chord` indexes
+`roman_numerals` with semitone degrees -- does the transition table's
+vocabulary match that indexing?
+**A:** No (verified). After a tonic chord it suggested `III` at 0.4
+while its own comment reads "I -> V, IV, vi": the table entries
+`[(4,.4),(7,.3),(9,.2),(5,.1)]` index the roman table by semitone but
+encode scale-degree-ish targets, so I->III was the top suggestion and
+the "V -> I, ii" row sat under degree 4 (III). The minor-quality
+targets it intends (vi, ii) also printed as uppercase "VI"/"II",
+reporting minor suggestions as major. The table is now semitone-true
+to the commented intents (I->V/IV/vi/ii, IV->V/I/ii, V->I/vi/IV,
+vi->IV/I/V) and minor degrees are emitted lowercase, matching
+analyze_harmony's casing convention.
+
+**Q (2026-10-02, audit 253):** Audit 131 added ``math.isfinite`` to the
+spectral API's ``<= 0`` guards -- did any exported numeric parameter slip
+through unguarded?
+**A:** Two did. ``linear_resample(x, inf, 44100)`` passed the
+``source_rate <= 0`` check, collapsed ``duration`` to 0, and silently
+returned a one-sample "resample" (verified: [0.0]); ``nan`` escaped only
+via an incidental ``int()`` ValueError, not the contract error. The guard
+now requires ``math.isfinite`` on both rates. ``analyze_spectrum`` sliced
+``peaks[:max_peaks]`` verbatim, so ``max_peaks=-1`` silently dropped the
+weakest peak and ``max_peaks=2.5`` leaked a raw TypeError; both now raise
+ValueError before the transform runs.
+
+**Q (2026-10-02, audit 250):** The two workflow expression evaluators
+raise their own typed errors (`ConditionEvaluationError`,
+`TemplateEvaluationError`) for every malformed expression -- do the
+arithmetic paths keep that contract?
+**A:** No. `_LiteralExpressionEvaluator` let `1/0` leak
+ZeroDivisionError, `'a'-1`/`'a'+1` and `-'a'`/`+'a'` leak TypeError;
+`_ConditionExpressionEvaluator` let `'x' in <non-iterable>` (e.g. a
+boolean `results["t"].success`) leak TypeError -- all reproduced. A
+workflow lambda like `inputs['a'] / inputs['b']` with b=0 therefore
+crashed with a raw error where the API promises a template diagnostic.
+Both evaluators now map TypeError/ZeroDivisionError to their typed
+error; `not in` gets the same guard as `in`, and `==`/`is` (which
+cannot raise on these operand types) are left bare.
+
 **Q (2026-10-02, audit 258):** `open_secure` promises to honor the usual
 Python mode strings -- does it?
 **A:** Two contract breaks, both silently. `open_secure(p, "wb+")`
@@ -2836,6 +2912,96 @@ mode string declares. Separately, any mode `os.fdopen` rejects (e.g.
 succeeded, leaking the descriptor one bad call at a time -- the fd is
 now closed when fdopen raises. Non-update modes are unchanged, and
 pure-read `r+` stays refused under the write/append contract.
+
+**Q (2026-10-02, audit 259):** `MIDIComposer.generate_melody` — does the
+melody timeline line up with the supplied progression?
+**A:** No. The melody clock always started at t=0, so a progression that
+begins later than `length` produced an *empty* list and a later-starting
+one produced a partial melody cut off at `length` -- silently, in both
+cases. The shipped `demo_midi_analysis` demonstrates the failure itself:
+its chords live at t=8..16 and the demo prints "Generated Melody:" with
+nothing after it (verified by running it). The melody is "over the chord
+progression", so it now anchors at the first chord's start_time and runs
+`length` beats from there; the note-selection step is likewise relative
+to that anchor. Progressions starting at 0 produce byte-identical output,
+and an empty progression still honestly returns [].
+
+
+**Q (2026-10-02, audit 292):** Should `MIDIComposer.generate_melody`
+accept a non-finite `length`?
+**A:** No. `length=float('inf')` made `while current_time < length`
+loop forever generating notes (verified: 3s alarm; never returns);
+`nan` and negatives silently returned `[]`. The CLI guards `--length`
+at argparse (finite, > 0) but the direct API — which `compose_melody`
+and library callers reach — had no bound. It now raises `ValueError`
+naming the constraint, matching `--length`'s own message shape.
+
+
+
+
+
+
+**Q (2026-10-02, audit 287):** Do the ux_improvements formatters survive
+ragged/non-finite input?
+**A:** Two crashes, both reproduced on main. `TableFormatter.format_table`
+indexed `widths[i]` past the header count on any row wider than the headers
+-- IndexError on ragged input a caller can plausibly produce; it now raises a
+ValueError naming the cell/header mismatch (short rows were always fine).
+`format_duration` reached `int(seconds/3600)` with NaN or inf -- ValueError /
+OverflowError from a render helper; a non-finite duration is now a typed
+ValueError at the top of the function, matching the repo's
+honest-error-over-silent-garbage contract (the "1m 60s" carry fix on the
+unmerged audit-87 branch covers a different defect and does not conflict).
+Two tests added, both mutation-verified.
+
+
+**Q (2026-10-02, audit 262):** Does `MIDIAnalyzer.parse_midi_from_audio`
+tolerate the arbitrary sample rate a WAV fmt chunk can declare?
+**A:** No -- the declared rate drove frame/hop arithmetic unchecked:
+`int(sample_rate * 0.023)` below ~174 Hz made `hop_size` zero and
+`range(0, n, 0)` crashed with "arg 3 must not be zero" (naming range, not
+the rate), while a zero or negative rate produced a negative frame size
+that scanned nothing and reported "no notes" for audio it never looked
+at. nan/inf took the crash path via int(). The CLI caller catches the
+exception and logs it (audit-129), but the public API contract is the
+same one audit-260 enforced in `apply_spectral_mask`: `sample_rate` must
+be a positive finite number, so it now raises ValueError naming the
+parameter, and `hop_size` clamps at 1 so rates too low for a 23 ms window
+degrade to an honest empty result instead of a zero-step crash.
+
+
+
+
+
+
+**Q (2026-10-02, audit 260):** `apply_spectral_mask` — its bands derive
+from sample_rate; is the rate validated like the siblings'?
+**A:** No. `analyze_spectrum` rejects non-finite/non-positive rates, but
+the equaliser checked only its gains: `sample_rate=0` or negative made
+bin_width <= 0, so every bin landed below 200 Hz and took low_gain;
+`nan` made every comparison false so every bin took high_gain; `inf`
+collapsed the same way (verified: a mid/high-only request came back as
+pure low-band, and vice versa, with no error). A three-band equaliser
+silently produced a flat uniform gain. It now applies the sibling's
+guard (`isfinite and > 0`) first, so a rate it cannot honour is refused
+rather than mis-applied.
+
+
+
+
+
+
+**Q (2026-10-02, audit 289):** Should the `midi compose`/`midi generate`
+progress banners print before the `--key` validation runs?
+**A:** No. Both ops printed their "Generating musical composition…" /
+"Generating MIDI demo…" banners, then validated the key and refused with
+INPUT(3) — output claimed work that never started, the same lying-ordering
+defect audit-78 fixed at the "MIDI operation '<op>'" site (its branch is
+unmerged; these two sites were outside it). The banners now print after
+the last refusal check in each block. Regressions in
+`tests/test_cli_polish.py` assert the banner is absent on refusal and
+present on a valid run.
+
 
 **Q (2026-10-02, audit 298):** The empty-selection refusal landed for
 delete/enhance/noise_reduce -- do interpolate_selection and
@@ -2885,3 +3051,19 @@ empirically from a worker thread. The signal branch now requires
 callers take the existing thread-join fallback, which was verified to
 return results and enforce the timeout there (main-thread SIGALRM path
 unchanged).
+
+**Q (2026-10-03, audit 304):** Should `_to_float_sequence` in
+spectral_utils reject non-finite sample values, or keep passing them
+through since `float()` accepts them?
+
+**A:** Reject with `ValueError`. Every public helper routes samples
+through that converter, and non-finite values poison each consumer
+silently: `analyze_spectrum` reported `nan` rms/dc, `apply_spectral_mask`
+NaN'd the entire output block, `normalize_peak`'s `max(abs())` returned
+`nan` or `inf` (one `inf` sample zeroed the whole signal), and
+`linear_resample`/`sliding_window_rms` spread `nan` across interpolated
+output. Audits 131/253/260 closed the same hole for the scalar
+*parameters* on this API; the *sample content* had no equivalent guard.
+WAV input cannot produce non-finite samples (PCM is integer), so
+rejection costs no legitimate flow and converts a silent corruption into
+a named error at the module boundary.
