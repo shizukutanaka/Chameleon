@@ -450,6 +450,22 @@ class PersonalWorkflow:
         """Backup audio library with verification"""
         from advanced_validation import IntegrityVerifier
 
+        # A backup inside the library it copies is self-including: the
+        # copies land where the next scan or backup sees them, so each
+        # later run re-copies its own output. backup == library is worse:
+        # copy2 raises SameFileError mid-run and the "backup" is a crash.
+        resolved_library = Path(library_path).resolve()
+        resolved_backup = Path(backup_path).resolve()
+        try:
+            resolved_backup.relative_to(resolved_library)
+        except ValueError:
+            pass
+        else:
+            raise ValueError(
+                "backup_path must not be the library itself or inside it: "
+                f"{resolved_backup}"
+            )
+
         print("💾 Backup Workflow")
 
         # 1. Create manifest

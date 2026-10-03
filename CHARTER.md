@@ -2858,3 +2858,18 @@ empirically from a worker thread. The signal branch now requires
 callers take the existing thread-join fallback, which was verified to
 return results and enforce the timeout there (main-thread SIGALRM path
 unchanged).
+
+**Q (2026-10-03, audit 309):** `PersonalWorkflow.backup_workflow` resolves
+neither of its path arguments — does it accept a backup destination that
+cannot produce a backup?
+**A:** It accepts two that cannot. `backup_path == library_path` makes
+every `shutil.copy2(file, file)` a self-copy: SameFileError raises
+mid-run after [1/3] and [2/3] banners and the "backup" is a traceback
+(verified empirically). `backup_path` inside `library_path` is worse
+because it succeeds: the copies land inside the tree being backed up, so
+the next `scan_library` registers them as library members and the next
+backup re-copies its own output -- the backup directory grows on every
+run (backup/, backup/backup/, ...). Both now raise ValueError before any
+side effect, checked on resolved paths (equal or inside the library).
+Path.resolve() also collapses any `lib/../lib` spelling to the same
+rejection.
