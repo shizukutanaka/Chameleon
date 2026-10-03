@@ -3252,3 +3252,15 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-10-02, audit 317):** `/auth/login` rate-limits by
+`login:{ip}:{username}` — does the limiter hold when the username
+rotates?
+**A:** No. Each new username minted a fresh fixed-window deque, so a
+password-spraying source got an untouched 120-request budget per account
+name and was never throttled (verified: max=2, four rotating usernames
+all returned 200). The authenticated `auth:` route already limits per-IP;
+login now runs a second `login-ip:{client_ip}` bucket through the same
+window machinery, capping the source regardless of target account. The
+username-keyed bucket stays — it still throttles brute force against a
+single account without punishing shared-NAT offices.

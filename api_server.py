@@ -1061,6 +1061,12 @@ async def login(request: AuthenticationRequest, http_request: Request):
         _enforce_session_capacity()
         client_ip = _get_request_ip(http_request)
         _enforce_rate_limit(f"login:{client_ip}:{request.username}")
+        # Per-(ip, username) alone is bypassable: rotating the username
+        # gives each attempt a fresh window, so password spraying is
+        # never throttled. A second per-IP bucket caps the source
+        # regardless of which account it targets (same bound the
+        # authenticated `auth:` route already applies).
+        _enforce_rate_limit(f"login-ip:{client_ip}")
 
         # Single-user credential check against the configured environment.
         if not (_DEV_USERNAME and _DEV_PASSWORD_HASH):
