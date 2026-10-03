@@ -2858,3 +2858,20 @@ empirically from a worker thread. The signal branch now requires
 callers take the existing thread-join fallback, which was verified to
 return results and enforce the timeout there (main-thread SIGALRM path
 unchanged).
+
+**Q (2026-10-02, audit 303):** Should `_apply_memory_limit` lower the
+RLIMIT_AS *hard* limit too, given that `execute_with_limits` then cannot
+restore it unprivileged? (Post-merge review finding on audit-295.)
+
+**A:** No — lower only the soft limit. POSIX lets an unprivileged process
+drop its hard limit but never raise it back, so writing
+`(target, target)` made every sandboxed call permanently cap the whole
+process at `max_memory_mb` once the restore failed EPERM (the context
+manager logged a warning and continued). Writing `(target, hard_before)`
+keeps the hard ceiling the kernel will enforce for this process
+unchanged: the soft limit still triggers MemoryError at the intended
+bound, and the restore path `(soft_before, hard_before)` is always legal
+because it only raises the soft limit back. Verified with a
+`_PosixRlimit` test fake implementing real raise-forbidden semantics;
+both the direct context-manager path and the off-main-thread
+thread-join fallback now restore the process limits exactly.

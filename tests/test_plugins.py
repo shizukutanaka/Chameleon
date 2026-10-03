@@ -345,3 +345,72 @@ def test_execute_with_limits_times_out_off_main_thread():
     worker.join(10)
 
     assert result == ["timeout"]
+
+
+class _PosixRlimit:
+    """resource stand-in with POSIX semantics: an unprivileged process may
+    lower the hard limit but can never raise it again."""
+
+    RLIMIT_AS = 9
+    RLIM_INFINITY = -1
+
+    class error(Exception):
+        pass
+
+    def __init__(self, soft, hard):
+        self.soft = soft
+        self.hard = hard
+
+    def getrlimit(self, which):
+        assert which == self.RLIMIT_AS
+        return (self.soft, self.hard)
+
+    def setrlimit(self, which, limits):
+        assert which == self.RLIMIT_AS
+        soft_req, hard_req = limits
+        finite_hard = self.hard != self.RLIM_INFINITY
+        raises_hard = hard_req == self.RLIM_INFINITY or (
+            finite_hard and hard_req > self.hard)
+        if raises_hard:
+            raise self.error("cannot raise hard limit without privilege")
+        self.soft, self.hard = limits
+
+
+def test_apply_memory_limit_restores_process_limits(monkeypatch):
+    """setrlimit used to write (target, target), lowering the *hard* limit;
+    unprivileged restore then failed EPERM and the whole process -- host
+    included -- stayed capped at max_memory_mb after every sandboxed call.
+    Only the soft limit is now lowered, so the restore is always legal."""
+    import plugin_system
+
+    state = _PosixRlimit(soft=4 << 30, hard=8 << 30)
+    monkeypatch.setattr(plugin_system, "resource", state)
+
+    sandbox = PluginSandbox(PluginConfig(max_memory_mb=64))
+    with sandbox._apply_memory_limit():
+        pass
+
+    assert (state.soft, state.hard) == (4 << 30, 8 << 30)
+
+
+def test_execute_with_limits_restores_memory_off_main_thread(monkeypatch):
+    """The review's exact scenario: an off-main-thread call enters the
+    thread-join fallback, whose _apply_memory_limit used to leave the
+    process hard-capped even though the plugin call succeeded."""
+    import plugin_system
+
+    state = _PosixRlimit(soft=4 << 30, hard=8 << 30)
+    monkeypatch.setattr(plugin_system, "resource", state)
+
+    sandbox = PluginSandbox(PluginConfig(max_memory_mb=64))
+    result = []
+
+    def run():
+        result.append(sandbox.execute_with_limits(lambda: 42))
+
+    worker = threading.Thread(target=run)
+    worker.start()
+    worker.join(10)
+
+    assert result == [42]
+    assert (state.soft, state.hard) == (4 << 30, 8 << 30)
