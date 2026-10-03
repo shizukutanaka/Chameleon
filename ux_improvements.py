@@ -316,6 +316,8 @@ class ColorText:
 
 def format_file_size(bytes: int) -> str:
     """Format bytes as human-readable size"""
+    if not math.isfinite(bytes):
+        raise ValueError(f"bytes must be finite, got {bytes!r}")
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
         if bytes < 1024:
             return f"{bytes:.1f} {unit}"
