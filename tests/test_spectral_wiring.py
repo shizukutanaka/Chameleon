@@ -154,6 +154,38 @@ def test_analyze_spectrum_rejects_non_finite_sample_rate():
     assert report.sample_rate == 44100
 
 
+def test_spectral_helpers_reject_non_finite_samples():
+    # float() accepts NaN/inf, so _to_float_sequence used to pass them
+    # through: analyze_spectrum reported nan rms/dc, apply_spectral_mask
+    # NaN'd the whole block, normalize_peak's max() silently zeroed the
+    # signal on inf, linear_resample and sliding_window_rms spread nan.
+    nan = float("nan")
+    inf = float("inf")
+    calls = [
+        lambda bad: spectral_utils.analyze_spectrum([0.1, bad, 0.5], 44100),
+        lambda bad: spectral_utils.normalize_peak([0.1, bad, 0.5]),
+        lambda bad: spectral_utils.linear_resample(
+            [0.1, bad, 0.5], 8000, 16000),
+        lambda bad: spectral_utils.apply_spectral_mask(
+            [0.1, bad, 0.3, 0.5], 44100),
+        lambda bad: spectral_utils.sliding_window_rms([0.1, bad, 0.5], 2),
+    ]
+    for call in calls:
+        for bad in (nan, inf, -inf):
+            try:
+                call(bad)
+            except ValueError:
+                continue
+            raise AssertionError(f"non-finite sample {bad} accepted")
+
+    src = [0.5 * math.sin(2 * math.pi * 440 * i / 44100) for i in range(512)]
+    assert spectral_utils.normalize_peak(src) != []
+    assert spectral_utils.analyze_spectrum(src, 44100).rms_level > 0
+    assert spectral_utils.sliding_window_rms(src, 64) != []
+    assert spectral_utils.linear_resample(src, 44100, 22050) != []
+    assert spectral_utils.apply_spectral_mask(src, 44100) != []
+
+
 def test_sliding_window_rms_empty_input_returns_empty():
     # Empty input clamped window_size to 0, then divided by it --
     # a ZeroDivisionError where every sibling entry point returns [].
