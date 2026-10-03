@@ -320,7 +320,6 @@ def test_analyze_harmony_reports_each_template_types_real_quality():
         entry = result["progression"][0]
         assert entry["quality"] == quality, f"{chord_type}: {entry['quality']}"
         assert entry["roman"] == roman, f"{chord_type}: {entry['roman']}"
-<<<<<<< HEAD
 
 
 # --- suggest_next_chord transition table -----------------------------------
@@ -358,8 +357,6 @@ def test_suggest_next_chord_marks_minor_targets_lowercase():
                     start_time=0.0, duration=2.0)
     romans = [r for r, _p in composer.suggest_next_chord([v_chord], key)]
     assert romans[0] == "i"
-||||||| 7bcfad6
-=======
 
 
 def test_generate_melody_rejects_non_finite_and_non_positive_length():
@@ -386,4 +383,3 @@ def test_generate_melody_still_generates_for_valid_length():
     chord = Chord(root=0, chord_type="major", notes=[0, 4, 7],
                   start_time=0.0, duration=8.0)
     assert len(composer.generate_melody([chord], key, length=8.0)) == 16
->>>>>>> origin/main
