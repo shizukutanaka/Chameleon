@@ -332,3 +332,31 @@ def test_batch_warns_when_output_dir_is_inside_the_scan(tmp_path):
 
     apart = _run("batch", str(src), "normalize", "--output-dir", str(outside))
     assert "re-processed as inputs" not in apart.stderr
+
+
+def test_midi_compose_unknown_key_prints_no_banner(tmp_path):
+    """`midi compose --key H` must refuse before printing the composition
+    banner: a 'Generating musical composition...' line that precedes the
+    refusal claims work that never started (same contract as the stream and
+    server banner fixes)."""
+    proc = _run("midi", "compose", "--key", "H", "--output",
+                str(tmp_path / "x.mid"))
+    assert proc.returncode == 3
+    assert "unknown key 'H'" in proc.stderr
+    assert "Generating musical composition" not in proc.stdout
+
+
+def test_midi_generate_unknown_key_prints_no_banner(tmp_path):
+    """Same pre-refusal banner defect on `midi generate`."""
+    proc = _run("midi", "generate", "--key", "XYZ", "--output",
+                str(tmp_path / "x.mid"))
+    assert proc.returncode == 3
+    assert "unknown key 'XYZ'" in proc.stderr
+    assert "Generating MIDI demo" not in proc.stdout
+
+
+def test_midi_compose_valid_key_still_prints_banner(tmp_path):
+    proc = _run("midi", "compose", "--key", "C", "--output",
+                str(tmp_path / "ok.mid"))
+    assert "Generating musical composition" in proc.stdout
+    assert proc.returncode == 0
