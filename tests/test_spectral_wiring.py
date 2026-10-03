@@ -152,7 +152,6 @@ def test_analyze_spectrum_rejects_non_finite_sample_rate():
         raise AssertionError(f"sample_rate={bad} accepted")
     report = spectral_utils.analyze_spectrum(src, 44100)
     assert report.sample_rate == 44100
-<<<<<<< HEAD
 
 
 def test_spectral_helpers_reject_non_finite_samples():
@@ -185,8 +184,6 @@ def test_spectral_helpers_reject_non_finite_samples():
     assert spectral_utils.sliding_window_rms(src, 64) != []
     assert spectral_utils.linear_resample(src, 44100, 22050) != []
     assert spectral_utils.apply_spectral_mask(src, 44100) != []
-||||||| 7bcfad6
-=======
 
 
 def test_sliding_window_rms_empty_input_returns_empty():
@@ -199,4 +196,3 @@ def test_sliding_window_rms_values():
     assert spectral_utils.sliding_window_rms([2.0] * 8, 4) == [2.0] * 5
     # A window wider than the signal clamps to one full-length window.
     assert spectral_utils.sliding_window_rms([3.0, -3.0], 10) == [3.0]
->>>>>>> origin/main
