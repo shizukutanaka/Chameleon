@@ -2,8 +2,8 @@
 
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
 **Version:** 1.1.0 · **Tests:** re-run 2026-10-03 on Python 3.12, green in
-all three configurations — **579 passed** on a bare install (stdlib only, 34 skipped), **666** with numpy (scipy/librosa/soundfile blocked, 35
-skipped), **773** with numpy + scipy + librosa + soundfile + fastapi (5 skipped). Skip totals follow which extras are installed — e.g. the two
+all three configurations — **581 passed** on a bare install (stdlib only, 34 skipped), **668** with numpy (scipy/librosa/soundfile blocked, 35
+skipped), **775** with numpy + scipy + librosa + soundfile + fastapi (5 skipped). Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
 configurations do not cover the `[audio]` extra's librosa path; installing

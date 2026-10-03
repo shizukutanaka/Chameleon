@@ -2875,6 +2875,20 @@ now requires ``math.isfinite`` on both rates. ``analyze_spectrum`` sliced
 weakest peak and ``max_peaks=2.5`` leaked a raw TypeError; both now raise
 ValueError before the transform runs.
 
+**Q (2026-10-02, audit 250):** The two workflow expression evaluators
+raise their own typed errors (`ConditionEvaluationError`,
+`TemplateEvaluationError`) for every malformed expression -- do the
+arithmetic paths keep that contract?
+**A:** No. `_LiteralExpressionEvaluator` let `1/0` leak
+ZeroDivisionError, `'a'-1`/`'a'+1` and `-'a'`/`+'a'` leak TypeError;
+`_ConditionExpressionEvaluator` let `'x' in <non-iterable>` (e.g. a
+boolean `results["t"].success`) leak TypeError -- all reproduced. A
+workflow lambda like `inputs['a'] / inputs['b']` with b=0 therefore
+crashed with a raw error where the API promises a template diagnostic.
+Both evaluators now map TypeError/ZeroDivisionError to their typed
+error; `not in` gets the same guard as `in`, and `==`/`is` (which
+cannot raise on these operand types) are left bare.
+
 **Q (2026-10-02, audit 258):** `open_secure` promises to honor the usual
 Python mode strings -- does it?
 **A:** Two contract breaks, both silently. `open_secure(p, "wb+")`
@@ -2960,6 +2974,8 @@ pure low-band, and vice versa, with no error). A three-band equaliser
 silently produced a flat uniform gain. It now applies the sibling's
 guard (`isfinite and > 0`) first, so a rate it cannot honour is refused
 rather than mis-applied.
+
+
 
 **Q (2026-10-02, audit 294):** The plugin audit denies dangerous attribute
 names — but can the same names be fetched as *strings* the walk never
