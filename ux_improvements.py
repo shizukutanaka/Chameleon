@@ -4,6 +4,7 @@ UX Improvements Module for Chameleon Audio System
 Provides progress indicators, better error messages, and user-friendly output
 """
 
+import math
 import sys
 import time
 import shutil
@@ -212,9 +213,15 @@ class TableFormatter:
 
         align = align or ['left'] * len(headers)
 
-        # Calculate column widths
+        # Calculate column widths. A row wider than the headers used to
+        # index past `widths` and die on a raw IndexError; short rows are
+        # fine (zip stops at the shorter sequence).
         widths = [len(h) for h in headers]
         for row in rows:
+            if len(row) > len(headers):
+                raise ValueError(
+                    f"table row has {len(row)} cells but only "
+                    f"{len(headers)} headers")
             for i, cell in enumerate(row):
                 widths[i] = max(widths[i], len(str(cell)))
 
@@ -318,6 +325,8 @@ def format_file_size(bytes: int) -> str:
 
 def format_duration(seconds: float) -> str:
     """Format seconds as human-readable duration"""
+    if not math.isfinite(seconds):
+        raise ValueError(f"seconds must be finite, got {seconds!r}")
     if seconds < 1:
         return f"{seconds*1000:.0f}ms"
     elif seconds < 60:
