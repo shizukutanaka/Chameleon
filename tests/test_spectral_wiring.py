@@ -152,3 +152,15 @@ def test_analyze_spectrum_rejects_non_finite_sample_rate():
         raise AssertionError(f"sample_rate={bad} accepted")
     report = spectral_utils.analyze_spectrum(src, 44100)
     assert report.sample_rate == 44100
+
+
+def test_sliding_window_rms_empty_input_returns_empty():
+    # Empty input clamped window_size to 0, then divided by it --
+    # a ZeroDivisionError where every sibling entry point returns [].
+    assert spectral_utils.sliding_window_rms([], 5) == []
+
+
+def test_sliding_window_rms_values():
+    assert spectral_utils.sliding_window_rms([2.0] * 8, 4) == [2.0] * 5
+    # A window wider than the signal clamps to one full-length window.
+    assert spectral_utils.sliding_window_rms([3.0, -3.0], 10) == [3.0]

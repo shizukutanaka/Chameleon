@@ -2824,6 +2824,17 @@ streaming in-out site in the tree (audit-148 covers core.py's three);
 copies into a separate destination tree, and the API server namespaces
 every output with a uuid.
 
+**Q (2026-10-02, audit 249):** Every `spectral_utils` entry point returns
+`[]` on empty input -- does `sliding_window_rms` keep that contract?
+**A:** No: `sliding_window_rms([], n)` clamped `window_size` to
+`len(buffer)` = 0, then `range(0, 1)` ran one iteration and evaluated
+`sqrt(0 / 0)` -- a ZeroDivisionError (reproduced for any positive
+window). `normalize_peak`, `linear_resample` and `apply_spectral_mask`
+all early-return `[]` on empty input; `sliding_window_rms` now does the
+same before the clamp. The `window_size <= 0` guard still fires first,
+so `([], 0)` remains a ValueError. First test coverage for the function
+was added alongside (constant-signal values, wider-than-signal clamp).
+
 **Q (2026-10-02, audit 255):** `PersonalLibraryManager._load_db` promises
 "the same rigor as PersonalConfig.load" -- does the library DB recover
 from corruption as gracefully as the config does?
@@ -2920,6 +2931,8 @@ same one audit-260 enforced in `apply_spectral_mask`: `sample_rate` must
 be a positive finite number, so it now raises ValueError naming the
 parameter, and `hop_size` clamps at 1 so rates too low for a 23 ms window
 degrade to an honest empty result instead of a zero-step crash.
+
+
 
 **Q (2026-10-02, audit 294):** The plugin audit denies dangerous attribute
 names — but can the same names be fetched as *strings* the walk never

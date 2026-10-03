@@ -331,6 +331,8 @@ def sliding_window_rms(samples: Sequence[float], window_size: int) -> List[float
         raise ValueError("window_size must be positive")
 
     buffer = _to_float_sequence(samples)
+    if not buffer:
+        return []
     if window_size > len(buffer):
         window_size = len(buffer)
 
