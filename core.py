@@ -122,7 +122,10 @@ def open_secure(path: Union[str, Path], mode: str = "wb", *, encoding: Optional[
     if "w" not in mode and "a" not in mode:
         raise ValueError("open_secure only supports write/append modes")
 
-    flags = os.O_WRONLY
+    # "+" update modes must read as well as write: opening them O_WRONLY
+    # yields a descriptor whose first read() dies EBADF, behind a mode
+    # string that promised read access.
+    flags = os.O_RDWR if "+" in mode else os.O_WRONLY
     if "a" in mode:
         flags |= os.O_CREAT | os.O_APPEND
     else:
@@ -134,7 +137,13 @@ def open_secure(path: Union[str, Path], mode: str = "wb", *, encoding: Optional[
         flags |= os.O_BINARY
 
     fd = os.open(os.fspath(path), flags, 0o600)
-    return os.fdopen(fd, mode, encoding=encoding)
+    try:
+        return os.fdopen(fd, mode, encoding=encoding)
+    except Exception:
+        # fdopen validates the mode string; on failure the descriptor
+        # stays open unless it is closed here.
+        os.close(fd)
+        raise
 
 
 def _paths_refer_to_same_file(input_path: str, output_path: str) -> bool:
