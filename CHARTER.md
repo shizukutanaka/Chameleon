@@ -2913,6 +2913,22 @@ ever-growing newest file on every run. Both call sites
 processed/successful/failed counters -- which keeps the run-over-run
 comparison honest at ~150 bytes per record.
 
+**Q (2026-10-02, audit 257):** `design_peaking_eq`/`design_shelf_eq` are
+public biquad designers -- do they refuse parameters that cannot
+describe a real filter?
+**A:** No (verified). `frequency=48000` on a 44.1 kHz design returned
+finite coefficients for a filter centred above Nyquist; `frequency=-100`
+designed the mirrored low-frequency biquad; `q_factor=0`/`-3` and
+`slope=0`/`-2` were clamped to 1e-6 -- the caller's typo became an
+extreme resonator and still looked plausible; `gain_db=nan` emitted
+all-NaN coefficients. `ParametricEQ` pre-filters its bands (audit 32)
+so the class path never fed bad input, but the module-level API every
+external caller uses was unguarded -- the same direct-API silent
+re-parameterization class as audit-124. A shared
+`_validate_eq_design_params` now raises `ValueError` naming the field:
+`0 < frequency < Nyquist`, finite `gain_db`/`sample_rate`, positive
+`q_factor`/`slope`.
+
 **Q (2026-10-02, audit 258):** `open_secure` promises to honor the usual
 Python mode strings -- does it?
 **A:** Two contract breaks, both silently. `open_secure(p, "wb+")`
@@ -3030,6 +3046,8 @@ consuming undo state, the same contract the earlier fix established for
 its three ops; the check lives in the ops rather than select_region
 because an empty result is a legitimate value for copy_selection, which
 returns data, not a success flag.
+
+
 
 
 
