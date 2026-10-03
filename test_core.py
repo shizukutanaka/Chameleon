@@ -100,6 +100,60 @@ class CoreAudioTests(unittest.TestCase):
         self.assertTrue(target.exists())
         self.assertEqual(target.read_bytes(), b"data")
 
+    def test_trim_silence_reports_mid_scan_failure(self) -> None:
+        """A decode/read error mid-scan must surface as a failure, not a
+        "Trimmed 0.00s" success: the scan used to swallow every exception and
+        return the untouched (0, duration) initial bounds, so the whole file
+        was written out and trimming reported success."""
+        import core
+        wav_path = _write_sine_wave(self.tmp_path / "corrupt_midway.wav")
+        output_path = self.tmp_path / "out.wav"
+
+        calls = {"n": 0}
+        original = core.WAVProcessor._decode_sample_bytes
+
+        def flaky(sample_bytes, bit_depth):
+            calls["n"] += 1
+            if calls["n"] > 100:
+                raise OSError("simulated mid-scan decode failure")
+            return original(sample_bytes, bit_depth)
+
+        core.WAVProcessor._decode_sample_bytes = staticmethod(flaky)
+        try:
+            result = trim_silence(str(wav_path), str(output_path), 0.01)
+        finally:
+            core.WAVProcessor._decode_sample_bytes = staticmethod(original)
+
+        self.assertFalse(result.success)
+        self.assertIn("failed", result.message.lower())
+
+    def test_find_audio_boundaries_raises_on_scan_failure(self) -> None:
+        """Unit level: the helper must propagate the error, not return the
+        untouched (0, total) bounds that read as 'the whole file is audio'."""
+        import core
+        wav_path = _write_sine_wave(self.tmp_path / "corrupt.wav")
+        processor = core.WAVProcessor()
+        info = processor._read_wav_header(str(wav_path))
+        total = int(info.duration * info.sample_rate)
+
+        calls = {"n": 0}
+        original = core.WAVProcessor._decode_sample_bytes
+
+        def flaky(sample_bytes, bit_depth):
+            calls["n"] += 1
+            if calls["n"] > 10:
+                raise OSError("simulated mid-scan decode failure")
+            return original(sample_bytes, bit_depth)
+
+        core.WAVProcessor._decode_sample_bytes = staticmethod(flaky)
+        try:
+            with self.assertRaises(OSError):
+                processor._find_audio_boundaries(str(wav_path), info, 0.01)
+        finally:
+            core.WAVProcessor._decode_sample_bytes = staticmethod(original)
+
+        self.assertGreater(total, 0)
+
 
 class SecurityValidatorTests(unittest.TestCase):
     """Checks for the canonical security primitives."""

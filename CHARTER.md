@@ -2858,3 +2858,17 @@ empirically from a worker thread. The signal branch now requires
 callers take the existing thread-join fallback, which was verified to
 return results and enforce the timeout there (main-thread SIGALRM path
 unchanged).
+
+**Q (2026-10-02, audit 306):** `_find_audio_boundaries` wraps its whole
+scan loop in `except Exception: pass` — what does a mid-scan failure
+actually return to `trim_silence`?
+**A:** The untouched initial values `(0, duration*sample_rate)`. The
+`if found_start` block sat *inside* the try, so any read/decode error
+skipped it entirely and the helper reported "the whole file is audio".
+`trim_silence` then wrote the full file and reported success ("Trimmed
+0.00s of silence") — a read failure rendered as a silent no-op. Verified
+by injecting an OSError mid-scan: bounds came back (0, total). The
+swallow is removed; errors now propagate to `trim_silence`'s own
+`except Exception`, which reports "Silence trimming failed: <err>" —
+the honest failure path that already existed. A file that is genuinely
+silent still returns (0, 0) and reports no-content correctly.
