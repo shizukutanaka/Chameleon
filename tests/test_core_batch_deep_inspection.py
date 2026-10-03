@@ -9,6 +9,7 @@ still passes (the scan warns, never rejects — the false-positive guard).
 """
 
 import asyncio
+import json
 import wave
 from pathlib import Path
 
@@ -92,3 +93,44 @@ def test_disguised_executable_is_filtered_from_batch_process_async(tmp_path):
     # summary = 2 results.
     assert len(results) == 2
     assert results[0].success
+
+
+def test_state_record_keeps_a_bounded_previous_reference(tmp_path):
+    # summary used to embed the whole previous state payload, so each
+    # batch_state_*.json nested every earlier file and grew without bound.
+    wav_dir = tmp_path / "wavs"
+    wav_dir.mkdir()
+    write_sine_wave(wav_dir / "tone.wav")
+    state_dir = tmp_path / "state"
+
+    processor = core.BatchProcessor()
+    processor.state_manager = core.StateRecoveryManager(state_dir=state_dir)
+
+    processor.process_directory(str(wav_dir), "analyze")
+    results = processor.process_directory(str(wav_dir), "analyze")
+
+    summary = results[-1].data["summary"]
+    previous = summary["previous_state"]
+    assert previous is not None
+    # A bounded reference: timestamp + counters, not the whole payload.
+    assert set(previous) == {"timestamp", "processed", "successful", "failed"}
+    assert previous["processed"] == 1
+
+    # State files must not compound: the second record carries no nested
+    # copy of the first.
+    files = sorted(state_dir.glob("batch_state_*.json"),
+                   key=lambda p: p.stat().st_mtime)
+    assert len(files) == 2
+    second = json.loads(files[1].read_text())
+    assert "summary" not in second["summary"]["previous_state"]
+
+
+def test_previous_reference_compacts_the_payload():
+    # The state reference keeps only timestamp + counters from the stored
+    # payload; a missing or shapeless payload yields None.
+    ref = core.StateRecoveryManager._previous_reference(
+        {"timestamp": "t1", "summary": {"processed": 3, "successful": 2,
+                                        "failed": 1, "previous_state": {"x": 1}}})
+    assert ref == {"timestamp": "t1", "processed": 3, "successful": 2, "failed": 1}
+    assert core.StateRecoveryManager._previous_reference(None) is None
+    assert core.StateRecoveryManager._previous_reference({"timestamp": "t"}) is None

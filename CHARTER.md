@@ -2900,6 +2900,19 @@ Both evaluators now map TypeError/ZeroDivisionError to their typed
 error; `not in` gets the same guard as `in`, and `==`/`is` (which
 cannot raise on these operand types) are left bare.
 
+**Q (2026-10-02, audit 251):** `record_state` writes the batch summary
+verbatim into `batch_state_*.json` -- what does embedding
+`summary["previous_state"]` do to state-file size over repeated runs?
+**A:** Each file carried the *entire* previous payload, so file n nested
+files 1..n-1 and grew linearly without bound (reproduced: 110 B -> 774 B
+over five runs of an 8-byte summary, nesting depth 5). `max_backups=10`
+caps file count, not file size, and `load_last_state` parses the
+ever-growing newest file on every run. Both call sites
+(`process_directory`, `process_directory_async`) now store
+`StateRecoveryManager._previous_reference(...)` -- timestamp + the three
+processed/successful/failed counters -- which keeps the run-over-run
+comparison honest at ~150 bytes per record.
+
 **Q (2026-10-02, audit 258):** `open_secure` promises to honor the usual
 Python mode strings -- does it?
 **A:** Two contract breaks, both silently. `open_secure(p, "wb+")`
@@ -3017,6 +3030,8 @@ consuming undo state, the same contract the earlier fix established for
 its three ops; the check lives in the ops rather than select_region
 because an empty result is a legitimate value for copy_selection, which
 returns data, not a success flag.
+
+
 
 **Q (2026-10-02, audit 294):** The plugin audit denies dangerous attribute
 names — but can the same names be fetched as *strings* the walk never
