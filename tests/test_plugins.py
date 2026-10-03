@@ -1,5 +1,6 @@
 """Tests for the plugin sandbox security checks."""
 
+import threading
 from pathlib import Path
 
 import pytest
@@ -304,3 +305,43 @@ def test_load_plugin_limits_all_plugin_code_sites(tmp_path, hang_site):
     with pytest.raises(TimeoutError, match="timed out"):
         loader.load_plugin(plugin)
     assert time.monotonic() - t0 < 10
+
+
+def test_execute_with_limits_runs_off_main_thread():
+    """SIGALRM delivery exists only in the main thread -- on any other
+    thread signal.signal() raised ValueError before the plugin callable
+    ever ran (verified: a worker-thread call crashed with ValueError, not
+    the function result). Off-main-thread callers now take the
+    thread-join fallback."""
+    sandbox = PluginSandbox(PluginConfig())
+    result = []
+
+    def run():
+        result.append(sandbox.execute_with_limits(lambda: 42))
+
+    worker = threading.Thread(target=run)
+    worker.start()
+    worker.join(10)
+
+    assert result == [42]
+
+
+def test_execute_with_limits_times_out_off_main_thread():
+    """The thread-join fallback must still enforce the timeout for
+    off-main-thread callers."""
+    import time
+    sandbox = PluginSandbox(PluginConfig(max_execution_time=1))
+    result = []
+
+    def run():
+        try:
+            sandbox.execute_with_limits(lambda: time.sleep(30))
+            result.append("no timeout")
+        except TimeoutError:
+            result.append("timeout")
+
+    worker = threading.Thread(target=run)
+    worker.start()
+    worker.join(10)
+
+    assert result == ["timeout"]
