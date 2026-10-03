@@ -3091,6 +3091,21 @@ what gets relied on. Dot/space-only results now fall back to
 `'untitled'` like empty input; names containing real characters
 (`'a..b'`, `'___...'`, `'..wav'`) are unchanged.
 
+
+**Q (2026-10-02, audit 301):** `upload_audio_file` sanitizes the client
+filename, then composes `uuid_hex + "_" + name`. Can a legal filename
+still crash the store?
+**A:** Yes -- two budgets were composed silently. `sanitize_filename`
+caps at 255 *characters*; filesystems enforce 255 *bytes* per component,
+and the uuid prefix spends 33 of them. A 251-char ASCII name (or ~85 CJK
+characters, which the scrub legitimately preserves) produced a 288-byte
+component, `os.open` answered ENAMETOOLONG, and the generic handler
+flattened it to a 500 for a filename every earlier gate declared legal
+(verified: errno 63 at 288 bytes). The handler now fits the stored name
+inside the remaining byte budget before composing -- stem absorbs the
+trim, the allowlisted extension is preserved whole, and UTF-8 is cut on
+codepoint boundaries. Two upload tests pin both overflow classes.
+
 **Q (2026-10-02, audit 294):** The plugin audit denies dangerous attribute
 names — but can the same names be fetched as *strings* the walk never
 sees, or bound under a fresh alias?
