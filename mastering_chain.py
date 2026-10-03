@@ -714,8 +714,13 @@ class StereoProcessor:
             return np.array([audio, audio])
 
         if audio.shape[0] != 2:
-            # More than 2 channels - just return first 2
-            return audio[:2]
+            # Same silent channel erasure as the compressor's stereo path:
+            # returning audio[:2] would drop channel 3+ of multichannel
+            # input with no error, so a "mastered" file loses its LFE or
+            # centre channel entirely.
+            raise ValueError(
+                f"StereoProcessor supports mono or stereo input; got "
+                f"{audio.shape[0]} channels")
 
         left, right = audio[0], audio[1]
 

@@ -2858,3 +2858,13 @@ empirically from a worker thread. The signal branch now requires
 callers take the existing thread-join fallback, which was verified to
 return results and enforce the timeout there (main-thread SIGALRM path
 unchanged).
+
+**Q (2026-10-03, audit 310):** `MasteringChain.process` refuses >2-channel
+input at the door — does every stage hold the same contract when called
+directly?
+**A:** No — `StereoProcessor.process` still truncated. A direct call with
+quad/5.1 input returned `audio[:2]`: stereo output with the LFE and
+centre channels silently dropped and no error raised (verified with a
+5-channel array in -> 2-channel array out). The compressor and limiter
+refuse the same shape (audit-91), so the stereo stage now raises the
+same `mono or stereo` ValueError instead of silently dropping channels.
