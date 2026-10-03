@@ -2863,6 +2863,18 @@ to the commented intents (I->V/IV/vi/ii, IV->V/I/ii, V->I/vi/IV,
 vi->IV/I/V) and minor degrees are emitted lowercase, matching
 analyze_harmony's casing convention.
 
+**Q (2026-10-02, audit 253):** Audit 131 added ``math.isfinite`` to the
+spectral API's ``<= 0`` guards -- did any exported numeric parameter slip
+through unguarded?
+**A:** Two did. ``linear_resample(x, inf, 44100)`` passed the
+``source_rate <= 0`` check, collapsed ``duration`` to 0, and silently
+returned a one-sample "resample" (verified: [0.0]); ``nan`` escaped only
+via an incidental ``int()`` ValueError, not the contract error. The guard
+now requires ``math.isfinite`` on both rates. ``analyze_spectrum`` sliced
+``peaks[:max_peaks]`` verbatim, so ``max_peaks=-1`` silently dropped the
+weakest peak and ``max_peaks=2.5`` leaked a raw TypeError; both now raise
+ValueError before the transform runs.
+
 **Q (2026-10-02, audit 258):** `open_secure` promises to honor the usual
 Python mode strings -- does it?
 **A:** Two contract breaks, both silently. `open_secure(p, "wb+")`
@@ -2931,6 +2943,8 @@ same one audit-260 enforced in `apply_spectral_mask`: `sample_rate` must
 be a positive finite number, so it now raises ValueError naming the
 parameter, and `hop_size` clamps at 1 so rates too low for a 23 ms window
 degrade to an honest empty result instead of a zero-step crash.
+
+
 
 
 
