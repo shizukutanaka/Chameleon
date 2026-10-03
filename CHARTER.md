@@ -3252,3 +3252,14 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-10-02, audit 307):** `_convert_to_mono` averages the channel pair
+with `int(sum(samples) / len(samples))` — does the cast round honestly?
+**A:** No — `int()` truncates toward zero, so a (-1, -2) pair yielded -1
+instead of -2: a systematic inward bias on every half-value frame,
+invisible on symmetric test tones. The same bug class was already fixed
+in the extraction path (audit-119) and the gain path uses `round()` with
+a comment explaining why; this downmix was the remaining truncating
+site. Now `int(round(...))`, so half-values round symmetrically
+(-1.5 → -2, +1.5 → +2). Verified on a constant-pair WAV before and
+after.
