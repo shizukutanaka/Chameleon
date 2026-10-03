@@ -12,6 +12,7 @@ These tests exercise the real, dependency-light public API:
 from __future__ import annotations
 
 import math
+import os
 import struct
 import tempfile
 import unittest
@@ -99,6 +100,32 @@ class CoreAudioTests(unittest.TestCase):
             handle.write(b"data")
         self.assertTrue(target.exists())
         self.assertEqual(target.read_bytes(), b"data")
+
+    def test_open_secure_update_mode_can_read_back(self) -> None:
+        target = self.tmp_path / "update.bin"
+        with open_secure(target, "wb+") as handle:
+            handle.write(b"data")
+            handle.seek(0)
+            self.assertEqual(handle.read(), b"data")
+        self.assertEqual(target.read_bytes(), b"data")
+
+    def test_open_secure_append_update_preserves_content(self) -> None:
+        target = self.tmp_path / "append.bin"
+        target.write_bytes(b"ab")
+        with open_secure(target, "ab+") as handle:
+            handle.seek(0)
+            self.assertEqual(handle.read(), b"ab")
+            handle.write(b"cd")
+        self.assertEqual(target.read_bytes(), b"abcd")
+
+    def test_open_secure_invalid_mode_leaks_no_descriptor(self) -> None:
+        target = self.tmp_path / "bad.bin"
+        before = len(os.listdir("/dev/fd"))
+        with self.assertRaises(ValueError):
+            open_secure(target, "rw")
+        with self.assertRaises(ValueError):
+            open_secure(target, "wb", encoding="utf-8")
+        self.assertEqual(len(os.listdir("/dev/fd")), before)
 
 
 class SecurityValidatorTests(unittest.TestCase):
