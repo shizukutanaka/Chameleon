@@ -2824,6 +2824,19 @@ streaming in-out site in the tree (audit-148 covers core.py's three);
 copies into a separate destination tree, and the API server namespaces
 every output with a uuid.
 
+**Q (2026-10-02, audit 258):** `open_secure` promises to honor the usual
+Python mode strings -- does it?
+**A:** Two contract breaks, both silently. `open_secure(p, "wb+")`
+returned a file object whose mode says read+write but whose descriptor
+was opened O_WRONLY -- the first `read()` died `OSError: [Errno 9] Bad
+file descriptor` behind a mode string that promised read access. Update
+modes (`w+`, `a+`) now open O_RDWR so the descriptor honors what the
+mode string declares. Separately, any mode `os.fdopen` rejects (e.g.
+"rw", or `encoding=` on a binary mode) raised *after* `os.open`
+succeeded, leaking the descriptor one bad call at a time -- the fd is
+now closed when fdopen raises. Non-update modes are unchanged, and
+pure-read `r+` stays refused under the write/append contract.
+
 **Q (2026-10-02, audit 259):** `MIDIComposer.generate_melody` — does the
 melody timeline line up with the supplied progression?
 **A:** No. The melody clock always started at t=0, so a progression that
@@ -2836,7 +2849,7 @@ progression", so it now anchors at the first chord's start_time and runs
 `length` beats from there; the note-selection step is likewise relative
 to that anchor. Progressions starting at 0 produce byte-identical output,
 and an empty progression still honestly returns [].
-||||||| 72c9c773
+
 **Q (2026-10-02, audit 294):** The plugin audit denies dangerous attribute
 names — but can the same names be fetched as *strings* the walk never
 sees, or bound under a fresh alias?
