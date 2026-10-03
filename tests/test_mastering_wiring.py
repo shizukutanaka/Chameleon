@@ -138,3 +138,16 @@ def test_stereo_width_rejects_non_finite_and_negative():
     proc = mc.StereoProcessor(mc.StereoConfig(width=1.0, bass_mono=False), 44100)
     sig = np.stack([np.ones(1000), -np.ones(1000)]) * 0.2
     assert np.isfinite(proc.process(sig)).all()
+
+
+def test_stereo_processor_rejects_multichannel_on_direct_api():
+    # MasteringChain.process refuses >2 channels at the door, but a direct
+    # StereoProcessor.process call truncated to audio[:2] -- a quad file
+    # came back as stereo with the LFE/centre channels silently dropped
+    # (verified pre-fix). Same contract as the compressor/limiter paths.
+    np, mc = _mastering()
+
+    proc = mc.StereoProcessor(mc.StereoConfig(width=1.0, bass_mono=False), 44100)
+    quad = np.stack([np.ones(500)] * 4)
+    with pytest.raises(ValueError, match="mono or stereo"):
+        proc.process(quad)

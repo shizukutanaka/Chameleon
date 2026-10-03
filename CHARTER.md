@@ -3252,3 +3252,13 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-10-03, audit 310):** `MasteringChain.process` refuses >2-channel
+input at the door — does every stage hold the same contract when called
+directly?
+**A:** No — `StereoProcessor.process` still truncated. A direct call with
+quad/5.1 input returned `audio[:2]`: stereo output with the LFE and
+centre channels silently dropped and no error raised (verified with a
+5-channel array in -> 2-channel array out). The compressor and limiter
+refuse the same shape (audit-91), so the stereo stage now raises the
+same `mono or stereo` ValueError instead of silently dropping channels.
