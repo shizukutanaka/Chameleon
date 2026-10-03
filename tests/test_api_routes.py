@@ -111,6 +111,25 @@ def test_login_rate_limit_returns_429_not_200(client, monkeypatch):
     assert second.status_code == 429
 
 
+def test_login_rate_limit_survives_username_rotation(client, monkeypatch):
+    """Password spraying rotates usernames: a per-(ip, username) bucket
+    alone gives every new account name a fresh window, so the limiter
+    never fires. A per-IP bucket must still cap the source."""
+    monkeypatch.setitem(api_server.SECURITY_CONFIG, "enable_rate_limiting", True)
+    monkeypatch.setitem(api_server.SECURITY_CONFIG, "rate_limit_max_requests", 2)
+    monkeypatch.setitem(api_server.SECURITY_CONFIG, "rate_limit_window_seconds", 60)
+
+    # Every attempt uses a different username -- with only the
+    # username-keyed bucket each of these would start a fresh window
+    # and unlimited attempts would fit under the cap.
+    statuses = [
+        _login(client, username=f"spray-user-{i}", password="irrelevant").status_code
+        for i in range(4)
+    ]
+    assert statuses[:2] == [200, 200]
+    assert statuses[2] == 429
+
+
 def test_authenticated_endpoint_rejects_missing_token(client):
     response = client.get("/audit/log")
     assert response.status_code in (401, 403)

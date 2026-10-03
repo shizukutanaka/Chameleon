@@ -2858,3 +2858,15 @@ empirically from a worker thread. The signal branch now requires
 callers take the existing thread-join fallback, which was verified to
 return results and enforce the timeout there (main-thread SIGALRM path
 unchanged).
+
+**Q (2026-10-02, audit 317):** `/auth/login` rate-limits by
+`login:{ip}:{username}` — does the limiter hold when the username
+rotates?
+**A:** No. Each new username minted a fresh fixed-window deque, so a
+password-spraying source got an untouched 120-request budget per account
+name and was never throttled (verified: max=2, four rotating usernames
+all returned 200). The authenticated `auth:` route already limits per-IP;
+login now runs a second `login-ip:{client_ip}` bucket through the same
+window machinery, capping the source regardless of target account. The
+username-keyed bucket stays — it still throttles brute force against a
+single account without punishing shared-NAT offices.
