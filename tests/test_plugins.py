@@ -307,6 +307,80 @@ def test_load_plugin_limits_all_plugin_code_sites(tmp_path, hang_site):
     assert time.monotonic() - t0 < 10
 
 
+@pytest.mark.parametrize("prim", ["attrgetter", "itemgetter", "methodcaller"])
+def test_check_module_safety_rejects_opaque_name_primitives(tmp_path, prim):
+    """operator.attrgetter("__class__.__subclasses__") reaches every
+    attribute the deny list names -- through a string the audit cannot
+    read. Verified end to end: the chain reached os.system."""
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / f"bypass_{prim}.py"
+    bad.write_text(f"import operator\nag = operator.{prim}\n")
+
+    with pytest.raises(SecurityError, match="Unsafe attribute access"):
+        loader._check_module_safety(Path(bad))
+
+
+def test_check_module_safety_rejects_aliased_dangerous_from_import(tmp_path):
+    """`from operator import attrgetter as ag` re-binds a denied name to a
+    fresh identifier the walk cannot see; the imported name itself must be
+    checked, not just the alias (verified: this form reached os.system)."""
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / "bypass_alias.py"
+    bad.write_text("from operator import attrgetter as ag\n")
+
+    with pytest.raises(SecurityError, match="Unsafe import"):
+        loader._check_module_safety(Path(bad))
+
+
+def test_check_module_safety_rejects_star_import(tmp_path):
+    """`from operator import *` binds attrgetter and friends invisibly --
+    no imported name appears anywhere for the walk to check."""
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / "bypass_star.py"
+    bad.write_text("from operator import *\n")
+
+    with pytest.raises(SecurityError, match="Unsafe import"):
+        loader._check_module_safety(Path(bad))
+
+
+@pytest.mark.parametrize("ctor", ["FunctionType", "CodeType", "MethodType"])
+def test_check_module_safety_rejects_types_code_ctors(tmp_path, ctor):
+    """types.FunctionType/CodeType/MethodType are code-execution
+    constructors reachable without compile(): a crafted CodeType ran
+    arbitrary bytecode (verified end to end)."""
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / f"bypass_{ctor}.py"
+    bad.write_text(f"import types\nf = types.{ctor}\n")
+
+    with pytest.raises(SecurityError, match="Unsafe attribute access"):
+        loader._check_module_safety(Path(bad))
+
+
+def test_check_module_safety_rejects_traceback_import(tmp_path):
+    """traceback.walk_stack hands out live host frames; f_globals was then
+    reachable via getattr with a literal name the old six-name subset did
+    not cover (verified: a probe plugin ran exec this way)."""
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / "bypass_tb.py"
+    bad.write_text("import traceback\n")
+
+    with pytest.raises(SecurityError, match="Unsafe import"):
+        loader._check_module_safety(Path(bad))
+
+
+def test_check_module_safety_rejects_getattr_literal_danger_names(tmp_path):
+    """getattr(obj, "f_globals") faces the same deny list as attribute
+    access -- the previous six-name literal subset let frame names
+    through."""
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / "bypass_getattr_lit.py"
+    bad.write_text('g = getattr(x, "f_globals")\n')
+
+    with pytest.raises(SecurityError, match="Unsafe getattr"):
+        loader._check_module_safety(Path(bad))
+
+
+
 def test_execute_with_limits_runs_off_main_thread():
     """SIGALRM delivery exists only in the main thread -- on any other
     thread signal.signal() raised ValueError before the plugin callable
@@ -345,3 +419,4 @@ def test_execute_with_limits_times_out_off_main_thread():
     worker.join(10)
 
     assert result == ["timeout"]
+
