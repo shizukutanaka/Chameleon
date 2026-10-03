@@ -609,6 +609,61 @@ def test_circuit_breaker_actually_trips_on_job_failures(monkeypatch):
     assert "Circuit breaker" in api_server.api_state.active_jobs["j3"]["error"]
 
 
+def test_batch_job_one_bad_file_does_not_fail_the_whole_job(monkeypatch):
+    # A file that vanishes (or fails resolution) between submit and
+    # processing used to abort the whole job: the HTTPException escaped the
+    # per-file loop, status became 'failed' with error "400" (str of the
+    # status code, not the reason), and every later file was stranded.
+    # One bad input must be that file's result, not the job's.
+    import asyncio
+    from datetime import datetime, timezone
+    from fastapi import HTTPException
+
+    api_server.api_state.active_jobs.clear()
+    api_server.api_state.job_queue.clear()
+    api_server.api_state.job_failures_window.clear()
+    api_server.api_state.circuit_breaker_open = False
+
+    def resolve(name):
+        if name == "gone.wav":
+            raise HTTPException(status_code=404, detail="File not found")
+        return api_server.Path(name)
+    monkeypatch.setattr(api_server, "_resolve_uploaded_path", resolve)
+    monkeypatch.setattr(
+        api_server, "analyze_audio_fast",
+        lambda path: asyncio.sleep(0, {"success": True}),
+    )
+
+    api_server.api_state.active_jobs["job-mixed"] = {
+        "files": ["a.wav", "gone.wav", "b.wav"],
+        "operation": "analyze",
+        "options": {},
+        "user": "tester",
+        "status": "queued",
+        "results": [],
+        "completed_files": 0,
+        "total_files": 3,
+        "progress": 0.0,
+        "current_file": None,
+        "updated_at": datetime.now(timezone.utc),
+        "owner_session_id": None,
+    }
+    api_server.api_state.job_queue.append("job-mixed")
+
+    asyncio.run(api_server.process_batch_job("job-mixed"))
+    job = api_server.api_state.active_jobs["job-mixed"]
+
+    assert job["status"] == "completed"
+    assert job["completed_files"] == 3
+    assert len(job["results"]) == 3
+    assert job["results"][0]["result"]["success"] is True
+    bad = job["results"][1]["result"]
+    assert bad["success"] is False
+    assert bad["error"] == "File not found"  # not "400"
+    # The file after the bad one was still processed.
+    assert job["results"][2]["result"]["success"] is True
+
+
 def test_audit_log_is_bounded():
     # Every event is also appended to the durable audit file, so the
     # in-memory buffer exists only to serve /audit/log reads -- it must

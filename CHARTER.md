@@ -3213,3 +3213,22 @@ a named error at the module boundary.
 
 
 
+
+
+**Q (2026-10-03, audit 354):** In the API batch worker
+(`process_batch_job`), should one file that fails resolution or raises
+mid-operation fail the whole job, or be recorded as that file's result
+while the rest continue?
+
+**A:** The file's result. `_resolve_uploaded_path` raises HTTPException;
+escaping the per-file loop it landed in the job-level `except`, which
+stamped the job `failed` with `str(exc)` — the bare status code "400",
+not the 404 detail — and every file after the bad one was never
+attempted. Reproduced with `[ok.wav, gone.wav, ok2.wav]`: file 0
+succeeded, the job reported `failed`/`400`, file 2 stranded. The merged
+audit-85 fix established this contract for the core `BatchProcessor`
+(one bad input must not kill the batch); the API worker had no
+equivalent guard. The fix wraps resolution + dispatch in a per-file
+`try/except` that records `{success: False, error: detail}` and keeps
+going, and the job-level handler now extracts `exc.detail` so a
+catastrophic HTTPException reports its reason instead of its code.
