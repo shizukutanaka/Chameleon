@@ -758,6 +758,11 @@ class MIDIComposer:
 
     def generate_melody(self, chords: List[Chord], key: MusicalKey, length: float = 8.0) -> List[MIDINote]:
         """Generate a simple melody over chord progression"""
+        # `while current_time < length` with length=inf never terminates;
+        # nan/-1 silently return an empty melody. Bound the input instead.
+        if not math.isfinite(length) or length <= 0:
+            raise ValueError(
+                f"length must be a positive finite duration, got {length!r}")
         melody = []
         current_time = 0.0
         note_duration = 0.5  # Half beat notes
