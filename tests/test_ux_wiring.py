@@ -50,7 +50,6 @@ def test_batch_process_show_progress_false_by_default_matches_cli_non_tty(tmp_pa
 
     results = processor.batch_process([str(wav)], "analyze")
     assert results and "error" not in results[0]
-<<<<<<< HEAD
 
 
 def test_format_file_size_rejects_non_finite():
@@ -73,8 +72,6 @@ def test_format_file_size_still_formats_real_sizes():
     assert ux_improvements.format_file_size(0) == "0.0 B"
     assert ux_improvements.format_file_size(1024) == "1.0 KB"
     assert ux_improvements.format_file_size(2**50) == "1.0 PB"
-||||||| 7bcfad6
-=======
 
 
 def test_format_duration_rejects_non_finite_input():
@@ -108,4 +105,3 @@ def test_format_table_rejects_row_wider_than_headers():
     # Short rows and exact rows still format.
     out = TableFormatter.format_table(["A", "B"], [["1"], ["2", "3"]])
     assert "A" in out and "B" in out
->>>>>>> origin/main
