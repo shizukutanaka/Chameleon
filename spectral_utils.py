@@ -56,6 +56,12 @@ def _to_float_sequence(samples: Sequence[float]) -> List[float]:
             converted.append(float(value))
         except (TypeError, ValueError) as exc:
             raise TypeError("samples must contain numeric values") from exc
+        # A NaN/inf sample is numeric but propagates silently: into the
+        # DFT every bin goes NaN, into max() it can zero the whole
+        # normalized signal, into interpolated output it spreads. Every
+        # caller of this helper treats audio, so reject it up front.
+        if not math.isfinite(converted[-1]):
+            raise ValueError("samples must contain only finite values")
     return converted
 
 
@@ -189,6 +195,8 @@ def analyze_spectrum(
 
     if not math.isfinite(sample_rate) or sample_rate <= 0:
         raise ValueError("sample_rate must be a positive integer")
+    if not isinstance(max_peaks, int) or max_peaks < 0:
+        raise ValueError("max_peaks must be a non-negative integer")
 
     buffer = _to_float_sequence(samples)
     if not buffer:
@@ -251,8 +259,13 @@ def linear_resample(samples: Sequence[float], source_rate: int, target_rate: int
     use scipy/librosa (the ``[audio]`` extra) for band-limited resampling.
     """
 
-    if source_rate <= 0 or target_rate <= 0:
-        raise ValueError("sample rates must be positive integers")
+    if (
+        not math.isfinite(source_rate)
+        or not math.isfinite(target_rate)
+        or source_rate <= 0
+        or target_rate <= 0
+    ):
+        raise ValueError("sample rates must be positive finite numbers")
 
     buffer = _to_float_sequence(samples)
     if not buffer or source_rate == target_rate:
@@ -338,6 +351,8 @@ def sliding_window_rms(samples: Sequence[float], window_size: int) -> List[float
         raise ValueError("window_size must be positive")
 
     buffer = _to_float_sequence(samples)
+    if not buffer:
+        return []
     if window_size > len(buffer):
         window_size = len(buffer)
 
