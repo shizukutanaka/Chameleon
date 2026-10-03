@@ -148,3 +148,36 @@ def test_select_region_clamps_finite_out_of_range_bounds():
     assert sel.time_end == ed.times[-1]
     assert sel.freq_start == ed.freqs[0]
     assert sel.freq_end == ed.freqs[-1]
+
+
+def test_interpolate_refuses_empty_selection():
+    # A reversed/out-of-range selection produces an all-False mask. The op
+    # used to return True, push an undo state, and rewrite every sample via
+    # the istft round-trip anyway -- a reported repair that changed audio
+    # it never selected.
+    ed = spectral_editor.SpectralEditor()
+    ed.load_audio(_sine(440), SAMPLE_RATE)
+    empty = ed.select_region(0.9, 0.1, 0, 22050)  # end < start
+    assert not ed.get_selection_mask(empty).any()
+
+    before_audio = ed.current_audio.copy()
+    undo_depth = len(ed.undo_stack)
+    assert not ed.interpolate_selection(empty)
+    assert len(ed.undo_stack) == undo_depth
+    assert np.array_equal(ed.current_audio, before_audio)
+
+
+def test_harmonic_enhance_refuses_empty_selection():
+    # Same contract as interpolate/delete/enhance/noise_reduce: an empty
+    # mask must fail, not return True after consuming undo state and
+    # round-tripping the whole file through istft.
+    ed = spectral_editor.SpectralEditor()
+    ed.load_audio(_sine(440), SAMPLE_RATE)
+    empty = ed.select_region(0.9, 0.1, 0, 22050)
+    assert not ed.get_selection_mask(empty).any()
+
+    before_audio = ed.current_audio.copy()
+    undo_depth = len(ed.undo_stack)
+    assert not ed.harmonic_enhance_selection(empty)
+    assert len(ed.undo_stack) == undo_depth
+    assert np.array_equal(ed.current_audio, before_audio)
