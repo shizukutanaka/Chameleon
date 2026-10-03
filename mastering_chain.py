@@ -343,13 +343,35 @@ class LoudnessMeter:
 # original signal.
 
 
+def _validate_eq_design_params(frequency: float, sample_rate: int,
+                               gain_db: float, extra: float,
+                               extra_name: str) -> None:
+    """Reject filter-design inputs the biquad math cannot honour.
+
+    A frequency outside (0, Nyquist) still produces finite coefficients --
+    a real-looking filter centred on an aliased or mirrored position --
+    so the range must be refused, not designed."""
+    if not math.isfinite(sample_rate) or sample_rate <= 0:
+        raise ValueError(f"sample_rate must be a positive finite number, got {sample_rate!r}")
+    if not math.isfinite(frequency) or not 0 < frequency < sample_rate / 2:
+        raise ValueError(
+            f"frequency must satisfy 0 < frequency < Nyquist "
+            f"({sample_rate / 2} Hz), got {frequency!r}")
+    if not math.isfinite(gain_db):
+        raise ValueError(f"gain_db must be finite, got {gain_db!r}")
+    if not math.isfinite(extra) or extra <= 0:
+        raise ValueError(f"{extra_name} must be a positive finite number, got {extra!r}")
+
+
 def design_peaking_eq(frequency: float, sample_rate: int, gain_db: float,
                       q_factor: float = 1.0):
     """RBJ peaking (bell) EQ biquad. Returns (b, a) coefficient lists."""
 
+    _validate_eq_design_params(frequency, sample_rate, gain_db,
+                               q_factor, "q_factor")
     amplitude = 10.0 ** (gain_db / 40.0)
     omega = 2.0 * math.pi * frequency / sample_rate
-    alpha = math.sin(omega) / (2.0 * max(q_factor, 1e-6))
+    alpha = math.sin(omega) / (2.0 * q_factor)
     cos_omega = math.cos(omega)
 
     b = [1.0 + alpha * amplitude, -2.0 * cos_omega, 1.0 - alpha * amplitude]
@@ -361,11 +383,13 @@ def design_shelf_eq(frequency: float, sample_rate: int, gain_db: float,
                     high: bool, slope: float = 1.0):
     """RBJ low/high shelving biquad. Returns (b, a) coefficient lists."""
 
+    _validate_eq_design_params(frequency, sample_rate, gain_db,
+                               slope, "slope")
     amplitude = 10.0 ** (gain_db / 40.0)
     omega = 2.0 * math.pi * frequency / sample_rate
     cos_omega = math.cos(omega)
     alpha = (math.sin(omega) / 2.0) * math.sqrt(
-        (amplitude + 1.0 / amplitude) * (1.0 / max(slope, 1e-6) - 1.0) + 2.0
+        (amplitude + 1.0 / amplitude) * (1.0 / slope - 1.0) + 2.0
     )
     sqrt_gain_alpha = 2.0 * math.sqrt(amplitude) * alpha
     plus, minus = amplitude + 1.0, amplitude - 1.0
