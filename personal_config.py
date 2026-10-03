@@ -319,10 +319,37 @@ class PersonalLibraryManager:
                     f"{self.db_path} is not valid JSON ({exc}). Fix it, or "
                     "delete it to start again from an empty library."
                 ) from exc
+            except OSError as exc:
+                # A directory or unreadable file at the db path is the same
+                # class of problem as corrupt JSON: name the unusable path
+                # instead of leaking IsADirectoryError/PermissionError.
+                raise ValueError(
+                    f"{self.db_path} could not be read ({exc}). Fix it, or "
+                    "delete it to start again from an empty library."
+                ) from exc
             if not isinstance(data, dict):
                 raise ValueError(
                     f"{self.db_path} should contain a JSON object, found "
                     f"{type(data).__name__}."
+                )
+            # A JSON object can still be the wrong shape. Absent keys are
+            # treated as an empty library; wrong-typed entries are
+            # corruption and are reported with the offending path.
+            for key in ("files", "playlists", "tags"):
+                value = data.setdefault(key, {})
+                if not isinstance(value, dict):
+                    raise ValueError(
+                        f"{self.db_path}: '{key}' should be a JSON object, "
+                        f"found {type(value).__name__}. Fix it, or delete the "
+                        "file to start again from an empty library."
+                    )
+            bad_records = [k for k, v in data["files"].items()
+                           if not isinstance(v, dict)]
+            if bad_records:
+                raise ValueError(
+                    f"{self.db_path}: file record(s) {bad_records[:3]} should "
+                    "be JSON objects. Fix them, or delete the file to start "
+                    "again from an empty library."
                 )
             return data
         return {"files": {}, "playlists": {}, "tags": {}}

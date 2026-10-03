@@ -226,6 +226,76 @@ def test_search_does_not_return_duplicates_when_name_and_tag_both_match(manager)
     assert manager.search("kick") == ["kick.wav"]
 
 
+# --- _load_db corrupt-shape recovery --------------------------------------
+
+def _manager_with_db(tmp_path, contents: str):
+    """A manager whose on-disk db is `contents`, loaded via _load_db."""
+    config = personal_config.PersonalConfig(audio_library=str(tmp_path / "library"))
+    (tmp_path / "library").mkdir()
+    instance = personal_config.PersonalLibraryManager.__new__(
+        personal_config.PersonalLibraryManager)
+    instance.config = config
+    instance.library_path = Path(config.audio_library)
+    instance.db_path = tmp_path / "library.json"
+    instance.db_path.write_text(contents)
+    instance.library_db = instance._load_db()
+    return instance
+
+
+def test_load_db_with_a_directory_at_the_db_path_names_it(manager, tmp_path):
+    manager.db_path.mkdir()
+    with pytest.raises(ValueError) as excinfo:
+        manager._load_db()
+    assert "could not be read" in str(excinfo.value)
+    assert str(manager.db_path) in str(excinfo.value)
+
+
+def test_load_db_with_an_empty_object_starts_an_empty_library(tmp_path):
+    # "{}" is a valid JSON object with none of the expected keys -- an empty
+    # library, not corruption. Before shape validation every method died on
+    # KeyError("files") on the first call after load.
+    instance = _manager_with_db(tmp_path, "{}")
+    assert instance.search("anything") == []
+    instance.add_tags("*.wav", ["t"])      # must not raise
+    assert instance.library_db["files"] == {}
+
+
+@pytest.mark.parametrize("contents", [
+    '{"files": "oops", "playlists": {}, "tags": {}}',
+    '{"files": {}, "playlists": [], "tags": {}}',
+    '{"files": {}, "playlists": {}, "tags": 42}',
+])
+def test_load_db_with_a_wrong_typed_section_names_the_file(tmp_path, contents):
+    instance_db = tmp_path / "library.json"
+    instance_db.write_text(contents)
+    config = personal_config.PersonalConfig(audio_library=str(tmp_path / "library"))
+    (tmp_path / "library").mkdir()
+    instance = personal_config.PersonalLibraryManager.__new__(
+        personal_config.PersonalLibraryManager)
+    instance.config = config
+    instance.db_path = instance_db
+    with pytest.raises(ValueError) as excinfo:
+        instance._load_db()
+    assert str(instance_db) in str(excinfo.value)
+
+
+def test_load_db_with_non_object_file_records_names_the_file(tmp_path):
+    instance_db = tmp_path / "library.json"
+    # A record that is not an object used to survive load and crash later:
+    # add_tags hit AttributeError on 'str' object has no attribute 'get'.
+    instance_db.write_text(
+        '{"files": {"a.wav": "junk"}, "playlists": {}, "tags": {}}')
+    config = personal_config.PersonalConfig(audio_library=str(tmp_path / "library"))
+    (tmp_path / "library").mkdir()
+    instance = personal_config.PersonalLibraryManager.__new__(
+        personal_config.PersonalLibraryManager)
+    instance.config = config
+    instance.db_path = instance_db
+    with pytest.raises(ValueError) as excinfo:
+        instance._load_db()
+    assert str(instance_db) in str(excinfo.value)
+
+
 # --- the workflows that admit they are unimplemented ----------------------
 
 @pytest.mark.parametrize("workflow", ["podcast_workflow", "music_workflow"])
