@@ -2948,6 +2948,19 @@ degrade to an honest empty result instead of a zero-step crash.
 
 
 
+
+**Q (2026-10-02, audit 260):** `apply_spectral_mask` — its bands derive
+from sample_rate; is the rate validated like the siblings'?
+**A:** No. `analyze_spectrum` rejects non-finite/non-positive rates, but
+the equaliser checked only its gains: `sample_rate=0` or negative made
+bin_width <= 0, so every bin landed below 200 Hz and took low_gain;
+`nan` made every comparison false so every bin took high_gain; `inf`
+collapsed the same way (verified: a mid/high-only request came back as
+pure low-band, and vice versa, with no error). A three-band equaliser
+silently produced a flat uniform gain. It now applies the sibling's
+guard (`isfinite and > 0`) first, so a rate it cannot honour is refused
+rather than mis-applied.
+
 **Q (2026-10-02, audit 294):** The plugin audit denies dangerous attribute
 names — but can the same names be fetched as *strings* the walk never
 sees, or bound under a fresh alias?
