@@ -2836,7 +2836,6 @@ mode string declares. Separately, any mode `os.fdopen` rejects (e.g.
 succeeded, leaking the descriptor one bad call at a time -- the fd is
 now closed when fdopen raises. Non-update modes are unchanged, and
 pure-read `r+` stays refused under the write/append contract.
-||||||| 72c9c773
 **Q (2026-10-02, audit 294):** The plugin audit denies dangerous attribute
 names — but can the same names be fetched as *strings* the walk never
 sees, or bound under a fresh alias?
