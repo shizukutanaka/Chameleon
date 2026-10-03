@@ -2824,6 +2824,20 @@ streaming in-out site in the tree (audit-148 covers core.py's three);
 copies into a separate destination tree, and the API server namespaces
 every output with a uuid.
 
+**Q (2026-10-02, audit 255):** `PersonalLibraryManager._load_db` promises
+"the same rigor as PersonalConfig.load" -- does the library DB recover
+from corruption as gracefully as the config does?
+**A:** No, three ways (all verified). A directory or unreadable file at
+`~/.chameleon/library.json` leaked `IsADirectoryError`/`PermissionError`
+(`load` only caught `JSONDecodeError`). A `{}` document passed the
+top-level dict check, then every method died on `KeyError("files")` on
+first use. A record like `"a.wav": "junk"` survived load and crashed
+later with `AttributeError` in `add_tags`/`search`. `_load_db` now
+catches `OSError` into the same actionable `ValueError` audit-248 gave
+`PersonalConfig.load`, and validates shape: absent keys become empty
+sections (recoverable), wrong-typed sections and non-object file records
+raise a `ValueError` naming the file.
+
 **Q (2026-10-02, audit 256):** `MIDIComposer.suggest_next_chord` indexes
 `roman_numerals` with semitone degrees -- does the transition table's
 vocabulary match that indexing?
@@ -2850,6 +2864,19 @@ mode string declares. Separately, any mode `os.fdopen` rejects (e.g.
 succeeded, leaking the descriptor one bad call at a time -- the fd is
 now closed when fdopen raises. Non-update modes are unchanged, and
 pure-read `r+` stays refused under the write/append contract.
+
+**Q (2026-10-02, audit 292):** Should `MIDIComposer.generate_melody`
+accept a non-finite `length`?
+**A:** No. `length=float('inf')` made `while current_time < length`
+loop forever generating notes (verified: 3s alarm; never returns);
+`nan` and negatives silently returned `[]`. The CLI guards `--length`
+at argparse (finite, > 0) but the direct API — which `compose_melody`
+and library callers reach — had no bound. It now raises `ValueError`
+naming the constraint, matching `--length`'s own message shape.
+
+
+
+
 
 **Q (2026-10-02, audit 294):** The plugin audit denies dangerous attribute
 names — but can the same names be fetched as *strings* the walk never
