@@ -56,6 +56,12 @@ def _to_float_sequence(samples: Sequence[float]) -> List[float]:
             converted.append(float(value))
         except (TypeError, ValueError) as exc:
             raise TypeError("samples must contain numeric values") from exc
+        # A NaN/inf sample is numeric but propagates silently: into the
+        # DFT every bin goes NaN, into max() it can zero the whole
+        # normalized signal, into interpolated output it spreads. Every
+        # caller of this helper treats audio, so reject it up front.
+        if not math.isfinite(converted[-1]):
+            raise ValueError("samples must contain only finite values")
     return converted
 
 
@@ -338,6 +344,8 @@ def sliding_window_rms(samples: Sequence[float], window_size: int) -> List[float
         raise ValueError("window_size must be positive")
 
     buffer = _to_float_sequence(samples)
+    if not buffer:
+        return []
     if window_size > len(buffer):
         window_size = len(buffer)
 
