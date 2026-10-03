@@ -320,7 +320,6 @@ def test_analyze_harmony_reports_each_template_types_real_quality():
         entry = result["progression"][0]
         assert entry["quality"] == quality, f"{chord_type}: {entry['quality']}"
         assert entry["roman"] == roman, f"{chord_type}: {entry['roman']}"
-<<<<<<< HEAD
 
 
 def test_parse_midi_rejects_nonpositive_or_nonfinite_sample_rate():
@@ -355,8 +354,6 @@ def test_parse_midi_normal_rate_still_extracts_notes():
     notes = analyzer.parse_midi_from_audio(audio, sr)
     assert len(notes) >= 1
     assert any(note.pitch == 69 for note in notes)
-||||||| 7bcfad6
-=======
 
 
 def test_generate_melody_anchors_to_first_chord():
@@ -462,4 +459,3 @@ def test_generate_melody_still_generates_for_valid_length():
     chord = Chord(root=0, chord_type="major", notes=[0, 4, 7],
                   start_time=0.0, duration=8.0)
     assert len(composer.generate_melody([chord], key, length=8.0)) == 16
->>>>>>> origin/main
