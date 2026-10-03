@@ -243,6 +243,44 @@ def test_upload_analyze_download_roundtrip(client, tmp_path, monkeypatch):
     assert dl.content[:4] == b"RIFF"
 
 
+def test_upload_long_ascii_name_fits_component_budget(client, tmp_path, monkeypatch):
+    """sanitize_filename allows 255 *characters*; the uuid prefix then pushed
+    the stored name past the 255-byte filesystem component limit and os.open
+    answered ENAMETOOLONG -- a 500 for a legal filename."""
+    monkeypatch.setattr(api_server, "UPLOAD_DIRECTORY", tmp_path)
+    login = _login(client)
+    token = login.json()["token"]
+
+    up = client.post(
+        "/audio/upload",
+        files={"file": ("a" * 251 + ".wav", _wav_bytes(), "audio/wav")},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert up.status_code == 200
+    stored = up.json()["stored_name"]
+    assert len(stored.encode("utf-8")) <= 255
+    assert stored.endswith(".wav")
+
+
+def test_upload_long_multibyte_name_fits_component_budget(client, tmp_path, monkeypatch):
+    """Same overflow via multi-byte UTF-8: 200 CJK characters are legal per
+    sanitize_filename (scrub only strips ASCII specials) but encode to
+    600+ bytes."""
+    monkeypatch.setattr(api_server, "UPLOAD_DIRECTORY", tmp_path)
+    login = _login(client)
+    token = login.json()["token"]
+
+    up = client.post(
+        "/audio/upload",
+        files={"file": ("あ" * 200 + ".wav", _wav_bytes(), "audio/wav")},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert up.status_code == 200
+    stored = up.json()["stored_name"]
+    assert len(stored.encode("utf-8")) <= 255
+    assert stored.endswith(".wav")
+
+
 def test_download_unregistered_name_returns_404(client):
     """Traversal-style or invented names must not escape the upload registry:
     an unregistered file_name is a 404, never a path lookup."""

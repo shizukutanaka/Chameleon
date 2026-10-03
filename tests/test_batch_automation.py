@@ -250,3 +250,36 @@ def test_scheduler_refuses_a_second_start(monkeypatch):
     # Restartable after a clean stop.
     scheduler.start()
     scheduler.stop()
+
+
+def test_template_expression_arithmetic_errors_are_typed():
+    # 1/0, 'a'-1 and -'a' used to leak raw ZeroDivisionError/TypeError
+    # where every other malformed template raises TemplateEvaluationError.
+    import pytest
+    from batch_automation import (
+        _evaluate_template_expression,
+        TemplateEvaluationError,
+    )
+
+    for bad in ('1 / 0', '"a" - 1', '"a" + 1', '- "a"', '+ "a"'):
+        with pytest.raises(TemplateEvaluationError):
+            _evaluate_template_expression(bad, {})
+
+    assert _evaluate_template_expression('10 / 4', {}) == 2.5
+    assert _evaluate_template_expression('-5', {}) == -5
+
+
+def test_condition_expression_in_on_non_iterable_is_typed():
+    # '"x" in results["t"].success' evaluated 'x' in a bool -- a raw
+    # TypeError where the evaluator's contract is ConditionEvaluationError.
+    import pytest
+    from batch_automation import (
+        _evaluate_condition_expression,
+        ConditionEvaluationError,
+    )
+
+    for bad in ('"x" in results["t"].success', '"x" not in results["t"].error'):
+        with pytest.raises(ConditionEvaluationError):
+            _evaluate_condition_expression(bad, {})
+
+    assert _evaluate_condition_expression('"x" in results["t"].status', {}) is False

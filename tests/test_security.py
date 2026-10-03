@@ -419,3 +419,21 @@ class TestSecurityConfigFromEnvironment:
         with pytest.warns(UserWarning, match="does not exist"):
             cfg = SecurityConfig.from_environment()
         assert str(tmp_path / "ghost") in cfg.trusted_roots
+
+
+def test_sanitize_filename_collapses_dot_and_space_only_names():
+    """sanitize_filename('..') returned '..' -- the literal parent-dir
+    segment, from a function whose job is to make a name safe to join
+    under a directory. Dot/space-only results are unusable everywhere
+    (the FS strips trailing dots/spaces), so they fall back like empty."""
+    import core
+    for name in ("..", "...", "   ", "  .  "):
+        assert SecurityValidator.sanitize_filename(name) == "untitled", name
+        assert core.EnhancedSecurityValidator.sanitize_filename(name) == "untitled", name
+
+
+def test_sanitize_filename_keeps_names_with_real_characters():
+    """Only *only*-dot/space names collapse; 'a..b' and '___...' are valid."""
+    assert SecurityValidator.sanitize_filename("a..b") == "a..b"
+    assert SecurityValidator.sanitize_filename("___...") == "___..."
+    assert SecurityValidator.sanitize_filename("x") == "x"

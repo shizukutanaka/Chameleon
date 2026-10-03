@@ -1168,6 +1168,15 @@ async def upload_audio_file(
         _validate_upload_extension(file.filename)
 
         sanitized_name = _REQUEST_VALIDATOR.sanitize_filename(Path(file.filename).name)
+        # The uuid prefix spends 33 bytes of the 255-byte per-component
+        # limit filesystems enforce; sanitize_filename counts characters,
+        # so a long multi-byte name can still overflow and os.open then
+        # fails with ENAMETOOLONG -- which surfaced as a 500. The
+        # allowlisted extension is kept whole; the stem absorbs the trim.
+        stem, ext = os.path.splitext(sanitized_name)
+        stem_budget = 255 - 33 - len(ext.encode("utf-8"))
+        sanitized_name = (stem.encode("utf-8")[:max(0, stem_budget)]
+                          .decode("utf-8", "ignore") + ext)
         unique_name = f"{uuid.uuid4().hex}_{sanitized_name}"
         destination = (UPLOAD_DIRECTORY / unique_name).resolve(strict=False)
         upload_root = UPLOAD_DIRECTORY.resolve(strict=False)

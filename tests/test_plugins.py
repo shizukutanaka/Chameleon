@@ -307,6 +307,80 @@ def test_load_plugin_limits_all_plugin_code_sites(tmp_path, hang_site):
     assert time.monotonic() - t0 < 10
 
 
+@pytest.mark.parametrize("prim", ["attrgetter", "itemgetter", "methodcaller"])
+def test_check_module_safety_rejects_opaque_name_primitives(tmp_path, prim):
+    """operator.attrgetter("__class__.__subclasses__") reaches every
+    attribute the deny list names -- through a string the audit cannot
+    read. Verified end to end: the chain reached os.system."""
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / f"bypass_{prim}.py"
+    bad.write_text(f"import operator\nag = operator.{prim}\n")
+
+    with pytest.raises(SecurityError, match="Unsafe attribute access"):
+        loader._check_module_safety(Path(bad))
+
+
+def test_check_module_safety_rejects_aliased_dangerous_from_import(tmp_path):
+    """`from operator import attrgetter as ag` re-binds a denied name to a
+    fresh identifier the walk cannot see; the imported name itself must be
+    checked, not just the alias (verified: this form reached os.system)."""
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / "bypass_alias.py"
+    bad.write_text("from operator import attrgetter as ag\n")
+
+    with pytest.raises(SecurityError, match="Unsafe import"):
+        loader._check_module_safety(Path(bad))
+
+
+def test_check_module_safety_rejects_star_import(tmp_path):
+    """`from operator import *` binds attrgetter and friends invisibly --
+    no imported name appears anywhere for the walk to check."""
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / "bypass_star.py"
+    bad.write_text("from operator import *\n")
+
+    with pytest.raises(SecurityError, match="Unsafe import"):
+        loader._check_module_safety(Path(bad))
+
+
+@pytest.mark.parametrize("ctor", ["FunctionType", "CodeType", "MethodType"])
+def test_check_module_safety_rejects_types_code_ctors(tmp_path, ctor):
+    """types.FunctionType/CodeType/MethodType are code-execution
+    constructors reachable without compile(): a crafted CodeType ran
+    arbitrary bytecode (verified end to end)."""
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / f"bypass_{ctor}.py"
+    bad.write_text(f"import types\nf = types.{ctor}\n")
+
+    with pytest.raises(SecurityError, match="Unsafe attribute access"):
+        loader._check_module_safety(Path(bad))
+
+
+def test_check_module_safety_rejects_traceback_import(tmp_path):
+    """traceback.walk_stack hands out live host frames; f_globals was then
+    reachable via getattr with a literal name the old six-name subset did
+    not cover (verified: a probe plugin ran exec this way)."""
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / "bypass_tb.py"
+    bad.write_text("import traceback\n")
+
+    with pytest.raises(SecurityError, match="Unsafe import"):
+        loader._check_module_safety(Path(bad))
+
+
+def test_check_module_safety_rejects_getattr_literal_danger_names(tmp_path):
+    """getattr(obj, "f_globals") faces the same deny list as attribute
+    access -- the previous six-name literal subset let frame names
+    through."""
+    loader = PluginLoader(PluginConfig())
+    bad = tmp_path / "bypass_getattr_lit.py"
+    bad.write_text('g = getattr(x, "f_globals")\n')
+
+    with pytest.raises(SecurityError, match="Unsafe getattr"):
+        loader._check_module_safety(Path(bad))
+
+
+
 def test_execute_with_limits_runs_off_main_thread():
     """SIGALRM delivery exists only in the main thread -- on any other
     thread signal.signal() raised ValueError before the plugin callable
@@ -345,3 +419,73 @@ def test_execute_with_limits_times_out_off_main_thread():
     worker.join(10)
 
     assert result == ["timeout"]
+
+
+class _PosixRlimit:
+    """resource stand-in with POSIX semantics: an unprivileged process may
+    lower the hard limit but can never raise it again."""
+
+    RLIMIT_AS = 9
+    RLIM_INFINITY = -1
+
+    class error(Exception):
+        pass
+
+    def __init__(self, soft, hard):
+        self.soft = soft
+        self.hard = hard
+
+    def getrlimit(self, which):
+        assert which == self.RLIMIT_AS
+        return (self.soft, self.hard)
+
+    def setrlimit(self, which, limits):
+        assert which == self.RLIMIT_AS
+        soft_req, hard_req = limits
+        finite_hard = self.hard != self.RLIM_INFINITY
+        raises_hard = hard_req == self.RLIM_INFINITY or (
+            finite_hard and hard_req > self.hard)
+        if raises_hard:
+            raise self.error("cannot raise hard limit without privilege")
+        self.soft, self.hard = limits
+
+
+def test_apply_memory_limit_restores_process_limits(monkeypatch):
+    """setrlimit used to write (target, target), lowering the *hard* limit;
+    unprivileged restore then failed EPERM and the whole process -- host
+    included -- stayed capped at max_memory_mb after every sandboxed call.
+    Only the soft limit is now lowered, so the restore is always legal."""
+    import plugin_system
+
+    state = _PosixRlimit(soft=4 << 30, hard=8 << 30)
+    monkeypatch.setattr(plugin_system, "resource", state)
+
+    sandbox = PluginSandbox(PluginConfig(max_memory_mb=64))
+    with sandbox._apply_memory_limit():
+        pass
+
+    assert (state.soft, state.hard) == (4 << 30, 8 << 30)
+
+
+def test_execute_with_limits_restores_memory_off_main_thread(monkeypatch):
+    """The review's exact scenario: an off-main-thread call enters the
+    thread-join fallback, whose _apply_memory_limit used to leave the
+    process hard-capped even though the plugin call succeeded."""
+    import plugin_system
+
+    state = _PosixRlimit(soft=4 << 30, hard=8 << 30)
+    monkeypatch.setattr(plugin_system, "resource", state)
+
+    sandbox = PluginSandbox(PluginConfig(max_memory_mb=64))
+    result = []
+
+    def run():
+        result.append(sandbox.execute_with_limits(lambda: 42))
+
+    worker = threading.Thread(target=run)
+    worker.start()
+    worker.join(10)
+
+    assert result == [42]
+    assert (state.soft, state.hard) == (4 << 30, 8 << 30)
+
