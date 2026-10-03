@@ -1578,44 +1578,54 @@ async def process_batch_job(job_id: str):
             job_data['started_at'] = datetime.now(timezone.utc)
 
             for i, file_name in enumerate(job_data['files']):
-                file_path = _resolve_uploaded_path(file_name)
                 job_data['current_file'] = file_name
                 job_data['updated_at'] = datetime.now(timezone.utc)
+                try:
+                    file_path = _resolve_uploaded_path(file_name)
 
-                # Process file based on operation
-                if job_data['operation'] == 'analyze':
-                    result = await analyze_audio_fast(file_path)
-                elif job_data['operation'] == 'normalize':
-                    output_name = f"normalized_{uuid.uuid4().hex}_{file_name}"
-                    sanitized_output = _sanitize_uploaded_name(output_name)
-                    output_path = UPLOAD_DIRECTORY / sanitized_output
-                    try:
-                        _REQUEST_VALIDATOR.validate_file_path(output_path, operation="create")
-                    except ChameleonSecurityError as exc:
-                        result = {'success': False, 'error': str(exc)}
-                    else:
-                        result = await normalize_audio_fast(
-                            file_path, output_path,
-                            target_peak=job_data['options'].get('target_peak', 0.95),
-                        )
-                        if result.get('success'):
-                            try:
-                                output_size = output_path.stat().st_size
-                            except FileNotFoundError:
-                                output_size = 0
-                            api_state.register_generated_file(
-                                sanitized_output,
-                                owner=job_data['user'],
-                                size=output_size,
-                                source_files=[file_name],
-                                operation='normalize',
-                                session_id=job_data.get('owner_session_id'),
+                    # Process file based on operation
+                    if job_data['operation'] == 'analyze':
+                        result = await analyze_audio_fast(file_path)
+                    elif job_data['operation'] == 'normalize':
+                        output_name = f"normalized_{uuid.uuid4().hex}_{file_name}"
+                        sanitized_output = _sanitize_uploaded_name(output_name)
+                        output_path = UPLOAD_DIRECTORY / sanitized_output
+                        try:
+                            _REQUEST_VALIDATOR.validate_file_path(output_path, operation="create")
+                        except ChameleonSecurityError as exc:
+                            result = {'success': False, 'error': str(exc)}
+                        else:
+                            result = await normalize_audio_fast(
+                                file_path, output_path,
+                                target_peak=job_data['options'].get('target_peak', 0.95),
                             )
-                            # Without this the output is registered for
-                            # download under a name the client never learns.
-                            result['output_file'] = sanitized_output
-                else:
-                    result = {'success': False, 'error': 'Unknown operation'}
+                            if result.get('success'):
+                                try:
+                                    output_size = output_path.stat().st_size
+                                except FileNotFoundError:
+                                    output_size = 0
+                                api_state.register_generated_file(
+                                    sanitized_output,
+                                    owner=job_data['user'],
+                                    size=output_size,
+                                    source_files=[file_name],
+                                    operation='normalize',
+                                    session_id=job_data.get('owner_session_id'),
+                                )
+                                # Without this the output is registered for
+                                # download under a name the client never learns.
+                                result['output_file'] = sanitized_output
+                    else:
+                        result = {'success': False, 'error': 'Unknown operation'}
+                except Exception as exc:
+                    # One bad input is this file's result, not the job's:
+                    # aborting here used to strand every later file, and
+                    # str(HTTPException) is just "400" — the real reason
+                    # lives on .detail.
+                    result = {
+                        'success': False,
+                        'error': getattr(exc, 'detail', None) or str(exc),
+                    }
 
                 job_data['results'].append({
                     'file': file_name,
@@ -1645,7 +1655,7 @@ async def process_batch_job(job_id: str):
     except Exception as e:
         logging.error(f"Batch job processing error: {e}")
         job_data['status'] = 'failed'
-        job_data['error'] = str(e)
+        job_data['error'] = getattr(e, 'detail', None) or str(e)
         api_state.stats['failed_jobs'] += 1
         if job_id in api_state.job_queue:
             api_state.job_queue.remove(job_id)
