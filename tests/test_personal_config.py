@@ -513,6 +513,41 @@ def test_backup_workflow_verifies_an_intact_copy(tmp_path, monkeypatch, capsys):
     assert "verified successfully" in capsys.readouterr().out
 
 
+# --- backup_workflow refuses self-including destinations -------------------
+
+def test_backup_workflow_rejects_library_as_backup(tmp_path, monkeypatch):
+    # backup_path == library_path means every copy2 call is a self-copy:
+    # shutil raises SameFileError mid-run and the "backup" is a crash.
+    from tests._helpers import write_sine_wave
+    import personal_config as pc
+    import pytest
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    library = tmp_path / "lib"
+    library.mkdir()
+    write_sine_wave(library / "a.wav", duration=0.05)
+
+    with pytest.raises(ValueError, match="inside it"):
+        pc.PersonalWorkflow.backup_workflow(library, library)
+
+
+def test_backup_workflow_rejects_backup_inside_library(tmp_path, monkeypatch):
+    # A backup nested inside the library is self-including: the copies land
+    # where the next scan or backup sees them, so each later run re-copies
+    # its own output and the manifest claims them as members.
+    from tests._helpers import write_sine_wave
+    import personal_config as pc
+    import pytest
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    library = tmp_path / "lib"
+    library.mkdir()
+    write_sine_wave(library / "a.wav", duration=0.05)
+
+    with pytest.raises(ValueError, match="inside it"):
+        pc.PersonalWorkflow.backup_workflow(library, library / "backup")
+
+
 # --- setup wizard's non-interactive edges ----------------------------------
 # `python personal_config.py setup` is the onboarding step both
 # quick_install.sh and quick_install.ps1 point a new user at. It is only
