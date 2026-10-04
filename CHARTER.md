@@ -3231,3 +3231,24 @@ tag unpacked from the GUID's first two bytes. Malformed-input early returns
 are genuinely invalid files, so the generic message remains honest there.
 `_read_wav_header_optimized` and the async path delegate to this single
 walker, so the fix covers every entry point.
+
+
+**Q (2026-10-04, audit 398):** When `_read_wav_header` sees an unknown
+extensible subformat GUID, should it set `_header_rejection_reason` and
+return immediately, or defer the reason until the file's structure has
+been validated? And should every unknown GUID be labeled by the two-byte
+WAVE tag it happens to carry in bytes 0-1?
+
+**A:** Defer, and only label namespace GUIDs by tag. The audit-357 fix set
+the reason and returned while still inside the fmt chunk — before the
+data chunk had been found, so a truncated file (valid extensible fmt,
+unknown GUID, no data) was reported as "Unsupported WAV encoding" and the
+CLI's message-prefix classification turned a corrupt input into a
+capability gap (exit ERROR instead of INPUT). The reason now lives beside
+the `format_tag != 1` branch, set only after `fmt_seen` and `data_offset`
+are confirmed; a file that never reaches a data chunk still reports the
+generic "Invalid WAV file format" it deserves. Separately, only GUIDs in
+the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
+tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
+tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
+GUIDs are now reported by their full hex instead of a phantom tag.
