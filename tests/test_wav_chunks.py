@@ -61,6 +61,28 @@ def test_extensible_pcm_is_accepted(tmp_path):
     assert result.data.bit_depth == 16
 
 
+def test_extensible_unknown_subformat_reports_encoding_not_invalid(tmp_path):
+    # A well-formed WAVE_FORMAT_EXTENSIBLE file whose subformat GUID we do
+    # not decode (here MP3, tag 0x55) is valid but unsupported -- the same
+    # class as the float path below, so it owes the user the same kind of
+    # reason. A bare return reported it as a corrupt file instead.
+    import struct
+    fmt = struct.pack('<HHIIHH', 0xFFFE, 1, 44100, 44100 * 2, 2, 16)
+    fmt += struct.pack('<HHI', 22, 16, 0)
+    fmt += bytes.fromhex('5500000000001000800000aa00389b71')  # MP3 subformat
+    data = struct.pack('<100h', *([0] * 100))
+    body = b'WAVE' + b'fmt ' + struct.pack('<I', len(fmt)) + fmt + \
+        b'data' + struct.pack('<I', len(data)) + data
+    wav = tmp_path / 'ext_mp3.wav'
+    wav.write_bytes(b'RIFF' + struct.pack('<I', len(body)) + body)
+
+    result = core.analyze(str(wav))
+    assert not result.success
+    assert 'Unsupported WAV encoding' in result.message
+    assert 'subformat tag 85' in result.message
+    assert 'Invalid' not in result.message
+
+
 def test_odd_sized_junk_chunk_with_pad_byte(tmp_path):
     plain, _ = _plain(tmp_path)
     junky, _ = write_wav_raw(tmp_path / "junky.wav", frames=TONE,

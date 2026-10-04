@@ -3213,3 +3213,21 @@ a named error at the module boundary.
 
 
 
+
+**Q (2026-10-04, audit 357):** Should a well-formed WAVE_FORMAT_EXTENSIBLE
+file whose 16-byte subformat GUID is neither PCM nor float set
+`_header_rejection_reason` before returning, or report through the generic
+fallback like a truncated file?
+
+**A:** Set the reason. The GUID is the subformat's identity; when it decodes
+cleanly but names an encoding we do not read (e.g. MP3 in WAV, tag 0x55), the
+file is valid-but-unsupported — the same class as `format_tag != 1`, which
+reports "Unsupported WAV encoding (format tag N) ... pip install -e
+.[audio]". A bare `return None` instead fell through to the generic
+"Invalid WAV file format", telling the user a readable file was corrupt and
+hiding the actionable remediation. The reason now names the actual subformat
+tag unpacked from the GUID's first two bytes. Malformed-input early returns
+(header too short, body < 40 bytes) still leave the reason unset — those
+are genuinely invalid files, so the generic message remains honest there.
+`_read_wav_header_optimized` and the async path delegate to this single
+walker, so the fix covers every entry point.

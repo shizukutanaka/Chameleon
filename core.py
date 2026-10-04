@@ -831,6 +831,20 @@ class WAVProcessor:
                             elif guid == self._FLOAT_SUBFORMAT_GUID:
                                 format_tag = 3
                             else:
+                                # A well-formed extensible file whose
+                                # subformat we don't decode is valid but
+                                # unsupported -- the same class as
+                                # format_tag != 1 below, so it owes the
+                                # user the same kind of reason, not the
+                                # generic 'invalid' (a bare return used to
+                                # report MP3-in-WAV as a corrupt file).
+                                self._header_rejection_reason = (
+                                    "Unsupported WAV encoding "
+                                    "(WAVE_FORMAT_EXTENSIBLE subformat tag "
+                                    f"{struct.unpack('<H', guid[:2])[0]}); "
+                                    "the dependency-free build reads PCM "
+                                    "only. Install the audio extra: "
+                                    "pip install -e .[audio]")
                                 return None
                         remaining = chunk_size - len(body)
                         if remaining > 0:
