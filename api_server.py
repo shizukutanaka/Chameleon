@@ -619,6 +619,18 @@ async def _persist_upload(file: UploadFile, destination: Path) -> int:
             except OSError:
                 logging.warning("Failed to remove partial upload: %s", target_path)
         raise
+    except OSError as exc:
+        # secure_open refuses unsafe destinations (e.g. symlinks) with
+        # OSError, not ChameleonSecurityError — a refusal of that kind is a
+        # bad request, not an internal failure. Keep the detail generic.
+        if target_path.exists():
+            try:
+                target_path.unlink()
+            except OSError:
+                logging.warning("Failed to remove partial upload: %s", target_path)
+        logging.warning("Upload destination refused by secure_open: %s", exc)
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            detail="Upload destination not allowed") from exc
     except Exception as exc:
         if target_path.exists():
             try:

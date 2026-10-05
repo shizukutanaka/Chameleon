@@ -103,6 +103,37 @@ class TestCliOutputSameAsInput:
                 explicit_path=str(link), output_dir=None)
 
 
+class TestPersistUploadSecureOpenRefusal:
+    def test_oserror_from_secure_open_is_400_not_500(self, tmp_path, monkeypatch):
+        """A symlink swapped in between validate_file_path's resolution and
+        secure_open's O_NOFOLLOW open surfaces as OSError; _persist_upload
+        must map that refusal to 400, not the generic 500."""
+        pytest.importorskip("fastapi")
+        import asyncio
+        import api_server
+        from fastapi import HTTPException
+
+        real_open = os.open
+
+        def _race_open(path, flags, mode=0o777, *args, **kwargs):
+            if str(path).endswith("race.wav"):
+                raise OSError(62, "Too many levels of symbolic links")
+            return real_open(path, flags, mode, *args, **kwargs)
+
+        monkeypatch.setattr(os, "open", _race_open)
+
+        class _EmptyUpload:
+            async def read(self, n):
+                return b""
+            async def close(self):
+                pass
+
+        with pytest.raises(HTTPException) as exc_info:
+            asyncio.run(api_server._persist_upload(
+                _EmptyUpload(), tmp_path / "race.wav"))
+        assert exc_info.value.status_code == 400
+
+
 class TestLoginRateLimitPerIp:
     def test_username_rotation_shares_ip_window(self, monkeypatch):
         """Rotating usernames from one IP must exhaust a shared window."""

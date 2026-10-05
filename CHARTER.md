@@ -3285,3 +3285,15 @@ with new diffs:
 Regression coverage lives in `tests/test_uncovered_defect_fixes.py`
 (FIFO/dir/socket/missing-path matrix, half-value stereo downmix, explicit
 and symlinked same-file output refusal, username-rotation 429).
+
+A follow-on second-order sweep of the same surface found one more
+defect of the same family — a fix whose *exception contract* changed
+under its callers: `secure_open` refuses symlinked destinations with
+`OSError` (the merged audit-140 contract), but `_persist_upload` caught
+`ChameleonSecurityError` for 400 and `Exception` for 500, so a refusal
+inside the TOCTOU window between `validate_file_path`'s resolution and
+`os.open`'s O_NOFOLLOW check surfaced as a generic 500 with no audit
+classification. `_persist_upload` now maps `OSError` to HTTP 400
+("Upload destination not allowed") with partial-upload cleanup kept.
+The general rule recorded here: changing a raise's exception *type* is
+an API-contract change — every enclosing `except` must be re-audited.
