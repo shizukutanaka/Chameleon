@@ -605,7 +605,8 @@ class PluginLoader:
                             or alias.name in self._CAPABILITY_EXPORTED_NAMES):
                         raise SecurityError(
                             f"Unsafe import detected: {alias.name} is a "
-                            f"denied name from {module_name or 'the module'}"
+                            f"denied name or re-exported capability from "
+                            f"{module_name or 'the module'}"
                         )
             elif isinstance(node, ast.Call):
                 func = node.func
