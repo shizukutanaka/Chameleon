@@ -83,6 +83,47 @@ def test_extensible_unknown_subformat_reports_encoding_not_invalid(tmp_path):
     assert 'Invalid' not in result.message
 
 
+def test_extensible_unknown_subformat_without_data_is_invalid(tmp_path):
+    # The same unknown GUID but no data chunk: the file is truncated, not
+    # merely unsupported, so it must report the generic 'invalid' (the CLI
+    # classifies 'Unsupported...' messages as a capability gap and would
+    # exit ERROR where this corrupt input owes INPUT).
+    fmt = struct.pack('<HHIIHH', 0xFFFE, 1, 44100, 44100 * 2, 2, 16)
+    fmt += struct.pack('<HHI', 22, 16, 0)
+    fmt += bytes.fromhex('5500000000001000800000aa00389b71')  # MP3 subformat
+    body = b'WAVE' + b'fmt ' + struct.pack('<I', len(fmt)) + fmt
+    wav = tmp_path / 'ext_mp3_truncated.wav'
+    wav.write_bytes(b'RIFF' + struct.pack('<I', len(body)) + body)
+
+    result = core.analyze(str(wav))
+    assert not result.success
+    assert 'Invalid' in result.message
+    assert 'Unsupported WAV encoding' not in result.message
+
+
+def test_extensible_foreign_guid_reports_guid_not_phantom_tag(tmp_path):
+    # GUID 01 00 01 00 ... shares the '01 00' prefix but its remaining
+    # bytes are outside the WAVEFORMATEX tag namespace, so bytes 0-1 do
+    # not encode a format tag. Reporting 'subformat tag 1' would name
+    # ordinary PCM for a custom subformat; the full GUID is the honest
+    # label instead.
+    fmt = struct.pack('<HHIIHH', 0xFFFE, 1, 44100, 44100 * 2, 2, 16)
+    fmt += struct.pack('<HHI', 22, 16, 0)
+    guid = bytes.fromhex('01000100' '0000' '1000' '8000' '00aa00389b71')
+    fmt += guid
+    data = struct.pack('<100h', *([0] * 100))
+    body = b'WAVE' + b'fmt ' + struct.pack('<I', len(fmt)) + fmt + \
+        b'data' + struct.pack('<I', len(data)) + data
+    wav = tmp_path / 'ext_custom.wav'
+    wav.write_bytes(b'RIFF' + struct.pack('<I', len(body)) + body)
+
+    result = core.analyze(str(wav))
+    assert not result.success
+    assert 'Unsupported WAV encoding' in result.message
+    assert 'subformat tag 1)' not in result.message
+    assert guid.hex() in result.message
+
+
 def test_odd_sized_junk_chunk_with_pad_byte(tmp_path):
     plain, _ = _plain(tmp_path)
     junky, _ = write_wav_raw(tmp_path / "junky.wav", frames=TONE,

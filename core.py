@@ -774,6 +774,11 @@ class WAVProcessor:
                            b'\x80\x00\x00\xaa\x00\x38\x9b\x71')
     _FLOAT_SUBFORMAT_GUID = (b'\x03\x00\x00\x00\x00\x00\x10\x00'
                              b'\x80\x00\x00\xaa\x00\x38\x9b\x71')
+    # Only GUIDs whose last 14 bytes match this tail belong to the
+    # WAVEFORMATEX tag namespace, where bytes 0-1 carry the WAVE format tag.
+    # A foreign GUID's first two bytes are not a format tag at all.
+    _WAVEFORMATEX_GUID_TAIL = (b'\x00\x00\x00\x00\x10\x00'
+                             b'\x80\x00\x00\xaa\x00\x38\x9b\x71')
     _MAX_WAV_CHUNKS = 256
 
     def _read_wav_header(self, file_path: str) -> Optional[AudioInfo]:
@@ -801,6 +806,7 @@ class WAVProcessor:
                 fmt_offset = 20
                 format_tag = channels = sample_rate = bits_per_sample = 0
                 channel_mask = 0
+                unknown_subformat_guid: Optional[bytes] = None
 
                 for _ in range(self._MAX_WAV_CHUNKS):
                     chunk_header = f.read(8)
@@ -831,21 +837,12 @@ class WAVProcessor:
                             elif guid == self._FLOAT_SUBFORMAT_GUID:
                                 format_tag = 3
                             else:
-                                # A well-formed extensible file whose
-                                # subformat we don't decode is valid but
-                                # unsupported -- the same class as
-                                # format_tag != 1 below, so it owes the
-                                # user the same kind of reason, not the
-                                # generic 'invalid' (a bare return used to
-                                # report MP3-in-WAV as a corrupt file).
-                                self._header_rejection_reason = (
-                                    "Unsupported WAV encoding "
-                                    "(WAVE_FORMAT_EXTENSIBLE subformat tag "
-                                    f"{struct.unpack('<H', guid[:2])[0]}); "
-                                    "the dependency-free build reads PCM "
-                                    "only. Install the audio extra: "
-                                    "pip install -e .[audio]")
-                                return None
+                                # Subformat we don't decode: remember it and
+                                # keep walking. The reason is only owed to a
+                                # structurally valid file -- a truncated one
+                                # (no data chunk below) must still report
+                                # the generic 'invalid'.
+                                unknown_subformat_guid = guid
                         remaining = chunk_size - len(body)
                         if remaining > 0:
                             f.seek(remaining, 1)
@@ -868,10 +865,22 @@ class WAVProcessor:
                 if format_tag != 1:
                     # Valid file, unsupported encoding -- the reason must
                     # reach the user instead of the generic 'invalid' below.
-                    self._header_rejection_reason = (
-                        f"Unsupported WAV encoding (format tag {format_tag}); "
-                        "the dependency-free build reads PCM only. "
-                        "Install the audio extra: pip install -e .[audio]")
+                    if unknown_subformat_guid is not None:
+                        subformat = (
+                            "subformat tag "
+                            f"{struct.unpack('<H', unknown_subformat_guid[:2])[0]}"
+                            if unknown_subformat_guid[2:] == self._WAVEFORMATEX_GUID_TAIL
+                            else f"subformat GUID {unknown_subformat_guid.hex()}")
+                        self._header_rejection_reason = (
+                            "Unsupported WAV encoding "
+                            f"(WAVE_FORMAT_EXTENSIBLE {subformat}); "
+                            "the dependency-free build reads PCM only. "
+                            "Install the audio extra: pip install -e .[audio]")
+                    else:
+                        self._header_rejection_reason = (
+                            f"Unsupported WAV encoding (format tag {format_tag}); "
+                            "the dependency-free build reads PCM only. "
+                            "Install the audio extra: pip install -e .[audio]")
                     return None
                 if channels <= 0 or bits_per_sample not in (8, 16, 24, 32) or sample_rate <= 0:
                     return None
