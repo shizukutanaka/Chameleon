@@ -193,8 +193,9 @@ def analyze_spectrum(
 ) -> SpectrumReport:
     """Compute spectral statistics for a mono signal."""
 
-    if not math.isfinite(sample_rate) or sample_rate <= 0:
-        raise ValueError("sample_rate must be a positive integer")
+    if (not isinstance(sample_rate, (int, float))
+            or not math.isfinite(sample_rate) or sample_rate <= 0):
+        raise ValueError("sample_rate must be a positive finite number")
     if not isinstance(max_peaks, int) or max_peaks < 0:
         raise ValueError("max_peaks must be a non-negative integer")
 
@@ -259,13 +260,10 @@ def linear_resample(samples: Sequence[float], source_rate: int, target_rate: int
     use scipy/librosa (the ``[audio]`` extra) for band-limited resampling.
     """
 
-    if (
-        not math.isfinite(source_rate)
-        or not math.isfinite(target_rate)
-        or source_rate <= 0
-        or target_rate <= 0
-    ):
-        raise ValueError("sample rates must be positive finite numbers")
+    for name, rate in (("source_rate", source_rate),
+                       ("target_rate", target_rate)):
+        if not isinstance(rate, (int, float)) or not math.isfinite(rate) or rate <= 0:
+            raise ValueError(f"{name} must be a positive finite number")
 
     buffer = _to_float_sequence(samples)
     if not buffer or source_rate == target_rate:
@@ -321,12 +319,14 @@ def apply_spectral_mask(
     # or non-positive rate maps every bin to a single band (nan -> all
     # high_gain, 0/negative -> all low_gain), turning the three-band
     # equaliser into a flat uniform gain. The siblings already reject this.
-    if not math.isfinite(sample_rate) or sample_rate <= 0:
-        raise ValueError("sample_rate must be a positive integer")
+    if (not isinstance(sample_rate, (int, float))
+            or not math.isfinite(sample_rate) or sample_rate <= 0):
+        raise ValueError("sample_rate must be a positive finite number")
 
-    if any(not math.isfinite(gain) or gain < 0
-           for gain in (low_gain, mid_gain, high_gain)):
-        raise ValueError("gain factors must be non-negative")
+    for name, gain in (("low_gain", low_gain), ("mid_gain", mid_gain),
+                       ("high_gain", high_gain)):
+        if not isinstance(gain, (int, float)) or not math.isfinite(gain) or gain < 0:
+            raise ValueError(f"{name} must be a non-negative finite number")
 
     buffer = _to_float_sequence(samples)
     if not buffer:
