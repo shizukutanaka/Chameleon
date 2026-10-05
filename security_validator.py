@@ -387,7 +387,7 @@ class SecureFileOperations:
             # so O_NOFOLLOW on `resolved` can no longer refuse one; check
             # the caller's final component directly instead.
             if Path(path).expanduser().is_symlink():
-                raise SecurityError(
+                raise OSError(
                     f"Refusing to open symlink for writing: {path}")
 
             flags = os.O_RDWR if "+" in mode else os.O_WRONLY

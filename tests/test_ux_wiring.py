@@ -102,6 +102,11 @@ def test_format_table_rejects_row_wider_than_headers():
     with pytest.raises(ValueError, match="cells"):
         TableFormatter.format_table(["H1"], [["x", "y", "z"]])
 
-    # Short rows and exact rows still format.
-    out = TableFormatter.format_table(["A", "B"], [["1"], ["2", "3"]])
+    # Short rows are ragged too and raise on the same contract (merged
+    # audit-287 rejects any length mismatch rather than padding).
+    with pytest.raises(ValueError, match="cells"):
+        TableFormatter.format_table(["A", "B"], [["1"], ["2", "3"]])
+
+    # Exact rows still format.
+    out = TableFormatter.format_table(["A", "B"], [["1", "2"]])
     assert "A" in out and "B" in out
