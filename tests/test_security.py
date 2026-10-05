@@ -449,7 +449,9 @@ class TestSanitizeFilenameDotComponents:
         assert SecurityValidator.sanitize_filename(".") == "untitled"
 
     def test_legal_dot_names_unchanged(self):
-        # Only the two traversal components are special; '..x.wav' is a
-        # legal (dotfile-style) name and must pass through.
+        # '..x.wav' is a legal (dotfile-style) name and must pass through;
+        # a name that is only dots/spaces is unusable everywhere (the
+        # filesystem strips trailing dots and spaces, leaving nothing) and
+        # falls back like the two traversal components.
         assert SecurityValidator.sanitize_filename("..x.wav") == "..x.wav"
-        assert SecurityValidator.sanitize_filename("...") == "..."
+        assert SecurityValidator.sanitize_filename("...") == "untitled"
