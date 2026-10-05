@@ -229,17 +229,7 @@ class TableFormatter:
         # index past `widths` and die on a raw IndexError; short rows are
         # fine (zip stops at the shorter sequence).
         widths = [len(h) for h in headers]
-<<<<<<< HEAD
-        for row in rows:
-            if len(row) > len(headers):
-                raise ValueError(
-                    f"table row has {len(row)} cells but only "
-                    f"{len(headers)} headers")
-||||||| parent of 282f06e4 (Socratic audit 67: setup wizard created a literal '~' dir; library registered files it calls invalid)
-        for row in rows:
-=======
         for row in padded_rows:
->>>>>>> 282f06e4 (Socratic audit 67: setup wizard created a literal '~' dir; library registered files it calls invalid)
             for i, cell in enumerate(row):
                 widths[i] = max(widths[i], len(str(cell)))
 
