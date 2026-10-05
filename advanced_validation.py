@@ -356,7 +356,6 @@ class DeepFileInspector:
                             if channels < 1 or channels > 8:
                                 warnings.append(f"Unusual channel count: {channels}")
 
-<<<<<<< HEAD
                             # The full standard ladder: telephony/broadcast
                             # (8k-32k), consumer (44.1k/48k and halves), and
                             # the hi-res multiples up to 192k. Anything off
@@ -364,14 +363,7 @@ class DeepFileInspector:
                             if sample_rate not in (8000, 11025, 16000, 22050, 24000,
                                                    32000, 44100, 48000, 88200,
                                                    96000, 176400, 192000):
-                                metadata["warning"] = f"Non-standard sample rate: {sample_rate}"
-||||||| parent of 1560eae8 (Socratic audit 75: WAV inspector reported only the last of several problems)
-                            if sample_rate not in [8000, 11025, 16000, 22050, 44100, 48000, 96000]:
-                                metadata["warning"] = f"Non-standard sample rate: {sample_rate}"
-=======
-                            if sample_rate not in [8000, 11025, 16000, 22050, 44100, 48000, 96000]:
                                 warnings.append(f"Non-standard sample rate: {sample_rate}")
->>>>>>> 1560eae8 (Socratic audit 75: WAV inspector reported only the last of several problems)
 
                         # Skip any unread remainder of an oversized fmt body.
                         remainder = chunk_size - len(fmt_data)
