@@ -795,7 +795,8 @@ class PluginManager:
         # output_dir ("../x") or emits a plugin whose source cannot compile.
         if not isinstance(plugin_name, str) or not plugin_name.isidentifier():
             raise ValueError(
-                f"plugin_name must be a valid Python identifier, got {plugin_name!r}")
+                f"Invalid plugin name {plugin_name!r}: "
+                "must be a valid Python identifier")
         if category not in ("effect", "analyzer", "generator", "utility"):
             raise ValueError(
                 f"category must be one of effect, analyzer, generator, utility; got {category!r}")
