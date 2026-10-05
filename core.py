@@ -1678,7 +1678,7 @@ class BatchProcessor:
             except (TypeError, ValueError):
                 return [ProcessingResult(False, "target_peak must be numeric")]
             if not 0.0 < target_peak <= 1.0:
-                return [ProcessingResult(False, "target_peak must be in (0.0, 1.0]")]
+                return [ProcessingResult(False, "target_peak must be within (0.0, 1.0]")]
 
         threshold = kwargs.get("threshold")
         if threshold is not None:
@@ -1687,8 +1687,7 @@ class BatchProcessor:
             except (TypeError, ValueError):
                 return [ProcessingResult(False, "threshold must be numeric")]
             if not 0.0 < threshold < 1.0:
-                return [ProcessingResult(
-                    False, "threshold must be greater than 0.0 and less than 1.0")]
+                return [ProcessingResult(False, "threshold must be within (0.0, 1.0)")]
 
         skip_errors = kwargs.get("skip_errors", False)
         max_files = kwargs.get("max_files")
