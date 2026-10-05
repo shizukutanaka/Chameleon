@@ -1682,7 +1682,8 @@ class BatchProcessor:
             except (TypeError, ValueError):
                 return [ProcessingResult(False, "target_peak must be numeric")]
             if not 0.0 < target_peak <= 1.0:
-                return [ProcessingResult(False, "target_peak must be in (0.0, 1.0]")]
+                return [ProcessingResult(
+                    False, "Invalid target_peak: target peak must be in (0.0, 1.0]")]
 
         threshold = kwargs.get("threshold")
         if threshold is not None:
@@ -1965,7 +1966,8 @@ class BatchProcessor:
             except (TypeError, ValueError):
                 return [ProcessingResult(False, "target_peak must be numeric")]
             if not 0.0 < target_peak <= 1.0:
-                return [ProcessingResult(False, "target_peak must be in (0.0, 1.0]")]
+                return [ProcessingResult(
+                    False, "Invalid target_peak: target peak must be in (0.0, 1.0]")]
 
         threshold = kwargs.get("threshold")
         if threshold is not None:
