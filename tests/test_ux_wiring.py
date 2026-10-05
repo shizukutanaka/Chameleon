@@ -109,13 +109,14 @@ def test_format_table_rejects_row_wider_than_headers():
 
 def test_format_table_tolerates_ragged_rows():
     # A row with more cells than headers indexed widths[i] past the end of
-    # the header-width list and crashed IndexError; surplus cells are now
-    # truncated at render exactly like zip() already did.
+    # the header-width list and crashed IndexError. The merged contract
+    # (audit-287) rejects the ragged row with a clear ValueError instead of
+    # silently truncating the surplus cells.
+    import pytest
     from ux_improvements import TableFormatter
 
-    rendered = TableFormatter.format_table(["A", "B"], [["1", "2", "3"]])
-    assert "1 | 2" in rendered
-    assert "3" not in rendered.splitlines()[-1]
+    with pytest.raises(ValueError, match="headers"):
+        TableFormatter.format_table(["A", "B"], [["1", "2", "3"]])
 
 
 def test_format_table_short_row_leaves_trailing_cells_blank():
