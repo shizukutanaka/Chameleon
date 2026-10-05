@@ -423,6 +423,9 @@ class DeepFileInspector:
             metadata["structural_errors"] = structural_errors
         if structural_warnings:
             metadata["structural_warnings"] = structural_warnings
+            # Single-slot contract kept for callers that predate the list:
+            # it always surfaced only the last warning appended.
+            metadata["warning"] = structural_warnings[-1]
 
         return metadata
 
