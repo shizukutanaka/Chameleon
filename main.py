@@ -2036,13 +2036,12 @@ class AudioProcessor:
                 "silence and clipping inf to full scale",
                 nonfinite, file_path,
             )
-        if nonfinite:
-            audio = np.nan_to_num(audio, nan=0.0, posinf=1.0, neginf=-1.0)
-
-        # Values beyond [-1, 1] hard-clip on int PCM write -- report the
-        # count so an overdriven effects chain surfaces as a warning
+        # Values beyond [-1, 1] hard-clip on int PCM write, and non-finite
+        # samples cannot be represented at all -- report the count so an
+        # overdriven or NaN-producing effects chain surfaces as a warning
         # instead of silent distortion.
-        over = int(np.count_nonzero(np.abs(audio) > 1.0))
+        over = int(np.count_nonzero(~np.isfinite(audio)
+                                    | (np.abs(audio) > 1.0)))
         if over and self.logger:
             self.logger.warning(
                 "%d samples exceed [-1, 1] or are non-finite and will "
