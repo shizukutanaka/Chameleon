@@ -182,7 +182,7 @@ class MIDIAnalyzer:
             # roughly a -60 dBFS RMS level.
             energy = sum(x * x for x in frame)
 
-            if energy / len(frame) > 1e-6:  # Threshold for note detection
+            if frame and energy / len(frame) > 1e-6:  # Threshold for note detection
                 # Estimate fundamental frequency using autocorrelation
                 pitch_hz = self._estimate_pitch(frame, sample_rate)
 
