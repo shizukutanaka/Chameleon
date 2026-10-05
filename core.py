@@ -1234,7 +1234,10 @@ class WAVProcessor:
                         mono_chunk.extend(mv[frame_offset:frame_offset + bytes_per_sample].tobytes())
                         continue
 
-                    avg_sample = int(sum(samples) / len(samples))
+                    # int() truncates toward zero — a systematic ~0.5-LSB
+                    # inward bias on half-integer averages; round to nearest
+                    # like the gain path's writer does.
+                    avg_sample = int(round(sum(samples) / len(samples)))
                     mono_chunk.extend(self._encode_sample_value(avg_sample, info.bit_depth))
 
                 if mono_chunk:

@@ -193,7 +193,13 @@ class SecurityValidator:
             return False
         if not self._extension_allowed(resolved):
             return False
-        if resolved.exists() and resolved.is_file():
+        if resolved.exists():
+            # Anything that exists but is not a regular file — FIFO, socket,
+            # device, directory — can never be a valid audio input: open()
+            # on a FIFO or blocking device waits forever, and a directory
+            # fails only deep in the pipeline. Reject the whole class here.
+            if not resolved.is_file():
+                return False
             try:
                 if resolved.stat().st_size > self.config.max_file_size:
                     return False

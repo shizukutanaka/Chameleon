@@ -2122,6 +2122,11 @@ class AudioProcessor:
             sanitized_name = SecurityValidator.sanitize_filename(f"{source_path.stem}{suffix}")
             destination = destination_dir / sanitized_name
 
+        if core._paths_refer_to_same_file(str(source_path), str(destination)):
+            raise ValueError(
+                f"Output path resolves to the input file: {destination} "
+                "(in-place processing is not supported)")
+
         if create_dirs:
             destination.parent.mkdir(parents=True, exist_ok=True)
         return destination

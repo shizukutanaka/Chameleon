@@ -1060,6 +1060,10 @@ async def login(request: AuthenticationRequest, http_request: Request):
         _cleanup_expired_sessions()
         _enforce_session_capacity()
         client_ip = _get_request_ip(http_request)
+        # Two windows: per-username stops hammering one account, per-IP stops
+        # the same client rotating through usernames to multiply its budget
+        # (each rotation used to get a fresh window).
+        _enforce_rate_limit(f"login:{client_ip}")
         _enforce_rate_limit(f"login:{client_ip}:{request.username}")
 
         # Single-user credential check against the configured environment.

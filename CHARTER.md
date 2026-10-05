@@ -3252,3 +3252,36 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+
+**Q (2026-10-04, uncovered-defect sweep):** After the closed audit-PR batch,
+which verified defects remained uncovered on main, and how should they be
+re-submitted without re-litigating the closed diffs?
+
+**A:** Four defects had no surviving fix on any open branch — the closures
+rejected those patches, not the defects. They were re-fixed on a fresh branch
+with new diffs:
+
+1. `security_validator.validate_path` returned True for an existing
+   non-regular file (FIFO, socket, device, directory): the
+   `exists() and is_file()` guard only gated the size check, so a FIFO
+   passed validation and the subsequent `open()` blocked forever.
+   Existing non-regular files are now rejected outright; nonexistent paths
+   still pass (they may be outputs).
+2. The mono downmix computed `int(sum(samples)/len(samples))` — truncation
+   toward zero, a systematic ~0.5-LSB inward bias on half-integer averages.
+   It now rounds to nearest (`int(round(...))`), matching the gain path's
+   writer and the merged contract.
+3. The login rate limit keyed on `login:{ip}:{username}` let one client
+   rotate usernames for a fresh window per rotation. A second
+   `login:{ip}` window now caps the source address independently of the
+   account name.
+4. `_resolve_output_path` trusted an explicit `--output` (or a directory
+   resolved one) that resolved to the input file; the stdlib core ops
+   already refuse same-file in-place work via `_paths_refer_to_same_file`
+   (audit-148), and the CLI writer now applies the same check — including
+   symlinked destinations.
+
+Regression coverage lives in `tests/test_uncovered_defect_fixes.py`
+(FIFO/dir/socket/missing-path matrix, half-value stereo downmix, explicit
+and symlinked same-file output refusal, username-rotation 429).
