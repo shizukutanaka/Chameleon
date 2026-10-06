@@ -3252,3 +3252,19 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-10-06, rate-limit window residency):** `_enforce_rate_limit`'s
+opportunistic sweep deleted only windows whose deque was *already empty*,
+but a rotated-identifier window (`login:{ip}:{username}`, `auth:{client_id}`)
+is never queried again — its stale timestamps are never lazily evicted, so
+`not w` stays false forever and every distinct identifier left a permanent
+resident entry. Verified on main: 60 dead windows survived the sweep
+unchanged. The sweep now treats a fully-expired deque the same as an empty
+one (`now - w[0] > window_seconds` — the deque is time-ordered, so the
+oldest entry decides), bounding the dict at ~200 live keys instead of
+unbounded growth.
+
+**A:** Fix boundaries by *resident count*, not by what individual tests
+assert — a sweep that runs only past the 200-key threshold legitimately
+leaves the most recent windows in place; the contract is "dead windows are
+dropped, live ones stay", not "the dict empties".

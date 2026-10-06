@@ -207,11 +207,14 @@ def _enforce_rate_limit(identifier: str) -> None:
 
     # Opportunistic cleanup: every identifier gets its own deque, and a
     # one-shot caller (e.g. a scanner hitting many usernames) would otherwise
-    # leave an empty entry behind forever. Drop stale, now-empty windows for
-    # other identifiers so this dict doesn't grow unboundedly.
+    # leave an entry behind forever. A deque whose timestamps have all
+    # expired is equivalent to an empty one — eviction on access never runs
+    # for identifiers nobody queries again, so check the oldest timestamp,
+    # not just `not w`, or dead windows stay resident indefinitely.
     if len(windows) > max(200, max_requests):
-        for stale_id in [k for k, w in windows.items() if not w]:
-            del windows[stale_id]
+        for stale_id, w in [(k, w) for k, w in windows.items()]:
+            if not w or now - w[0] > window_seconds:
+                del windows[stale_id]
 
 # API Models
 class AuthenticationRequest(BaseModel):

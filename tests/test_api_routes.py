@@ -620,3 +620,29 @@ def test_audit_log_is_bounded():
     for i in range(cap + 50):
         api_server.log_audit_event("u", "OP", "res", "SUCCESS", "", "ip", "")
     assert len(api_server.api_state.audit_log) == cap
+
+
+# ----------------------------------------- rate-limit window housekeeping --
+
+
+def test_dead_rate_limit_windows_are_evicted(monkeypatch):
+    # Distinct identifiers get a deque each; one-shot callers (e.g. a
+    # scanner rotating usernames) leave windows nobody ever queries
+    # again. Their timestamps only evict lazily on access, so without a
+    # timestamp-aware sweep they stay resident forever. Verified on main:
+    # 60 dead windows survived the sweep because `not w` never sees stale
+    # entries.
+    monkeypatch.setitem(api_server.SECURITY_CONFIG, 'enable_rate_limiting', True)
+    monkeypatch.setitem(api_server.SECURITY_CONFIG, 'rate_limit_window_seconds', 0)
+    api_server.api_state._rate_limit_windows.clear()
+    try:
+        for i in range(210):
+            api_server._enforce_rate_limit(f"probe:stale:{i}")
+        api_server._enforce_rate_limit("probe:trigger")
+        # The sweep only fires past the 200-key threshold, so a handful of
+        # the most recent (still-live) windows legitimately remain — but the
+        # 210 dead ones must be gone. The old `not w` sweep could never see
+        # stale timestamps, and would leave all 211 resident here.
+        assert len(api_server.api_state._rate_limit_windows) <= 32
+    finally:
+        api_server.api_state._rate_limit_windows.clear()
