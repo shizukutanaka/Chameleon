@@ -1,6 +1,6 @@
 # Chameleon — Product Analysis (Strengths, Weaknesses, Improvement Backlog)
 
-**Snapshot date:** 2026-10-14 (claims re-verified against the code) ·
+**Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
 **Version:** 1.1.0 · **Tests:** re-run 2026-10-14 on Python 3.12, green in
 all three configurations — **613 passed** on a bare install (stdlib only, 35 skipped), **726 passed** with numpy (scipy/librosa/soundfile blocked, 35
 skipped), **833 passed** with numpy + scipy + librosa + soundfile + fastapi (5 skipped). Skip totals follow which extras are installed — e.g. the two
