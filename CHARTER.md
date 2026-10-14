@@ -3252,3 +3252,7 @@ the WAVEFORMATEX tag namespace (whose last 14 bytes match the standard
 tail) encode a WAVE format tag in bytes 0-1: the MP3 GUID's `55 00` is
 tag 85, but a foreign GUID starting `01 00` is not "PCM tag 1". Foreign
 GUIDs are now reported by their full hex instead of a phantom tag.
+
+**Q (2026-10-14, monetization):** The user asked for a mechanism that earns revenue. What is the smallest one that does not violate §4, the MIT license, or the dependency-free core?
+
+**A:** A commercial-support intake, not a product feature. License fees are impossible under MIT without relicensing; a paid hosted API would add an ops surface one maintainer cannot keep (the k8s manifest has never been applied); in-app nags or gated "pro" features would tax every user to reach a few. The funnel is therefore config only: `.github/FUNDING.yml` turns on the repository's Sponsor button pointing at a structured issue form (`commercial_support.yml`), README's Support section and the `Funding` project URL (pyproject + its setup.py mirror) point at the same form, and `tests/test_funding_links.py` fails if any of the four links drift or the template disappears. GitHub Sponsors is not enabled on the account, so FUNDING.yml carries no `github:` entry — a button to a nonexistent profile would be a dead link. Zero runtime code changed.
