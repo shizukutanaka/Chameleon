@@ -21,6 +21,7 @@ Every test here passes an explicit path. None of them may touch the real
 """
 
 import json
+import logging
 from pathlib import Path
 
 import pytest
@@ -79,10 +80,12 @@ def test_save_creates_the_parent_directory(tmp_path):
 
 # --- tolerating other versions' files ------------------------------------
 
-def test_an_unrecognised_setting_is_ignored_not_fatal(config_path, caplog):
+def test_an_unrecognised_setting_is_ignored_not_fatal(
+        config_path, caplog, monkeypatch):
     config_path.write_text(json.dumps(
         {"audio_library": "/tmp/keep-me", "setting_from_the_future": True}))
 
+    monkeypatch.setattr(logging.getLogger("chameleon"), "propagate", True)
     config = personal_config.PersonalConfig.load(config_path)
 
     assert config.audio_library == "/tmp/keep-me"      # the known key survives

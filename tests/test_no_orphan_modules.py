@@ -25,10 +25,11 @@ and say why in the dict below.
 """
 
 import ast
-import tomllib
 from pathlib import Path
 
 import pytest
+
+tomllib = pytest.importorskip("tomllib")
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

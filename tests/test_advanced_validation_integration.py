@@ -167,7 +167,8 @@ def test_main_block_self_test_writes_no_state_into_the_real_home(tmp_path):
     assert not (home / ".chameleon").exists()
 
 
-def test_create_manifest_warns_instead_of_silently_dropping_missing(tmp_path, caplog):
+def test_create_manifest_warns_instead_of_silently_dropping_missing(
+        tmp_path, caplog, monkeypatch):
     """A nonexistent input used to be skipped without a word -- and, being
     absent from the manifest, verify_manifest could never even report it
     'Missing:'. The omission must be visible."""
@@ -179,6 +180,7 @@ def test_create_manifest_warns_instead_of_silently_dropping_missing(tmp_path, ca
     missing = tmp_path / "typo.wav"
 
     verifier = IntegrityVerifier(manifest_dir=tmp_path / "manifests")
+    monkeypatch.setattr(logging.getLogger("chameleon"), "propagate", True)
     with caplog.at_level(logging.WARNING):
         verifier.create_manifest([real, missing], "m")
 
