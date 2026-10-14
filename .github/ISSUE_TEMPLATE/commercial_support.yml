@@ -1,0 +1,36 @@
+name: Commercial support inquiry
+description: Paid integration, pipeline setup, or prioritized fixes for Chameleon
+title: "[Commercial] "
+body:
+  - type: markdown
+    attributes:
+      value: "Chameleon stays MIT-licensed and free for any use, including commercial. This form is for **paid work**: integrating Chameleon into your pipeline, building batch/mastering workflows, or prioritizing a fix for a bug you can reproduce. Issues are public — do not include confidential details; we will move to a private channel after first contact."
+  - type: dropdown
+    id: engagement
+    attributes:
+      label: Type of engagement
+      options:
+        - Integration into an existing pipeline
+        - Batch / mastering workflow setup
+        - Prioritized fix for a reproducible bug
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: use_case
+    attributes:
+      label: What do you need to achieve?
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment (OS, Python version, file volume)
+    validations:
+      required: false
+  - type: input
+    id: timeline
+    attributes:
+      label: Timeline
+    validations:
+      required: false

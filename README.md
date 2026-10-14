@@ -364,6 +364,7 @@ MIT License - See LICENSE for details
 - **Issues**: https://github.com/shizukutanaka/Chameleon/issues
 - **Documentation**: See `docs/` directory
 - **Security Issues**: Report via GitHub Security Advisories
+- **Commercial support**: paid integration, batch/mastering workflow setup, and prioritized fixes — [open an inquiry](https://github.com/shizukutanaka/Chameleon/issues/new?template=commercial_support.yml). The MIT license already permits free commercial use; this is for work you want done, not a license fee.
 
 ---
 
