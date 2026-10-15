@@ -3260,3 +3260,7 @@ GUIDs are now reported by their full hex instead of a phantom tag.
 **Q (2026-10-14, Python floor):** Does the suite actually run on the Python versions we declare (`requires-python >=3.8`, CI 3.8–3.11)?
 
 **A:** It did not. One test module imported 3.11-only `tomllib` at module level, so collection aborted on 3.8–3.10; two caplog tests passed only because pytest 9 (Python ≥3.10) also hooks non-propagating loggers, while `AudioProcessor.setup_logging` leaves the `chameleon` logger non-propagating. The module now `importorskip`s `tomllib`, and the two tests re-enable propagation via monkeypatch for their duration. Product code is unchanged; verified on Python 3.9.6/pytest 8.4.2 and 3.12/pytest 9.
+
+**Q (2026-10-15, PCM phases):** Is normalize's PCM decode/encode work a separable, testable phase, and can it be faster without changing output?
+
+**A:** Yes. `WAVProcessor._decode_pcm_frames` and `_encode_pcm_samples` now handle the stdlib PCM path independently, with the per-sample primitives retained as fallbacks. On `late_peak_30s.wav` (30 s, 48 kHz stereo), `process --normalize`'s reported processing time fell from 3.73 s to 0.82 s (4.5×; `/usr/bin/time` real time 6.10 s to 1.12 s). `cmp` confirmed the complete normalized WAV is byte-identical; seeded tests cover 8/16/24/32-bit mono/stereo equivalence and the 1,000,000-sample levels cap.

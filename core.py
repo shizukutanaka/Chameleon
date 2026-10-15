@@ -18,6 +18,7 @@ import sys
 import time
 import json
 import datetime
+from array import array
 import struct
 import shutil
 import tempfile
@@ -27,7 +28,7 @@ import gc
 import math
 from pathlib import Path
 import asyncio
-from typing import Union, Optional, Dict, List, Any, Tuple, Callable
+from typing import Union, Optional, Dict, List, Any, Tuple, Callable, Iterable
 from dataclasses import dataclass
 from security_validator import SecurityValidator, SecurityConfig, _RESERVED_DEVICE_NAMES
 
@@ -444,6 +445,37 @@ class WAVProcessor:
         return None
 
     @staticmethod
+    def _decode_pcm_frames(buf: bytes, bit_depth: int) -> Optional[List[int]]:
+        if bit_depth == 8:
+            samples = array('B')
+            samples.frombytes(buf)
+            return [sample - 128 for sample in samples]
+        if bit_depth == 16:
+            samples = array('h')
+            if samples.itemsize != 2 or len(buf) % 2:
+                return None
+            samples.frombytes(buf)
+            if sys.byteorder == 'big':
+                samples.byteswap()
+            return samples.tolist()
+        if bit_depth == 24:
+            if len(buf) % 3:
+                return None
+            return [
+                int.from_bytes(buf[offset:offset + 3], 'little', signed=True)
+                for offset in range(0, len(buf), 3)
+            ]
+        if bit_depth == 32:
+            samples = array('i')
+            if samples.itemsize != 4 or len(buf) % 4:
+                return None
+            samples.frombytes(buf)
+            if sys.byteorder == 'big':
+                samples.byteswap()
+            return samples.tolist()
+        return None
+
+    @staticmethod
     def _normalize_amplitude(value: int, bit_depth: int) -> float:
         if bit_depth <= 8:
             scale = 128.0
@@ -480,6 +512,51 @@ class WAVProcessor:
         if bit_depth == 32:
             clamped = max(-2147483648, min(2147483647, int(value)))
             return struct.pack('<i', clamped)
+        return b""
+
+    @staticmethod
+    def _encode_pcm_samples(values: Iterable[int], bit_depth: int) -> bytes:
+        if bit_depth == 8:
+            samples = array(
+                'B',
+                (max(-128, min(127, int(value))) + 128 for value in values),
+            )
+            return samples.tobytes()
+        if bit_depth == 16:
+            if array('h').itemsize != 2:
+                return b''.join(
+                    struct.pack('<h', max(-32768, min(32767, int(value))))
+                    for value in values
+                )
+            samples = array(
+                'h',
+                (max(-32768, min(32767, int(value))) for value in values),
+            )
+            if sys.byteorder == 'big':
+                samples.byteswap()
+            return samples.tobytes()
+        if bit_depth == 24:
+            return b''.join(
+                int(max(-8388608, min(8388607, int(value)))).to_bytes(
+                    4, 'little', signed=True
+                )[:3]
+                for value in values
+            )
+        if bit_depth == 32:
+            if array('i').itemsize != 4:
+                return b''.join(
+                    struct.pack(
+                        '<i', max(-2147483648, min(2147483647, int(value)))
+                    )
+                    for value in values
+                )
+            samples = array(
+                'i',
+                (max(-2147483648, min(2147483647, int(value))) for value in values),
+            )
+            if sys.byteorder == 'big':
+                samples.byteswap()
+            return samples.tobytes()
         return b""
 
     def _read_wav_header_optimized(self, file_path: str) -> Optional[AudioInfo]:
@@ -937,22 +1014,42 @@ class WAVProcessor:
                     if available == 0:
                         continue
 
-                    mv = memoryview(chunk[:available])
-                    for frame_offset in range(0, available, frame_size):
-                        for channel in range(info.channels):
+                    decoded_samples = (
+                        self._decode_pcm_frames(chunk[:available], info.bit_depth)
+                        if info.channels > 0 else None
+                    )
+                    if decoded_samples is not None:
+                        for sample_value in decoded_samples:
                             if sample_count >= max_samples:
                                 break
-                            sample_offset = frame_offset + channel * bytes_per_sample
-                            sample_bytes = mv[sample_offset:sample_offset + bytes_per_sample].tobytes()
-                            sample_value = self._decode_sample_bytes(sample_bytes, info.bit_depth)
-                            if sample_value is None:
-                                continue
-                            normalized_sample = self._normalize_amplitude(sample_value, info.bit_depth)
+                            normalized_sample = self._normalize_amplitude(
+                                sample_value, info.bit_depth
+                            )
                             max_val = max(max_val, normalized_sample)
                             sum_squares += normalized_sample * normalized_sample
                             sample_count += 1
-
-                    del mv
+                    else:
+                        mv = memoryview(chunk[:available])
+                        for frame_offset in range(0, available, frame_size):
+                            for channel in range(info.channels):
+                                if sample_count >= max_samples:
+                                    break
+                                sample_offset = frame_offset + channel * bytes_per_sample
+                                sample_bytes = mv[
+                                    sample_offset:sample_offset + bytes_per_sample
+                                ].tobytes()
+                                sample_value = self._decode_sample_bytes(
+                                    sample_bytes, info.bit_depth
+                                )
+                                if sample_value is None:
+                                    continue
+                                normalized_sample = self._normalize_amplitude(
+                                    sample_value, info.bit_depth
+                                )
+                                max_val = max(max_val, normalized_sample)
+                                sum_squares += normalized_sample * normalized_sample
+                                sample_count += 1
+                        del mv
 
                 if sample_count == 0:
                     return 0.0, 0.0
@@ -1158,32 +1255,61 @@ class WAVProcessor:
                 if available == 0:
                     continue
 
-                mv = memoryview(chunk[:available])
                 processed_chunk = bytearray()
 
-                for frame_offset in range(0, available, frame_size):
-                    for channel in range(info.channels):
-                        sample_offset = frame_offset + channel * bytes_per_sample
-                        sample_bytes = mv[sample_offset:sample_offset + bytes_per_sample].tobytes()
-                        sample_value = self._decode_sample_bytes(sample_bytes, info.bit_depth)
+                decoded_samples = (
+                    self._decode_pcm_frames(chunk[:available], info.bit_depth)
+                    if info.channels > 0 else None
+                )
+                if decoded_samples is not None:
+                    samples_to_process = min(
+                        len(decoded_samples), max_samples - processed_samples
+                    )
+                    processed_values = (
+                        int(round(decoded_samples[index] * gain))
+                        for index in range(samples_to_process)
+                    )
+                    processed_chunk.extend(
+                        self._encode_pcm_samples(processed_values, info.bit_depth)
+                    )
+                    processed_samples += samples_to_process
+                    if processed_samples >= max_samples:
+                        raise ValueError(
+                            "Too many samples processed - possible corruption"
+                        )
+                else:
+                    mv = memoryview(chunk[:available])
+                    for frame_offset in range(0, available, frame_size):
+                        for channel in range(info.channels):
+                            sample_offset = frame_offset + channel * bytes_per_sample
+                            sample_bytes = mv[
+                                sample_offset:sample_offset + bytes_per_sample
+                            ].tobytes()
+                            sample_value = self._decode_sample_bytes(
+                                sample_bytes, info.bit_depth
+                            )
 
-                        if sample_value is None:
-                            processed_chunk.extend(sample_bytes)
-                        else:
-                            # int() truncates toward zero, a systematic
-                            # ~0.5-LSB inward bias; the numpy path's writer
-                            # rounds to nearest. Same op, same quantization.
-                            new_sample = int(round(sample_value * gain))
-                            processed_chunk.extend(self._encode_sample_value(new_sample, info.bit_depth))
+                            if sample_value is None:
+                                processed_chunk.extend(sample_bytes)
+                            else:
+                                # int() truncates toward zero, a systematic
+                                # ~0.5-LSB inward bias; the numpy path's writer
+                                # rounds to nearest. Same op, same quantization.
+                                new_sample = int(round(sample_value * gain))
+                                processed_chunk.extend(
+                                    self._encode_sample_value(new_sample, info.bit_depth)
+                                )
 
-                        processed_samples += 1
-                        if processed_samples >= max_samples:
-                            raise ValueError("Too many samples processed - possible corruption")
+                            processed_samples += 1
+                            if processed_samples >= max_samples:
+                                raise ValueError(
+                                    "Too many samples processed - possible corruption"
+                                )
+
+                    del mv
 
                 if processed_chunk:
                     dst.write(processed_chunk)
-
-                del mv
 
             if new_data_size % 2:
                 dst.write(b'\x00')  # RIFF pad byte
