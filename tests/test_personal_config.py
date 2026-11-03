@@ -406,6 +406,10 @@ def test_the_printed_direct_invocation_uses_a_real_cli_subcommand(home, capsys):
             "which is not a real subcommand")
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason=(
+    "the documented chain sources ~/.chameleon/aliases.sh through bash; "
+    "on Windows `bash` resolves to the WSL stub, which fails when no "
+    "distribution is installed -- the Windows equivalent is aliases.ps1"))
 def test_the_full_documented_flow_works_end_to_end(tmp_path):
     """The exact chain quick_install.sh promises: run `setup`, source the
     aliases it creates, then use the alias it told you about -- against a
