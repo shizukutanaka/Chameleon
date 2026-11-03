@@ -3261,6 +3261,10 @@ GUIDs are now reported by their full hex instead of a phantom tag.
 
 **A:** It did not. One test module imported 3.11-only `tomllib` at module level, so collection aborted on 3.8–3.10; two caplog tests passed only because pytest 9 (Python ≥3.10) also hooks non-propagating loggers, while `AudioProcessor.setup_logging` leaves the `chameleon` logger non-propagating. The module now `importorskip`s `tomllib`, and the two tests re-enable propagation via monkeypatch for their duration. Product code is unchanged; verified on Python 3.9.6/pytest 8.4.2 and 3.12/pytest 9.
 
+**Q (2026-11-03, audit 400):** Why does the 3.8 CI job fail before running a single test?
+
+**A:** `pip install -e .[dev]` could not resolve: `dev` pinned `sphinx>=7.3`, and Sphinx 7.3+ requires Python ≥3.9, so on the declared floor there is no matching distribution. The docs toolchain (`sphinx`, `sphinx-rtd-theme`, `myst-parser`) is now gated with `python_version >= '3.9'` markers — the other dev deps all resolve on 3.8 (verified against the CI log's download list). No runtime code changed; verified by `pip install -e .[dev] --dry-run` on 3.12 plus the CI job itself, which is the only 3.8 interpreter available.
+
 **Q (2026-11-03, audit 401):** Why did the suspicious-content scan report
 nothing under memory pressure, and is mmap load-bearing here?
 
@@ -3272,3 +3276,4 @@ executable produced no warnings at all) and a ValueError on empty files.
 The read is the smaller solution with strictly fewer ways to fail. The same
 judgment was not extended to `core.py`'s mmap, whose whole-file use is a
 different cost profile.
+
