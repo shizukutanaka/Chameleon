@@ -3260,3 +3260,15 @@ GUIDs are now reported by their full hex instead of a phantom tag.
 **Q (2026-10-14, Python floor):** Does the suite actually run on the Python versions we declare (`requires-python >=3.8`, CI 3.8–3.11)?
 
 **A:** It did not. One test module imported 3.11-only `tomllib` at module level, so collection aborted on 3.8–3.10; two caplog tests passed only because pytest 9 (Python ≥3.10) also hooks non-propagating loggers, while `AudioProcessor.setup_logging` leaves the `chameleon` logger non-propagating. The module now `importorskip`s `tomllib`, and the two tests re-enable propagation via monkeypatch for their duration. Product code is unchanged; verified on Python 3.9.6/pytest 8.4.2 and 3.12/pytest 9.
+
+**Q (2026-11-03, audit 401):** Why did the suspicious-content scan report
+nothing under memory pressure, and is mmap load-bearing here?
+
+**A:** No — the scan window is capped at 10 MB, so an mmap bought nothing a
+plain `f.read` doesn't already do, while adding failure modes a read lacks:
+ENOMEM under a tight address-space limit (observed in CI: Errno 12, caught
+by the blanket except, silently emptying every warning — a disguised
+executable produced no warnings at all) and a ValueError on empty files.
+The read is the smaller solution with strictly fewer ways to fail. The same
+judgment was not extended to `core.py`'s mmap, whose whole-file use is a
+different cost profile.

@@ -177,3 +177,12 @@ def test_a_zero_length_chunk_does_not_loop_forever(inspector, tmp_path):
                             + b"data" + struct.pack("<I", 0))
 
     assert inspector.inspect_file(empty_chunk) is not None
+
+
+def test_the_scan_does_not_rely_on_mmap():
+    # Under memory pressure the old mmap-backed scan raised ENOMEM, which the
+    # catch-all turned into silence: a disguised executable produced zero
+    # warnings (observed on CI). A plain read of the same <=10 MB window has
+    # no such failure mode, so mmap is gone from this module on purpose.
+    import advanced_validation
+    assert not hasattr(advanced_validation, "mmap")
