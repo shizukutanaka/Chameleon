@@ -3325,3 +3325,16 @@ workflow step was written to collect. The module now carries
 `pytestmark = pytest.mark.integration`: 13 tests selected, step green.
 This also makes the previously-dead step do real work on every job: a
 second run of the CLI end-to-end, now with a 300s watchdog.
+
+**Q (2026-11-03, audit 403 follow-up 3):** Last red check on the matrix:
+`test_execute_with_limits_restores_memory_off_main_thread` — the sandbox's
+worker `threading.Thread.start()` raised "can't start new thread" on a
+resource-capped CI runner, leaving `result` empty. Product bug?
+
+**A:** No. Refusing to run a plugin unsandboxed when a worker cannot be
+created is the correct behavior; weakening it to appease CI would trade a
+real guarantee for a green bar. The test now treats "can't start new
+thread" as what it is — an environment that cannot satisfy its own
+premise — and reports `pytest.skip` with the reason, while any other
+RuntimeError still fails. The assertion and its scenario are unchanged
+when threads are available.
