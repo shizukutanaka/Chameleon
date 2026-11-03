@@ -111,6 +111,37 @@ def test_login_rate_limit_returns_429_not_200(client, monkeypatch):
     assert second.status_code == 429
 
 
+def test_rate_limit_cleanup_drops_stale_identifiers(monkeypatch):
+    """Regression: the cleanup only deleted *empty* deques, but only the
+    current identifier's deque was ever emptied — a spray of unique
+    identifiers (the attack the comment claims to defend against) left
+    every entry behind forever, growing api_state._rate_limit_windows
+    without bound."""
+    import time as _time
+    from collections import deque as _deque
+
+    monkeypatch.setitem(api_server.SECURITY_CONFIG, "enable_rate_limiting", True)
+    monkeypatch.setitem(api_server.SECURITY_CONFIG, "rate_limit_max_requests", 120)
+    monkeypatch.setitem(api_server.SECURITY_CONFIG, "rate_limit_window_seconds", 60)
+
+    windows = api_server.api_state._rate_limit_windows
+    windows.clear()
+    try:
+        stale = _time.time() - 3600
+        for i in range(300):
+            windows[f"stale-spray:{i}"] = _deque([stale])
+        windows["live-identifier"] = _deque([_time.time()])
+
+        api_server._enforce_rate_limit("cleanup-trigger")
+
+        assert "live-identifier" in windows
+        assert "cleanup-trigger" in windows
+        assert all(not k.startswith("stale-spray:") for k in windows)
+        assert len(windows) == 2
+    finally:
+        windows.clear()
+
+
 def test_authenticated_endpoint_rejects_missing_token(client):
     response = client.get("/audit/log")
     assert response.status_code in (401, 403)

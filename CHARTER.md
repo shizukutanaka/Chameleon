@@ -3354,6 +3354,7 @@ unimportable), and Windows subprocesses finally get the platform env they
 require.
 
 
+
 **Q (2026-11-03, audit 402):** Is `MemoryManager`'s "intelligent" file
 reading load-bearing, and why do two inspection entry points duplicate
 each other?
@@ -3369,3 +3370,20 @@ pipeline (the docstring literally documents the one difference — the
 checksum). Any future fix had to be made twice or silently diverge. They
 now share `_inspect(..., checksum=...)`; the only behavioral output is
 `checksum_sha256`, exactly as documented.
+||||||| parent of 9393e0ff (audit 404: rate-limit cleanup never cleaned — identifier sprays grew unboundedly)
+
+
+**Q (2026-11-03, audit 404):** `_enforce_rate_limit`'s "opportunistic
+cleanup" claims to stop `api_state._rate_limit_windows` growing
+unboundedly on identifier sprays. Does it?
+
+**A:** No — it was dead code in effect. It deleted only *empty* deques,
+but the pruning loop only ever empties the current identifier's deque;
+other identifiers' windows keep their stale timestamps, so `not w` never
+matched them. A scanner spraying unique usernames/IPs left every entry
+behind forever — the exact attack the comment describes defending
+against, verified: 300 stale identifiers survived a cleanup call. The
+cleanup now drops windows whose newest timestamp has fallen out of the
+window (`now - w[-1] > window_seconds`), preserving live identifiers;
+`test_rate_limit_cleanup_drops_stale_identifiers` pins the behavior.
+
