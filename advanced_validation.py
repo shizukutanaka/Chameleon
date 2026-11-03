@@ -10,7 +10,6 @@ container it claims to be, it does not detect malicious payloads.
 import os
 import struct
 import hashlib
-import mmap
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
@@ -250,40 +249,46 @@ class DeepFileInspector:
         if scan_size <= 0:
             return found_patterns
 
+        # A plain read, not an mmap: the window is capped at 10 MB, so there
+        # is nothing to gain from mapping, and mmap brings failure modes a
+        # read does not have -- ENOMEM under a low address-space limit, and
+        # a ValueError on an empty file (observed in CI: Errno 12 under
+        # memory pressure silently emptied every warning).
         try:
             with open(file_path, 'rb') as f:
-                with mmap.mmap(f.fileno(), scan_size, access=mmap.ACCESS_READ) as mm:
-                    for signature, _description in self.EXECUTABLE_SIGNATURES:
-                        if mm[:len(signature)] == signature:
-                            found_patterns.append(signature)
-
-                    for region in self._non_audio_regions(mm):
-                        for pattern, _description in self.TEXT_PATTERNS:
-                            if pattern in region and pattern not in found_patterns:
-                                found_patterns.append(pattern)
-
-        except Exception as e:
+                data = f.read(scan_size)
+        except OSError as e:
             logger.warning(f"Suspicious content scan failed: {e}")
+            return found_patterns
+
+        for signature, _description in self.EXECUTABLE_SIGNATURES:
+            if data.startswith(signature):
+                found_patterns.append(signature)
+
+        for region in self._non_audio_regions(data):
+            for pattern, _description in self.TEXT_PATTERNS:
+                if pattern in region and pattern not in found_patterns:
+                    found_patterns.append(pattern)
 
         return found_patterns
 
-    def _non_audio_regions(self, mm) -> List[bytes]:
-        """The parts of the mapping that are not PCM samples.
+    def _non_audio_regions(self, data: bytes) -> List[bytes]:
+        """The parts of the buffer that are not PCM samples.
 
         For a RIFF file: the header plus every chunk except `data`. For
         anything else: all of it.
         """
-        if mm[:4] not in (b'RIFF', b'RIFX'):
-            return [mm[:]]
+        if data[:4] not in (b'RIFF', b'RIFX'):
+            return [data]
 
-        regions = [mm[:12]]
+        regions = [data[:12]]
         offset = 12
-        limit = len(mm)
+        limit = len(data)
 
         while offset + 8 <= limit:
-            chunk_id = mm[offset:offset + 4]
+            chunk_id = data[offset:offset + 4]
             try:
-                chunk_size = struct.unpack('<I', mm[offset + 4:offset + 8])[0]
+                chunk_size = struct.unpack('<I', data[offset + 4:offset + 8])[0]
             except struct.error:
                 break
 
@@ -292,9 +297,9 @@ class DeepFileInspector:
             if body_end < body_start:            # size field overflowed
                 break
 
-            regions.append(mm[offset:body_start])            # the chunk header
+            regions.append(data[offset:body_start])            # the chunk header
             if chunk_id != b'data':
-                regions.append(mm[body_start:body_end])
+                regions.append(data[body_start:body_end])
 
             offset = body_end + (chunk_size % 2)   # RIFF pads odd-sized chunks
             if chunk_size == 0 and chunk_id != b'data':
