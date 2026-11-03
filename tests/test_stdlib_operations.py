@@ -21,6 +21,11 @@ from pathlib import Path
 
 import pytest
 
+# End-to-end through the real CLI subprocess — the shape the CI "Run
+# integration tests" step (`pytest -m integration`) was written to collect.
+# Until this marker existed the step selected zero tests and failed with
+# exit code 5 on every job that reached it.
+pytestmark = pytest.mark.integration
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 

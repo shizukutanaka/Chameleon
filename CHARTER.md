@@ -3312,3 +3312,16 @@ Side observation, not fixed: `safety>=3.2` (dev) requires pydantic>=2 while
 the `api` extra pins pydantic<2, so `[dev]`+`[api]` cannot coexist in one
 environment — a real packaging conflict for anyone installing both, but
 CI installs only `dev` and the pinned fastapi path is unaffected.
+
+**Q (2026-11-03, audit 403 follow-up 2):** With pytest-timeout declared the
+integration step parsed — then exited 5, "no tests ran", because the
+`integration` marker was registered in pyproject but marked zero tests.
+Which tests genuinely are integration?
+
+**A:** `tests/test_stdlib_operations.py` — it is literally "the
+dependency-free operations, end to end through the CLI" via subprocess,
+exactly what the marker's registered description means and what the
+workflow step was written to collect. The module now carries
+`pytestmark = pytest.mark.integration`: 13 tests selected, step green.
+This also makes the previously-dead step do real work on every job: a
+second run of the CLI end-to-end, now with a 300s watchdog.
