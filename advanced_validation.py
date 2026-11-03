@@ -69,67 +69,7 @@ class DeepFileInspector:
 
     def inspect_file(self, file_path: Path) -> FileValidationResult:
         """Perform deep inspection of file"""
-
-        warnings = []
-        errors = []
-        metadata = {}
-
-        try:
-            # Get file stats
-            stats = file_path.stat()
-            size = stats.st_size
-
-            # Calculate checksum
-            checksum = self._calculate_checksum(file_path)
-
-            # Validate file format
-            file_type = self._identify_file_type(file_path)
-
-            if file_type not in ('WAV', 'WAV_BIG_ENDIAN'):
-                errors.append(f"Invalid file type: {file_type}")
-
-            # Check for suspicious content
-            suspicious = self._scan_for_suspicious_content(file_path)
-            if suspicious:
-                warnings.extend([f"Suspicious pattern: {p.decode('latin1', errors='ignore')}"
-                               for p in suspicious])
-
-            # Validate WAV structure
-            if file_type.startswith('WAV'):
-                wav_validation = self._validate_wav_structure(file_path)
-                metadata.update(wav_validation)
-
-            # Check file permissions
-            if stats.st_mode & 0o111:  # Executable bit set
-                warnings.append("File has executable permissions")
-
-            # Check for hidden attributes (Unix)
-            if file_path.name.startswith('.'):
-                warnings.append("Hidden file")
-
-            is_valid = len(errors) == 0
-
-            return FileValidationResult(
-                is_valid=is_valid,
-                file_type=file_type,
-                size_bytes=size,
-                checksum_sha256=checksum,
-                warnings=warnings,
-                errors=errors,
-                metadata=metadata
-            )
-
-        except Exception as e:
-            logger.error(f"Inspection failed: {e}")
-            return FileValidationResult(
-                is_valid=False,
-                file_type="UNKNOWN",
-                size_bytes=0,
-                checksum_sha256="",
-                warnings=[],
-                errors=[str(e)],
-                metadata={}
-            )
+        return self._inspect(file_path, checksum=True)
 
     def validate_for_processing(self, file_path: Path) -> FileValidationResult:
         """Lightweight format validation for the default batch/load path.
@@ -143,6 +83,10 @@ class DeepFileInspector:
         errors — a WAV's PCM payload can legitimately contain those byte
         sequences — so callers should log them, not reject on them.
         """
+        return self._inspect(file_path, checksum=False)
+
+    def _inspect(self, file_path: Path, *, checksum: bool) -> FileValidationResult:
+        """Shared pipeline of ``inspect_file`` and ``validate_for_processing``."""
 
         warnings: List[str] = []
         errors: List[str] = []
@@ -151,6 +95,8 @@ class DeepFileInspector:
         try:
             stats = file_path.stat()
             size = stats.st_size
+
+            checksum_sha256 = self._calculate_checksum(file_path) if checksum else ""
 
             file_type = self._identify_file_type(file_path)
 
@@ -165,24 +111,24 @@ class DeepFileInspector:
             if file_type.startswith('WAV'):
                 metadata.update(self._validate_wav_structure(file_path))
 
-            if stats.st_mode & 0o111:
+            if stats.st_mode & 0o111:  # Executable bit set
                 warnings.append("File has executable permissions")
 
-            if file_path.name.startswith('.'):
+            if file_path.name.startswith('.'):  # Hidden file (Unix)
                 warnings.append("Hidden file")
 
             return FileValidationResult(
                 is_valid=len(errors) == 0,
                 file_type=file_type,
                 size_bytes=size,
-                checksum_sha256="",
+                checksum_sha256=checksum_sha256,
                 warnings=warnings,
                 errors=errors,
                 metadata=metadata,
             )
 
         except Exception as e:
-            logger.error(f"Format validation failed: {e}")
+            logger.error(f"{'Inspection' if checksum else 'Format validation'} failed: {e}")
             return FileValidationResult(
                 is_valid=False,
                 file_type="UNKNOWN",

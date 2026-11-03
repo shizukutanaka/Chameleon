@@ -3352,3 +3352,20 @@ it now passes the ambient environment with PYTHONPATH added. Behavior on
 POSIX is unchanged (the blocker still makes the optional deps
 unimportable), and Windows subprocesses finally get the platform env they
 require.
+
+
+**Q (2026-11-03, audit 402):** Is `MemoryManager`'s "intelligent" file
+reading load-bearing, and why do two inspection entry points duplicate
+each other?
+
+**A:** Two findings, one fix. First, the dead half: `MemoryManager` is
+instantiated but `get_file_data`/`cache_data`/`get_vectorized_audio` have
+zero callers — including `_memory_map_file`, which maps a whole file just
+to copy it back out (strictly worse than `f.read`, and unreachable anyway).
+Deleting it needs the per-item confirmation §"Deletions" requires, so it
+is left in place. Second, the live duplication: `inspect_file` and
+`validate_for_processing` were two hand-synced copies of the same ~40-line
+pipeline (the docstring literally documents the one difference — the
+checksum). Any future fix had to be made twice or silently diverge. They
+now share `_inspect(..., checksum=...)`; the only behavioral output is
+`checksum_sha256`, exactly as documented.
