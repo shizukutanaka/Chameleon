@@ -3338,3 +3338,17 @@ thread" as what it is — an environment that cannot satisfy its own
 premise — and reports `pytest.skip` with the reason, while any other
 RuntimeError still fails. The assertion and its scenario are unchanged
 when threads are available.
+
+**Q (2026-11-03, audit 403 follow-up 4):** First-ever Windows job run: 31
+failures — every CLI subprocess died at `import asyncio` with
+`OSError WinError 10106` (WSAEPROVIDERFAILEDINIT). Product or test?
+
+**A:** Test. `test_stdlib_operations.py` and `test_cli_error_surface.py`
+launched the CLI with `env={"PATH": "/usr/bin:/bin", "PYTHONPATH": ...}` —
+a hardcoded POSIX env that strips `SystemRoot` on Windows, so Winsock
+cannot initialize in the child and `asyncio`/`_overlapped` fails at
+import. The env only existed to inject the numpy-blocker sitecustomize;
+it now passes the ambient environment with PYTHONPATH added. Behavior on
+POSIX is unchanged (the blocker still makes the optional deps
+unimportable), and Windows subprocesses finally get the platform env they
+require.

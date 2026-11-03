@@ -12,6 +12,7 @@ quietly acquires a third-party dependency.
 """
 
 import math
+import os
 import struct
 import subprocess
 import sys
@@ -69,7 +70,7 @@ def _run_cli(blocker_dir, *args):
     return subprocess.run(
         [sys.executable, "main.py", *args],
         capture_output=True, text=True, cwd=str(REPO_ROOT),
-        env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(blocker_dir)},
+        env={**os.environ, "PYTHONPATH": str(blocker_dir)},
     )
 
 
@@ -84,7 +85,7 @@ def test_numpy_really_is_unavailable_in_these_tests(blocker_dir):
     result = subprocess.run(
         [sys.executable, "-c", "import numpy"],
         capture_output=True, text=True,
-        env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(blocker_dir)},
+        env={**os.environ, "PYTHONPATH": str(blocker_dir)},
     )
     assert result.returncode != 0
     assert "No module named" in result.stderr
