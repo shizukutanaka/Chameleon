@@ -423,7 +423,11 @@ def test_the_full_documented_flow_works_end_to_end(tmp_path):
     setup = subprocess.run(
         [sys.executable, "personal_config.py", "setup"],
         input="\n\n\n", capture_output=True, text=True,
-        cwd=str(repo_root), env={**os.environ, "HOME": str(home)},
+        cwd=str(repo_root),
+        # Path.home() consults HOME on POSIX and USERPROFILE on Windows --
+        # set both or the wizard writes to the real profile (same pattern
+        # as _run_setup below).
+        env={**os.environ, "HOME": str(home), "USERPROFILE": str(home)},
     )
     assert setup.returncode == 0, setup.stderr
     assert "main.py personal" not in setup.stdout
