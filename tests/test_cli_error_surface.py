@@ -22,6 +22,7 @@ turning a genuine bug into a tidy "Error:" line would make the tool wrong about
 itself in a new way.
 """
 
+import os
 import subprocess
 import sys
 import textwrap
@@ -56,7 +57,7 @@ def _run_without_numpy(blocker_dir, *args):
     return subprocess.run(
         [sys.executable, "main.py", *args],
         capture_output=True, text=True, cwd=str(REPO_ROOT),
-        env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(blocker_dir)},
+        env={**os.environ, "PYTHONPATH": str(blocker_dir)},
     )
 
 
@@ -94,7 +95,7 @@ def test_the_check_lives_where_the_requirement_is(blocker_dir, tone):
          "import main; p = main.AudioProcessor(main.ProcessingConfig()); "
          f"p.load_audio({str(tone)!r})"],
         capture_output=True, text=True, cwd=str(REPO_ROOT),
-        env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(blocker_dir)},
+        env={**os.environ, "PYTHONPATH": str(blocker_dir)},
     )
 
     # Contract: a clear, named error surfaces (a ValueError subclass so
