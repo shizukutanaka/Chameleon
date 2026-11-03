@@ -3298,3 +3298,17 @@ itself dead at install — the failure was invisible twice over). The new
 set — the same mechanism test_no_fantasy_features uses for §4 — so the
 next accidental use fails locally instead of on CI. Comment lines are
 skipped; documenting the floor is allowed.
+
+**Q (2026-11-03, audit 403 follow-up):** With `is_relative_to` fixed the 3.8
+job ran its suite green for the first time (590 passed) — then died anyway
+on `pytest -m integration --timeout=300`: "unrecognized arguments". Why?
+
+**A:** The workflow invokes a `pytest-timeout` flag that no dependency
+declares, so every job that survives the unit-test step dies at the
+integration step; it had simply never been reached before. The workflow
+file is not editable by automation, so the fix lands where it can: the
+`dev` extra now declares `pytest-timeout>=2.2` (resolves to 2.4.0 on 3.8).
+Side observation, not fixed: `safety>=3.2` (dev) requires pydantic>=2 while
+the `api` extra pins pydantic<2, so `[dev]`+`[api]` cannot coexist in one
+environment — a real packaging conflict for anyone installing both, but
+CI installs only `dev` and the pinned fastapi path is unaffected.
