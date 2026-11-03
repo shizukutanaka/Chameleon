@@ -562,7 +562,10 @@ def test_docs_synopsis_lists_only_real_subcommands():
         capture_output=True, text=True, timeout=30).stdout
     real = set(re.search(r"\{([a-z,]+)\}", help_out).group(1).split(","))
     for doc in (root / "docs").rglob("commands.md"):
-        m = re.search(r"\{([a-z,]+)\}", doc.read_text())
+        # utf-8 explicitly: read_text() defaults to the locale codec, and
+        # the docs carry non-ASCII content that cp1252 can't decode on
+        # Windows CI.
+        m = re.search(r"\{([a-z,]+)\}", doc.read_text(encoding="utf-8"))
         assert m, f"{doc} has no subcommand synopsis to check"
         listed = set(m.group(1).split(","))
         assert listed == real, (

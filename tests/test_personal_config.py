@@ -22,6 +22,7 @@ Every test here passes an explicit path. None of them may touch the real
 
 import json
 import logging
+import sys
 from pathlib import Path
 
 import pytest
@@ -141,6 +142,9 @@ def test_a_directory_at_the_config_path_is_a_clear_error(tmp_path):
     assert "remove" in message.lower()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason=(
+    "os.chmod(0o000) on Windows only sets the read-only attribute, "
+    "which does not block reads -- the file stays readable"))
 def test_an_unreadable_config_file_is_a_clear_error(config_path):
     config_path.write_text("{}")
     config_path.chmod(0o000)

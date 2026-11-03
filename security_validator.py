@@ -380,6 +380,13 @@ class SecureFileOperations:
                 flags |= os.O_CREAT | os.O_TRUNC
             if hasattr(os, "O_NOFOLLOW"):
                 flags |= os.O_NOFOLLOW
+            elif os.path.islink(os.fspath(path)):
+                # No O_NOFOLLOW on Windows: without this probe the os.open
+                # below silently followed a symlinked final component. The
+                # probe has a TOCTOU window (a symlink swapped in after it
+                # is still followed) but is strictly better than nothing.
+                raise OSError(
+                    f"refusing to open symlink for writing: {path}")
             if hasattr(os, "O_BINARY"):
                 flags |= os.O_BINARY
             fd = os.open(os.fspath(path), flags, 0o600)

@@ -133,6 +133,13 @@ def open_secure(path: Union[str, Path], mode: str = "wb", *, encoding: Optional[
 
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
+    elif os.path.islink(os.fspath(path)):
+        # Windows lacks O_NOFOLLOW; without this check the open below
+        # silently followed a symlinked final component. A pre-open
+        # islink() probe has a TOCTOU window that O_NOFOLLOW doesn't --
+        # a symlink swapped in after the check still gets followed --
+        # but it is strictly better than never checking at all.
+        raise OSError(f"refusing to open symlink for writing: {path}")
     if hasattr(os, "O_BINARY"):
         flags |= os.O_BINARY
 

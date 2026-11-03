@@ -3370,7 +3370,6 @@ pipeline (the docstring literally documents the one difference — the
 checksum). Any future fix had to be made twice or silently diverge. They
 now share `_inspect(..., checksum=...)`; the only behavioral output is
 `checksum_sha256`, exactly as documented.
-||||||| parent of 9393e0ff (audit 404: rate-limit cleanup never cleaned — identifier sprays grew unboundedly)
 
 
 **Q (2026-11-03, audit 404):** `_enforce_rate_limit`'s "opportunistic
@@ -3387,3 +3386,32 @@ cleanup now drops windows whose newest timestamp has fallen out of the
 window (`now - w[-1] > window_seconds`), preserving live identifiers;
 `test_rate_limit_cleanup_drops_stale_identifiers` pins the behavior.
 
+
+**Q (2026-11-03, audit 405):** Once audit 400 unblocked the matrix, the
+first Windows leg ever to run surfaced 21 failures. Which were product
+defects versus POSIX-only test assumptions?
+
+**A:** Three real product defects, four POSIX-only test assumptions:
+
+- `cli()` / `personal_config.py` printed ✓/🎵 status glyphs on the
+  default console encoding. On a cp1252 console (Windows) `print` raised
+  `UnicodeEncodeError` mid-run -- the work succeeded and the process
+  still exited 1 on a traceback. Both entry points now reconfigure
+  stdout/stderr with `errors="replace"` so glyphs degrade to '?' instead
+  of crashing (UTF-8 consoles unchanged). ~11 of the 21 failures.
+- `secure_open`/`open_secure` guarded symlink-following only via
+  `O_NOFOLLOW`, which does not exist on Windows: a write-mode open
+  silently followed a symlinked final component. Both now probe
+  `islink()` and refuse when `O_NOFOLLOW` is unavailable (a TOCTOU window
+  remains -- documented -- but strictly better than never checking).
+- `_sanitize_plugin_directory`'s post-`resolve()` `is_absolute()` check
+  rejected the default relative `plugins` dir on Windows only (resolve()
+  can return a drive-less rooted form there); it now falls back to
+  `expanded.absolute()` before refusing.
+
+Test-side, Windows cannot express three fixtures and the affected tests
+are skipped there with reasons: `'<'` is illegal in Windows file names
+(2 tests), a read-only directory attribute does not block file creation
+inside it (3 chmod-555 tests), and `chmod(0o000)` sets read-only which
+does not block reads (1 test). `test_docs_synopsis` now reads
+`commands.md` as utf-8 instead of the locale codec.

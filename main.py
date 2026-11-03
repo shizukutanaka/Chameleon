@@ -313,6 +313,12 @@ def _sanitize_plugin_directory(directory: str) -> Path:
         raise ValueError(f"Failed to resolve plugin directory '{directory}': {exc}") from exc
 
     if not resolved.is_absolute():
+        # Windows resolve() can return a drive-less "\x\y" form (rooted but
+        # no drive letter), which is_absolute() rejects -- `plugins list`
+        # then died on the default "plugins" directory. absolute() rejoins
+        # cwd, producing a drive-qualified path instead.
+        resolved = expanded.absolute()
+    if not resolved.is_absolute():
         raise ValueError(f"Plugin directory must be absolute: {directory}")
 
     if any(part in {"..", ""} for part in resolved.parts):
@@ -3407,6 +3413,15 @@ async def main():
 
 def cli() -> int:
     """Synchronous console-script entry point (wraps the async ``main``)."""
+    # Several commands print status glyphs (✓, 🎵) that cp1252 consoles
+    # can't encode -- on Windows the print raised UnicodeEncodeError and
+    # the command died exit 1 with the work already done. Degrade the
+    # glyphs to '?' instead of crashing; UTF-8 consoles are unaffected.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
     try:
         return asyncio.run(main())
     except KeyboardInterrupt:

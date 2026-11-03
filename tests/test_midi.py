@@ -1,5 +1,9 @@
 """Tests for MIDI musical analysis (chord and key detection)."""
 
+import sys
+
+import pytest
+
 from midi_analysis import MIDIAnalyzer, MIDINote
 
 
@@ -214,6 +218,9 @@ def test_midi_compose_rejects_nonfinite_tempo_and_length(tmp_path):
         assert not out.exists()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason=(
+    "a read-only attribute on a Windows directory does not prevent "
+    "creating files inside it, so the chmod-555 fixture stays writable"))
 def test_midi_output_into_unwritable_dir_exits_input(tmp_path):
     """`midi compose --output` into a chmod-555 dir used to build the whole
     MIDI file in memory, then surface PermissionError as ERROR(1). The
