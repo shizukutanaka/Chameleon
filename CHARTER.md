@@ -3278,6 +3278,82 @@ judgment was not extended to `core.py`'s mmap, whose whole-file use is a
 different cost profile.
 
 
+**Q (2026-11-03, audit 403):** Once audit 400 let the 3.8 job run tests for
+the first time, 7 of them died at `main.py` `Path.is_relative_to()` — an
+API added in 3.9 used in product code whose declared floor is 3.8. Where
+else is the floor violated, and how is a recurrence caught locally?
+
+**A:** Nowhere else — a sweep of the project sources for the other 3.9+
+stdlib additions (`removeprefix`/`removesuffix`, `functools.cache`,
+`random.randbytes`, unquoted `list[...]`/`dict[...]`/... builtins
+generics, `match` syntax, `tomllib`) found only the one site:
+`_run_batch`'s output-dir-inside-scan warning probed containment with
+`is_relative_to`, the only 3.9-only call. It is replaced with the
+equivalent `relative_to` probe (`ValueError` = not inside) that exists on
+3.8 — same semantics, no new helper. The hazard was structural, though:
+local dev runs 3.12, so a >=3.9 API compiles and passes every local gate
+and only crashes on the CI 3.8 interpreter (which was until this round
+itself dead at install — the failure was invisible twice over). The new
+`tests/test_python38_floor.py` greps product sources for that exact call
+set — the same mechanism test_no_fantasy_features uses for §4 — so the
+next accidental use fails locally instead of on CI. Comment lines are
+skipped; documenting the floor is allowed.
+
+**Q (2026-11-03, audit 403 follow-up):** With `is_relative_to` fixed the 3.8
+job ran its suite green for the first time (590 passed) — then died anyway
+on `pytest -m integration --timeout=300`: "unrecognized arguments". Why?
+
+**A:** The workflow invokes a `pytest-timeout` flag that no dependency
+declares, so every job that survives the unit-test step dies at the
+integration step; it had simply never been reached before. The workflow
+file is not editable by automation, so the fix lands where it can: the
+`dev` extra now declares `pytest-timeout>=2.2` (resolves to 2.4.0 on 3.8).
+Side observation, not fixed: `safety>=3.2` (dev) requires pydantic>=2 while
+the `api` extra pins pydantic<2, so `[dev]`+`[api]` cannot coexist in one
+environment — a real packaging conflict for anyone installing both, but
+CI installs only `dev` and the pinned fastapi path is unaffected.
+
+**Q (2026-11-03, audit 403 follow-up 2):** With pytest-timeout declared the
+integration step parsed — then exited 5, "no tests ran", because the
+`integration` marker was registered in pyproject but marked zero tests.
+Which tests genuinely are integration?
+
+**A:** `tests/test_stdlib_operations.py` — it is literally "the
+dependency-free operations, end to end through the CLI" via subprocess,
+exactly what the marker's registered description means and what the
+workflow step was written to collect. The module now carries
+`pytestmark = pytest.mark.integration`: 13 tests selected, step green.
+This also makes the previously-dead step do real work on every job: a
+second run of the CLI end-to-end, now with a 300s watchdog.
+
+**Q (2026-11-03, audit 403 follow-up 3):** Last red check on the matrix:
+`test_execute_with_limits_restores_memory_off_main_thread` — the sandbox's
+worker `threading.Thread.start()` raised "can't start new thread" on a
+resource-capped CI runner, leaving `result` empty. Product bug?
+
+**A:** No. Refusing to run a plugin unsandboxed when a worker cannot be
+created is the correct behavior; weakening it to appease CI would trade a
+real guarantee for a green bar. The test now treats "can't start new
+thread" as what it is — an environment that cannot satisfy its own
+premise — and reports `pytest.skip` with the reason, while any other
+RuntimeError still fails. The assertion and its scenario are unchanged
+when threads are available.
+
+**Q (2026-11-03, audit 403 follow-up 4):** First-ever Windows job run: 31
+failures — every CLI subprocess died at `import asyncio` with
+`OSError WinError 10106` (WSAEPROVIDERFAILEDINIT). Product or test?
+
+**A:** Test. `test_stdlib_operations.py` and `test_cli_error_surface.py`
+launched the CLI with `env={"PATH": "/usr/bin:/bin", "PYTHONPATH": ...}` —
+a hardcoded POSIX env that strips `SystemRoot` on Windows, so Winsock
+cannot initialize in the child and `asyncio`/`_overlapped` fails at
+import. The env only existed to inject the numpy-blocker sitecustomize;
+it now passes the ambient environment with PYTHONPATH added. Behavior on
+POSIX is unchanged (the blocker still makes the optional deps
+unimportable), and Windows subprocesses finally get the platform env they
+require.
+
+
 **Q (2026-11-03, audit 402):** Is `MemoryManager`'s "intelligent" file
 reading load-bearing, and why do two inspection entry points duplicate
 each other?

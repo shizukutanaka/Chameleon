@@ -3004,8 +3004,17 @@ async def main():
             # compounding deserves a warning while the user can pick a
             # directory outside it.
             try:
-                if Path(output_dir).resolve().is_relative_to(
-                        directory.resolve()):
+                # Path.is_relative_to() is Python >=3.9; the declared floor is
+                # 3.8, where this AttributeError'd and took down the whole
+                # `batch` command (CI job 126075311866). relative_to() probes
+                # the same containment and exists on 3.8.
+                try:
+                    Path(output_dir).resolve().relative_to(directory.resolve())
+                except ValueError:
+                    inside = False
+                else:
+                    inside = True
+                if inside:
                     print(f"Warning: --output-dir {output_dir} is inside "
                           f"the scanned directory; its outputs will be "
                           f"re-processed as inputs on future runs",

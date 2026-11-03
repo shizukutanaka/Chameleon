@@ -12,6 +12,7 @@ quietly acquires a third-party dependency.
 """
 
 import math
+import os
 import struct
 import subprocess
 import sys
@@ -21,6 +22,11 @@ from pathlib import Path
 
 import pytest
 
+# End-to-end through the real CLI subprocess — the shape the CI "Run
+# integration tests" step (`pytest -m integration`) was written to collect.
+# Until this marker existed the step selected zero tests and failed with
+# exit code 5 on every job that reached it.
+pytestmark = pytest.mark.integration
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -64,7 +70,7 @@ def _run_cli(blocker_dir, *args):
     return subprocess.run(
         [sys.executable, "main.py", *args],
         capture_output=True, text=True, cwd=str(REPO_ROOT),
-        env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(blocker_dir)},
+        env={**os.environ, "PYTHONPATH": str(blocker_dir)},
     )
 
 
@@ -79,7 +85,7 @@ def test_numpy_really_is_unavailable_in_these_tests(blocker_dir):
     result = subprocess.run(
         [sys.executable, "-c", "import numpy"],
         capture_output=True, text=True,
-        env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(blocker_dir)},
+        env={**os.environ, "PYTHONPATH": str(blocker_dir)},
     )
     assert result.returncode != 0
     assert "No module named" in result.stderr
