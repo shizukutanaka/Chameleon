@@ -290,13 +290,20 @@ class SpectralEditor:
 
     def get_selection_mask(self, selection: SpectralSelection) -> np.ndarray:
         """Get boolean mask for spectral selection"""
-        # Find time indices
+        # Find time indices. The end bounds are inclusive: a selection
+        # ending exactly on a frame's start time or a bin's center selects
+        # that frame/bin. Default side='left' excluded it, so a selection
+        # clamped to the last frame or the Nyquist bin silently covered
+        # everything *except* that boundary -- 'select all' missed the
+        # final hop and the top row of the spectrogram.
         time_start_idx = np.searchsorted(self.times, selection.time_start)
-        time_end_idx = np.searchsorted(self.times, selection.time_end)
+        time_end_idx = np.searchsorted(self.times, selection.time_end,
+                                       side='right')
 
         # Find frequency indices
         freq_start_idx = np.searchsorted(self.freqs, selection.freq_start)
-        freq_end_idx = np.searchsorted(self.freqs, selection.freq_end)
+        freq_end_idx = np.searchsorted(self.freqs, selection.freq_end,
+                                       side='right')
 
         # Create mask
         mask = np.zeros(self.stft.shape, dtype=bool)

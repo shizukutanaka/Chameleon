@@ -181,3 +181,18 @@ def test_harmonic_enhance_refuses_empty_selection():
     assert not ed.harmonic_enhance_selection(empty)
     assert len(ed.undo_stack) == undo_depth
     assert np.array_equal(ed.current_audio, before_audio)
+
+
+def test_selection_mask_includes_boundary_frame_and_nyquist_bin():
+    # The mask's end indices used default searchsorted (side='left'),
+    # which excludes a bound that lands exactly on a frame/bin -- so a
+    # selection clamped to the last frame and Nyquist bin covered every
+    # column and row except those two.
+    ed = spectral_editor.SpectralEditor()
+    ed.load_audio(_sine(440), SAMPLE_RATE)
+
+    sel = ed.select_region(0.0, ed.times[-1], 0.0, ed.freqs[-1])
+    mask = ed.get_selection_mask(sel)
+
+    assert mask[-1, -1]
+    assert mask.all()

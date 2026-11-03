@@ -459,3 +459,63 @@ def test_generate_melody_still_generates_for_valid_length():
     chord = Chord(root=0, chord_type="major", notes=[0, 4, 7],
                   start_time=0.0, duration=8.0)
     assert len(composer.generate_melody([chord], key, length=8.0)) == 16
+
+
+def test_detect_chords_empty_input_returns_empty_list():
+    # detect_chords([]) used to die on max() over an empty iterable --
+    # "no notes" is no chords, not a crash (analyze_harmony and
+    # analyze_rhythm already return an empty result for it).
+    analyzer = MIDIAnalyzer()
+    assert analyzer.detect_chords([]) == []
+
+
+def test_analyze_harmony_degree_is_diatonic_not_semitone_plus_one():
+    # A G major chord in C major is degree V (the 5th scale degree).
+    # `degree` used to report the semitone offset + 1 -- 8 for a V.
+    from midi_analysis import Chord, MusicalKey
+    analyzer = MIDIAnalyzer()
+    key = MusicalKey(tonic=0, mode="major", confidence=1.0)
+    harmony = analyzer.analyze_harmony(
+        [Chord(root=7, chord_type="major", notes=[7, 11, 2],
+               start_time=0.0, duration=1.0)], key)
+    assert harmony["progression"][0]["roman"] == "V"
+    assert harmony["progression"][0]["degree"] == 5
+
+
+def test_generate_midi_file_rejects_unencodable_tempo(tmp_path):
+    # tempo<=0/inf/nan died on incidental arithmetic errors, and a tempo
+    # under ~3.58 BPM overflows the 3-byte us-per-quarter field. All now
+    # fail fast with a message naming tempo_bpm.
+    analyzer = MIDIAnalyzer()
+    note = MIDINote(pitch=60, velocity=80, start_time=0.0, duration=0.5)
+    for bad in (0.0, -120.0, float("inf"), float("nan"), 3.0):
+        assert analyzer.generate_midi_file([note], str(tmp_path / "t.mid"),
+                                           tempo_bpm=bad) is False
+        assert not (tmp_path / "t.mid").exists()
+    assert analyzer.generate_midi_file([note], str(tmp_path / "ok.mid"),
+                                       tempo_bpm=120.0) is True
+
+
+def test_generate_midi_file_rejects_out_of_range_note(tmp_path):
+    # A pitch or velocity outside 0-127 used to crash on bytearray's own
+    # error after earlier events were already written.
+    analyzer = MIDIAnalyzer()
+    out = tmp_path / "bad.mid"
+    for bad_note in (MIDINote(pitch=128, velocity=80, start_time=0.0, duration=0.5),
+                     MIDINote(pitch=60, velocity=200, start_time=0.0, duration=0.5)):
+        assert analyzer.generate_midi_file([bad_note], str(out)) is False
+        assert not out.exists()
+
+
+def test_parse_midi_from_audio_analyzes_final_frame():
+    # The frame loop stopped one frame early, so audio in the last
+    # ~frame_size (up to 23 ms) never began a frame. A tone exactly one
+    # frame long used to produce zero notes.
+    import math
+    sr = 44100
+    frame_size = int(sr * 0.023)
+    audio = [0.5 * math.sin(2 * math.pi * 440 * i / sr) for i in range(frame_size)]
+    analyzer = MIDIAnalyzer()
+    notes = analyzer.parse_midi_from_audio(audio, sr)
+    assert notes, "a one-frame 440 Hz tone should yield at least one note"
+    assert notes[0].pitch == 69

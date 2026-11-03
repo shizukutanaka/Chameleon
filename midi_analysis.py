@@ -172,7 +172,10 @@ class MIDIAnalyzer:
         notes = []
         current_time = 0.0
 
-        for i in range(0, len(audio_data) - frame_size, hop_size):
+        # +1 so a frame starting exactly at len - frame_size is analysed too;
+        # otherwise the last ~frame_size of audio (up to 23 ms at 44.1 kHz)
+        # never began a frame and could hold a note onset nobody saw.
+        for i in range(0, len(audio_data) - frame_size + 1, hop_size):
             frame = audio_data[i:i + frame_size]
 
             # Simple energy-based onset detection
@@ -316,7 +319,14 @@ class MIDIAnalyzer:
         chords = []
         current_time = 0.0
 
-        while current_time < max(n.start_time + n.duration for n in notes):
+        # An empty note list used to reach max() and raise ValueError,
+        # while analyze_harmony/analyze_rhythm return an empty result for
+        # the same input. "No notes" means no chords, not a crash.
+        if not notes:
+            return chords
+
+        last_note_end = max(n.start_time + n.duration for n in notes)
+        while current_time < last_note_end:
             # Get notes active in current window
             active_notes = [
                 n for n in notes
@@ -526,7 +536,11 @@ class MIDIAnalyzer:
             progression.append({
                 "chord": chord.name,
                 "roman": roman,
-                "degree": degree + 1,
+                # degree is a semitone offset from the tonic (0-11), and
+                # the old `degree + 1` reported V in C major as degree 8.
+                # Map it to the diatonic degree the roman numeral shows:
+                # semitone 7 (V) is the 5th scale degree, ♭II is still II.
+                "degree": [1, 2, 2, 3, 3, 4, 5, 5, 6, 6, 7, 7][degree],
                 "quality": quality,
                 "duration": chord.duration,
                 "confidence": chord.confidence
@@ -578,6 +592,31 @@ class MIDIAnalyzer:
         every player defaults to 120 BPM and a requested tempo would have no
         effect on the produced file."""
         try:
+            # Validate the tempo up front: it must be finite and its
+            # µs-per-quarter value must fit the 3-byte FF 51 03 field
+            # (0xFFFFFF max, i.e. BPM >= ~3.58). tempo<=0 used to die on a
+            # bare ZeroDivisionError and inf/nan on an int() conversion --
+            # the caller got False with a message that never named tempo.
+            if (not math.isfinite(tempo_bpm)) or tempo_bpm <= 0:
+                raise ValueError(
+                    f"tempo_bpm must be a positive finite BPM, got {tempo_bpm!r}")
+            us_per_quarter = int(round(60_000_000 / tempo_bpm))
+            if not 1 <= us_per_quarter <= 0xFFFFFF:
+                raise ValueError(
+                    f"tempo_bpm {tempo_bpm!r} is outside the encodable range "
+                    f"(µs per quarter must be 1..16777215)")
+
+            # A note outside the MIDI ranges used to crash mid-write on
+            # bytearray's own error -- after some events were already
+            # written. Reject the whole call before writing anything.
+            for note in notes:
+                if not 0 <= note.pitch <= 127:
+                    raise ValueError(
+                        f"note pitch {note.pitch} outside MIDI range 0-127")
+                if not 0 <= note.velocity <= 127:
+                    raise ValueError(
+                        f"note velocity {note.velocity} outside MIDI range 0-127")
+
             # Basic MIDI file structure
             midi_data = bytearray()
 
@@ -593,7 +632,6 @@ class MIDIAnalyzer:
 
             # Tempo meta event at tick 0 so the requested BPM reaches the
             # file instead of dying in the caller.
-            us_per_quarter = int(round(60_000_000 / tempo_bpm))
             track_data.extend(b'\x00\xff\x51\x03')
             track_data.extend(us_per_quarter.to_bytes(3, 'big'))
 
