@@ -3277,3 +3277,24 @@ The read is the smaller solution with strictly fewer ways to fail. The same
 judgment was not extended to `core.py`'s mmap, whose whole-file use is a
 different cost profile.
 
+
+**Q (2026-11-03, audit 403):** Once audit 400 let the 3.8 job run tests for
+the first time, 7 of them died at `main.py` `Path.is_relative_to()` — an
+API added in 3.9 used in product code whose declared floor is 3.8. Where
+else is the floor violated, and how is a recurrence caught locally?
+
+**A:** Nowhere else — a sweep of the project sources for the other 3.9+
+stdlib additions (`removeprefix`/`removesuffix`, `functools.cache`,
+`random.randbytes`, unquoted `list[...]`/`dict[...]`/... builtins
+generics, `match` syntax, `tomllib`) found only the one site:
+`_run_batch`'s output-dir-inside-scan warning probed containment with
+`is_relative_to`, the only 3.9-only call. It is replaced with the
+equivalent `relative_to` probe (`ValueError` = not inside) that exists on
+3.8 — same semantics, no new helper. The hazard was structural, though:
+local dev runs 3.12, so a >=3.9 API compiles and passes every local gate
+and only crashes on the CI 3.8 interpreter (which was until this round
+itself dead at install — the failure was invisible twice over). The new
+`tests/test_python38_floor.py` greps product sources for that exact call
+set — the same mechanism test_no_fantasy_features uses for §4 — so the
+next accidental use fails locally instead of on CI. Comment lines are
+skipped; documenting the floor is allowed.
