@@ -10,6 +10,7 @@ security_validator.py.
 
 import os
 import struct
+import sys
 import wave
 from pathlib import Path
 
@@ -234,6 +235,10 @@ class TestValidateFilePathRaises:
         resolved = v.validate_file_path(str(target), operation="write")
         assert resolved == target.resolve()
 
+    @pytest.mark.skipif(sys.platform == "win32", reason=(
+        "'<' is illegal in Windows file names: the OS refuses to create "
+        "the fixture (WinError 123), so a resolved path can never carry "
+        "the suspicious character this test feeds"))
     def test_suspicious_char_in_resolved_path_raises(self, tmp_path):
         # validate_file_path resolves first, so a raw ".." resolves away and is
         # caught by the roots check instead; the shape branch fires when the
@@ -247,6 +252,9 @@ class TestValidateFilePathRaises:
 
 
 class TestValidateDirectory:
+    @pytest.mark.skipif(sys.platform == "win32", reason=(
+        "'<' is illegal in Windows file names; resolve() on such a path "
+        "fails with WinError 123 before the shape check can fire"))
     def test_suspicious_char_in_resolved_path_raises(self, tmp_path):
         # Same resolve-first semantics as validate_file_path.
         v = _validator()

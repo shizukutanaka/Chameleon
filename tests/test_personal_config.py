@@ -22,6 +22,7 @@ Every test here passes an explicit path. None of them may touch the real
 
 import json
 import logging
+import sys
 from pathlib import Path
 
 import pytest
@@ -141,6 +142,9 @@ def test_a_directory_at_the_config_path_is_a_clear_error(tmp_path):
     assert "remove" in message.lower()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason=(
+    "os.chmod(0o000) on Windows only sets the read-only attribute, "
+    "which does not block reads -- the file stays readable"))
 def test_an_unreadable_config_file_is_a_clear_error(config_path):
     config_path.write_text("{}")
     config_path.chmod(0o000)
@@ -402,6 +406,10 @@ def test_the_printed_direct_invocation_uses_a_real_cli_subcommand(home, capsys):
             "which is not a real subcommand")
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason=(
+    "the documented chain sources ~/.chameleon/aliases.sh through bash; "
+    "on Windows `bash` resolves to the WSL stub, which fails when no "
+    "distribution is installed -- the Windows equivalent is aliases.ps1"))
 def test_the_full_documented_flow_works_end_to_end(tmp_path):
     """The exact chain quick_install.sh promises: run `setup`, source the
     aliases it creates, then use the alias it told you about -- against a
@@ -419,7 +427,11 @@ def test_the_full_documented_flow_works_end_to_end(tmp_path):
     setup = subprocess.run(
         [sys.executable, "personal_config.py", "setup"],
         input="\n\n\n", capture_output=True, text=True,
-        cwd=str(repo_root), env={**os.environ, "HOME": str(home)},
+        cwd=str(repo_root),
+        # Path.home() consults HOME on POSIX and USERPROFILE on Windows --
+        # set both or the wizard writes to the real profile (same pattern
+        # as _run_setup below).
+        env={**os.environ, "HOME": str(home), "USERPROFILE": str(home)},
     )
     assert setup.returncode == 0, setup.stderr
     assert "main.py personal" not in setup.stdout

@@ -533,6 +533,16 @@ class PersonalWorkflow:
 if __name__ == "__main__":
     import sys
 
+    # The wizard prints a "🎵 Chameleon Audio" banner; on cp1252 consoles
+    # (Windows) that print raised UnicodeEncodeError -- a traceback mid-
+    # banner where the tests and users expect a clean message. Degrade
+    # glyphs to '?' on encodings that can't write them.
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
     if len(sys.argv) > 1 and sys.argv[1] == "setup":
         # Run interactive setup. The wizard asks questions through
         # input(): when stdin is a closed or empty channel (piped,

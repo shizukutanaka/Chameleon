@@ -169,6 +169,10 @@ def test_output_dir_that_is_a_file_exits_input(tmp_path):
     assert "not a directory" in proc.stderr
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason=(
+    "a read-only attribute on a Windows directory does not prevent "
+    "creating files inside it, so the chmod-555 fixture this test "
+    "relies on stays writable"))
 def test_output_dir_that_is_unwritable_exits_input(tmp_path):
     """A chmod-555 output dir used to run the whole pipeline and surface
     PermissionError deep in the write as ERROR(1). The path is user input:
