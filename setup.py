@@ -33,32 +33,41 @@ setup(
     description="WAV audio processing CLI with path-validation security, batch processing and MIDI analysis",
     long_description=read_long_description(),
     long_description_content_type="text/markdown",
-    author="Chameleon Development Team",
+    author="Chameleon Audio Team",
     license="MIT",
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
         "Intended Audience :: End Users/Desktop",
+        "Intended Audience :: Information Technology",
+        "Intended Audience :: Science/Research",
         "Topic :: Multimedia :: Sound/Audio",
         "Topic :: Multimedia :: Sound/Audio :: Analysis",
         "Topic :: Multimedia :: Sound/Audio :: Conversion",
-        "License :: OSI Approved :: MIT License",
+        "Topic :: Multimedia :: Sound/Audio :: Editors",
+        "Topic :: System :: Archiving",
+        "Topic :: Utilities",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
         "Operating System :: OS Independent",
+        "Operating System :: Microsoft :: Windows",
+        "Operating System :: MacOS",
+        "Operating System :: POSIX :: Linux",
         "Environment :: Console",
+        "Natural Language :: English",
     ],
     keywords=[
         "audio",
         "processing",
         "wav",
         "sound",
+        "waveform",
+        "multimedia",
         "analysis",
+        "conversion",
         "batch-processing",
+        "cli-tool",
         "security",
         "midi",
     ],
@@ -80,7 +89,7 @@ setup(
         "bs1770_loudness",
         "personal_config",
     ],
-    python_requires=">=3.8",
+    python_requires=">=3.11",
     install_requires=[
         # Core functionality works without dependencies.
         # Optional dependencies live in the extras below (and, canonically,
@@ -89,6 +98,9 @@ setup(
     # NOTE: pyproject.toml carries a PEP 621 [project] table, so THAT file is
     # what pip actually reads -- these values are a mirror kept for anyone
     # reading setup.py directly. Keep the two in sync; pyproject.toml wins.
+    # (This mirror once kept `python_requires=">=3.8"` after pyproject.toml
+    # raised the floor to >=3.11, so built wheels advertised a Requires-Python
+    # the project no longer supports or tests. The mirror is now synced.)
     #
     # Previously this list diverged badly: it advertised `full`, `midi` and
     # `realtime` extras documented nowhere (and `midi` pulled in mido, which
@@ -112,24 +124,28 @@ setup(
             "python-multipart>=0.0.6",
         ],
         "dev": [
+            "black>=24.8",
+            "isort>=5.13",
+            "flake8>=7.0",
+            "mypy>=1.10",
             "pytest>=8.2",
             "pytest-cov>=5.0",
+            # The workflow's integration step invokes `pytest --timeout=300`;
+            # without this plugin that step dies with "unrecognized arguments".
+            "pytest-timeout>=2.2",
             # tests/test_api_routes.py's TestClient needs the app= shortcut
             # that httpx dropped in 0.24.
             "httpx<0.24",
-            # The rest of the [dev] extra equips the Makefile targets
-            # (lint/format/security/build/publish) that `make develop` is
-            # expected to enable. `safety` is deliberately absent: every
-            # maintained release requires pydantic>=2.6, which is mutually
-            # exclusive with the [api] extra's pydantic<2 pin; `make
-            # security` already tolerates its absence via `|| true`.
-            "flake8>=7.0",
-            "mypy>=1.8",
-            "black>=24.0",
-            "isort>=5.13",
+            "pytest-benchmark>=4.0",
+            "psutil>=5.9",
+            "memory-profiler>=0.61",
             "bandit>=1.7",
-            "build>=1.0",
-            "twine>=4.0",
+            "safety>=3.2",
+            "twine>=5.1",
+            "build>=1.2",
+            "sphinx>=7.3; python_version >= '3.9'",
+            "sphinx-rtd-theme>=2.0; python_version >= '3.9'",
+            "myst-parser>=2.0; python_version >= '3.9'",
         ],
     },
     entry_points={

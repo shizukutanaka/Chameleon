@@ -63,6 +63,20 @@ real-time streaming require optional dependencies.
 ### Installation
 
 ```bash
+# Standard install (from PyPI)
+pip install chameleon-audio
+
+# With optional capabilities
+pip install "chameleon-audio[audio]"  # numpy/scipy/librosa/soundfile/pyaudio — full pipeline
+pip install "chameleon-audio[api]"    # fastapi/uvicorn/pydantic — REST API server
+```
+
+Requires Python 3.11 or newer. The core CLI needs no third-party packages
+(standard library only), so the plain install above is fully functional.
+
+#### From source (for developers)
+
+```bash
 # Clone repository
 git clone https://github.com/shizukutanaka/Chameleon.git
 cd Chameleon
@@ -70,6 +84,9 @@ cd Chameleon
 # Setup virtual environment
 python3 -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
+
+# Install in editable mode (see also the dependency tiers below)
+pip install -e .
 
 # Core CLI needs no third-party packages (standard library only)
 python validation_test.py
@@ -81,6 +98,11 @@ The core CLI runs on the standard library alone. Optional capabilities are
 grouped as installable extras (single source of truth in `pyproject.toml`):
 
 ```bash
+pip install chameleon-audio          # core CLI only
+pip install "chameleon-audio[audio]" # numpy/scipy/librosa/soundfile/pyaudio — full pipeline
+pip install "chameleon-audio[api]"   # fastapi/uvicorn/pydantic — REST API server
+
+# From a source checkout, the same tiers install in editable mode:
 pip install -e .          # core CLI only
 pip install -e .[audio]   # numpy/scipy/librosa/soundfile/pyaudio — full pipeline
 pip install -e .[api]     # fastapi/uvicorn/pydantic — REST API server
@@ -94,7 +116,8 @@ already-deleted modules). The extras above are the only supported path.
 
 ### Basic Usage
 
-After `pip install -e .` the `chameleon` console command is available
+After installing (either `pip install chameleon-audio` or, from source,
+`pip install -e .`) the `chameleon` console command is available
 (equivalent to `python main.py`):
 
 ```bash
@@ -269,13 +292,13 @@ analogue).
 ## System Requirements
 
 ### Minimum
-- Python 3.8+
+- Python 3.11+
 - 512 MB RAM
 - 2 CPU cores
 - 100 MB disk space
 
 ### Recommended
-- Python 3.10+
+- Python 3.12+
 - 4 GB RAM
 - 8 CPU cores
 - SSD storage
