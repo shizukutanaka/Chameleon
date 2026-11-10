@@ -2,34 +2,27 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-FUNDING_URL = "https://github.com/shizukutanaka/Chameleon/issues/new?template=commercial_support.yml"
+SPONSORS_URL = "https://github.com/sponsors/shizukutanaka"
 
 
-def _custom_funding_urls():
-    funding = (ROOT / ".github" / "FUNDING.yml").read_text(encoding="utf-8")
-    custom = re.search(r"(?m)^custom:\s*\[(.*?)\]\s*$", funding)
-    assert custom is not None
-    return re.findall(r"""https?://[^,\s"']+""", custom.group(1))
+def _funding_text():
+    return (ROOT / ".github" / "FUNDING.yml").read_text(encoding="utf-8")
 
 
-def test_custom_funding_issue_templates_exist():
-    urls = _custom_funding_urls()
-    assert urls
-    for url in urls:
-        template = re.search(r"[?&]template=([^&]+)", url)
-        if template:
-            assert (ROOT / ".github" / "ISSUE_TEMPLATE" / template.group(1)).is_file()
+def test_funding_uses_github_sponsors_only():
+    # Project policy (2026-11-10): the software is free; support is accepted
+    # only through GitHub Sponsors. No custom links to other channels.
+    funding = _funding_text()
+    assert re.search(r'(?m)^github:\s*\[?"?shizukutanaka"?\]?\s*$', funding)
+    assert not re.search(r"(?m)^custom\s*:", funding)
 
 
 def test_funding_url_matches_package_metadata():
-    urls = _custom_funding_urls()
-    funding_url = next(url for url in urls if "template=" in url)
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     setup = (ROOT / "setup.py").read_text(encoding="utf-8")
-    assert funding_url == FUNDING_URL
-    assert re.search(r'(?m)^Funding\s*=\s*"([^"]+)"', pyproject).group(1) == funding_url
-    assert re.search(r'(?m)^\s*"Funding":\s*"([^"]+)"', setup).group(1) == funding_url
+    assert re.search(r'(?m)^Funding\s*=\s*"([^"]+)"', pyproject).group(1) == SPONSORS_URL
+    assert re.search(r'(?m)^\s*"Funding":\s*"([^"]+)"', setup).group(1) == SPONSORS_URL
 
 
 def test_readme_contains_funding_url():
-    assert FUNDING_URL in (ROOT / "README.md").read_text(encoding="utf-8")
+    assert SPONSORS_URL in (ROOT / "README.md").read_text(encoding="utf-8")

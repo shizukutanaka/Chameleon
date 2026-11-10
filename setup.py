@@ -142,6 +142,6 @@ setup(
     project_urls={
         "Source": "https://github.com/shizukutanaka/Chameleon",
         "Issues": "https://github.com/shizukutanaka/Chameleon/issues",
-        "Funding": "https://github.com/shizukutanaka/Chameleon/issues/new?template=commercial_support.yml",
+        "Funding": "https://github.com/sponsors/shizukutanaka",
     },
 )
