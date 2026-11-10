@@ -46,8 +46,10 @@ def test_normalize_async_writes_output(tmp_path):
 
 
 def test_concurrent_analyze(tmp_path):
-    files = [write_sine_wave(tmp_path / f"t{i}.wav", duration=0.3, frequency=220 * (i + 1))
-             for i in range(5)]
+    files = [
+        write_sine_wave(tmp_path / f"t{i}.wav", duration=0.3, frequency=220 * (i + 1))
+        for i in range(5)
+    ]
 
     async def run_all():
         return await asyncio.gather(*(core.analyze_async(str(f)) for f in files))

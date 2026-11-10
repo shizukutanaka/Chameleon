@@ -27,14 +27,14 @@ def test_process_stream_without_pyaudio_raises_clear_error(monkeypatch):
         raise AssertionError("callbacks must not run when PyAudio is absent")
 
     with pytest.raises(RuntimeError) as excinfo:
-        asyncio.run(
-            _processor().process_stream(_unused_callback, _unused_callback)
-        )
+        asyncio.run(_processor().process_stream(_unused_callback, _unused_callback))
 
     assert "PyAudio" in str(excinfo.value)
 
 
-@pytest.mark.skipif(main.HAS_PYAUDIO, reason="PyAudio installed; degradation path not exercised")
+@pytest.mark.skipif(
+    main.HAS_PYAUDIO, reason="PyAudio installed; degradation path not exercised"
+)
 def test_default_install_has_no_pyaudio():
     """Document the default-install expectation that backs the test above."""
     assert main.HAS_PYAUDIO is False

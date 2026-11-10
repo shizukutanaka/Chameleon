@@ -31,18 +31,22 @@ from security_validator import SecurityValidator, SecurityError, SecurityConfig
 
 try:
     import schedule
+
     HAS_SCHEDULE = True
 except ImportError:
     HAS_SCHEDULE = False
 
 try:
     import yaml
+
     HAS_YAML = True
 except ImportError:
     HAS_YAML = False
 
+
 class TaskStatus(Enum):
     """Task execution status"""
+
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -50,17 +54,21 @@ class TaskStatus(Enum):
     CANCELLED = "cancelled"
     RETRYING = "retrying"
 
+
 class WorkflowType(Enum):
     """Workflow execution types"""
+
     SEQUENTIAL = "sequential"
     PARALLEL = "parallel"
     CONDITIONAL = "conditional"
     LOOP = "loop"
     DAG = "dag"  # Directed Acyclic Graph
 
+
 @dataclass
 class TaskResult:
     """Result of task execution"""
+
     task_id: str
     status: TaskStatus
     output: Any
@@ -69,9 +77,11 @@ class TaskResult:
     end_time: datetime = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
+
 @dataclass
 class BatchTask:
     """Individual batch task"""
+
     id: str
     name: str
     function: Callable
@@ -83,9 +93,11 @@ class BatchTask:
     priority: int = 0
     tags: List[str] = field(default_factory=list)
 
+
 @dataclass
 class Workflow:
     """Workflow definition"""
+
     id: str
     name: str
     tasks: List[BatchTask]
@@ -96,20 +108,17 @@ class Workflow:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
-SAFE_MODULE_FUNCTIONS = MappingProxyType({
-    'builtins': frozenset({
-        'len', 'sum', 'min', 'max', 'sorted', 'any', 'all', 'abs',
-        'round'
-    }),
-    'math': frozenset({
-        'ceil', 'floor', 'sqrt', 'fabs', 'log', 'log10', 'pow'
-    }),
-    'statistics': frozenset({
-        'mean', 'median', 'harmonic_mean'
-    })
-})
+SAFE_MODULE_FUNCTIONS = MappingProxyType(
+    {
+        "builtins": frozenset(
+            {"len", "sum", "min", "max", "sorted", "any", "all", "abs", "round"}
+        ),
+        "math": frozenset({"ceil", "floor", "sqrt", "fabs", "log", "log10", "pow"}),
+        "statistics": frozenset({"mean", "median", "harmonic_mean"}),
+    }
+)
 
-RESULT_ALLOWED_ATTRIBUTES = frozenset({'status', 'success', 'error'})
+RESULT_ALLOWED_ATTRIBUTES = frozenset({"status", "success", "error"})
 SAFE_LITERAL_ALLOWED_TYPES = (str, int, float, bool, type(None))
 
 # Bound the size of any value a template expression can materialise --
@@ -119,10 +128,10 @@ _TEMPLATE_RESULT_LIMIT = 100_000
 
 
 CONFIG_VALIDATOR = SecurityValidator(
-    SecurityConfig(allowed_extensions={'.yaml', '.yml', '.json'})
+    SecurityConfig(allowed_extensions={".yaml", ".yml", ".json"})
 )
 SCRIPT_VALIDATOR = SecurityValidator(
-    SecurityConfig(allowed_extensions={'.py', '.sh', '.bat', '.cmd', '.ps1'})
+    SecurityConfig(allowed_extensions={".py", ".sh", ".bat", ".cmd", ".ps1"})
 )
 
 
@@ -139,26 +148,21 @@ def _configure_logging() -> None:
 
     try:
         log_dir = validator.validate_directory(
-            Path.home() / '.chameleon' / 'logs',
-            require_exists=False,
-            allow_create=True
+            Path.home() / ".chameleon" / "logs", require_exists=False, allow_create=True
         )
     except SecurityError:
         _MODULE_LOGGER.addHandler(logging.NullHandler())
         _LOGGING_CONFIGURED = True
         return
 
-    log_file = log_dir / 'batch_automation.log'
+    log_file = log_dir / "batch_automation.log"
 
     handler = RotatingFileHandler(
-        str(log_file),
-        maxBytes=5 * 1024 * 1024,
-        backupCount=3,
-        encoding='utf-8'
+        str(log_file), maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
     )
-    handler.setFormatter(logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    ))
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    )
 
     _MODULE_LOGGER.setLevel(logging.INFO)
     _MODULE_LOGGER.addHandler(handler)
@@ -172,12 +176,12 @@ _configure_logging()
 class ResultProxy:
     """Read-only projection of task result data"""
 
-    __slots__ = ('status', 'success', 'error')
+    __slots__ = ("status", "success", "error")
 
     def __init__(self, status: str, success: bool, error: Optional[str]):
         self.status = status
         self.success = success
-        self.error = (error[:256] if error else None)
+        self.error = error[:256] if error else None
 
 
 class ConditionEvaluationError(Exception):
@@ -188,15 +192,19 @@ class TemplateEvaluationError(Exception):
     """Raised when a template expression is invalid"""
 
 
-def _build_results_proxy(results: Dict[str, 'TaskResult']) -> MappingProxyType:
+def _build_results_proxy(results: Dict[str, "TaskResult"]) -> MappingProxyType:
     proxy: Dict[str, ResultProxy] = {}
 
     for task_id, result in results.items():
-        status_value = result.status.value if isinstance(result.status, TaskStatus) else str(result.status)
+        status_value = (
+            result.status.value
+            if isinstance(result.status, TaskStatus)
+            else str(result.status)
+        )
         proxy[task_id] = ResultProxy(
             status=status_value,
             success=result.status == TaskStatus.COMPLETED,
-            error=str(result.error) if result.error else None
+            error=str(result.error) if result.error else None,
         )
 
     return MappingProxyType(proxy)
@@ -246,13 +254,15 @@ class _ConditionExpressionEvaluator(ast.NodeVisitor):
                     comparison = left in right
                 except TypeError as exc:
                     raise ConditionEvaluationError(
-                        "'in' requires an iterable right-hand side") from exc
+                        "'in' requires an iterable right-hand side"
+                    ) from exc
             elif isinstance(op, ast.NotIn):
                 try:
                     comparison = left not in right
                 except TypeError as exc:
                     raise ConditionEvaluationError(
-                        "'not in' requires an iterable right-hand side") from exc
+                        "'not in' requires an iterable right-hand side"
+                    ) from exc
             elif isinstance(op, ast.Is):
                 comparison = left is right
             elif isinstance(op, ast.IsNot):
@@ -267,11 +277,11 @@ class _ConditionExpressionEvaluator(ast.NodeVisitor):
         return True
 
     def visit_Name(self, node: ast.Name) -> Any:
-        if node.id == 'results':
+        if node.id == "results":
             return self._results
-        if node.id in {'True', 'False'}:
-            return node.id == 'True'
-        if node.id == 'None':
+        if node.id in {"True", "False"}:
+            return node.id == "True"
+        if node.id == "None":
             return None
         raise ConditionEvaluationError(f"Name '{node.id}' is not permitted")
 
@@ -285,7 +295,7 @@ class _ConditionExpressionEvaluator(ast.NodeVisitor):
         if base is self._results:
             key = self._extract_index(node.slice)
             if key not in self._results:
-                return ResultProxy(status='unknown', success=False, error=None)
+                return ResultProxy(status="unknown", success=False, error=None)
             return self._results[key]
         raise ConditionEvaluationError("Subscript only allowed on results")
 
@@ -296,7 +306,9 @@ class _ConditionExpressionEvaluator(ast.NodeVisitor):
         raise ConditionEvaluationError("Attribute access not permitted")
 
     def generic_visit(self, node: ast.AST) -> Any:
-        raise ConditionEvaluationError(f"Unsupported expression component: {type(node).__name__}")
+        raise ConditionEvaluationError(
+            f"Unsupported expression component: {type(node).__name__}"
+        )
 
     @staticmethod
     def _extract_index(slice_node: ast.slice) -> str:
@@ -310,9 +322,11 @@ class _ConditionExpressionEvaluator(ast.NodeVisitor):
         raise ConditionEvaluationError("Only string indices are allowed")
 
 
-def _evaluate_condition_expression(expression: str, results: Dict[str, 'TaskResult']) -> bool:
+def _evaluate_condition_expression(
+    expression: str, results: Dict[str, "TaskResult"]
+) -> bool:
     try:
-        parsed = ast.parse(expression, mode='eval')
+        parsed = ast.parse(expression, mode="eval")
     except SyntaxError as exc:
         raise ConditionEvaluationError("Invalid condition syntax") from exc
 
@@ -340,9 +354,9 @@ class _LiteralExpressionEvaluator(ast.NodeVisitor):
     def visit_Name(self, node: ast.Name) -> Any:
         if node.id in self._variables:
             return self._variables[node.id]
-        if node.id in {'True', 'False'}:
-            return node.id == 'True'
-        if node.id == 'None':
+        if node.id in {"True", "False"}:
+            return node.id == "True"
+        if node.id == "None":
             return None
         raise TemplateEvaluationError(f"Name '{node.id}' not permitted in template")
 
@@ -370,7 +384,8 @@ class _LiteralExpressionEvaluator(ast.NodeVisitor):
                 return -operand
         except TypeError as exc:
             raise TemplateEvaluationError(
-                "Unary operator requires a numeric operand") from exc
+                "Unary operator requires a numeric operand"
+            ) from exc
         raise TemplateEvaluationError("Unsupported unary operator in template")
 
     def visit_BinOp(self, node: ast.BinOp) -> Any:
@@ -381,9 +396,13 @@ class _LiteralExpressionEvaluator(ast.NodeVisitor):
             # "x" * 500_000_000 allocates half a gigabyte, so a post-hoc
             # length check would still let the allocation happen.
             for seq, factor in ((left, right), (right, left)):
-                if isinstance(seq, (str, bytes, list, tuple)) and isinstance(factor, int) \
-                        and not isinstance(factor, bool) \
-                        and factor > 0 and len(seq) * factor > _TEMPLATE_RESULT_LIMIT:
+                if (
+                    isinstance(seq, (str, bytes, list, tuple))
+                    and isinstance(factor, int)
+                    and not isinstance(factor, bool)
+                    and factor > 0
+                    and len(seq) * factor > _TEMPLATE_RESULT_LIMIT
+                ):
                     raise TemplateEvaluationError("Template result exceeds size limit")
         try:
             if isinstance(node.op, ast.Add):
@@ -400,7 +419,10 @@ class _LiteralExpressionEvaluator(ast.NodeVisitor):
             raise TemplateEvaluationError(
                 f"{type(node.op).__name__} cannot be applied to these operands"
             ) from exc
-        if isinstance(result, (str, list, tuple, set, dict)) and len(result) > _TEMPLATE_RESULT_LIMIT:
+        if (
+            isinstance(result, (str, list, tuple, set, dict))
+            and len(result) > _TEMPLATE_RESULT_LIMIT
+        ):
             raise TemplateEvaluationError("Template result exceeds size limit")
         return result
 
@@ -413,7 +435,9 @@ class _LiteralExpressionEvaluator(ast.NodeVisitor):
             raise TemplateEvaluationError("Invalid subscript access") from exc
 
     def generic_visit(self, node: ast.AST) -> Any:
-        raise TemplateEvaluationError(f"Unsupported template component: {type(node).__name__}")
+        raise TemplateEvaluationError(
+            f"Unsupported template component: {type(node).__name__}"
+        )
 
     @staticmethod
     def _extract_index(slice_node: ast.slice) -> Any:
@@ -429,7 +453,7 @@ class _LiteralExpressionEvaluator(ast.NodeVisitor):
 
 def _evaluate_template_expression(expression: str, variables: Dict[str, Any]) -> Any:
     try:
-        parsed = ast.parse(expression, mode='eval')
+        parsed = ast.parse(expression, mode="eval")
     except SyntaxError as exc:
         raise TemplateEvaluationError("Invalid template syntax") from exc
 
@@ -461,7 +485,7 @@ def _validate_config_path(path: Union[str, Path]) -> Path:
     if not raw_path.is_absolute():
         raise SecurityError("Configuration path must be absolute")
 
-    validated = CONFIG_VALIDATOR.validate_file_path(str(raw_path), operation='read')
+    validated = CONFIG_VALIDATOR.validate_file_path(str(raw_path), operation="read")
 
     if not validated.exists():
         raise SecurityError(f"Configuration file does not exist: {validated}")
@@ -474,10 +498,11 @@ def _validate_script_path(path: Union[str, Path]) -> Path:
     if not raw_path.is_absolute():
         raise SecurityError("Script path must be absolute")
 
-    validated = SCRIPT_VALIDATOR.validate_file_path(str(raw_path), operation='read')
+    validated = SCRIPT_VALIDATOR.validate_file_path(str(raw_path), operation="read")
     if not validated.exists():
         raise SecurityError(f"Script path does not exist: {validated}")
     return validated
+
 
 class TaskQueue:
     """Priority queue for tasks"""
@@ -523,6 +548,7 @@ class TaskQueue:
         """Check if queue is empty"""
         return self.queue.empty()
 
+
 class DependencyGraph:
     """Manage task dependencies"""
 
@@ -565,6 +591,7 @@ class DependencyGraph:
 
         return newly_ready
 
+
 class TaskExecutor:
     """Execute individual tasks"""
 
@@ -581,7 +608,7 @@ class TaskExecutor:
             task_id=task.id,
             status=TaskStatus.RUNNING,
             output=None,
-            start_time=datetime.now()
+            start_time=datetime.now(),
         )
 
         start_clock = time.perf_counter()
@@ -613,13 +640,15 @@ class TaskExecutor:
             self.logger.error(f"Task {task.id} failed: {e}")
 
         duration_ms = (time.perf_counter() - start_clock) * 1000.0
-        result.metadata.update({
-            "duration_ms": round(duration_ms, 2),
-            "retry_allowed": task.retry_count,
-            "timeout_seconds": task.timeout,
-            "tags": list(task.tags),
-            "priority": task.priority,
-        })
+        result.metadata.update(
+            {
+                "duration_ms": round(duration_ms, 2),
+                "retry_allowed": task.retry_count,
+                "timeout_seconds": task.timeout,
+                "tags": list(task.tags),
+                "priority": task.priority,
+            }
+        )
 
         self.results[task.id] = result
         return result
@@ -633,6 +662,7 @@ class TaskExecutor:
         """Cleanup executor resources"""
         self.thread_pool.shutdown(wait=True)
         self.process_pool.shutdown(wait=True)
+
 
 class WorkflowEngine:
     """Execute workflows"""
@@ -652,11 +682,11 @@ class WorkflowEngine:
             # results are keyed by task id: a duplicate silently dropped the
             # first task in a DAG (task_map kept only the last) or silently
             # overwrote the first task's result in sequential/parallel.
-            dupes = sorted({tid for tid in task_ids
-                            if task_ids.count(tid) > 1})
+            dupes = sorted({tid for tid in task_ids if task_ids.count(tid) > 1})
             raise ValueError(
                 f"Workflow '{workflow.id}' has duplicate task id(s): "
-                f"{', '.join(dupes)}")
+                f"{', '.join(dupes)}"
+            )
 
         if workflow.type == WorkflowType.SEQUENTIAL:
             return self._execute_sequential(workflow)
@@ -690,8 +720,13 @@ class WorkflowEngine:
         import concurrent.futures
 
         results = {}
-        with concurrent.futures.ThreadPoolExecutor(max_workers=workflow.max_parallel) as executor:
-            futures = {executor.submit(self.executor.execute, task): task for task in workflow.tasks}
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=workflow.max_parallel
+        ) as executor:
+            futures = {
+                executor.submit(self.executor.execute, task): task
+                for task in workflow.tasks
+            }
 
             for future in concurrent.futures.as_completed(futures):
                 task = futures[future]
@@ -749,6 +784,7 @@ class WorkflowEngine:
             # Small delay to prevent busy waiting
             if running_tasks:
                 import time
+
                 time.sleep(0.1)
 
         return results
@@ -773,7 +809,7 @@ class WorkflowEngine:
     def _execute_loop(self, workflow: Workflow) -> Dict[str, TaskResult]:
         """Execute loop workflow"""
         results = {}
-        iterations = workflow.metadata.get('iterations', 1)
+        iterations = workflow.metadata.get("iterations", 1)
 
         for i in range(iterations):
             for task in workflow.tasks:
@@ -787,7 +823,7 @@ class WorkflowEngine:
                     retry_count=task.retry_count,
                     timeout=task.timeout,
                     priority=task.priority,
-                    tags=task.tags
+                    tags=task.tags,
                 )
 
                 result = self.executor.execute(loop_task)
@@ -799,35 +835,40 @@ class WorkflowEngine:
 
         return results
 
-    def _evaluate_condition(self, condition: Dict[str, Any], results: Dict[str, TaskResult]) -> bool:
+    def _evaluate_condition(
+        self, condition: Dict[str, Any], results: Dict[str, TaskResult]
+    ) -> bool:
         """Evaluate workflow condition"""
-        condition_type = condition.get('type', 'simple')
+        condition_type = condition.get("type", "simple")
 
         # An unrecognised condition type cannot be satisfied -- falling
         # through to True would disable the guard silently, running the
         # task unconditionally.
-        if condition_type not in ('simple', 'expression'):
+        if condition_type not in ("simple", "expression"):
             self.logger.warning(
-                "Skipping guarded task: unrecognised condition type %r",
-                condition_type)
+                "Skipping guarded task: unrecognised condition type %r", condition_type
+            )
             return False
 
-        if condition_type == 'simple':
+        if condition_type == "simple":
             # Check if previous task succeeded
-            task_id = condition.get('task_id')
+            task_id = condition.get("task_id")
             if task_id in results:
                 return results[task_id].status == TaskStatus.COMPLETED
 
-        elif condition_type == 'expression':
+        elif condition_type == "expression":
             # Evaluate expression
-            expr = condition.get('expression', 'True')
+            expr = condition.get("expression", "True")
             try:
                 return _evaluate_condition_expression(expr, results)
             except ConditionEvaluationError as exc:
-                self.logger.warning(f"Condition evaluation failed for expression '{expr}': {exc}")
+                self.logger.warning(
+                    f"Condition evaluation failed for expression '{expr}': {exc}"
+                )
                 return False
 
         return True
+
 
 class BatchScheduler:
     """Schedule batch jobs"""
@@ -847,8 +888,8 @@ class BatchScheduler:
             # "pip install schedule" is the only way to enable this path.
             raise ImportError(
                 "The 'schedule' package is not installed; scheduled "
-                "workflows cannot run without it")
-
+                "workflows cannot run without it"
+            )
 
         # Parse cron expression and schedule. Supported forms are exactly
         # "daily", "hourly", "every_<minutes>" -- a real cron expression
@@ -865,7 +906,8 @@ class BatchScheduler:
         else:
             raise ValueError(
                 f"Unsupported schedule expression {cron_expression!r}: "
-                "use 'daily', 'hourly', or 'every_<minutes>'")
+                "use 'daily', 'hourly', or 'every_<minutes>'"
+            )
 
         job.do(self._execute_scheduled, workflow)
         job_id = f"{workflow.id}_{datetime.now().timestamp()}"
@@ -883,7 +925,8 @@ class BatchScheduler:
         if not HAS_SCHEDULE:
             raise ImportError(
                 "The 'schedule' package is not installed; the batch "
-                "scheduler cannot run without it")
+                "scheduler cannot run without it"
+            )
 
         if self.running:
             # A second loop thread would run every pending job twice per
@@ -905,8 +948,7 @@ class BatchScheduler:
                     # engine-level error) must not kill the loop: the
                     # thread would die leaving every other scheduled job
                     # dead while 'running' still reports True.
-                    self.logger.exception(
-                        "Scheduled job raised; scheduler continues")
+                    self.logger.exception("Scheduled job raised; scheduler continues")
                 time.sleep(1)
         finally:
             self.running = False
@@ -916,6 +958,7 @@ class BatchScheduler:
         self.running = False
         if self.thread:
             self.thread.join()
+
 
 class WorkflowBuilder:
     """Build workflows from configurations"""
@@ -928,11 +971,12 @@ class WorkflowBuilder:
         if not HAS_YAML:
             raise ImportError(
                 "PyYAML is not installed; YAML workflow definitions "
-                "cannot be loaded without it")
+                "cannot be loaded without it"
+            )
 
         validated_path = _validate_config_path(yaml_path)
 
-        with open(validated_path, 'r', encoding='utf-8') as f:
+        with open(validated_path, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
         return self.from_dict(config)
@@ -941,7 +985,7 @@ class WorkflowBuilder:
         """Build workflow from JSON configuration"""
         validated_path = _validate_config_path(json_path)
 
-        with open(validated_path, 'r', encoding='utf-8') as f:
+        with open(validated_path, "r", encoding="utf-8") as f:
             config = json.load(f)
 
         return self.from_dict(config)
@@ -950,47 +994,47 @@ class WorkflowBuilder:
         """Build workflow from dictionary"""
         tasks = []
 
-        for task_config in config.get('tasks', []):
+        for task_config in config.get("tasks", []):
             # Create task function from configuration
-            func = self._create_function(task_config.get('function'))
+            func = self._create_function(task_config.get("function"))
 
             task = BatchTask(
-                id=task_config['id'],
-                name=task_config.get('name', task_config['id']),
+                id=task_config["id"],
+                name=task_config.get("name", task_config["id"]),
                 function=func,
-                inputs=task_config.get('inputs', {}),
-                dependencies=task_config.get('dependencies', []),
-                retry_count=task_config.get('retry_count', 3),
-                timeout=task_config.get('timeout'),
-                priority=task_config.get('priority', 0),
-                tags=task_config.get('tags', [])
+                inputs=task_config.get("inputs", {}),
+                dependencies=task_config.get("dependencies", []),
+                retry_count=task_config.get("retry_count", 3),
+                timeout=task_config.get("timeout"),
+                priority=task_config.get("priority", 0),
+                tags=task_config.get("tags", []),
             )
             tasks.append(task)
 
         workflow = Workflow(
-            id=config['id'],
-            name=config.get('name', config['id']),
+            id=config["id"],
+            name=config.get("name", config["id"]),
             tasks=tasks,
-            type=WorkflowType(config.get('type', 'sequential')),
-            schedule=config.get('schedule'),
-            max_parallel=config.get('max_parallel', 4),
-            conditions=config.get('conditions', {}),
-            metadata=config.get('metadata', {})
+            type=WorkflowType(config.get("type", "sequential")),
+            schedule=config.get("schedule"),
+            max_parallel=config.get("max_parallel", 4),
+            conditions=config.get("conditions", {}),
+            metadata=config.get("metadata", {}),
         )
 
         return workflow
 
     def _create_function(self, func_config: Dict[str, Any]) -> Callable:
         """Create function from configuration"""
-        func_type = func_config.get('type', 'builtin')
+        func_type = func_config.get("type", "builtin")
 
-        if func_type == 'builtin':
+        if func_type == "builtin":
             # Use built-in function. The allowlist only holds positional-
             # only C functions (len, math.pow, ...), but the executor calls
             # `function(**inputs)` -- so the raw callable could never run.
             # Adapt to positional in the declared input order.
-            module_name = func_config.get('module', 'builtins')
-            func_name = func_config['name']
+            module_name = func_config.get("module", "builtins")
+            func_name = func_config["name"]
 
             func = _import_safe_function(module_name, func_name)
 
@@ -999,25 +1043,25 @@ class WorkflowBuilder:
 
             return builtin_executor
 
-        elif func_type == 'lambda':
+        elif func_type == "lambda":
             # Create lambda function
-            expr = func_config['expression']
-            variables = MappingProxyType({'inputs': MappingProxyType({})})
+            expr = func_config["expression"]
+            variables = MappingProxyType({"inputs": MappingProxyType({})})
 
             def lambda_executor(**kwargs):
                 scoped_variables = {
-                    'inputs': MappingProxyType(kwargs),
+                    "inputs": MappingProxyType(kwargs),
                 }
                 return _evaluate_template_expression(expr, scoped_variables)
 
             return lambda_executor
 
-        elif func_type == 'script':
+        elif func_type == "script":
             # Execute external script
-            script_path = func_config['path']
+            script_path = func_config["path"]
             validated_script = _validate_script_path(str(script_path))
-            timeout = float(func_config.get('timeout', 300))
-            shell = bool(func_config.get('shell', False))
+            timeout = float(func_config.get("timeout", 300))
+            shell = bool(func_config.get("shell", False))
 
             script_logger = logging.getLogger("batch_automation.script")
             script_hash = hashlib.sha256(validated_script.read_bytes()).hexdigest()
@@ -1045,7 +1089,7 @@ class WorkflowBuilder:
                     timeout=timeout,
                     shell=shell,
                     check=False,
-                    env=env
+                    env=env,
                 )
                 elapsed_ms = (time.perf_counter() - start_time) * 1000.0
 
@@ -1068,14 +1112,14 @@ class WorkflowBuilder:
                         "Script '%s' executed in %.2f ms (>=90%% of timeout %.2f s)",
                         validated_script,
                         elapsed_ms,
-                        timeout
+                        timeout,
                     )
 
                 if stderr:
                     script_logger.info(
                         "Script '%s' produced stderr output (%d chars)",
                         validated_script,
-                        len(stderr)
+                        len(stderr),
                     )
 
                 if completed.returncode != 0:
@@ -1089,6 +1133,7 @@ class WorkflowBuilder:
 
         else:
             raise ValueError(f"Unknown function type: {func_type}")
+
 
 class BatchAutomation:
     """Main batch automation system"""
@@ -1106,9 +1151,9 @@ class BatchAutomation:
             validated = _validate_config_path(config)
             suffix = validated.suffix.lower()
 
-            if suffix in {'.yaml', '.yml'}:
+            if suffix in {".yaml", ".yml"}:
                 workflow = self.builder.from_yaml(str(validated))
-            elif suffix == '.json':
+            elif suffix == ".json":
                 workflow = self.builder.from_json(str(validated))
             else:
                 raise ValueError("Unsupported configuration format")
@@ -1149,6 +1194,7 @@ class BatchAutomation:
         """Get workflow results"""
         return self.results_cache.get(workflow_id)
 
+
 # Example usage
 if __name__ == "__main__":
     print("Batch Automation Framework")
@@ -1165,32 +1211,29 @@ if __name__ == "__main__":
                 "name": "Load Audio Files",
                 "function": {
                     "type": "lambda",
-                    "expression": "{'files': ['audio1.wav', 'audio2.wav']}"
+                    "expression": "{'files': ['audio1.wav', 'audio2.wav']}",
                 },
                 "inputs": {},
-                "dependencies": []
+                "dependencies": [],
             },
             {
                 "id": "enhance_audio",
                 "name": "Enhance Audio Quality",
-                "function": {
-                    "type": "lambda",
-                    "expression": "{'enhanced': True}"
-                },
+                "function": {"type": "lambda", "expression": "{'enhanced': True}"},
                 "inputs": {},
-                "dependencies": ["load_audio"]
+                "dependencies": ["load_audio"],
             },
             {
                 "id": "transcode",
                 "name": "Transcode to Multiple Formats",
                 "function": {
                     "type": "lambda",
-                    "expression": "{'formats': ['mp3', 'flac', 'ogg']}"
+                    "expression": "{'formats': ['mp3', 'flac', 'ogg']}",
                 },
                 "inputs": {},
-                "dependencies": ["enhance_audio"]
-            }
-        ]
+                "dependencies": ["enhance_audio"],
+            },
+        ],
     }
 
     # Create and execute workflow

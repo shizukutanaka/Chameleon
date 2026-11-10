@@ -26,8 +26,9 @@ def _run(*args, cwd=None):
 
 
 def test_cli_analyze_loudness_flag_reports_lufs(tmp_path):
-    wav = write_sine_wave(tmp_path / "tone.wav", duration=1.0, frequency=1000.0,
-                           amplitude=32000)
+    wav = write_sine_wave(
+        tmp_path / "tone.wav", duration=1.0, frequency=1000.0, amplitude=32000
+    )
 
     result = _run("analyze", str(wav), "--loudness", cwd=str(tmp_path))
 
@@ -59,8 +60,9 @@ def test_cli_analyze_loudness_reports_unsupported_for_unstable_sample_rate(tmp_p
     # Below bs1770_loudness's stability floor (8000 Hz), K-weighting is
     # numerically unstable; the CLI must report this honestly instead of
     # printing "inf LUFS".
-    wav = write_sine_wave(tmp_path / "lowrate.wav", duration=1.0, frequency=200.0,
-                           sample_rate=4000)
+    wav = write_sine_wave(
+        tmp_path / "lowrate.wav", duration=1.0, frequency=200.0, sample_rate=4000
+    )
 
     result = _run("analyze", str(wav), "--loudness", cwd=str(tmp_path))
 
@@ -70,12 +72,19 @@ def test_cli_analyze_loudness_reports_unsupported_for_unstable_sample_rate(tmp_p
 
 
 def test_cli_analyze_loudness_flows_into_export_json(tmp_path):
-    wav = write_sine_wave(tmp_path / "tone.wav", duration=1.0, frequency=1000.0,
-                           amplitude=32000)
+    wav = write_sine_wave(
+        tmp_path / "tone.wav", duration=1.0, frequency=1000.0, amplitude=32000
+    )
     export_path = tmp_path / "out.json"
 
-    result = _run("analyze", str(wav), "--loudness", "--export", str(export_path),
-                   cwd=str(tmp_path))
+    result = _run(
+        "analyze",
+        str(wav),
+        "--loudness",
+        "--export",
+        str(export_path),
+        cwd=str(tmp_path),
+    )
 
     assert result.returncode == 0, result.stdout + result.stderr
     exported = json.loads(export_path.read_text())

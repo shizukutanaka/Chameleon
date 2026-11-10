@@ -6,7 +6,6 @@ import re
 
 from setuptools import setup, find_packages
 
-
 ROOT = Path(__file__).resolve().parent
 README = ROOT / "README.md"
 

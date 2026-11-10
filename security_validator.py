@@ -31,14 +31,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, List, Optional, Set
 
-
 # Mirror the practical limits used elsewhere in the project.
 DEFAULT_MAX_FILE_SIZE = 500 * 1024 * 1024  # 500MB
 MAX_PATH_LENGTH = 4096
 
 # Patterns / characters that should never appear in a path we are willing to open.
-_TRAVERSAL_PATTERNS = ('../', '..\\', '/..', '\\..', '%2e%2e', '%2f', '..%2f', '%2e%2e%2f')
-_SUSPICIOUS_CHARS = ('<', '>', '|', '"', '?', '*', '\0')
+_TRAVERSAL_PATTERNS = (
+    "../",
+    "..\\",
+    "/..",
+    "\\..",
+    "%2e%2e",
+    "%2f",
+    "..%2f",
+    "%2e%2e%2f",
+)
+_SUSPICIOUS_CHARS = ("<", ">", "|", '"', "?", "*", "\0")
 _FILENAME_SCRUB = re.compile(r'[<>:"/\\|?*\x00-\x1f\x7f-\x9f]')
 
 # Device names Windows reserves in every directory, with or without an
@@ -84,7 +92,9 @@ class SecurityConfig:
         roots: Set[str] = set()
         for var in ("CHAMELEON_TRUSTED_ROOTS", "ALLOWED_DIRECTORIES"):
             raw = os.getenv(var, "")
-            for entry in raw.replace(";", ":" if os.sep == "/" else ";").split(os.pathsep):
+            for entry in raw.replace(";", ":" if os.sep == "/" else ";").split(
+                os.pathsep
+            ):
                 entry = entry.strip()
                 if entry:
                     root = str(Path(entry).expanduser())
@@ -211,8 +221,9 @@ class SecurityValidator:
         return size <= self.config.max_file_size
 
     @_hybridmethod
-    def validate_directory(self, directory, require_exists: bool = False,
-                           allow_create: bool = False) -> Path:
+    def validate_directory(
+        self, directory, require_exists: bool = False, allow_create: bool = False
+    ) -> Path:
         """Validate (and optionally create) a directory.
 
         Returns the resolved :class:`~pathlib.Path` on success. Raises
@@ -297,7 +308,10 @@ class SecurityValidator:
         if b"<?" in header or b"<!" in header or b"<script" in header.lower():
             return False
         # Other audio container signatures we still allow through.
-        if header[:4] in (b"fLaC", b"OggS", b"ID3\x03", b"ID3\x04") or header[:3] == b"ID3":
+        if (
+            header[:4] in (b"fLaC", b"OggS", b"ID3\x03", b"ID3\x04")
+            or header[:3] == b"ID3"
+        ):
             return True
         # Unknown but not obviously hostile: allow (the WAV parser will reject
         # anything it cannot actually read).
@@ -312,7 +326,7 @@ class SecurityValidator:
             # The extension can itself be longer than the whole budget (or
             # the name can be all extension); name[:negative] then returns ""
             # and the over-long ext survives. Clamp the composed result too.
-            sanitized = (name[:255 - len(ext)] + ext)[:255]
+            sanitized = (name[: 255 - len(ext)] + ext)[:255]
         # A scrubbed name Windows still cannot hold: the FS compares the
         # stem before the first dot, so 'NUL.txt' and 'nul' are equally
         # reserved and any open() for them fails or targets the device.
@@ -385,8 +399,7 @@ class SecureFileOperations:
                 # below silently followed a symlinked final component. The
                 # probe has a TOCTOU window (a symlink swapped in after it
                 # is still followed) but is strictly better than nothing.
-                raise OSError(
-                    f"refusing to open symlink for writing: {path}")
+                raise OSError(f"refusing to open symlink for writing: {path}")
             if hasattr(os, "O_BINARY"):
                 flags |= os.O_BINARY
             fd = os.open(os.fspath(path), flags, 0o600)

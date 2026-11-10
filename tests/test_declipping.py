@@ -31,7 +31,6 @@ pytest.importorskip("scipy")
 
 import audio_restoration
 
-
 SAMPLE_RATE = 44100
 
 
@@ -41,7 +40,7 @@ def _sine(freq, amplitude=0.5, seconds=1.0):
 
 
 def _rms_db(signal):
-    return 20.0 * np.log10(np.sqrt(np.mean(signal ** 2)) + 1e-20)
+    return 20.0 * np.log10(np.sqrt(np.mean(signal**2)) + 1e-20)
 
 
 @pytest.fixture
@@ -50,6 +49,7 @@ def declipper():
 
 
 # --- no false positives ---------------------------------------------------
+
 
 @pytest.mark.parametrize("freq", [50, 100, 440, 1000, 5000, 12000])
 def test_a_clean_tone_has_no_clipped_regions(declipper, freq):
@@ -80,10 +80,11 @@ def test_the_low_frequency_limit_is_where_the_docstring_says_it_is(declipper):
 
 
 def test_silence_is_handled(declipper):
-    assert declipper.detect_clipping(np.zeros(1000))== ([], [])
+    assert declipper.detect_clipping(np.zeros(1000)) == ([], [])
 
 
 # --- true positives -------------------------------------------------------
+
 
 def test_every_clipped_crest_is_found(declipper):
     # 440 Hz for one second, clipped on both half-cycles: 880 plateaus.
@@ -92,8 +93,9 @@ def test_every_clipped_crest_is_found(declipper):
 
     assert len(starts) == 880
     assert len(ends) == len(starts)
-    assert all(end - start >= declipper.min_run_length
-               for start, end in zip(starts, ends))
+    assert all(
+        end - start >= declipper.min_run_length for start, end in zip(starts, ends)
+    )
 
 
 def test_clipping_survives_16_bit_quantisation(declipper):
@@ -142,6 +144,7 @@ def test_the_crossfade_weights_sum_to_one(declipper):
     # Structural version of the same check, so a future edit that reintroduces
     # an unbalanced blend fails even if the sine happens to survive it.
     import inspect
+
     source = inspect.getsource(declipper.restore_clipped)
     assert "(1 - window) * 0.5" not in source
     assert "(1.0 - window)" in source

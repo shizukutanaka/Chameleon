@@ -67,7 +67,7 @@ def _stage1_head_effects(sample_rate: int) -> BiquadCoefficients:
 
     k = math.tan(math.pi * f0 / sample_rate)
     vh = 10.0 ** (gain_db / 20.0)
-    vb = vh ** 0.4996667741545416
+    vb = vh**0.4996667741545416
 
     a0 = 1.0 + k / q + k * k
     b0 = (vh + vb * k / q + k * k) / a0
@@ -152,7 +152,7 @@ def _block_mean_squares(weighted: Sequence[float], sample_rate: int) -> List[flo
 
     blocks: List[float] = []
     for start in range(0, len(weighted) - block_size + 1, hop):
-        block = weighted[start:start + block_size]
+        block = weighted[start : start + block_size]
         blocks.append(sum(s * s for s in block) / block_size)
     return blocks
 
@@ -190,10 +190,13 @@ def _channel_weights(channel_mask: int, n_channels: int) -> List[float]:
     return weights
 
 
-def _block_summed_mean_squares(weighted_channels: Sequence[Sequence[float]], sample_rate: int,
-                               block_seconds: float = _BLOCK_SECONDS,
-                               hop_seconds: float = _HOP_SECONDS,
-                               channel_weights: Optional[Sequence[float]] = None) -> List[float]:
+def _block_summed_mean_squares(
+    weighted_channels: Sequence[Sequence[float]],
+    sample_rate: int,
+    block_seconds: float = _BLOCK_SECONDS,
+    hop_seconds: float = _HOP_SECONDS,
+    channel_weights: Optional[Sequence[float]] = None,
+) -> List[float]:
     """Per-block energy summed across channels.
 
     This is what BS.1770 actually requires for multi-channel content: sum
@@ -227,7 +230,7 @@ def _block_summed_mean_squares(weighted_channels: Sequence[Sequence[float]], sam
         for weight, channel in zip(weights, weighted_channels):
             if weight == 0.0:
                 continue
-            block = channel[start:start + block_size]
+            block = channel[start : start + block_size]
             total += weight * sum(s * s for s in block) / block_size
         blocks.append(total)
     return blocks
@@ -237,23 +240,25 @@ def _gate_and_convert_to_lufs(blocks: Sequence[float]) -> float:
     """Apply BS.1770's two-stage gating to per-block energies and convert to LUFS."""
 
     if not blocks:
-        return float('-inf')
+        return float("-inf")
 
-    absolute_threshold = 10.0 ** ((_ABSOLUTE_GATE_LUFS - _LUFS_CALIBRATION_OFFSET) / 10.0)
+    absolute_threshold = 10.0 ** (
+        (_ABSOLUTE_GATE_LUFS - _LUFS_CALIBRATION_OFFSET) / 10.0
+    )
     passed_absolute = [z for z in blocks if z >= absolute_threshold]
     if not passed_absolute:
-        return float('-inf')
+        return float("-inf")
 
     ungated_mean = sum(passed_absolute) / len(passed_absolute)
     relative_threshold = ungated_mean * 10.0 ** (-_RELATIVE_GATE_OFFSET_DB / 10.0)
 
     gated = [z for z in passed_absolute if z >= relative_threshold]
     if not gated:
-        return float('-inf')
+        return float("-inf")
 
     final_mean = sum(gated) / len(gated)
     if final_mean <= 0:
-        return float('-inf')
+        return float("-inf")
     return _LUFS_CALIBRATION_OFFSET + 10.0 * math.log10(final_mean)
 
 
@@ -265,15 +270,16 @@ def measure_integrated_loudness(samples: Sequence[float], sample_rate: int) -> f
     """
 
     if not samples:
-        return float('-inf')
+        return float("-inf")
 
     weighted = apply_k_weighting(samples, sample_rate)
     blocks = _block_mean_squares(weighted, sample_rate)
     return _gate_and_convert_to_lufs(blocks)
 
 
-def measure_integrated_loudness_multichannel(channels: Sequence[Sequence[float]], sample_rate: int,
-                                             channel_mask: int = 0) -> float:
+def measure_integrated_loudness_multichannel(
+    channels: Sequence[Sequence[float]], sample_rate: int, channel_mask: int = 0
+) -> float:
     """Gated integrated loudness (LUFS) per ITU-R BS.1770-4, summing energy
     across channels.
 
@@ -290,12 +296,15 @@ def measure_integrated_loudness_multichannel(channels: Sequence[Sequence[float]]
     """
 
     if not channels:
-        return float('-inf')
+        return float("-inf")
 
     weights = _channel_weights(channel_mask, len(channels))
-    weighted_channels = [apply_k_weighting(channel, sample_rate) for channel in channels]
-    blocks = _block_summed_mean_squares(weighted_channels, sample_rate,
-                                        channel_weights=weights)
+    weighted_channels = [
+        apply_k_weighting(channel, sample_rate) for channel in channels
+    ]
+    blocks = _block_summed_mean_squares(
+        weighted_channels, sample_rate, channel_weights=weights
+    )
     return _gate_and_convert_to_lufs(blocks)
 
 
@@ -330,8 +339,9 @@ _SHORT_TERM_SECONDS = 3.0
 _EBU_MODE_HOP_SECONDS = 0.1
 
 
-def _ungated_window_lufs(channels: Sequence[Sequence[float]], sample_rate: int,
-                         window_seconds: float) -> List[float]:
+def _ungated_window_lufs(
+    channels: Sequence[Sequence[float]], sample_rate: int, window_seconds: float
+) -> List[float]:
     """LUFS value for each sliding window, ungated (EBU Mode M/S helper).
 
     Returns [] when there are no channels or the signal is shorter than one
@@ -344,17 +354,24 @@ def _ungated_window_lufs(channels: Sequence[Sequence[float]], sample_rate: int,
 
     weighted = [apply_k_weighting(channel, sample_rate) for channel in channels]
     energies = _block_summed_mean_squares(
-        weighted, sample_rate,
+        weighted,
+        sample_rate,
         block_seconds=window_seconds,
         hop_seconds=_EBU_MODE_HOP_SECONDS,
     )
     return [
-        (_LUFS_CALIBRATION_OFFSET + 10.0 * math.log10(energy)) if energy > 0 else float('-inf')
+        (
+            (_LUFS_CALIBRATION_OFFSET + 10.0 * math.log10(energy))
+            if energy > 0
+            else float("-inf")
+        )
         for energy in energies
     ]
 
 
-def measure_momentary_loudness(channels: Sequence[Sequence[float]], sample_rate: int) -> List[float]:
+def measure_momentary_loudness(
+    channels: Sequence[Sequence[float]], sample_rate: int
+) -> List[float]:
     """Momentary loudness series (LUFS): 400 ms sliding window, ungated.
 
     One value per 100 ms hop. Empty list if the signal is shorter than 400 ms.
@@ -363,7 +380,9 @@ def measure_momentary_loudness(channels: Sequence[Sequence[float]], sample_rate:
     return _ungated_window_lufs(channels, sample_rate, _MOMENTARY_SECONDS)
 
 
-def measure_short_term_loudness(channels: Sequence[Sequence[float]], sample_rate: int) -> List[float]:
+def measure_short_term_loudness(
+    channels: Sequence[Sequence[float]], sample_rate: int
+) -> List[float]:
     """Short-term loudness series (LUFS): 3 s sliding window, ungated.
 
     One value per 100 ms hop. Empty list if the signal is shorter than 3 s.
@@ -372,18 +391,30 @@ def measure_short_term_loudness(channels: Sequence[Sequence[float]], sample_rate
     return _ungated_window_lufs(channels, sample_rate, _SHORT_TERM_SECONDS)
 
 
-def measure_max_momentary_loudness(channels: Sequence[Sequence[float]], sample_rate: int) -> float:
+def measure_max_momentary_loudness(
+    channels: Sequence[Sequence[float]], sample_rate: int
+) -> float:
     """Max-M (LUFS): the loudest 400 ms window. -inf if unmeasurable/silent."""
 
-    series = [v for v in measure_momentary_loudness(channels, sample_rate) if v != float('-inf')]
-    return max(series) if series else float('-inf')
+    series = [
+        v
+        for v in measure_momentary_loudness(channels, sample_rate)
+        if v != float("-inf")
+    ]
+    return max(series) if series else float("-inf")
 
 
-def measure_max_short_term_loudness(channels: Sequence[Sequence[float]], sample_rate: int) -> float:
+def measure_max_short_term_loudness(
+    channels: Sequence[Sequence[float]], sample_rate: int
+) -> float:
     """Max-S (LUFS): the loudest 3 s window. -inf if unmeasurable/silent."""
 
-    series = [v for v in measure_short_term_loudness(channels, sample_rate) if v != float('-inf')]
-    return max(series) if series else float('-inf')
+    series = [
+        v
+        for v in measure_short_term_loudness(channels, sample_rate)
+        if v != float("-inf")
+    ]
+    return max(series) if series else float("-inf")
 
 
 # --- Loudness Range (LRA), EBU Tech 3342 ------------------------------------
@@ -428,7 +459,7 @@ def _percentile(sorted_values: Sequence[float], percentile: float) -> float:
     """
 
     if not sorted_values:
-        return float('nan')
+        return float("nan")
     if len(sorted_values) == 1:
         return sorted_values[0]
 
@@ -438,10 +469,15 @@ def _percentile(sorted_values: Sequence[float], percentile: float) -> float:
     if lower_index == upper_index:
         return sorted_values[lower_index]
     weight = rank - lower_index
-    return sorted_values[lower_index] * (1.0 - weight) + sorted_values[upper_index] * weight
+    return (
+        sorted_values[lower_index] * (1.0 - weight)
+        + sorted_values[upper_index] * weight
+    )
 
 
-def measure_loudness_range(channels: Sequence[Sequence[float]], sample_rate: int) -> float:
+def measure_loudness_range(
+    channels: Sequence[Sequence[float]], sample_rate: int
+) -> float:
     """Loudness range (LRA) in LU per EBU Tech 3342.
 
     Returns float('nan') when a range cannot be measured -- no channels, a
@@ -451,14 +487,17 @@ def measure_loudness_range(channels: Sequence[Sequence[float]], sample_rate: int
     Guard with math.isfinite().
     """
 
-    series = [v for v in measure_short_term_loudness(channels, sample_rate)
-              if v != float('-inf') and v == v]  # drop silent windows and NaN
+    series = [
+        v
+        for v in measure_short_term_loudness(channels, sample_rate)
+        if v != float("-inf") and v == v
+    ]  # drop silent windows and NaN
     if not series:
-        return float('nan')
+        return float("nan")
 
     above_absolute = [v for v in series if v >= _ABSOLUTE_GATE_LUFS]
     if not above_absolute:
-        return float('nan')
+        return float("nan")
 
     # The relative gate is computed from the mean *energy* of the
     # absolute-gated windows, matching how the integrated meter gates, then
@@ -467,18 +506,20 @@ def measure_loudness_range(channels: Sequence[Sequence[float]], sample_rate: int
         10.0 ** ((value - _LUFS_CALIBRATION_OFFSET) / 10.0) for value in above_absolute
     ) / len(above_absolute)
     if mean_energy <= 0:
-        return float('nan')
+        return float("nan")
     relative_threshold = (
-        _LUFS_CALIBRATION_OFFSET + 10.0 * math.log10(mean_energy)
+        _LUFS_CALIBRATION_OFFSET
+        + 10.0 * math.log10(mean_energy)
         - _LRA_RELATIVE_GATE_OFFSET_DB
     )
 
     gated = sorted(v for v in above_absolute if v >= relative_threshold)
     if not gated:
-        return float('nan')
+        return float("nan")
 
-    return (_percentile(gated, _LRA_UPPER_PERCENTILE)
-            - _percentile(gated, _LRA_LOWER_PERCENTILE))
+    return _percentile(gated, _LRA_UPPER_PERCENTILE) - _percentile(
+        gated, _LRA_LOWER_PERCENTILE
+    )
 
 
 # --- True-peak (dBTP), BS.1770-4 Annex 2 oversample-then-peak method --------
@@ -525,7 +566,11 @@ def _build_polyphase_sinc(oversample: int, half_taps: int):
                 sinc = math.sin(math.pi * t) / (math.pi * t)
             # Blackman window across the [-half_taps, half_taps] support.
             x = min(1.0, max(0.0, (t + half_taps) / (2 * half_taps)))
-            window = 0.42 - 0.5 * math.cos(2 * math.pi * x) + 0.08 * math.cos(4 * math.pi * x)
+            window = (
+                0.42
+                - 0.5 * math.cos(2 * math.pi * x)
+                + 0.08 * math.cos(4 * math.pi * x)
+            )
             taps.append(sinc * window)
         total = sum(taps)
         if total:
@@ -567,12 +612,12 @@ def measure_true_peak(samples: Sequence[float]) -> float:
     """
 
     if not samples:
-        return float('-inf')
+        return float("-inf")
     if any(s != s for s in samples):  # NaN != NaN
-        return float('nan')
+        return float("nan")
     peak = _oversampled_abs_peak(samples)
     if peak <= 0.0:
-        return float('-inf')
+        return float("-inf")
     return 20.0 * math.log10(peak)
 
 
@@ -585,18 +630,18 @@ def measure_true_peak_multichannel(channels: Sequence[Sequence[float]]) -> float
     """
 
     if not channels:
-        return float('-inf')
+        return float("-inf")
     peak = 0.0
     for channel in channels:
         if not channel:
             continue
         if any(s != s for s in channel):
-            return float('nan')
+            return float("nan")
         channel_peak = _oversampled_abs_peak(channel)
         if channel_peak > peak:
             peak = channel_peak
     if peak <= 0.0:
-        return float('-inf')
+        return float("-inf")
     return 20.0 * math.log10(peak)
 
 

@@ -32,7 +32,6 @@ np = pytest.importorskip("numpy")
 
 import spectral_editor
 
-
 SAMPLE_RATE = 44100
 
 
@@ -65,22 +64,24 @@ def test_delete_selection_actually_deletes():
     ed.load_audio(audio, SAMPLE_RATE)
 
     assert ed.delete_selection(ed.select_region(0.4, 0.6, 0, 22050))
-    interior = ed.current_audio[int(0.46 * SAMPLE_RATE):int(0.54 * SAMPLE_RATE)]
+    interior = ed.current_audio[int(0.46 * SAMPLE_RATE) : int(0.54 * SAMPLE_RATE)]
     assert np.abs(interior).max() < 0.02
-    assert np.abs(ed.current_audio[: int(0.3 * SAMPLE_RATE)]).max() == \
-        pytest.approx(0.5, abs=0.05)
+    assert np.abs(ed.current_audio[: int(0.3 * SAMPLE_RATE)]).max() == pytest.approx(
+        0.5, abs=0.05
+    )
 
 
 def test_paste_selection_actually_pastes():
     ed = spectral_editor.SpectralEditor()
     audio = np.zeros(SAMPLE_RATE)
-    audio[int(0.1 * SAMPLE_RATE):int(0.3 * SAMPLE_RATE)] = \
-        _sine(440)[: int(0.2 * SAMPLE_RATE)]
+    audio[int(0.1 * SAMPLE_RATE) : int(0.3 * SAMPLE_RATE)] = _sine(440)[
+        : int(0.2 * SAMPLE_RATE)
+    ]
     ed.load_audio(audio, SAMPLE_RATE)
 
     copied = ed.copy_selection(ed.select_region(0.1, 0.3, 0, 22050))
     assert ed.paste_selection(copied, ed.select_region(0.7, 0.9, 0, 22050))
-    pasted = ed.current_audio[int(0.72 * SAMPLE_RATE):int(0.86 * SAMPLE_RATE)]
+    pasted = ed.current_audio[int(0.72 * SAMPLE_RATE) : int(0.86 * SAMPLE_RATE)]
     assert np.abs(pasted).max() > 0.2
 
 
@@ -89,7 +90,8 @@ def test_paste_of_empty_copy_refuses():
     ed.load_audio(_sine(440), SAMPLE_RATE)
 
     assert not ed.paste_selection(
-        np.zeros_like(ed.stft), ed.select_region(0.5, 0.6, 0, 22050))
+        np.zeros_like(ed.stft), ed.select_region(0.5, 0.6, 0, 22050)
+    )
 
 
 def test_harmonic_enhance_stays_inside_selection():
@@ -143,7 +145,7 @@ def test_select_region_clamps_finite_out_of_range_bounds():
     ed = spectral_editor.SpectralEditor()
     ed.load_audio(_sine(440), SAMPLE_RATE)
 
-    sel = ed.select_region(-5.0, 99.0, -1.0, 10 ** 9)
+    sel = ed.select_region(-5.0, 99.0, -1.0, 10**9)
     assert sel.time_start == 0
     assert sel.time_end == ed.times[-1]
     assert sel.freq_start == ed.freqs[0]

@@ -34,7 +34,7 @@ from tests._helpers import write_sine_wave
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-_BLOCKER = textwrap.dedent('''
+_BLOCKER = textwrap.dedent("""
     import sys
     from importlib.abc import MetaPathFinder
     class _Absent(MetaPathFinder):
@@ -43,7 +43,7 @@ _BLOCKER = textwrap.dedent('''
                 raise ModuleNotFoundError(f"No module named {name!r}", name=name)
             return None
     sys.meta_path.insert(0, _Absent())
-''')
+""")
 
 
 @pytest.fixture(scope="module")
@@ -56,7 +56,9 @@ def blocker_dir(tmp_path_factory):
 def _run_without_numpy(blocker_dir, *args):
     return subprocess.run(
         [sys.executable, "main.py", *args],
-        capture_output=True, text=True, cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+        cwd=str(REPO_ROOT),
         env={**os.environ, "PYTHONPATH": str(blocker_dir)},
     )
 
@@ -67,6 +69,7 @@ def tone(tmp_path):
 
 
 # --- no raw tracebacks for a missing optional dependency ------------------
+
 
 @pytest.mark.parametrize("operation", ["extract", "analyze"])
 def test_midi_commands_report_the_missing_dependency(blocker_dir, tone, operation):
@@ -91,10 +94,15 @@ def test_the_check_lives_where_the_requirement_is(blocker_dir, tone):
     # Guarding at the call sites would need a new guard for each new caller.
     # Guarding in load_audio means the next one is covered before it is written.
     result = subprocess.run(
-        [sys.executable, "-c",
-         "import main; p = main.AudioProcessor(main.ProcessingConfig()); "
-         f"p.load_audio({str(tone)!r})"],
-        capture_output=True, text=True, cwd=str(REPO_ROOT),
+        [
+            sys.executable,
+            "-c",
+            "import main; p = main.AudioProcessor(main.ProcessingConfig()); "
+            f"p.load_audio({str(tone)!r})",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=str(REPO_ROOT),
         env={**os.environ, "PYTHONPATH": str(blocker_dir)},
     )
 
@@ -105,10 +113,20 @@ def test_the_check_lives_where_the_requirement_is(blocker_dir, tone):
 
 # --- deliberate errors print, bugs still show their traceback -------------
 
+
 def test_a_missing_file_prints_a_message_not_a_traceback(tmp_path):
     result = subprocess.run(
-        [sys.executable, "main.py", "midi", "extract", "--input", str(tmp_path / "nope.wav")],
-        capture_output=True, text=True, cwd=str(REPO_ROOT),
+        [
+            sys.executable,
+            "main.py",
+            "midi",
+            "extract",
+            "--input",
+            str(tmp_path / "nope.wav"),
+        ],
+        capture_output=True,
+        text=True,
+        cwd=str(REPO_ROOT),
     )
 
     assert "Traceback" not in result.stdout + result.stderr
@@ -121,7 +139,9 @@ def test_an_unsupported_file_type_prints_a_message(tmp_path):
 
     result = subprocess.run(
         [sys.executable, "main.py", "midi", "extract", "--input", str(bogus)],
-        capture_output=True, text=True, cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+        cwd=str(REPO_ROOT),
     )
 
     assert "Traceback" not in result.stdout + result.stderr
@@ -137,8 +157,11 @@ def test_unexpected_exceptions_are_not_swallowed():
 
     # Comments are stripped first: the handler explains *why* it does not catch
     # Exception, and a naive substring search matches that explanation.
-    code = "\n".join(line for line in inspect.getsource(main.cli).splitlines()
-                     if not line.strip().startswith("#"))
+    code = "\n".join(
+        line
+        for line in inspect.getsource(main.cli).splitlines()
+        if not line.strip().startswith("#")
+    )
 
     assert "except Exception" not in code
     assert "except (ValueError, FileNotFoundError)" in code

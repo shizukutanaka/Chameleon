@@ -34,12 +34,12 @@ from security_validator import (
     SecureFileOperations,
 )
 
-
 SAMPLE_RATE = 44100
 
 
-def _write_sine_wave(path: Path, *, duration: float = 0.5,
-                     frequency: float = 440.0, channels: int = 1) -> Path:
+def _write_sine_wave(
+    path: Path, *, duration: float = 0.5, frequency: float = 440.0, channels: int = 1
+) -> Path:
     """Generate a simple PCM sine wave for testing (no numpy required)."""
     sample_count = int(SAMPLE_RATE * duration)
     with wave.open(str(path), "wb") as handle:
@@ -145,7 +145,9 @@ class SecurityValidatorTests(unittest.TestCase):
     def test_validate_path_enforces_trusted_roots(self) -> None:
         # With a trusted root configured, paths outside it are rejected.
         inside = _write_sine_wave(self.tmp_path / "inside.wav")
-        validator = SecurityValidator(SecurityConfig(trusted_roots={str(self.tmp_path)}))
+        validator = SecurityValidator(
+            SecurityConfig(trusted_roots={str(self.tmp_path)})
+        )
         self.assertTrue(validator.validate_path(str(inside)))
         self.assertFalse(validator.validate_path("/etc/passwd"))
 
@@ -153,16 +155,26 @@ class SecurityValidatorTests(unittest.TestCase):
         self.assertFalse(SecurityValidator.validate_path("/tmp/bad\x00name.wav"))
 
     def test_sanitize_filename_strips_dangerous_chars(self) -> None:
-        cleaned = SecurityValidator.sanitize_filename('a/b:c*?.wav')
+        cleaned = SecurityValidator.sanitize_filename("a/b:c*?.wav")
         self.assertNotIn("/", cleaned)
         self.assertNotIn("*", cleaned)
 
     def test_enhanced_copy_agrees_on_reserved_names(self) -> None:
         # core.EnhancedSecurityValidator ships a second sanitize_filename;
         # it must not return a name its sibling already calls untitled.
-        for name in ('CON', 'con.wav', 'NUL.txt', 'com1', 'LPT9.md',
-                     'aux.bin.wav', 'com\u00b9', 'console.wav', 'com0.wav',
-                     'null.wav', 'acon.wav'):
+        for name in (
+            "CON",
+            "con.wav",
+            "NUL.txt",
+            "com1",
+            "LPT9.md",
+            "aux.bin.wav",
+            "com\u00b9",
+            "console.wav",
+            "com0.wav",
+            "null.wav",
+            "acon.wav",
+        ):
             with self.subTest(name=name):
                 self.assertEqual(
                     EnhancedSecurityValidator.sanitize_filename(name),
@@ -177,7 +189,9 @@ class SecurityValidatorTests(unittest.TestCase):
     def test_validate_file_path_rejects_missing_for_read(self) -> None:
         validator = SecurityValidator(SecurityConfig(allowed_extensions={".wav"}))
         with self.assertRaises(SecurityError):
-            validator.validate_file_path(str(self.tmp_path / "nope.wav"), operation="read")
+            validator.validate_file_path(
+                str(self.tmp_path / "nope.wav"), operation="read"
+            )
 
     def test_extension_policy_enforced(self) -> None:
         bad = self.tmp_path / "script.py"
@@ -187,7 +201,9 @@ class SecurityValidatorTests(unittest.TestCase):
             validator.validate_file_path(str(bad), operation="read")
 
     def test_secure_file_operations_roundtrip(self) -> None:
-        ops = SecureFileOperations(SecurityValidator(SecurityConfig(allowed_extensions={".log"})))
+        ops = SecureFileOperations(
+            SecurityValidator(SecurityConfig(allowed_extensions={".log"}))
+        )
         log = self.tmp_path / "audit.log"
         with ops.secure_open(log, "a", encoding="utf-8") as handle:
             handle.write("event\n")

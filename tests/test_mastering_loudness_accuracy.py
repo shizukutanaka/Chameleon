@@ -36,6 +36,7 @@ def _sine(freq, sample_rate, count, amplitude=1.0):
 
 # --- measure_lufs matches the pure-Python reference implementation --------
 
+
 @requires_scipy_bs1770
 def test_mono_lufs_matches_pure_python_bs1770_loudness():
     # The scipy.signal.lfilter path and the pure-Python bs1770_loudness path
@@ -46,7 +47,9 @@ def test_mono_lufs_matches_pure_python_bs1770_loudness():
 
     meter = mastering_chain.LoudnessMeter(sample_rate)
     lufs_mastering = meter.measure_lufs(tone)
-    lufs_reference = bs1770_loudness.measure_integrated_loudness(tone.tolist(), sample_rate)
+    lufs_reference = bs1770_loudness.measure_integrated_loudness(
+        tone.tolist(), sample_rate
+    )
 
     assert lufs_mastering == pytest.approx(lufs_reference, abs=1e-6)
 
@@ -72,10 +75,11 @@ def test_measure_lufs_gates_out_short_clips():
     short = _sine(1000.0, sample_rate, int(sample_rate * 0.1))  # 100ms < 400ms block
 
     meter = mastering_chain.LoudnessMeter(sample_rate)
-    assert meter.measure_lufs(short) == float('-inf')
+    assert meter.measure_lufs(short) == float("-inf")
 
 
 # --- setup_filters: low/zero sample-rate handling (found by adversarial review) ---
+
 
 def test_zero_sample_rate_does_not_crash():
     # bs1770_loudness's private coefficient functions divide by sample_rate
@@ -110,6 +114,7 @@ def test_stability_floor_itself_still_uses_exact_k_weighting():
 
 # --- NaN-in-input safety net (found by adversarial review) ----------------
 
+
 @requires_scipy_bs1770
 def test_measure_lufs_returns_nan_for_nan_input_instead_of_silently_dropping_it():
     # A single NaN sample contaminates the causal IIR filter's state for
@@ -118,7 +123,7 @@ def test_measure_lufs_returns_nan_for_nan_input_instead_of_silently_dropping_it(
     # surfacing an error. Must return NaN explicitly instead.
     sample_rate = 48000
     tone = _sine(1000.0, sample_rate, int(sample_rate * 3.0), amplitude=0.5)
-    tone[100] = float('nan')
+    tone[100] = float("nan")
 
     meter = mastering_chain.LoudnessMeter(sample_rate)
     assert math.isnan(meter.measure_lufs(tone))
@@ -128,13 +133,14 @@ def test_measure_lufs_returns_nan_for_nan_input_instead_of_silently_dropping_it(
 def test_measure_range_returns_nan_for_nan_input():
     sample_rate = 48000
     tone = _sine(1000.0, sample_rate, int(sample_rate * 10.0), amplitude=0.5)
-    tone[100] = float('nan')
+    tone[100] = float("nan")
 
     meter = mastering_chain.LoudnessMeter(sample_rate)
     assert math.isnan(meter.measure_range(tone))
 
 
 # --- measure_range (LRA) ----------------------------------------------------
+
 
 @requires_scipy_bs1770
 def test_constant_level_signal_has_near_zero_lra():
@@ -168,6 +174,7 @@ def test_measure_range_without_scipy_or_bs1770_returns_placeholder_zero():
 
 
 # --- auto_adjust: no aliasing / no infinite-gain propagation --------------
+
 
 def test_auto_adjust_does_not_mutate_shared_config():
     config = mastering_chain.MasteringConfig(auto_gain=True)
@@ -206,10 +213,11 @@ def test_process_does_not_produce_nan_for_a_clip_shorter_than_one_block():
 
     assert not np.any(np.isnan(processed))
     assert not np.any(np.isinf(processed))
-    assert info['input_analysis']['lufs'] == float('-inf')
+    assert info["input_analysis"]["lufs"] == float("-inf")
 
 
 # --- dither: unknown types fall back instead of silently no-opping --------
+
 
 def test_unknown_dither_type_falls_back_to_tpdf_not_silence(caplog):
     config = mastering_chain.MasteringConfig()
@@ -249,6 +257,7 @@ def test_shaped_dither_pushes_error_energy_toward_nyquist():
 
 # --- analyze(): dynamic_range is no longer a P95/P10 blow-up --------------
 
+
 def test_dynamic_range_matches_crest_factor_not_a_percentile_ratio():
     config = mastering_chain.MasteringConfig(auto_gain=False)
     chain = mastering_chain.MasteringChain(config, sample_rate=48000)
@@ -260,8 +269,8 @@ def test_dynamic_range_matches_crest_factor_not_a_percentile_ratio():
 
     analysis = chain.analyze(audio)
 
-    assert analysis['dynamic_range'] == analysis['crest_factor']
-    assert abs(analysis['dynamic_range']) < 100  # sane dB range, not ~180dB
+    assert analysis["dynamic_range"] == analysis["crest_factor"]
+    assert abs(analysis["dynamic_range"]) < 100  # sane dB range, not ~180dB
 
 
 # --- true-peak (dBTP) metering, BS.1770-4 Annex 2 method ------------------
@@ -292,7 +301,9 @@ def test_true_peak_recovers_inter_sample_peak_above_sample_peak():
 
     assert sample_peak == pytest.approx(-3.01, abs=0.1)
     assert true_peak > sample_peak + 2.5  # recovers ~3 dB of hidden peak
-    assert true_peak == pytest.approx(0.0, abs=0.5)  # near 0 dBTP (small oversampling overshoot ok)
+    assert true_peak == pytest.approx(
+        0.0, abs=0.5
+    )  # near 0 dBTP (small oversampling overshoot ok)
 
 
 @requires_scipy
@@ -308,7 +319,7 @@ def test_true_peak_never_below_sample_peak():
 def test_true_peak_returns_nan_for_nan_input():
     sr = 48000
     x = _sine(1000.0, sr, sr, amplitude=0.5)
-    x[123] = float('nan')
+    x[123] = float("nan")
     meter = mastering_chain.LoudnessMeter(sr)
     assert math.isnan(meter.measure_true_peak(x))
 
@@ -329,5 +340,5 @@ def test_analyze_exposes_true_peak_db():
     chain = mastering_chain.MasteringChain(config, sample_rate=48000)
     audio = _sine(1000.0, 48000, 48000, amplitude=0.8)
     analysis = chain.analyze(audio)
-    assert 'true_peak_db' in analysis
-    assert analysis['true_peak_db'] >= analysis['peak_db'] - 1e-6
+    assert "true_peak_db" in analysis
+    assert analysis["true_peak_db"] >= analysis["peak_db"] - 1e-6

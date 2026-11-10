@@ -18,7 +18,9 @@ import pytest
 import main
 from tests._helpers import write_sine_wave
 
-requires_numpy = pytest.mark.skipif(not main.HAS_NUMPY, reason="mastering_chain needs numpy")
+requires_numpy = pytest.mark.skipif(
+    not main.HAS_NUMPY, reason="mastering_chain needs numpy"
+)
 
 
 def test_mastering_chain_module_is_wired():
@@ -28,7 +30,9 @@ def test_mastering_chain_module_is_wired():
 
 @requires_numpy
 def test_master_operation_produces_valid_wav(tmp_path):
-    wav = write_sine_wave(tmp_path / "tone.wav", duration=0.5, frequency=440.0, amplitude=20000)
+    wav = write_sine_wave(
+        tmp_path / "tone.wav", duration=0.5, frequency=440.0, amplitude=20000
+    )
     out_dir = tmp_path / "out"
     processor = main.AudioProcessor()
 
@@ -56,8 +60,11 @@ def test_master_operation_dry_run_writes_nothing(tmp_path):
     processor = main.AudioProcessor()
 
     results = processor.batch_process(
-        [str(wav)], "master", output_dir=str(out_dir),
-        master_preset="default", dry_run=True,
+        [str(wav)],
+        "master",
+        output_dir=str(out_dir),
+        master_preset="default",
+        dry_run=True,
     )
 
     assert results[0]["dry_run"] is True
@@ -85,6 +92,7 @@ def test_mastering_a_file_shorter_than_the_filter_padlen_fails_cleanly(tmp_path)
     # padlen") instead of a readable reason.
     import wave
     import numpy as np
+
     wav = tmp_path / "one.wav"
     with wave.open(str(wav), "w") as handle:
         handle.setnchannels(1)
@@ -94,7 +102,10 @@ def test_mastering_a_file_shorter_than_the_filter_padlen_fails_cleanly(tmp_path)
 
     processor = main.AudioProcessor()
     results = processor.batch_process(
-        [str(wav)], "master", output_dir=str(tmp_path / "out"), master_preset="streaming"
+        [str(wav)],
+        "master",
+        output_dir=str(tmp_path / "out"),
+        master_preset="streaming",
     )
 
     assert "error" in results[0]
@@ -109,8 +120,10 @@ def test_mastering_rejects_multichannel_instead_of_dropping_channels():
     import mastering_chain
 
     quad = np.stack(
-        [0.3 * np.sin(2 * np.pi * f * np.arange(4410) / 44100)
-         for f in (440, 550, 660, 770)]
+        [
+            0.3 * np.sin(2 * np.pi * f * np.arange(4410) / 44100)
+            for f in (440, 550, 660, 770)
+        ]
     )
     chain = mastering_chain.MasteringChain(
         mastering_chain.create_mastering_preset("default"), 44100
@@ -119,10 +132,10 @@ def test_mastering_rejects_multichannel_instead_of_dropping_channels():
         chain.process(quad)
 
 
-
 def _mastering():
     np = pytest.importorskip("numpy")
     import mastering_chain
+
     return np, mastering_chain
 
 

@@ -60,18 +60,24 @@ def _tone(freq, amplitude=0.5, seconds=1.0):
 
 
 def _rms_db(signal):
-    return 20.0 * np.log10(np.sqrt(np.mean(signal ** 2)) + 1e-20)
+    return 20.0 * np.log10(np.sqrt(np.mean(signal**2)) + 1e-20)
 
 
 def _level_db(signal, freq):
     spectrum = np.abs(np.fft.rfft(signal * np.hanning(len(signal))))
     freqs = np.fft.rfftfreq(len(signal), 1 / SAMPLE_RATE)
-    return 20.0 * np.log10(spectrum[np.argmin(np.abs(freqs - freq))] / len(signal) + 1e-20)
+    return 20.0 * np.log10(
+        spectrum[np.argmin(np.abs(freqs - freq))] / len(signal) + 1e-20
+    )
 
 
 def _run_cli(*args):
-    return subprocess.run([sys.executable, "main.py", *args],
-                          capture_output=True, text=True, cwd=str(REPO_ROOT))
+    return subprocess.run(
+        [sys.executable, "main.py", *args],
+        capture_output=True,
+        text=True,
+        cwd=str(REPO_ROOT),
+    )
 
 
 @pytest.fixture
@@ -90,12 +96,14 @@ def damaged(tmp_path):
 
 # --- clean audio must survive ---------------------------------------------
 
+
 def test_clean_audio_is_returned_within_a_single_lsb(tmp_path):
     source = tmp_path / "clean.wav"
     _write_wav(source, _tone(440))
 
-    result = _run_cli("process", str(source), "--declip", "--dehum",
-                      "--output-dir", str(tmp_path))
+    result = _run_cli(
+        "process", str(source), "--declip", "--dehum", "--output-dir", str(tmp_path)
+    )
     assert result.returncode == 0, result.stderr
 
     before = _read_wav(source)
@@ -119,11 +127,13 @@ def test_a_musical_bass_note_is_not_mistaken_for_mains_hum(tmp_path, freq):
 
 # --- damaged audio must improve -------------------------------------------
 
+
 def test_repairs_move_damaged_audio_closer_to_the_truth(tmp_path, damaged):
     source, truth = damaged
 
-    result = _run_cli("process", str(source), "--declip", "--dehum",
-                      "--output-dir", str(tmp_path))
+    result = _run_cli(
+        "process", str(source), "--declip", "--dehum", "--output-dir", str(tmp_path)
+    )
     assert result.returncode == 0, result.stderr
 
     before = _rms_db(_read_wav(source) - truth)
@@ -158,17 +168,19 @@ def test_a_clip_at_the_file_rail_is_repaired_not_reclipped(tmp_path):
     source = tmp_path / "rail.wav"
     _write_wav(source, np.clip(_tone(220, 1.4), -1.0, 1.0))
 
-    result = _run_cli("process", str(source), "--declip",
-                      "--output-dir", str(tmp_path))
+    result = _run_cli("process", str(source), "--declip", "--output-dir", str(tmp_path))
     assert result.returncode == 0, result.stderr
 
     before, after = _read_wav(source), _read_wav(tmp_path / "rail_restored.wav")
     assert not np.array_equal(before, after)
     rail = np.abs(before).max()
-    assert np.sum(np.abs(after) >= rail * 0.9999) < np.sum(np.abs(before) >= rail * 0.9999)
+    assert np.sum(np.abs(after) >= rail * 0.9999) < np.sum(
+        np.abs(before) >= rail * 0.9999
+    )
 
 
 # --- ordering -------------------------------------------------------------
+
 
 def test_flag_order_does_not_change_the_result(tmp_path, damaged):
     # Clipping is undone before hum, whichever way round the flags are typed:
@@ -182,8 +194,9 @@ def test_flag_order_does_not_change_the_result(tmp_path, damaged):
     _run_cli("process", str(source), "--declip", "--dehum", "--output-dir", str(one))
     _run_cli("process", str(source), "--dehum", "--declip", "--output-dir", str(two))
 
-    assert np.array_equal(_read_wav(one / "damaged_restored.wav"),
-                          _read_wav(two / "damaged_restored.wav"))
+    assert np.array_equal(
+        _read_wav(one / "damaged_restored.wav"), _read_wav(two / "damaged_restored.wav")
+    )
 
 
 def test_the_canonical_order_is_the_one_that_measures_better(tmp_path, damaged):
@@ -197,15 +210,18 @@ def test_the_canonical_order_is_the_one_that_measures_better(tmp_path, damaged):
     dehummer = audio_restoration.HumRemover()
 
     declip_first = dehummer.remove_hum(
-        declipper.restore_clipped(audio.copy(), SAMPLE_RATE), SAMPLE_RATE)
+        declipper.restore_clipped(audio.copy(), SAMPLE_RATE), SAMPLE_RATE
+    )
     dehum_first = declipper.restore_clipped(
-        dehummer.remove_hum(audio.copy(), SAMPLE_RATE), SAMPLE_RATE)
+        dehummer.remove_hum(audio.copy(), SAMPLE_RATE), SAMPLE_RATE
+    )
 
     assert _rms_db(declip_first - truth) < _rms_db(dehum_first - truth) - 3.0
     assert main.AudioProcessor.RESTORATION_REPAIRS == ("declip", "dehum")
 
 
 # --- scope ----------------------------------------------------------------
+
 
 def test_only_the_verified_repairs_are_exposed():
     help_text = _run_cli("process", "--help").stdout
@@ -219,6 +235,7 @@ def test_only_the_verified_repairs_are_exposed():
 
 def test_an_unknown_repair_is_rejected():
     import main
+
     processor = main.AudioProcessor(main.ProcessingConfig())
 
     with pytest.raises(ValueError, match="Unknown repair"):
@@ -227,13 +244,14 @@ def test_an_unknown_repair_is_rejected():
 
 def test_stereo_files_are_repaired_channel_by_channel(tmp_path):
     import main
+
     processor = main.AudioProcessor(main.ProcessingConfig())
     stereo = np.stack([_tone(440), _tone(660, 0.3)])
 
     repaired = processor.repair_audio(stereo, SAMPLE_RATE, ["declip", "dehum"])
 
     assert repaired.shape == stereo.shape
-    assert np.abs(repaired - stereo).max() < 1e-9   # nothing wrong with it
+    assert np.abs(repaired - stereo).max() < 1e-9  # nothing wrong with it
 
 
 def test_repairs_refuse_cleanly_when_scipy_is_absent(monkeypatch):

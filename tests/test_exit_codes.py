@@ -128,8 +128,14 @@ def test_analyze_unparseable_wav_is_input_error(tmp_path):
 def test_process_unparseable_wav_is_input_error(tmp_path):
     bad = tmp_path / "bad.wav"
     _write_truncated_wav(bad)
-    result = _run("process", str(bad), "--normalize",
-                  "--output-dir", str(tmp_path / "out"), cwd=str(tmp_path))
+    result = _run(
+        "process",
+        str(bad),
+        "--normalize",
+        "--output-dir",
+        str(tmp_path / "out"),
+        cwd=str(tmp_path),
+    )
     assert result.returncode == 3  # ExitCode.INPUT
 
 
@@ -152,8 +158,9 @@ def test_batch_partial_preflight_rejection_exits_input(tmp_path):
     write_sine_wave(good)
     bad = tmp_path / "bad.wav"
     bad.write_bytes(b"not a wav" * 8)
-    proc = _run("batch", str(tmp_path), "normalize",
-                "--output-dir", str(tmp_path / "out"))
+    proc = _run(
+        "batch", str(tmp_path), "normalize", "--output-dir", str(tmp_path / "out")
+    )
     assert proc.returncode == 3  # ExitCode.INPUT
 
 
@@ -163,16 +170,19 @@ def test_output_dir_that_is_a_file_exits_input(tmp_path):
     user input: it must answer INPUT(3) before any work starts."""
     wav = tmp_path / "a.wav"
     write_sine_wave(str(wav))
-    proc = _run("process", str(wav), "--normalize",
-                "--output-dir", str(wav))
+    proc = _run("process", str(wav), "--normalize", "--output-dir", str(wav))
     assert proc.returncode == 3  # ExitCode.INPUT
     assert "not a directory" in proc.stderr
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason=(
-    "a read-only attribute on a Windows directory does not prevent "
-    "creating files inside it, so the chmod-555 fixture this test "
-    "relies on stays writable"))
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason=(
+        "a read-only attribute on a Windows directory does not prevent "
+        "creating files inside it, so the chmod-555 fixture this test "
+        "relies on stays writable"
+    ),
+)
 def test_output_dir_that_is_unwritable_exits_input(tmp_path):
     """A chmod-555 output dir used to run the whole pipeline and surface
     PermissionError deep in the write as ERROR(1). The path is user input:
@@ -183,8 +193,7 @@ def test_output_dir_that_is_unwritable_exits_input(tmp_path):
     locked.mkdir()
     locked.chmod(0o555)
     try:
-        proc = _run("process", str(wav), "--normalize",
-                    "--output-dir", str(locked))
+        proc = _run("process", str(wav), "--normalize", "--output-dir", str(locked))
     finally:
         locked.chmod(0o755)
     assert proc.returncode == 3  # ExitCode.INPUT
@@ -197,8 +206,7 @@ def test_absurd_sample_rate_exits_input(tmp_path):
     rates are bounded at 768kHz (DXD)."""
     wav = tmp_path / "a.wav"
     write_sine_wave(str(wav))
-    proc = _run("process", str(wav), "--convert",
-                "--convert-sample-rate", "999999999")
+    proc = _run("process", str(wav), "--convert", "--convert-sample-rate", "999999999")
     assert proc.returncode == 3  # ExitCode.INPUT
     assert "768000" in proc.stderr
 
@@ -221,10 +229,20 @@ def test_sigint_during_processing_exits_interrupted(tmp_path):
     out_dir = tmp_path / "out"
     main_py = MAIN_PY
     proc = subprocess.Popen(
-        [sys.executable, main_py, "--no-parallel", "process", *files,
-         "--denoise", "--output-dir", str(out_dir)],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_DFL))
+        [
+            sys.executable,
+            main_py,
+            "--no-parallel",
+            "process",
+            *files,
+            "--denoise",
+            "--output-dir",
+            str(out_dir),
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_DFL),
+    )
     sent = False
     deadline = time.time() + 60
     while proc.poll() is None and time.time() < deadline:
@@ -254,14 +272,22 @@ def test_float32_wav_on_stdlib_reports_capability_gap(tmp_path):
     same class as a missing extra (the UnsupportedOperationError rule)."""
     try:
         import numpy  # noqa: F401
+
         pytest.skip("full tier decodes float32 via soundfile")
     except ImportError:
         pass
     import struct
+
     data = struct.pack("<f", 0.5) * 64
     fmt = struct.pack("<HHIIHH", 3, 1, 44100, 44100 * 4, 4, 32)
-    body = b"fmt " + struct.pack("<I", len(fmt)) + fmt + \
-        b"data" + struct.pack("<I", len(data)) + data
+    body = (
+        b"fmt "
+        + struct.pack("<I", len(fmt))
+        + fmt
+        + b"data"
+        + struct.pack("<I", len(data))
+        + data
+    )
     wav = tmp_path / "f32.wav"
     wav.write_bytes(b"RIFF" + struct.pack("<I", 4 + len(body)) + b"WAVE" + body)
     proc = _run("analyze", str(wav))

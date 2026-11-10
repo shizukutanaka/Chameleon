@@ -32,21 +32,24 @@ SAMPLE_RATE = 48000
 
 def _rms_db(signal):
     signal = np.asarray(signal, dtype=float)
-    return 20.0 * math.log10(math.sqrt(np.mean(signal ** 2)) + 1e-20)
+    return 20.0 * math.log10(math.sqrt(np.mean(signal**2)) + 1e-20)
 
 
 def _tone_db(signal, freq):
     spectrum = np.abs(np.fft.rfft(signal * np.hanning(len(signal))))
     freqs = np.fft.rfftfreq(len(signal), 1 / SAMPLE_RATE)
-    return 20.0 * math.log10(spectrum[np.argmin(np.abs(freqs - freq))] / len(signal) + 1e-20)
+    return 20.0 * math.log10(
+        spectrum[np.argmin(np.abs(freqs - freq))] / len(signal) + 1e-20
+    )
 
 
 def _melody(seconds_per_note=1.0, amplitude=0.3):
     """Notes that change over time, starting immediately -- no silent lead-in."""
     count = int(SAMPLE_RATE * seconds_per_note)
     t = np.arange(count) / SAMPLE_RATE
-    return np.concatenate([amplitude * np.sin(2 * np.pi * f * t)
-                           for f in (440.0, 554.0, 659.0, 523.0)])
+    return np.concatenate(
+        [amplitude * np.sin(2 * np.pi * f * t) for f in (440.0, 554.0, 659.0, 523.0)]
+    )
 
 
 def _processor():
@@ -82,8 +85,9 @@ def test_notes_survive_when_there_is_no_quiet_lead_in():
 def test_noise_is_still_reduced_when_the_file_opens_with_silence():
     rng = np.random.default_rng(0)
     tone_t = np.arange(2 * SAMPLE_RATE) / SAMPLE_RATE
-    signal = np.concatenate([np.zeros(SAMPLE_RATE // 2),
-                             0.3 * np.sin(2 * np.pi * 440.0 * tone_t)])
+    signal = np.concatenate(
+        [np.zeros(SAMPLE_RATE // 2), 0.3 * np.sin(2 * np.pi * 440.0 * tone_t)]
+    )
     noisy = signal + 0.02 * rng.standard_normal(len(signal))
 
     processed = _processor().remove_noise(noisy.copy(), SAMPLE_RATE)
@@ -96,8 +100,9 @@ def test_noise_is_still_reduced_when_the_file_opens_with_silence():
 def test_the_tone_survives_alongside_that_noise_reduction():
     rng = np.random.default_rng(0)
     tone_t = np.arange(2 * SAMPLE_RATE) / SAMPLE_RATE
-    signal = np.concatenate([np.zeros(SAMPLE_RATE // 2),
-                             0.3 * np.sin(2 * np.pi * 440.0 * tone_t)])
+    signal = np.concatenate(
+        [np.zeros(SAMPLE_RATE // 2), 0.3 * np.sin(2 * np.pi * 440.0 * tone_t)]
+    )
     noisy = signal + 0.02 * rng.standard_normal(len(signal))
 
     processed = _processor().remove_noise(noisy.copy(), SAMPLE_RATE)
@@ -130,7 +135,7 @@ def test_pure_noise_is_reduced():
 
     processed = _processor().remove_noise(noise.copy(), SAMPLE_RATE)
 
-    reduction = _rms_db(noise) - _rms_db(processed[:len(noise)])
+    reduction = _rms_db(noise) - _rms_db(processed[: len(noise)])
     assert reduction > 5.0
 
 
@@ -141,8 +146,9 @@ def test_an_explicit_noise_profile_is_still_honoured():
     clean = 0.3 * np.sin(2 * np.pi * 440.0 * t)
     zero_profile = np.zeros((1025, 1))
 
-    processed = _processor().remove_noise(clean.copy(), SAMPLE_RATE,
-                                          noise_profile=zero_profile)
+    processed = _processor().remove_noise(
+        clean.copy(), SAMPLE_RATE, noise_profile=zero_profile
+    )
     length = min(len(processed), len(clean))
 
     assert _rms_db(processed[:length] - clean[:length]) < -100.0

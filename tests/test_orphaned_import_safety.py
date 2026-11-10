@@ -17,9 +17,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
-def _import_with_numpy_scipy_blocked(module: str, ctor: str) -> subprocess.CompletedProcess:
-    code = textwrap.dedent(
-        f"""
+def _import_with_numpy_scipy_blocked(
+    module: str, ctor: str
+) -> subprocess.CompletedProcess:
+    code = textwrap.dedent(f"""
         import sys, builtins, warnings
         sys.path.insert(0, {str(REPO_ROOT)!r})
         _real_import = builtins.__import__
@@ -40,8 +41,7 @@ def _import_with_numpy_scipy_blocked(module: str, ctor: str) -> subprocess.Compl
             print('OK')
         else:
             raise SystemExit('expected a RuntimeError when numpy/scipy are absent')
-        """
-    )
+        """)
     return subprocess.run(
         [sys.executable, "-c", code], capture_output=True, text=True, cwd=str(REPO_ROOT)
     )

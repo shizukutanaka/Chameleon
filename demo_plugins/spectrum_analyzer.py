@@ -7,6 +7,7 @@ import math
 from typing import List, Dict, Any
 from plugin_system import AudioAnalyzerPlugin, PluginMetadata
 
+
 class SpectrumAnalyzerPlugin(AudioAnalyzerPlugin):
     """
     Spectrum analyzer with basic FFT analysis
@@ -26,16 +27,16 @@ class SpectrumAnalyzerPlugin(AudioAnalyzerPlugin):
                     "default": 1024,
                     "min": 256,
                     "max": 4096,
-                    "description": "FFT window size"
+                    "description": "FFT window size",
                 },
                 "overlap": {
                     "type": "float",
                     "default": 0.5,
                     "min": 0.0,
                     "max": 0.9,
-                    "description": "Window overlap factor"
-                }
-            }
+                    "description": "Window overlap factor",
+                },
+            },
         )
 
     def initialize(self, config: Dict[str, Any]) -> bool:
@@ -47,10 +48,12 @@ class SpectrumAnalyzerPlugin(AudioAnalyzerPlugin):
         """Cleanup plugin resources"""
         self.logger.info("Cleaning up SpectrumAnalyzer plugin")
 
-    def analyze_audio(self, audio_data: List[float], sample_rate: int, **params) -> Dict[str, Any]:
+    def analyze_audio(
+        self, audio_data: List[float], sample_rate: int, **params
+    ) -> Dict[str, Any]:
         """Analyze audio spectrum"""
-        window_size = params.get('window_size', 1024)
-        overlap = params.get('overlap', 0.5)
+        window_size = params.get("window_size", 1024)
+        overlap = params.get("overlap", 0.5)
 
         if len(audio_data) < window_size:
             return {"error": "Audio data too short for analysis"}
@@ -63,7 +66,7 @@ class SpectrumAnalyzerPlugin(AudioAnalyzerPlugin):
 
         # Find frequency bins
         freq_bins = [i * sample_rate / window_size for i in range(len(magnitudes) // 2)]
-        mag_bins = magnitudes[:len(magnitudes) // 2]
+        mag_bins = magnitudes[: len(magnitudes) // 2]
 
         # Find peaks
         peaks = self._find_peaks(mag_bins, freq_bins)
@@ -81,7 +84,7 @@ class SpectrumAnalyzerPlugin(AudioAnalyzerPlugin):
             "spectral_rolloff": features["rolloff"],
             "spectral_flux": features["flux"],
             "peak_frequency": peaks[0]["frequency"] if peaks else 0.0,
-            "peak_magnitude": peaks[0]["magnitude"] if peaks else 0.0
+            "peak_magnitude": peaks[0]["magnitude"] if peaks else 0.0,
         }
 
     def _compute_simple_dft(self, samples: List[float]) -> List[complex]:
@@ -102,7 +105,9 @@ class SpectrumAnalyzerPlugin(AudioAnalyzerPlugin):
 
         return dft
 
-    def _find_peaks(self, magnitudes: List[float], frequencies: List[float]) -> List[Dict[str, float]]:
+    def _find_peaks(
+        self, magnitudes: List[float], frequencies: List[float]
+    ) -> List[Dict[str, float]]:
         """Find spectral peaks"""
         if len(magnitudes) < 3:
             return []
@@ -111,20 +116,22 @@ class SpectrumAnalyzerPlugin(AudioAnalyzerPlugin):
         threshold = max(magnitudes) * 0.1  # 10% of maximum
 
         for i in range(1, len(magnitudes) - 1):
-            if (magnitudes[i] > magnitudes[i-1] and
-                magnitudes[i] > magnitudes[i+1] and
-                magnitudes[i] > threshold):
-                peaks.append({
-                    "frequency": frequencies[i],
-                    "magnitude": magnitudes[i],
-                    "bin": i
-                })
+            if (
+                magnitudes[i] > magnitudes[i - 1]
+                and magnitudes[i] > magnitudes[i + 1]
+                and magnitudes[i] > threshold
+            ):
+                peaks.append(
+                    {"frequency": frequencies[i], "magnitude": magnitudes[i], "bin": i}
+                )
 
         # Sort by magnitude (descending)
         peaks.sort(key=lambda x: x["magnitude"], reverse=True)
         return peaks
 
-    def _calculate_spectral_features(self, magnitudes: List[float], frequencies: List[float]) -> Dict[str, float]:
+    def _calculate_spectral_features(
+        self, magnitudes: List[float], frequencies: List[float]
+    ) -> Dict[str, float]:
         """Calculate basic spectral features"""
         if not magnitudes or sum(magnitudes) == 0:
             return {"centroid": 0.0, "rolloff": 0.0, "flux": 0.0}
@@ -132,7 +139,10 @@ class SpectrumAnalyzerPlugin(AudioAnalyzerPlugin):
         total_magnitude = sum(magnitudes)
 
         # Spectral centroid (weighted average frequency)
-        centroid = sum(freq * mag for freq, mag in zip(frequencies, magnitudes)) / total_magnitude
+        centroid = (
+            sum(freq * mag for freq, mag in zip(frequencies, magnitudes))
+            / total_magnitude
+        )
 
         # Spectral rolloff (frequency below which 85% of energy lies)
         cumulative = 0
@@ -148,11 +158,8 @@ class SpectrumAnalyzerPlugin(AudioAnalyzerPlugin):
         # Spectral flux (measure of rate of change)
         flux = sum(abs(mag) for mag in magnitudes) / len(magnitudes)
 
-        return {
-            "centroid": centroid,
-            "rolloff": rolloff,
-            "flux": flux
-        }
+        return {"centroid": centroid, "rolloff": rolloff, "flux": flux}
+
 
 def create_plugin():
     return SpectrumAnalyzerPlugin()

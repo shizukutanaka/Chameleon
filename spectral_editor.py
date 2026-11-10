@@ -19,10 +19,13 @@ import warnings
 
 try:
     import numpy as np
+
     HAS_NUMPY = True
 except ImportError:  # keep the module import-safe on the stdlib-only install
     HAS_NUMPY = False
-    warnings.warn("NumPy not available. Spectral editing requires the optional [audio] extra.")
+    warnings.warn(
+        "NumPy not available. Spectral editing requires the optional [audio] extra."
+    )
 
 
 def _require_numpy() -> None:
@@ -33,9 +36,11 @@ def _require_numpy() -> None:
             "pip install -e .[audio]"
         )
 
+
 # Advanced processing libraries
 try:
     import scipy.ndimage as ndimage
+
     HAS_SCIPY = True
 except ImportError:
     HAS_SCIPY = False
@@ -44,6 +49,7 @@ except ImportError:
 try:
     import librosa
     import librosa.display
+
     HAS_LIBROSA = True
 except ImportError:
     HAS_LIBROSA = False
@@ -51,22 +57,27 @@ except ImportError:
 try:
     import matplotlib.pyplot as plt
     import matplotlib.patches as patches
+
     HAS_MATPLOTLIB = True
 except ImportError:
     HAS_MATPLOTLIB = False
 
+
 @dataclass
 class SpectralSelection:
     """Spectral selection region"""
+
     time_start: float
     time_end: float
     freq_start: float
     freq_end: float
     operation: str = "delete"  # delete, copy, paste, enhance, reduce
 
+
 @dataclass
 class SpectrogramConfig:
     """Configuration for spectrogram computation"""
+
     n_fft: int = 2048
     hop_length: int = 512
     win_length: int = None
@@ -74,14 +85,17 @@ class SpectrogramConfig:
     overlap: float = 0.75
     zero_padding: int = 0
 
+
 @dataclass
 class SpectralEditConfig:
     """Configuration for spectral editing operations"""
+
     precision: str = "high"  # low, medium, high
     interpolation: str = "cubic"  # linear, cubic, spectral
     edge_smoothing: bool = True
     preserve_phase: bool = True
     quality: str = "high"
+
 
 class SpectrogramProcessor:
     """High-quality spectrogram computation and manipulation"""
@@ -91,14 +105,18 @@ class SpectrogramProcessor:
         self.config = config or SpectrogramConfig()
         self.logger = logging.getLogger(__name__)
 
-    def compute_stft(self, audio: np.ndarray, sample_rate: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def compute_stft(
+        self, audio: np.ndarray, sample_rate: int
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Compute Short-Time Fourier Transform"""
         if HAS_LIBROSA:
             return self._compute_stft_librosa(audio, sample_rate)
         else:
             return self._compute_stft_manual(audio, sample_rate)
 
-    def _compute_stft_librosa(self, audio: np.ndarray, sample_rate: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def _compute_stft_librosa(
+        self, audio: np.ndarray, sample_rate: int
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Compute STFT using librosa (highest quality)"""
         if audio.ndim > 1:
             audio = np.mean(audio, axis=0)  # Convert to mono for spectral editing
@@ -109,24 +127,21 @@ class SpectrogramProcessor:
             n_fft=self.config.n_fft,
             hop_length=self.config.hop_length,
             win_length=self.config.win_length,
-            window=self.config.window
+            window=self.config.window,
         )
 
         # Generate time and frequency axes
         times = librosa.frames_to_time(
-            np.arange(stft.shape[1]),
-            sr=sample_rate,
-            hop_length=self.config.hop_length
+            np.arange(stft.shape[1]), sr=sample_rate, hop_length=self.config.hop_length
         )
 
-        freqs = librosa.fft_frequencies(
-            sr=sample_rate,
-            n_fft=self.config.n_fft
-        )
+        freqs = librosa.fft_frequencies(sr=sample_rate, n_fft=self.config.n_fft)
 
         return stft, times, freqs
 
-    def _compute_stft_manual(self, audio: np.ndarray, sample_rate: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def _compute_stft_manual(
+        self, audio: np.ndarray, sample_rate: int
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Manual STFT computation when librosa not available"""
         if audio.ndim > 1:
             audio = np.mean(audio, axis=0)
@@ -155,7 +170,7 @@ class SpectrogramProcessor:
 
         for i in range(n_frames):
             start = i * hop_length
-            frame = audio[start:start + n_fft]
+            frame = audio[start : start + n_fft]
 
             # Zero-pad if necessary
             if len(frame) < n_fft:
@@ -166,15 +181,17 @@ class SpectrogramProcessor:
 
             # FFT
             fft_frame = np.fft.fft(windowed_frame)
-            stft[:, i] = fft_frame[:n_fft // 2 + 1]
+            stft[:, i] = fft_frame[: n_fft // 2 + 1]
 
         # Generate axes
         times = np.arange(n_frames) * hop_length / sample_rate
-        freqs = np.fft.rfftfreq(n_fft, 1/sample_rate)
+        freqs = np.fft.rfftfreq(n_fft, 1 / sample_rate)
 
         return stft, times, freqs
 
-    def compute_istft(self, stft: np.ndarray, sample_rate: int, length: int = None) -> np.ndarray:
+    def compute_istft(
+        self, stft: np.ndarray, sample_rate: int, length: int = None
+    ) -> np.ndarray:
         """Inverse Short-Time Fourier Transform"""
         if HAS_LIBROSA:
             return librosa.istft(
@@ -182,12 +199,14 @@ class SpectrogramProcessor:
                 hop_length=self.config.hop_length,
                 win_length=self.config.win_length,
                 window=self.config.window,
-                length=length
+                length=length,
             )
         else:
             return self._compute_istft_manual(stft, sample_rate, length)
 
-    def _compute_istft_manual(self, stft: np.ndarray, sample_rate: int, length: int = None) -> np.ndarray:
+    def _compute_istft_manual(
+        self, stft: np.ndarray, sample_rate: int, length: int = None
+    ) -> np.ndarray:
         """Manual ISTFT computation"""
         n_fft = (stft.shape[0] - 1) * 2
         hop_length = self.config.hop_length
@@ -211,8 +230,8 @@ class SpectrogramProcessor:
         for i in range(n_frames):
             # Reconstruct full FFT
             full_fft = np.zeros(n_fft, dtype=complex)
-            full_fft[:len(stft[:, i])] = stft[:, i]
-            full_fft[len(stft[:, i]):] = np.conj(stft[-2:0:-1, i])
+            full_fft[: len(stft[:, i])] = stft[:, i]
+            full_fft[len(stft[:, i]) :] = np.conj(stft[-2:0:-1, i])
 
             # IFFT
             frame = np.fft.ifft(full_fft).real
@@ -224,7 +243,7 @@ class SpectrogramProcessor:
             start = i * hop_length
             end = start + n_fft
             output[start:end] += frame * window
-            norm[start:end] += window ** 2
+            norm[start:end] += window**2
 
         # Normalize
         norm[norm == 0] = 1
@@ -235,6 +254,7 @@ class SpectrogramProcessor:
             output = output[:length]
 
         return output
+
 
 class SpectralEditor:
     """Advanced spectral editing operations"""
@@ -256,7 +276,9 @@ class SpectralEditor:
         self.sample_rate = sample_rate
 
         # Compute initial spectrogram
-        self.stft, self.times, self.freqs = self.spectrogram_processor.compute_stft(audio, sample_rate)
+        self.stft, self.times, self.freqs = self.spectrogram_processor.compute_stft(
+            audio, sample_rate
+        )
         self.original_stft = self.stft.copy()
 
         return {
@@ -264,18 +286,23 @@ class SpectralEditor:
             "sample_rate": sample_rate,
             "spectrogram_shape": self.stft.shape,
             "frequency_range": (self.freqs[0], self.freqs[-1]),
-            "time_range": (self.times[0], self.times[-1])
+            "time_range": (self.times[0], self.times[-1]),
         }
 
-    def select_region(self, time_start: float, time_end: float,
-                     freq_start: float, freq_end: float) -> SpectralSelection:
+    def select_region(
+        self, time_start: float, time_end: float, freq_start: float, freq_end: float
+    ) -> SpectralSelection:
         """Create spectral selection"""
         # NaN/inf bounds cannot be clamped: Python's max/min comparisons
         # with NaN return the bound, so a non-finite bound silently widens
         # to the file's full range -- and the operation that follows
         # (delete, enhance) then acts on audio the caller never selected.
-        for name, value in (("time_start", time_start), ("time_end", time_end),
-                            ("freq_start", freq_start), ("freq_end", freq_end)):
+        for name, value in (
+            ("time_start", time_start),
+            ("time_end", time_end),
+            ("freq_start", freq_start),
+            ("freq_end", freq_end),
+        ):
             if not isinstance(value, (int, float)) or not math.isfinite(value):
                 raise ValueError(f"{name} must be a finite number, got {value!r}")
 
@@ -283,7 +310,7 @@ class SpectralEditor:
             time_start=max(0, time_start),
             time_end=min(self.times[-1], time_end),
             freq_start=max(self.freqs[0], freq_start),
-            freq_end=min(self.freqs[-1], freq_end)
+            freq_end=min(self.freqs[-1], freq_end),
         )
 
         return selection
@@ -304,8 +331,9 @@ class SpectralEditor:
 
         return mask
 
-    def delete_selection(self, selection: SpectralSelection,
-                        fade_edges: bool = True) -> bool:
+    def delete_selection(
+        self, selection: SpectralSelection, fade_edges: bool = True
+    ) -> bool:
         """Delete spectral content in selection"""
         try:
             # Save current state for undo
@@ -318,7 +346,9 @@ class SpectralEditor:
                 mask = self._smooth_mask_edges(mask)
 
             # Delete by setting to zero or very small value
-            self.stft[mask] *= 0.01  # Small value instead of zero to preserve some structure
+            self.stft[
+                mask
+            ] *= 0.01  # Small value instead of zero to preserve some structure
 
             # Reconstruct audio
             self.current_audio = self.spectrogram_processor.compute_istft(
@@ -339,8 +369,9 @@ class SpectralEditor:
         copied_stft[~mask] = 0  # Zero out everything except selection
         return copied_stft
 
-    def paste_selection(self, copied_stft: np.ndarray,
-                       target_selection: SpectralSelection) -> bool:
+    def paste_selection(
+        self, copied_stft: np.ndarray, target_selection: SpectralSelection
+    ) -> bool:
         """Paste spectral content to target location"""
         try:
             # `copied_stft` holds content at the SOURCE mask positions;
@@ -380,14 +411,15 @@ class SpectralEditor:
             self.logger.error(f"Paste operation failed: {e}")
             return False
 
-    def enhance_selection(self, selection: SpectralSelection,
-                         gain_db: float = 6.0) -> bool:
+    def enhance_selection(
+        self, selection: SpectralSelection, gain_db: float = 6.0
+    ) -> bool:
         """Enhance (boost) spectral content in selection"""
         try:
             self._save_state()
 
             mask = self.get_selection_mask(selection)
-            gain_linear = 10**(gain_db / 20)
+            gain_linear = 10 ** (gain_db / 20)
 
             if self.config.edge_smoothing:
                 mask = self._smooth_mask_edges(mask)
@@ -407,13 +439,15 @@ class SpectralEditor:
             self.logger.error(f"Enhance operation failed: {e}")
             return False
 
-    def reduce_selection(self, selection: SpectralSelection,
-                        reduction_db: float = -12.0) -> bool:
+    def reduce_selection(
+        self, selection: SpectralSelection, reduction_db: float = -12.0
+    ) -> bool:
         """Reduce spectral content in selection"""
         return self.enhance_selection(selection, reduction_db)
 
-    def noise_reduce_selection(self, selection: SpectralSelection,
-                              strength: float = 0.8) -> bool:
+    def noise_reduce_selection(
+        self, selection: SpectralSelection, strength: float = 0.8
+    ) -> bool:
         """Apply noise reduction to selection using spectral subtraction"""
         try:
             self._save_state()
@@ -450,8 +484,9 @@ class SpectralEditor:
             self.logger.error(f"Noise reduction failed: {e}")
             return False
 
-    def harmonic_enhance_selection(self, selection: SpectralSelection,
-                                  harmonic_strength: float = 0.5) -> bool:
+    def harmonic_enhance_selection(
+        self, selection: SpectralSelection, harmonic_strength: float = 0.5
+    ) -> bool:
         """Enhance harmonics in selection"""
         try:
             mask = self.get_selection_mask(selection)
@@ -485,7 +520,8 @@ class SpectralEditor:
                         harmonic_idx = np.searchsorted(self.freqs, harmonic_freq)
                         if harmonic_idx < len(self.freqs):
                             magnitude[harmonic_idx, selected_times] *= (
-                                1 + harmonic_strength)
+                                1 + harmonic_strength
+                            )
 
             # Reconstruct
             self.stft = magnitude * np.exp(1j * phase)
@@ -493,7 +529,9 @@ class SpectralEditor:
                 self.stft, self.sample_rate, len(self.original_audio)
             )
 
-            self._add_to_history("harmonic_enhance", selection, {"strength": harmonic_strength})
+            self._add_to_history(
+                "harmonic_enhance", selection, {"strength": harmonic_strength}
+            )
             return True
 
         except Exception as e:
@@ -532,9 +570,11 @@ class SpectralEditor:
                         # Check surrounding pixels
                         for df, dt in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
                             nf, nt = freq_idx + df, time_idx + dt
-                            if (0 <= nf < magnitude.shape[0] and
-                                0 <= nt < magnitude.shape[1] and
-                                not mask[nf, nt]):
+                            if (
+                                0 <= nf < magnitude.shape[0]
+                                and 0 <= nt < magnitude.shape[1]
+                                and not mask[nf, nt]
+                            ):
                                 neighbors.append(magnitude[nf, nt])
 
                         if neighbors:
@@ -545,17 +585,22 @@ class SpectralEditor:
                     from scipy import interpolate
 
                     # Create interpolation grid
-                    y_grid, x_grid = np.mgrid[0:magnitude.shape[0], 0:magnitude.shape[1]]
-                    points = np.column_stack([y_grid[~mask].ravel(), x_grid[~mask].ravel()])
+                    y_grid, x_grid = np.mgrid[
+                        0 : magnitude.shape[0], 0 : magnitude.shape[1]
+                    ]
+                    points = np.column_stack(
+                        [y_grid[~mask].ravel(), x_grid[~mask].ravel()]
+                    )
                     values = magnitude[~mask].ravel()
 
                     # Interpolate missing values
-                    interp_points = np.column_stack([y_grid[mask].ravel(), x_grid[mask].ravel()])
+                    interp_points = np.column_stack(
+                        [y_grid[mask].ravel(), x_grid[mask].ravel()]
+                    )
 
                     if len(points) > 0 and len(interp_points) > 0:
                         interp_values = interpolate.griddata(
-                            points, values, interp_points,
-                            method='cubic', fill_value=0
+                            points, values, interp_points, method="cubic", fill_value=0
                         )
                         magnitude_interp[mask] = interp_values.reshape(-1)
 
@@ -569,7 +614,7 @@ class SpectralEditor:
                 # Simple neighbor averaging
                 kernel = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]]) / 4
                 if HAS_SCIPY:
-                    smoothed = ndimage.convolve(magnitude, kernel, mode='reflect')
+                    smoothed = ndimage.convolve(magnitude, kernel, mode="reflect")
                 else:
                     smoothed = magnitude  # Fallback to no interpolation
 
@@ -597,7 +642,7 @@ class SpectralEditor:
         kernel = np.ones((kernel_size, kernel_size)) / (kernel_size * kernel_size)
 
         # Apply smoothing
-        smoothed = ndimage.convolve(mask.astype(float), kernel, mode='reflect')
+        smoothed = ndimage.convolve(mask.astype(float), kernel, mode="reflect")
 
         # Back to bool: callers index `stft[mask]`, and a float array is not
         # a valid index -- without this every fade_edges call raised
@@ -606,23 +651,22 @@ class SpectralEditor:
 
     def _save_state(self):
         """Save current state for undo"""
-        state = {
-            "stft": self.stft.copy(),
-            "audio": self.current_audio.copy()
-        }
+        state = {"stft": self.stft.copy(), "audio": self.current_audio.copy()}
         self.undo_stack.append(state)
 
         # Limit undo stack size
         if len(self.undo_stack) > 20:
             self.undo_stack.pop(0)
 
-    def _add_to_history(self, operation: str, selection: SpectralSelection, params: Dict = None):
+    def _add_to_history(
+        self, operation: str, selection: SpectralSelection, params: Dict = None
+    ):
         """Add operation to edit history"""
         history_entry = {
             "operation": operation,
             "selection": selection,
             "parameters": params or {},
-            "timestamp": __import__('time').time()
+            "timestamp": __import__("time").time(),
         }
         self.edit_history.append(history_entry)
 
@@ -640,7 +684,9 @@ class SpectralEditor:
             self.logger.error(f"Undo failed: {e}")
             return False
 
-    def get_spectrogram_data(self, db_range: Tuple[float, float] = (-80, 0)) -> Dict[str, Any]:
+    def get_spectrogram_data(
+        self, db_range: Tuple[float, float] = (-80, 0)
+    ) -> Dict[str, Any]:
         """Get spectrogram data for visualization"""
         magnitude_db = 20 * np.log10(np.abs(self.stft) + 1e-10)
 
@@ -652,7 +698,7 @@ class SpectralEditor:
             "times": self.times,
             "frequencies": self.freqs,
             "sample_rate": self.sample_rate,
-            "db_range": db_range
+            "db_range": db_range,
         }
 
     def export_current_audio(self) -> np.ndarray:
@@ -666,15 +712,19 @@ class SpectralEditor:
         self.edit_history.clear()
         self.undo_stack.clear()
 
+
 class SpectralVisualizer:
     """Visualization tools for spectral editing"""
 
     def __init__(self):
         self.logger = logging.getLogger(__name__)
 
-    def plot_spectrogram(self, spectrogram_data: Dict[str, Any],
-                        selections: List[SpectralSelection] = None,
-                        figsize: Tuple[int, int] = (12, 8)) -> Any:
+    def plot_spectrogram(
+        self,
+        spectrogram_data: Dict[str, Any],
+        selections: List[SpectralSelection] = None,
+        figsize: Tuple[int, int] = (12, 8),
+    ) -> Any:
         """Plot spectrogram with optional selections"""
         if not HAS_MATPLOTLIB:
             self.logger.warning("Matplotlib not available for visualization")
@@ -687,14 +737,11 @@ class SpectralVisualizer:
         times = spectrogram_data["times"]
         freqs = spectrogram_data["frequencies"]
 
-        im = ax.pcolormesh(
-            times, freqs, magnitude_db,
-            shading='auto', cmap='viridis'
-        )
+        im = ax.pcolormesh(times, freqs, magnitude_db, shading="auto", cmap="viridis")
 
         # Add colorbar
         cbar = plt.colorbar(im, ax=ax)
-        cbar.set_label('Magnitude (dB)')
+        cbar.set_label("Magnitude (dB)")
 
         # Plot selections if provided
         if selections:
@@ -703,14 +750,16 @@ class SpectralVisualizer:
                     (selection.time_start, selection.freq_start),
                     selection.time_end - selection.time_start,
                     selection.freq_end - selection.freq_start,
-                    linewidth=2, edgecolor=f'C{i}', facecolor='none',
-                    label=f'Selection {i+1}'
+                    linewidth=2,
+                    edgecolor=f"C{i}",
+                    facecolor="none",
+                    label=f"Selection {i+1}",
                 )
                 ax.add_patch(rect)
 
-        ax.set_xlabel('Time (s)')
-        ax.set_ylabel('Frequency (Hz)')
-        ax.set_title('Spectral Editor')
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("Frequency (Hz)")
+        ax.set_title("Spectral Editor")
 
         if selections:
             ax.legend()
@@ -718,8 +767,9 @@ class SpectralVisualizer:
         plt.tight_layout()
         return fig
 
-    def plot_before_after(self, original_data: Dict, edited_data: Dict,
-                         figsize: Tuple[int, int] = (15, 6)) -> Any:
+    def plot_before_after(
+        self, original_data: Dict, edited_data: Dict, figsize: Tuple[int, int] = (15, 6)
+    ) -> Any:
         """Plot before/after comparison"""
         if not HAS_MATPLOTLIB:
             return None
@@ -728,28 +778,35 @@ class SpectralVisualizer:
 
         # Original
         im1 = ax1.pcolormesh(
-            original_data["times"], original_data["frequencies"],
-            original_data["magnitude_db"], shading='auto', cmap='viridis'
+            original_data["times"],
+            original_data["frequencies"],
+            original_data["magnitude_db"],
+            shading="auto",
+            cmap="viridis",
         )
-        ax1.set_title('Original')
-        ax1.set_xlabel('Time (s)')
-        ax1.set_ylabel('Frequency (Hz)')
+        ax1.set_title("Original")
+        ax1.set_xlabel("Time (s)")
+        ax1.set_ylabel("Frequency (Hz)")
 
         # Edited
         im2 = ax2.pcolormesh(
-            edited_data["times"], edited_data["frequencies"],
-            edited_data["magnitude_db"], shading='auto', cmap='viridis'
+            edited_data["times"],
+            edited_data["frequencies"],
+            edited_data["magnitude_db"],
+            shading="auto",
+            cmap="viridis",
         )
-        ax2.set_title('Edited')
-        ax2.set_xlabel('Time (s)')
-        ax2.set_ylabel('Frequency (Hz)')
+        ax2.set_title("Edited")
+        ax2.set_xlabel("Time (s)")
+        ax2.set_ylabel("Frequency (Hz)")
 
         # Shared colorbar
         cbar = plt.colorbar(im2, ax=[ax1, ax2])
-        cbar.set_label('Magnitude (dB)')
+        cbar.set_label("Magnitude (dB)")
 
         plt.tight_layout()
         return fig
+
 
 def demo_spectral_editing():
     """Demonstrate spectral editing capabilities"""
@@ -764,7 +821,7 @@ def demo_spectral_editing():
         ("Noise Reduction", True),
         ("Harmonic Enhancement", True),
         ("Selection Tools", True),
-        ("Undo/Redo", True)
+        ("Undo/Redo", True),
     ]
 
     print("Available Features:")
@@ -786,6 +843,7 @@ def demo_spectral_editing():
     print(f"  🔇 Noise Removal: Select noise regions and delete/reduce")
     print(f"  🎸 Instrument Separation: Enhance specific frequency ranges")
     print(f"  🔧 Audio Restoration: Interpolate missing spectral content")
+
 
 if __name__ == "__main__":
     demo_spectral_editing()

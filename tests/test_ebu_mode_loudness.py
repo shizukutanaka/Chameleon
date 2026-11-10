@@ -26,11 +26,13 @@ import bs1770_loudness as bs1770
 
 
 def _sine(freq, sample_rate, count, amplitude=1.0):
-    return [amplitude * math.sin(2 * math.pi * freq * i / sample_rate)
-            for i in range(count)]
+    return [
+        amplitude * math.sin(2 * math.pi * freq * i / sample_rate) for i in range(count)
+    ]
 
 
 # --- the core invariant: stationary signal => M == S == I ------------------
+
 
 def test_stationary_signal_gives_identical_momentary_short_term_integrated():
     sample_rate = 48000
@@ -48,6 +50,7 @@ def test_stationary_signal_gives_identical_momentary_short_term_integrated():
 
 
 # --- window length semantics: M must react faster than S ------------------
+
 
 def test_momentary_reacts_faster_than_short_term_after_a_level_step():
     sample_rate = 48000
@@ -69,6 +72,7 @@ def test_momentary_reacts_faster_than_short_term_after_a_level_step():
 
 # --- ungated: quiet passages must survive in the series -------------------
 
+
 def test_momentary_and_short_term_are_not_gated():
     sample_rate = 48000
     quiet = _sine(1000.0, sample_rate, sample_rate * 4, amplitude=0.02)
@@ -84,6 +88,7 @@ def test_momentary_and_short_term_are_not_gated():
 
 
 # --- series geometry: 100 ms hop (10 Hz refresh) --------------------------
+
 
 def test_series_length_matches_a_100ms_hop():
     sample_rate = 48000
@@ -104,6 +109,7 @@ def test_series_length_matches_a_100ms_hop():
 
 # --- boundaries -----------------------------------------------------------
 
+
 def test_signal_shorter_than_the_window_returns_empty_series():
     sample_rate = 48000
     short = _sine(1000.0, sample_rate, int(sample_rate * 0.2))  # 200 ms
@@ -118,16 +124,20 @@ def test_signal_shorter_than_the_window_returns_empty_series():
 def test_no_channels_returns_empty_and_negative_infinity():
     assert bs1770.measure_momentary_loudness([], 48000) == []
     assert bs1770.measure_short_term_loudness([], 48000) == []
-    assert bs1770.measure_max_momentary_loudness([], 48000) == float('-inf')
-    assert bs1770.measure_max_short_term_loudness([], 48000) == float('-inf')
+    assert bs1770.measure_max_momentary_loudness([], 48000) == float("-inf")
+    assert bs1770.measure_max_short_term_loudness([], 48000) == float("-inf")
 
 
 def test_digital_silence_reports_negative_infinity_max():
     sample_rate = 48000
     silence = [0.0] * (sample_rate * 5)
 
-    assert bs1770.measure_max_momentary_loudness([silence], sample_rate) == float('-inf')
-    assert bs1770.measure_max_short_term_loudness([silence], sample_rate) == float('-inf')
+    assert bs1770.measure_max_momentary_loudness([silence], sample_rate) == float(
+        "-inf"
+    )
+    assert bs1770.measure_max_short_term_loudness([silence], sample_rate) == float(
+        "-inf"
+    )
 
 
 def test_stereo_sums_channel_energy_like_the_integrated_meter():
@@ -150,11 +160,16 @@ def test_stereo_sums_channel_energy_like_the_integrated_meter():
 # that is what "loudness range" means, so it follows from the definition and
 # needs no reference table.
 
+
 def _alternating(sample_rate, amp_a, amp_b, block_seconds=5, repeats=2):
     channel = []
     for _ in range(repeats):
-        channel += _sine(1000.0, sample_rate, sample_rate * block_seconds, amplitude=amp_a)
-        channel += _sine(1000.0, sample_rate, sample_rate * block_seconds, amplitude=amp_b)
+        channel += _sine(
+            1000.0, sample_rate, sample_rate * block_seconds, amplitude=amp_a
+        )
+        channel += _sine(
+            1000.0, sample_rate, sample_rate * block_seconds, amplitude=amp_b
+        )
     return channel
 
 
@@ -162,7 +177,9 @@ def test_steady_signal_has_zero_loudness_range():
     sample_rate = 48000
     steady = _sine(1000.0, sample_rate, sample_rate * 20, amplitude=0.5)
 
-    assert bs1770.measure_loudness_range([steady], sample_rate) == pytest.approx(0.0, abs=0.5)
+    assert bs1770.measure_loudness_range([steady], sample_rate) == pytest.approx(
+        0.0, abs=0.5
+    )
 
 
 @pytest.mark.parametrize("amp_a,amp_b", [(0.5, 0.25), (0.6, 0.15), (0.5, 0.05)])
@@ -178,8 +195,12 @@ def test_two_level_signal_range_equals_the_level_difference(amp_a, amp_b):
 
 def test_loudness_range_grows_with_the_level_spread():
     sample_rate = 48000
-    narrow = bs1770.measure_loudness_range([_alternating(sample_rate, 0.5, 0.25)], sample_rate)
-    wide = bs1770.measure_loudness_range([_alternating(sample_rate, 0.5, 0.05)], sample_rate)
+    narrow = bs1770.measure_loudness_range(
+        [_alternating(sample_rate, 0.5, 0.25)], sample_rate
+    )
+    wide = bs1770.measure_loudness_range(
+        [_alternating(sample_rate, 0.5, 0.05)], sample_rate
+    )
 
     assert wide > narrow > 0.0
 
@@ -192,7 +213,9 @@ def test_unmeasurable_inputs_return_nan_not_zero():
     # Shorter than one 3 s short-term window.
     short = _sine(1000.0, sample_rate, sample_rate)
     assert math.isnan(bs1770.measure_loudness_range([short], sample_rate))
-    assert math.isnan(bs1770.measure_loudness_range([[0.0] * (sample_rate * 10)], sample_rate))
+    assert math.isnan(
+        bs1770.measure_loudness_range([[0.0] * (sample_rate * 10)], sample_rate)
+    )
 
 
 def test_relative_gate_keeps_a_brief_quiet_tail_from_inflating_the_range():

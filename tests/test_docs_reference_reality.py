@@ -30,11 +30,41 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # Third-party and standard-library names a doc may legitimately mention without
 # this repository providing them.
 EXTERNAL = {
-    "os", "sys", "json", "time", "math", "wave", "struct", "pathlib", "re",
-    "subprocess", "logging", "asyncio", "typing", "dataclasses", "tempfile",
-    "shutil", "argparse", "threading", "hashlib", "datetime", "collections",
-    "numpy", "scipy", "pytest", "psutil", "requests", "fastapi", "uvicorn",
-    "librosa", "soundfile", "mido", "pydantic", "httpx", "pyaudio", "pyloudnorm",
+    "os",
+    "sys",
+    "json",
+    "time",
+    "math",
+    "wave",
+    "struct",
+    "pathlib",
+    "re",
+    "subprocess",
+    "logging",
+    "asyncio",
+    "typing",
+    "dataclasses",
+    "tempfile",
+    "shutil",
+    "argparse",
+    "threading",
+    "hashlib",
+    "datetime",
+    "collections",
+    "numpy",
+    "scipy",
+    "pytest",
+    "psutil",
+    "requests",
+    "fastapi",
+    "uvicorn",
+    "librosa",
+    "soundfile",
+    "mido",
+    "pydantic",
+    "httpx",
+    "pyaudio",
+    "pyloudnorm",
 }
 
 
@@ -57,7 +87,8 @@ def _relative(path):
 def test_no_doc_imports_a_module_that_does_not_exist():
     violations = []
     pattern = re.compile(
-        r"^\s*(?:from\s+([A-Za-z_][\w.]*)\s+import|import\s+([A-Za-z_][\w.]*))", re.M)
+        r"^\s*(?:from\s+([A-Za-z_][\w.]*)\s+import|import\s+([A-Za-z_][\w.]*))", re.M
+    )
 
     for path in _documentation_files():
         text = path.read_text(encoding="utf-8")
@@ -67,13 +98,14 @@ def test_no_doc_imports_a_module_that_does_not_exist():
                 continue
             if (PROJECT_ROOT / module).is_dir():
                 continue
-            line = text[:match.start()].count("\n") + 1
+            line = text[: match.start()].count("\n") + 1
             violations.append(f"{_relative(path)}:{line}: imports `{module}`")
 
     assert not violations, (
         "Documentation imports module(s) this repository does not provide. A "
         "reader copies this into a terminal and it fails, and the failure looks "
-        "like their mistake:\n  " + "\n  ".join(violations))
+        "like their mistake:\n  " + "\n  ".join(violations)
+    )
 
 
 def test_no_doc_tells_you_to_run_a_script_that_does_not_exist():
@@ -86,16 +118,26 @@ def test_no_doc_tells_you_to_run_a_script_that_does_not_exist():
             script = match.group(1)
             if (PROJECT_ROOT / script).is_file():
                 continue
-            line = text[:match.start()].count("\n") + 1
+            line = text[: match.start()].count("\n") + 1
             violations.append(f"{_relative(path)}:{line}: `python {script}`")
 
-    assert not violations, (
-        "Documentation invokes script(s) that do not exist:\n  "
-        + "\n  ".join(violations))
+    assert (
+        not violations
+    ), "Documentation invokes script(s) that do not exist:\n  " + "\n  ".join(
+        violations
+    )
 
 
-@pytest.mark.parametrize("ghost", ["chameleon_audio", "audio_tool", "enterprise_cli",
-                                   "chameleon_cli", "security_tools"])
+@pytest.mark.parametrize(
+    "ghost",
+    [
+        "chameleon_audio",
+        "audio_tool",
+        "enterprise_cli",
+        "chameleon_cli",
+        "security_tools",
+    ],
+)
 def test_the_named_ghosts_really_are_absent(ghost):
     # Pinned by name because each was documented for months. If one is ever
     # genuinely added, delete its entry here rather than leaving a test that
@@ -108,7 +150,8 @@ def test_the_guard_would_catch_a_reintroduced_ghost(tmp_path):
     # for. This is the exact shape of the deleted docs' first code block.
     sample = "```python\nfrom chameleon_audio import AudioProcessor\n```"
     pattern = re.compile(
-        r"^\s*(?:from\s+([A-Za-z_][\w.]*)\s+import|import\s+([A-Za-z_][\w.]*))", re.M)
+        r"^\s*(?:from\s+([A-Za-z_][\w.]*)\s+import|import\s+([A-Za-z_][\w.]*))", re.M
+    )
     match = pattern.search(sample)
 
     assert match is not None

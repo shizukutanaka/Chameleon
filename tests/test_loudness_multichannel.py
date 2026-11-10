@@ -45,8 +45,13 @@ def test_separate_channels_is_not_averaged(tmp_path):
     # Left at full gain, right silent: the per-channel extraction must show
     # that asymmetry, unlike the mono downmix (which would halve the left
     # channel's amplitude into both).
-    wav = write_stereo_sine_wave(tmp_path / "stereo.wav", duration=0.3, frequency=440.0,
-                                  left_gain=1.0, right_gain=0.0)
+    wav = write_stereo_sine_wave(
+        tmp_path / "stereo.wav",
+        duration=0.3,
+        frequency=440.0,
+        left_gain=1.0,
+        right_gain=0.0,
+    )
 
     result = core.get_samples_for_analysis(str(wav), separate_channels=True)
 
@@ -59,7 +64,9 @@ def test_separate_channels_is_not_averaged(tmp_path):
 def test_separate_channels_respects_max_samples_per_channel(tmp_path):
     wav = write_stereo_sine_wave(tmp_path / "stereo.wav", duration=1.0, frequency=440.0)
 
-    result = core.get_samples_for_analysis(str(wav), max_samples=500, separate_channels=True)
+    result = core.get_samples_for_analysis(
+        str(wav), max_samples=500, separate_channels=True
+    )
 
     assert result.success
     for channel in result.data["channels"]:
@@ -72,7 +79,9 @@ def test_cli_analyze_loudness_on_stereo_uses_correct_channel_summing(tmp_path):
     # downmix figure. We can't assert an exact LUFS number through the CLI
     # (rounded to 1 decimal), so assert the CLI's label reflects the
     # channel-summing behavior instead of a stale "mono" claim.
-    wav = write_stereo_sine_wave(tmp_path / "stereo.wav", duration=1.0, frequency=1000.0)
+    wav = write_stereo_sine_wave(
+        tmp_path / "stereo.wav", duration=1.0, frequency=1000.0
+    )
 
     result = _run("analyze", str(wav), "--loudness", cwd=str(tmp_path))
 
@@ -103,12 +112,14 @@ def test_mono_file_gives_identical_loudness_via_multichannel_or_mono_path(tmp_pa
     assert lufs_multichannel == lufs_mono
 
 
-def _write_extensible_wav(path, n_channels, channel_mask, ch_active=None,
-                          sr=44100, duration=1.0):
+def _write_extensible_wav(
+    path, n_channels, channel_mask, ch_active=None, sr=44100, duration=1.0
+):
     """Minimal WAVE_FORMAT_EXTENSIBLE writer: fmt body carries dwChannelMask
     at bytes 20-23, PCM GUID at 24-39."""
     import struct
     import math as _m
+
     bits = 16
     n = int(sr * duration)
     if ch_active is None:
@@ -116,15 +127,30 @@ def _write_extensible_wav(path, n_channels, channel_mask, ch_active=None,
     frames = bytearray()
     for i in range(n):
         for c in range(n_channels):
-            v = int(0.3 * 32767 * _m.sin(2 * _m.pi * 440 * i / sr)) if c in ch_active else 0
+            v = (
+                int(0.3 * 32767 * _m.sin(2 * _m.pi * 440 * i / sr))
+                if c in ch_active
+                else 0
+            )
             frames += struct.pack("<h", v)
-    fmt = struct.pack("<HHIIHHHHI", 0xFFFE, n_channels, sr,
-                      sr * n_channels * 2, n_channels * 2, bits, 22, bits,
-                      channel_mask)
+    fmt = struct.pack(
+        "<HHIIHHHHI",
+        0xFFFE,
+        n_channels,
+        sr,
+        sr * n_channels * 2,
+        n_channels * 2,
+        bits,
+        22,
+        bits,
+        channel_mask,
+    )
     fmt += bytes.fromhex("0100000000001000800000aa00389b71")
     data = bytes(frames)
     with open(path, "wb") as f:
-        f.write(b"RIFF" + struct.pack("<I", 4 + (8 + len(fmt)) + (8 + len(data))) + b"WAVE")
+        f.write(
+            b"RIFF" + struct.pack("<I", 4 + (8 + len(fmt)) + (8 + len(data))) + b"WAVE"
+        )
         f.write(b"fmt " + struct.pack("<I", len(fmt)) + fmt)
         f.write(b"data" + struct.pack("<I", len(data)) + data)
     return path
@@ -149,13 +175,17 @@ def test_surround_weighting_applied_for_masked_51(tmp_path):
     assert six_result.data["channel_mask"] == 0x3F
 
     lufs_six = bs1770_loudness.measure_integrated_loudness_multichannel(
-        six_result.data["channels"], six_result.data["sample_rate"],
-        six_result.data["channel_mask"])
+        six_result.data["channels"],
+        six_result.data["sample_rate"],
+        six_result.data["channel_mask"],
+    )
     lufs_st = bs1770_loudness.measure_integrated_loudness_multichannel(
-        stereo_result.data["channels"], stereo_result.data["sample_rate"],
-        stereo_result.data["channel_mask"])
+        stereo_result.data["channels"],
+        stereo_result.data["sample_rate"],
+        stereo_result.data["channel_mask"],
+    )
 
-    expected_delta = 10.0 * math.log10((3.0 + 2.0 * (10 ** 0.15)) / 2.0)
+    expected_delta = 10.0 * math.log10((3.0 + 2.0 * (10**0.15)) / 2.0)
     assert abs((lufs_six - lufs_st) - expected_delta) < 0.1
 
 
@@ -164,11 +194,11 @@ def test_lfe_channel_is_excluded_from_loudness(tmp_path):
     loudness -- it must gate as effectively silent, not read as content."""
     import bs1770_loudness
 
-    lfe_only = _write_extensible_wav(tmp_path / "lfe.wav", 6, 0x3F,
-                                     ch_active=[3])
+    lfe_only = _write_extensible_wav(tmp_path / "lfe.wav", 6, 0x3F, ch_active=[3])
     result = core.get_samples_for_analysis(str(lfe_only), separate_channels=True)
     lufs = bs1770_loudness.measure_integrated_loudness_multichannel(
-        result.data["channels"], result.data["sample_rate"],
-        result.data["channel_mask"])
+        result.data["channels"], result.data["sample_rate"], result.data["channel_mask"]
+    )
     import math
+
     assert not math.isfinite(lufs)  # -inf: gated, not a number

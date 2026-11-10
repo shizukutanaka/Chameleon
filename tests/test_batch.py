@@ -98,17 +98,20 @@ def test_sync_batch_preflight_matches_operation_bounds(tmp_path):
 
     for bad in (0.0, 1.0):
         results = core.BatchProcessor().process_directory(
-            str(src), "trim", output_dir=str(out), threshold=bad)
+            str(src), "trim", output_dir=str(out), threshold=bad
+        )
         assert not results[0].success
         assert "must be" in results[0].message.lower(), results
 
     results = core.BatchProcessor().process_directory(
-        str(src), "normalize", output_dir=str(out), target_peak=0.0)
+        str(src), "normalize", output_dir=str(out), target_peak=0.0
+    )
     assert not results[0].success
     assert "must be" in results[0].message.lower(), results
 
     results = core.BatchProcessor().process_directory(
-        str(src), "normalize", output_dir=str(out), target_peak=0.5)
+        str(src), "normalize", output_dir=str(out), target_peak=0.5
+    )
     assert results[0].success
 
 
@@ -160,8 +163,9 @@ def test_async_normalize_rejects_nan_target_peak(tmp_path):
     out = tmp_path / "out"
     out.mkdir()
 
-    results = _run_batch(src, "normalize", output_dir=str(out),
-                         target_peak=float("nan"))
+    results = _run_batch(
+        src, "normalize", output_dir=str(out), target_peak=float("nan")
+    )
 
     assert not results[0].success
     assert "target peak" in results[0].message.lower()

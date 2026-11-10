@@ -21,6 +21,7 @@ logger = logging.getLogger("chameleon.validation")
 @dataclass
 class FileValidationResult:
     """Result of file validation"""
+
     is_valid: bool
     file_type: str
     size_bytes: int
@@ -34,35 +35,34 @@ class DeepFileInspector:
     """Deep file inspection for security validation"""
 
     # WAV file magic numbers
-    WAV_MAGIC = {
-        b'RIFF': 'WAV',
-        b'RIFX': 'WAV_BIG_ENDIAN'
-    }
+    WAV_MAGIC = {b"RIFF": "WAV", b"RIFX": "WAV_BIG_ENDIAN"}
 
     # Signatures that make a file executable -- and only do so at offset 0.
     # `MZ` in the middle of a WAV is two PCM samples; `MZ` at the start is a
     # Windows binary wearing a .wav extension.
     EXECUTABLE_SIGNATURES = [
-        (b'MZ', 'DOS/Windows executable'),
-        (b'\x7fELF', 'Linux executable'),
-        (b'#!', 'shell script'),
+        (b"MZ", "DOS/Windows executable"),
+        (b"\x7fELF", "Linux executable"),
+        (b"#!", "shell script"),
     ]
 
     # Markup and code fragments. These matter in a container's *text* regions,
     # where another tool might read and render them -- never in the `data`
     # chunk, which holds arbitrary sample values by definition.
     TEXT_PATTERNS = [
-        (b'<?php', 'PHP code'),
-        (b'<script', 'JavaScript'),
-        (b'<html', 'HTML content'),
-        (b'import ', 'Python import'),
-        (b'eval(', 'code evaluation'),
-        (b'exec(', 'code execution'),
-        (b'system(', 'system command'),
+        (b"<?php", "PHP code"),
+        (b"<script", "JavaScript"),
+        (b"<html", "HTML content"),
+        (b"import ", "Python import"),
+        (b"eval(", "code evaluation"),
+        (b"exec(", "code execution"),
+        (b"system(", "system command"),
     ]
 
     # Retained for callers that referenced the old flat list.
-    SUSPICIOUS_PATTERNS = [pattern for pattern, _ in EXECUTABLE_SIGNATURES + TEXT_PATTERNS]
+    SUSPICIOUS_PATTERNS = [
+        pattern for pattern, _ in EXECUTABLE_SIGNATURES + TEXT_PATTERNS
+    ]
 
     def __init__(self, max_scan_bytes: int = 10 * 1024 * 1024):
         self.max_scan_bytes = max_scan_bytes
@@ -100,21 +100,25 @@ class DeepFileInspector:
 
             file_type = self._identify_file_type(file_path)
 
-            if file_type not in ('WAV', 'WAV_BIG_ENDIAN'):
+            if file_type not in ("WAV", "WAV_BIG_ENDIAN"):
                 errors.append(f"Invalid file type: {file_type}")
 
             suspicious = self._scan_for_suspicious_content(file_path)
             if suspicious:
-                warnings.extend([f"Suspicious pattern: {p.decode('latin1', errors='ignore')}"
-                                 for p in suspicious])
+                warnings.extend(
+                    [
+                        f"Suspicious pattern: {p.decode('latin1', errors='ignore')}"
+                        for p in suspicious
+                    ]
+                )
 
-            if file_type.startswith('WAV'):
+            if file_type.startswith("WAV"):
                 metadata.update(self._validate_wav_structure(file_path))
 
             if stats.st_mode & 0o111:  # Executable bit set
                 warnings.append("File has executable permissions")
 
-            if file_path.name.startswith('.'):  # Hidden file (Unix)
+            if file_path.name.startswith("."):  # Hidden file (Unix)
                 warnings.append("Hidden file")
 
             return FileValidationResult(
@@ -128,7 +132,9 @@ class DeepFileInspector:
             )
 
         except Exception as e:
-            logger.error(f"{'Inspection' if checksum else 'Format validation'} failed: {e}")
+            logger.error(
+                f"{'Inspection' if checksum else 'Format validation'} failed: {e}"
+            )
             return FileValidationResult(
                 is_valid=False,
                 file_type="UNKNOWN",
@@ -144,9 +150,9 @@ class DeepFileInspector:
 
         sha256 = hashlib.sha256()
 
-        with open(file_path, 'rb') as f:
+        with open(file_path, "rb") as f:
             # Read in chunks for large files
-            for chunk in iter(lambda: f.read(8192), b''):
+            for chunk in iter(lambda: f.read(8192), b""):
                 sha256.update(chunk)
 
         return sha256.hexdigest()
@@ -154,14 +160,14 @@ class DeepFileInspector:
     def _identify_file_type(self, file_path: Path) -> str:
         """Identify file type by magic number"""
 
-        with open(file_path, 'rb') as f:
+        with open(file_path, "rb") as f:
             header = f.read(12)
 
         # Check WAV magic numbers
         for magic, file_type in self.WAV_MAGIC.items():
             if header.startswith(magic):
                 # Verify WAVE format
-                if header[8:12] == b'WAVE':
+                if header[8:12] == b"WAVE":
                     return file_type
 
         return "UNKNOWN"
@@ -201,7 +207,7 @@ class DeepFileInspector:
         # a ValueError on an empty file (observed in CI: Errno 12 under
         # memory pressure silently emptied every warning).
         try:
-            with open(file_path, 'rb') as f:
+            with open(file_path, "rb") as f:
                 data = f.read(scan_size)
         except OSError as e:
             logger.warning(f"Suspicious content scan failed: {e}")
@@ -224,7 +230,7 @@ class DeepFileInspector:
         For a RIFF file: the header plus every chunk except `data`. For
         anything else: all of it.
         """
-        if data[:4] not in (b'RIFF', b'RIFX'):
+        if data[:4] not in (b"RIFF", b"RIFX"):
             return [data]
 
         regions = [data[:12]]
@@ -232,24 +238,24 @@ class DeepFileInspector:
         limit = len(data)
 
         while offset + 8 <= limit:
-            chunk_id = data[offset:offset + 4]
+            chunk_id = data[offset : offset + 4]
             try:
-                chunk_size = struct.unpack('<I', data[offset + 4:offset + 8])[0]
+                chunk_size = struct.unpack("<I", data[offset + 4 : offset + 8])[0]
             except struct.error:
                 break
 
             body_start = offset + 8
             body_end = min(body_start + chunk_size, limit)
-            if body_end < body_start:            # size field overflowed
+            if body_end < body_start:  # size field overflowed
                 break
 
-            regions.append(data[offset:body_start])            # the chunk header
-            if chunk_id != b'data':
+            regions.append(data[offset:body_start])  # the chunk header
+            if chunk_id != b"data":
                 regions.append(data[body_start:body_end])
 
-            offset = body_end + (chunk_size % 2)   # RIFF pads odd-sized chunks
-            if chunk_size == 0 and chunk_id != b'data':
-                offset = body_start                # never stall on a zero-size chunk
+            offset = body_end + (chunk_size % 2)  # RIFF pads odd-sized chunks
+            if chunk_size == 0 and chunk_id != b"data":
+                offset = body_start  # never stall on a zero-size chunk
                 break
 
         return regions
@@ -260,14 +266,14 @@ class DeepFileInspector:
         metadata = {}
 
         try:
-            with open(file_path, 'rb') as f:
+            with open(file_path, "rb") as f:
                 # Read RIFF header
                 riff_header = f.read(12)
 
                 if len(riff_header) < 12:
                     return {"error": "Truncated RIFF header"}
 
-                file_size = struct.unpack('<I', riff_header[4:8])[0]
+                file_size = struct.unpack("<I", riff_header[4:8])[0]
                 metadata["declared_size"] = file_size
 
                 # Parse chunks
@@ -278,39 +284,57 @@ class DeepFileInspector:
                         break
 
                     chunk_id = chunk_header[:4]
-                    chunk_size = struct.unpack('<I', chunk_header[4:8])[0]
+                    chunk_size = struct.unpack("<I", chunk_header[4:8])[0]
 
-                    chunks_found.append(chunk_id.decode('latin1', errors='ignore'))
+                    chunks_found.append(chunk_id.decode("latin1", errors="ignore"))
 
-                    if chunk_id == b'fmt ':
+                    if chunk_id == b"fmt ":
                         # Parse format chunk
                         fmt_data = f.read(min(chunk_size, 40))
                         if len(fmt_data) >= 16:
-                            format_tag, channels, sample_rate, _, _, bits_per_sample = \
-                                struct.unpack('<HHIIHH', fmt_data[:16])
+                            format_tag, channels, sample_rate, _, _, bits_per_sample = (
+                                struct.unpack("<HHIIHH", fmt_data[:16])
+                            )
 
-                            metadata.update({
-                                "format_tag": format_tag,
-                                "channels": channels,
-                                "sample_rate": sample_rate,
-                                "bits_per_sample": bits_per_sample
-                            })
+                            metadata.update(
+                                {
+                                    "format_tag": format_tag,
+                                    "channels": channels,
+                                    "sample_rate": sample_rate,
+                                    "bits_per_sample": bits_per_sample,
+                                }
+                            )
 
                             # Validate format
                             if format_tag != 1:  # PCM
                                 metadata["warning"] = f"Non-PCM format: {format_tag}"
 
                             if channels < 1 or channels > 8:
-                                metadata["warning"] = f"Unusual channel count: {channels}"
+                                metadata["warning"] = (
+                                    f"Unusual channel count: {channels}"
+                                )
 
                             # The full standard ladder: telephony/broadcast
                             # (8k-32k), consumer (44.1k/48k and halves), and
                             # the hi-res multiples up to 192k. Anything off
                             # the ladder -- 12345 Hz, say -- is the warning.
-                            if sample_rate not in (8000, 11025, 16000, 22050, 24000,
-                                                   32000, 44100, 48000, 88200,
-                                                   96000, 176400, 192000):
-                                metadata["warning"] = f"Non-standard sample rate: {sample_rate}"
+                            if sample_rate not in (
+                                8000,
+                                11025,
+                                16000,
+                                22050,
+                                24000,
+                                32000,
+                                44100,
+                                48000,
+                                88200,
+                                96000,
+                                176400,
+                                192000,
+                            ):
+                                metadata["warning"] = (
+                                    f"Non-standard sample rate: {sample_rate}"
+                                )
 
                         # Skip any unread remainder of an oversized fmt body.
                         remainder = chunk_size - len(fmt_data)
@@ -327,9 +351,9 @@ class DeepFileInspector:
                 metadata["chunks"] = chunks_found
 
                 # Verify required chunks
-                if 'fmt ' not in chunks_found:
+                if "fmt " not in chunks_found:
                     metadata["error"] = "Missing fmt chunk"
-                if 'data' not in chunks_found:
+                if "data" not in chunks_found:
                     metadata["error"] = "Missing data chunk"
 
         except Exception as e:
@@ -356,8 +380,7 @@ class IntegrityVerifier:
                 # verify_manifest's "Missing:" reporting -- the caller
                 # believed N files were tracked and gets N-1. Warn so the
                 # omission is visible.
-                logger.warning(
-                    "Skipping non-existent file in manifest: %s", file_path)
+                logger.warning("Skipping non-existent file in manifest: %s", file_path)
                 continue
 
             inspector = DeepFileInspector()
@@ -367,15 +390,16 @@ class IntegrityVerifier:
                 "checksum": result.checksum_sha256,
                 "size": result.size_bytes,
                 "file_type": result.file_type,
-                "metadata": result.metadata
+                "metadata": result.metadata,
             }
 
         # Save manifest atomically: a torn write leaves a corrupt JSON that
         # would fail every future verify for a reason the user cannot see.
         manifest_path = self.manifest_dir / f"{manifest_name}.json"
         import json
+
         tmp_path = manifest_path.with_suffix(manifest_path.suffix + ".tmp")
-        with open(tmp_path, 'w') as f:
+        with open(tmp_path, "w") as f:
             json.dump(manifest, f, indent=2)
         os.replace(tmp_path, manifest_path)
 
@@ -389,7 +413,7 @@ class IntegrityVerifier:
 
         import json
 
-        with open(manifest_path, 'r') as f:
+        with open(manifest_path, "r") as f:
             manifest = json.load(f)
 
         all_valid = True
@@ -425,7 +449,7 @@ class SanitizationEngine:
     def sanitize_wav_metadata(file_path: Path, output_path: Path) -> None:
         """Remove metadata chunks from WAV file"""
 
-        KEEP_CHUNKS = {b'RIFF', b'WAVE', b'fmt ', b'data'}
+        KEEP_CHUNKS = {b"RIFF", b"WAVE", b"fmt ", b"data"}
 
         # The `with` below opens the output O_TRUNC alongside the input:
         # a same-file pair would zero the source before its first read and
@@ -434,19 +458,20 @@ class SanitizationEngine:
             if os.path.samefile(file_path, output_path):
                 raise ValueError(
                     "input and output paths are the same file; "
-                    "in-place sanitization is not supported")
+                    "in-place sanitization is not supported"
+                )
         except OSError:
             # A nonexistent output can never be the input's file.
             pass
 
-        with open(file_path, 'rb') as infile, open(output_path, 'wb') as outfile:
+        with open(file_path, "rb") as infile, open(output_path, "wb") as outfile:
             # Read and write RIFF header
             riff_header = infile.read(12)
             outfile.write(riff_header[:4])  # RIFF
 
             # We'll update size later
             size_pos = outfile.tell()
-            outfile.write(b'\x00\x00\x00\x00')  # Placeholder
+            outfile.write(b"\x00\x00\x00\x00")  # Placeholder
 
             outfile.write(riff_header[8:12])  # WAVE
 
@@ -459,7 +484,7 @@ class SanitizationEngine:
                     break
 
                 chunk_id = chunk_header[:4]
-                chunk_size = struct.unpack('<I', chunk_header[4:8])[0]
+                chunk_size = struct.unpack("<I", chunk_header[4:8])[0]
 
                 # Only keep essential chunks
                 if chunk_id in KEEP_CHUNKS:
@@ -474,7 +499,7 @@ class SanitizationEngine:
                     # same way an unconsumed pad on the skip path did.
                     if chunk_size % 2:
                         infile.read(1)
-                        outfile.write(b'\x00')
+                        outfile.write(b"\x00")
                         total_size += 1
                 else:
                     # Skip metadata chunk -- including its RIFF pad byte,
@@ -482,11 +507,13 @@ class SanitizationEngine:
                     # the chunk walk desyncs (an odd-sized LIST once made
                     # the data chunk vanish).
                     infile.seek(chunk_size + (chunk_size % 2), 1)
-                    logger.info(f"Removed chunk: {chunk_id.decode('latin1', errors='ignore')}")
+                    logger.info(
+                        f"Removed chunk: {chunk_id.decode('latin1', errors='ignore')}"
+                    )
 
             # Update file size
             outfile.seek(size_pos)
-            outfile.write(struct.pack('<I', total_size))
+            outfile.write(struct.pack("<I", total_size))
 
         os.chmod(output_path, 0o600)
         logger.info(f"Sanitized: {file_path} -> {output_path}")
@@ -500,11 +527,13 @@ if __name__ == "__main__":
     # same-named user file on the way) and leave a test_manifest.json in
     # ~/.chameleon/manifests. Nothing should persist now.
     import tempfile
+
     with tempfile.TemporaryDirectory() as scratch:
         scratch = Path(scratch)
 
         # Create test WAV file
         from validation_test import create_test_wav
+
         test_file = scratch / "test_validation.wav"
         create_test_wav(str(test_file))
 

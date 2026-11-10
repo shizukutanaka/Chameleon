@@ -30,13 +30,16 @@ def processor():
 
 def _tone(freq=1000.0, sample_rate=44100, seconds=0.5):
     count = int(sample_rate * seconds)
-    return (0.5 * np.sin(2 * np.pi * freq * np.arange(count) / sample_rate)).astype(np.float32)
+    return (0.5 * np.sin(2 * np.pi * freq * np.arange(count) / sample_rate)).astype(
+        np.float32
+    )
 
 
 def test_every_dependency_backed_effect_is_declared():
     # The table and the code must not drift: anything apply_effects gates on an
     # optional package needs an entry, or the silent-skip bug comes back for it.
     import inspect
+
     source = inspect.getsource(main.AudioProcessor.apply_effects)
 
     for name in main.AudioProcessor._EFFECT_REQUIREMENTS:
@@ -47,7 +50,9 @@ def test_requesting_eq_without_scipy_raises(processor, monkeypatch):
     monkeypatch.setattr(main, "HAS_SCIPY", False)
 
     with pytest.raises(ValueError, match="scipy"):
-        processor.apply_effects(_tone(), 44100, {"eq": [{"frequency": 1000, "gain": 3.0}]})
+        processor.apply_effects(
+            _tone(), 44100, {"eq": [{"frequency": 1000, "gain": 3.0}]}
+        )
 
 
 def test_requesting_reverb_without_scipy_raises(processor, monkeypatch):
@@ -61,7 +66,9 @@ def test_the_error_names_the_extra_that_fixes_it(processor, monkeypatch):
     monkeypatch.setattr(main, "HAS_SCIPY", False)
 
     with pytest.raises(ValueError, match=r"\[audio\]"):
-        processor.apply_effects(_tone(), 44100, {"eq": [{"frequency": 1000, "gain": 3.0}]})
+        processor.apply_effects(
+            _tone(), 44100, {"eq": [{"frequency": 1000, "gain": 3.0}]}
+        )
 
 
 def test_effects_needing_nothing_optional_still_work(processor, monkeypatch):
@@ -69,7 +76,9 @@ def test_effects_needing_nothing_optional_still_work(processor, monkeypatch):
     # dependency check.
     monkeypatch.setattr(main, "HAS_SCIPY", False)
 
-    result = processor.apply_effects(_tone(), 44100, {"compression": {"threshold": 0.3}})
+    result = processor.apply_effects(
+        _tone(), 44100, {"compression": {"threshold": 0.3}}
+    )
 
     assert result.shape == _tone().shape
 
@@ -89,7 +98,8 @@ def test_compression_is_dynamics_processing_not_waveshaping(processor):
     # level actually came down, AND the waveform kept its shape.
     tone = _tone(440, seconds=1.0) * 1.6  # 0.8 peak -> over the threshold
     out = processor.apply_effects(
-        tone.copy(), 44100, {"compression": {"threshold": -20.0, "ratio": 4.0}})
+        tone.copy(), 44100, {"compression": {"threshold": -20.0, "ratio": 4.0}}
+    )
 
     steady = out[22050:]  # skip the attack transient
     spec = np.abs(np.fft.rfft(steady * np.hanning(len(steady))))

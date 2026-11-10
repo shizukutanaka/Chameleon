@@ -16,6 +16,7 @@ from dataclasses import dataclass
 @dataclass
 class ProgressConfig:
     """Configuration for progress display"""
+
     show_percentage: bool = True
     show_eta: bool = True
     show_speed: bool = True
@@ -26,7 +27,9 @@ class ProgressConfig:
 class ProgressBar:
     """Terminal progress bar with ETA and speed"""
 
-    def __init__(self, total: int, description: str = "", config: Optional[ProgressConfig] = None):
+    def __init__(
+        self, total: int, description: str = "", config: Optional[ProgressConfig] = None
+    ):
         self.total = total
         self.description = description
         self.config = config or ProgressConfig()
@@ -64,7 +67,7 @@ class ProgressBar:
 
         # Build progress bar
         filled = int(self.config.bar_width * self.current / self.total)
-        bar = '█' * filled + '░' * (self.config.bar_width - filled)
+        bar = "█" * filled + "░" * (self.config.bar_width - filled)
 
         # Build status line
         parts = [f"{self.description}" if self.description else "Progress"]
@@ -85,7 +88,7 @@ class ProgressBar:
 
         # Print with carriage return
         terminal_width = shutil.get_terminal_size((80, 20)).columns
-        status = status[:terminal_width - 1]
+        status = status[: terminal_width - 1]
         sys.stdout.write(f"\r{status}")
         sys.stdout.flush()
 
@@ -112,7 +115,7 @@ class ProgressBar:
 class SpinnerAnimation:
     """Simple spinner for indeterminate progress"""
 
-    FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+    FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
     def __init__(self, description: str = "Processing"):
         self.description = description
@@ -147,7 +150,7 @@ class ErrorFormatter:
     def format_error(
         error: Exception,
         context: Optional[Dict[str, Any]] = None,
-        suggestions: Optional[List[str]] = None
+        suggestions: Optional[List[str]] = None,
     ) -> str:
         """Format error with context and suggestions"""
         lines = []
@@ -197,9 +200,7 @@ class TableFormatter:
 
     @staticmethod
     def format_table(
-        headers: List[str],
-        rows: List[List[Any]],
-        align: Optional[List[str]] = None
+        headers: List[str], rows: List[List[Any]], align: Optional[List[str]] = None
     ) -> str:
         """Format data as table
 
@@ -211,7 +212,7 @@ class TableFormatter:
         if not rows:
             return ""
 
-        align = align or ['left'] * len(headers)
+        align = align or ["left"] * len(headers)
 
         # Calculate column widths. A row wider than the headers used to
         # index past `widths` and die on a raw IndexError; short rows are
@@ -221,16 +222,17 @@ class TableFormatter:
             if len(row) > len(headers):
                 raise ValueError(
                     f"table row has {len(row)} cells but only "
-                    f"{len(headers)} headers")
+                    f"{len(headers)} headers"
+                )
             for i, cell in enumerate(row):
                 widths[i] = max(widths[i], len(str(cell)))
 
         # Build format strings
         formats = []
         for i, (width, alignment) in enumerate(zip(widths, align)):
-            if alignment == 'right':
+            if alignment == "right":
                 formats.append(f"{{:>{width}}}")
-            elif alignment == 'center':
+            elif alignment == "center":
                 formats.append(f"{{:^{width}}}")
             else:
                 formats.append(f"{{:<{width}}}")
@@ -238,8 +240,7 @@ class TableFormatter:
         # Format header
         lines = []
         header_line = " | ".join(
-            fmt.format(header)
-            for fmt, header in zip(formats, headers)
+            fmt.format(header) for fmt, header in zip(formats, headers)
         )
         lines.append(header_line)
         lines.append("-" * len(header_line))
@@ -247,8 +248,7 @@ class TableFormatter:
         # Format rows
         for row in rows:
             row_line = " | ".join(
-                fmt.format(str(cell))
-                for fmt, cell in zip(formats, row)
+                fmt.format(str(cell)) for fmt, cell in zip(formats, row)
             )
             lines.append(row_line)
 
@@ -259,27 +259,27 @@ class ColorText:
     """ANSI color codes for terminal output"""
 
     # Colors
-    BLACK = '\033[30m'
-    RED = '\033[31m'
-    GREEN = '\033[32m'
-    YELLOW = '\033[33m'
-    BLUE = '\033[34m'
-    MAGENTA = '\033[35m'
-    CYAN = '\033[36m'
-    WHITE = '\033[37m'
+    BLACK = "\033[30m"
+    RED = "\033[31m"
+    GREEN = "\033[32m"
+    YELLOW = "\033[33m"
+    BLUE = "\033[34m"
+    MAGENTA = "\033[35m"
+    CYAN = "\033[36m"
+    WHITE = "\033[37m"
 
     # Styles
-    BOLD = '\033[1m'
-    DIM = '\033[2m'
-    UNDERLINE = '\033[4m'
-    BLINK = '\033[5m'
-    REVERSE = '\033[7m'
-    RESET = '\033[0m'
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+    UNDERLINE = "\033[4m"
+    BLINK = "\033[5m"
+    REVERSE = "\033[7m"
+    RESET = "\033[0m"
 
     @classmethod
     def enabled(cls) -> bool:
         """Check if terminal supports colors"""
-        return sys.stdout.isatty() and sys.platform != 'win32'
+        return sys.stdout.isatty() and sys.platform != "win32"
 
     @classmethod
     def colorize(cls, text: str, color: str, style: Optional[str] = None) -> str:
@@ -318,7 +318,7 @@ def format_file_size(bytes: int) -> str:
     """Format bytes as human-readable size"""
     if not math.isfinite(bytes):
         raise ValueError(f"bytes must be finite, got {bytes!r}")
-    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
         if bytes < 1024:
             return f"{bytes:.1f} {unit}"
         bytes /= 1024
@@ -371,7 +371,7 @@ if __name__ == "__main__":
         formatted = ErrorFormatter.format_error(
             e,
             context={"file": "audio.wav", "operation": "read"},
-            suggestions=suggestions
+            suggestions=suggestions,
         )
         print(formatted)
 
@@ -381,9 +381,11 @@ if __name__ == "__main__":
     rows = [
         ["audio1.wav", "1.2 MB", "2.5s", "OK"],
         ["audio2.wav", "850 KB", "1.8s", "OK"],
-        ["audio3.wav", "3.4 MB", "7.2s", "Processing"]
+        ["audio3.wav", "3.4 MB", "7.2s", "Processing"],
     ]
-    table = TableFormatter.format_table(headers, rows, align=['left', 'right', 'right', 'center'])
+    table = TableFormatter.format_table(
+        headers, rows, align=["left", "right", "right", "center"]
+    )
     print(table)
 
     # Test color output

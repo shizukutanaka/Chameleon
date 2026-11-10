@@ -20,17 +20,20 @@ from midi_analysis import MIDIAnalyzer
 
 
 def _sine(frequency, sample_rate, count, amplitude=1.0, phase=0.0):
-    return [amplitude * math.sin(2 * math.pi * frequency * i / sample_rate + phase)
-            for i in range(count)]
+    return [
+        amplitude * math.sin(2 * math.pi * frequency * i / sample_rate + phase)
+        for i in range(count)
+    ]
 
 
 # --- A1: windowing + parabolic interpolation --------------------------------
+
 
 def test_hann_window_shape():
     window = spectral_utils._hann_window(9)
     assert window[0] == 0.0
     assert window[-1] == 0.0
-    assert abs(window[4] - 1.0) < 1e-9          # peak at the centre
+    assert abs(window[4] - 1.0) < 1e-9  # peak at the centre
     # Symmetric taper.
     for left, right in zip(window, reversed(window)):
         assert abs(left - right) < 1e-9
@@ -74,6 +77,7 @@ def test_windowing_reduces_spectral_leakage():
 
 # --- A2: YIN pitch detection ------------------------------------------------
 
+
 def _cents(f_detected, f_true):
     return 1200.0 * math.log2(f_detected / f_true)
 
@@ -96,15 +100,18 @@ def test_yin_picks_fundamental_not_the_louder_harmonic():
     analyzer = MIDIAnalyzer()
     sample_rate = 44100
     frame = 2048
-    samples = [a + b for a, b in zip(
-        _sine(200.0, sample_rate, frame, amplitude=1.0),
-        _sine(400.0, sample_rate, frame, amplitude=1.6),
-    )]
+    samples = [
+        a + b
+        for a, b in zip(
+            _sine(200.0, sample_rate, frame, amplitude=1.0),
+            _sine(400.0, sample_rate, frame, amplitude=1.6),
+        )
+    ]
 
     detected = analyzer._estimate_pitch(samples, sample_rate)
 
     assert detected is not None
-    assert 190.0 < detected < 210.0, detected   # ~200, not ~400
+    assert 190.0 < detected < 210.0, detected  # ~200, not ~400
 
 
 def test_yin_returns_none_on_silence():

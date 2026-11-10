@@ -29,7 +29,8 @@ np = pytest.importorskip("numpy")
 import bs1770_loudness
 
 pyloudnorm = pytest.importorskip(
-    "pyloudnorm", reason="optional test-only reference implementation")
+    "pyloudnorm", reason="optional test-only reference implementation"
+)
 
 
 SAMPLE_RATE = 48000
@@ -44,12 +45,14 @@ def _sine(freq, seconds=5.0, amplitude=0.5):
 
 def _ours(signal):
     return bs1770_loudness.measure_integrated_loudness_multichannel(
-        [np.asarray(signal, dtype=float).tolist()], SAMPLE_RATE)
+        [np.asarray(signal, dtype=float).tolist()], SAMPLE_RATE
+    )
 
 
 def _reference(signal):
     return pyloudnorm.Meter(SAMPLE_RATE).integrated_loudness(
-        np.asarray(signal, dtype=float))
+        np.asarray(signal, dtype=float)
+    )
 
 
 @pytest.mark.parametrize("freq", [100.0, 1000.0, 5000.0])
@@ -93,10 +96,12 @@ def test_our_coefficients_are_closer_to_the_published_table():
     ours = bs1770_loudness._stage1_head_effects(SAMPLE_RATE)
     reference_filter = pyloudnorm.Meter(SAMPLE_RATE)._filters["high_shelf"]
 
-    our_error = max(abs(mine - pub) for mine, pub
-                    in zip([ours.b0, ours.b1, ours.b2], published_b))
-    reference_error = max(abs(theirs - pub) for theirs, pub
-                          in zip(reference_filter.b, published_b))
+    our_error = max(
+        abs(mine - pub) for mine, pub in zip([ours.b0, ours.b1, ours.b2], published_b)
+    )
+    reference_error = max(
+        abs(theirs - pub) for theirs, pub in zip(reference_filter.b, published_b)
+    )
 
     assert our_error < 1e-9
     assert abs(ours.a2 - published_a2) < 1e-9

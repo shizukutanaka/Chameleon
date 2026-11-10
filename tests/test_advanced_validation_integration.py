@@ -37,6 +37,7 @@ def _write_wav_with_payload(path: Path, payload: bytes) -> Path:
 
 # --- 1. real WAV passes -----------------------------------------------------
 
+
 def test_real_wav_is_valid(tmp_path):
     wav = write_sine_wave(tmp_path / "tone.wav")
     result = DeepFileInspector().validate_for_processing(wav)
@@ -55,6 +56,7 @@ def test_real_wav_survives_filter(tmp_path):
 
 
 # --- 2. disguised non-WAV is rejected ---------------------------------------
+
 
 def test_disguised_executable_is_rejected(tmp_path):
     for name, magic in (
@@ -86,6 +88,7 @@ def test_disguised_executable_is_filtered_out(tmp_path):
 
 # --- 3. false-positive guard ------------------------------------------------
 
+
 def test_real_wav_with_suspicious_payload_still_passes(tmp_path):
     """Bytes that look like code inside the audio payload are audio.
 
@@ -100,8 +103,9 @@ def test_real_wav_with_suspicious_payload_still_passes(tmp_path):
     )
     result = DeepFileInspector().validate_for_processing(wav)
     assert result.is_valid, result.errors
-    assert not any("Suspicious pattern" in w for w in result.warnings), (
-        "sample data was reported as injected code")
+    assert not any(
+        "Suspicious pattern" in w for w in result.warnings
+    ), "sample data was reported as injected code"
 
 
 def test_suspicious_payload_wav_survives_filter(tmp_path):
@@ -115,6 +119,7 @@ def test_suspicious_payload_wav_survives_filter(tmp_path):
 
 
 # --- method contract --------------------------------------------------------
+
 
 def test_validate_for_processing_skips_checksum(tmp_path):
     wav = write_sine_wave(tmp_path / "tone.wav")
@@ -132,8 +137,15 @@ def test_sanitize_preserves_data_after_odd_sized_metadata(tmp_path):
     fmt = _st.pack("<HHIIHH", 1, 1, 44100, 88200, 2, 16)
     payload = _st.pack("<4h", 100, 200, 300, 400)
     odd_list = b"LIST" + _st.pack("<I", 5) + b"INFAx" + b"\x00"
-    body = (b"fmt " + _st.pack("<I", 16) + fmt + odd_list
-            + b"data" + _st.pack("<I", len(payload)) + payload)
+    body = (
+        b"fmt "
+        + _st.pack("<I", 16)
+        + fmt
+        + odd_list
+        + b"data"
+        + _st.pack("<I", len(payload))
+        + payload
+    )
     src = tmp_path / "meta.wav"
     src.write_bytes(b"RIFF" + _st.pack("<I", 4 + len(body)) + b"WAVE" + body)
 
@@ -158,7 +170,9 @@ def test_main_block_self_test_writes_no_state_into_the_real_home(tmp_path):
 
     result = subprocess.run(
         [sys.executable, "advanced_validation.py"],
-        capture_output=True, text=True, cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+        cwd=str(repo_root),
         env={**os.environ, "HOME": str(home)},
     )
 
@@ -168,7 +182,8 @@ def test_main_block_self_test_writes_no_state_into_the_real_home(tmp_path):
 
 
 def test_create_manifest_warns_instead_of_silently_dropping_missing(
-        tmp_path, caplog, monkeypatch):
+    tmp_path, caplog, monkeypatch
+):
     """A nonexistent input used to be skipped without a word -- and, being
     absent from the manifest, verify_manifest could never even report it
     'Missing:'. The omission must be visible."""
@@ -210,8 +225,15 @@ def test_sanitize_preserves_data_after_odd_sized_fmt(tmp_path):
 
     fmt = _st.pack("<HHIIHH", 1, 1, 44100, 88200, 2, 16) + b"\x00"
     payload = _st.pack("<4h", 100, 200, 300, 400)
-    body = (b"fmt " + _st.pack("<I", 17) + fmt + b"\x00"
-            + b"data" + _st.pack("<I", len(payload)) + payload)
+    body = (
+        b"fmt "
+        + _st.pack("<I", 17)
+        + fmt
+        + b"\x00"
+        + b"data"
+        + _st.pack("<I", len(payload))
+        + payload
+    )
     src = tmp_path / "oddfmt.wav"
     src.write_bytes(b"RIFF" + _st.pack("<I", 4 + len(body)) + b"WAVE" + body)
 
@@ -228,12 +250,19 @@ def test_inspector_does_not_flag_standard_sample_rates(tmp_path):
     # not a curiosity, and flagging it lands a false claim in the library
     # metadata personal_config persists.
     import struct as _st
+
     inspector = DeepFileInspector()
 
     def _wav_at(rate: int) -> Path:
         fmt = _st.pack("<HHIIHH", 1, 1, rate, rate * 2, 2, 16)
-        body = (b"fmt " + _st.pack("<I", 16) + fmt
-                + b"data" + _st.pack("<I", 4) + b"\x00\x00\x00\x00")
+        body = (
+            b"fmt "
+            + _st.pack("<I", 16)
+            + fmt
+            + b"data"
+            + _st.pack("<I", 4)
+            + b"\x00\x00\x00\x00"
+        )
         path = tmp_path / f"r{rate}.wav"
         path.write_bytes(b"RIFF" + _st.pack("<I", 4 + len(body)) + b"WAVE" + body)
         return path

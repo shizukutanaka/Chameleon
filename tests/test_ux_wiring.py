@@ -59,6 +59,7 @@ def test_format_file_size_rejects_non_finite():
     a finite-looking label for a value that is not finite."""
     import pytest
     import ux_improvements
+
     with pytest.raises(ValueError, match="finite"):
         ux_improvements.format_file_size(float("inf"))
     with pytest.raises(ValueError, match="finite"):
@@ -69,6 +70,7 @@ def test_format_file_size_rejects_non_finite():
 
 def test_format_file_size_still_formats_real_sizes():
     import ux_improvements
+
     assert ux_improvements.format_file_size(0) == "0.0 B"
     assert ux_improvements.format_file_size(1024) == "1.0 KB"
     assert ux_improvements.format_file_size(2**50) == "1.0 PB"

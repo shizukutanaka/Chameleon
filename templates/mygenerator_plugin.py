@@ -6,6 +6,7 @@ Generated plugin template
 from typing import List, Dict, Any
 from plugin_system import AudioGeneratorPlugin, PluginMetadata
 
+
 class MyGeneratorPlugin(AudioGeneratorPlugin):
     """
     MyGenerator - A Chameleon audio processing plugin
@@ -25,9 +26,9 @@ class MyGeneratorPlugin(AudioGeneratorPlugin):
                     "default": 1.0,
                     "min": 0.0,
                     "max": 2.0,
-                    "description": "Gain level"
+                    "description": "Gain level",
                 }
-            }
+            },
         )
 
     def initialize(self, config: Dict[str, Any]) -> bool:
@@ -42,18 +43,22 @@ class MyGeneratorPlugin(AudioGeneratorPlugin):
         # TODO: Add cleanup code here
         pass
 
-    def generate_audio(self, duration: float, sample_rate: int, **params) -> List[float]:
+    def generate_audio(
+        self, duration: float, sample_rate: int, **params
+    ) -> List[float]:
         """Generate audio data"""
         # TODO: Implement your audio generator here
         # Example: sine wave
         import math
-        frequency = params.get('frequency', 440.0)
+
+        frequency = params.get("frequency", 440.0)
         samples = []
         for i in range(int(duration * sample_rate)):
             t = i / sample_rate
             sample = math.sin(2 * math.pi * frequency * t)
             samples.append(sample)
         return samples
+
 
 # Plugin entry point
 def create_plugin():

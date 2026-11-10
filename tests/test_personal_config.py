@@ -37,25 +37,28 @@ def config_path(tmp_path):
 
 # --- defaults -------------------------------------------------------------
 
+
 def test_defaults_are_populated_by_post_init():
     config = personal_config.PersonalConfig()
 
     # Declared as None on the dataclass and filled in by __post_init__; a
     # regression here gives every caller a None where a list is expected.
-    assert config.supported_formats == ['.wav', '.wave']
-    assert config.favorite_operations == ['normalize', 'analyze', 'denoise']
+    assert config.supported_formats == [".wav", ".wave"]
+    assert config.favorite_operations == ["normalize", "analyze", "denoise"]
 
 
 def test_defaults_match_the_charters_wav_only_scope():
     # CHARTER.md §3: the dependency-free product is honestly WAV-only.
-    assert set(personal_config.PersonalConfig().supported_formats) == {'.wav', '.wave'}
+    assert set(personal_config.PersonalConfig().supported_formats) == {".wav", ".wave"}
 
 
 # --- round trip -----------------------------------------------------------
 
+
 def test_saving_then_loading_returns_the_same_settings(config_path):
     original = personal_config.PersonalConfig(
-        audio_library="/tmp/library", performance_mode="fast", auto_backup=False)
+        audio_library="/tmp/library", performance_mode="fast", auto_backup=False
+    )
     original.save(config_path)
 
     assert personal_config.PersonalConfig.load(config_path) == original
@@ -81,16 +84,17 @@ def test_save_creates_the_parent_directory(tmp_path):
 
 # --- tolerating other versions' files ------------------------------------
 
-def test_an_unrecognised_setting_is_ignored_not_fatal(
-        config_path, caplog, monkeypatch):
-    config_path.write_text(json.dumps(
-        {"audio_library": "/tmp/keep-me", "setting_from_the_future": True}))
+
+def test_an_unrecognised_setting_is_ignored_not_fatal(config_path, caplog, monkeypatch):
+    config_path.write_text(
+        json.dumps({"audio_library": "/tmp/keep-me", "setting_from_the_future": True})
+    )
 
     monkeypatch.setattr(logging.getLogger("chameleon"), "propagate", True)
     config = personal_config.PersonalConfig.load(config_path)
 
-    assert config.audio_library == "/tmp/keep-me"      # the known key survives
-    assert "setting_from_the_future" in caplog.text     # and the user is told
+    assert config.audio_library == "/tmp/keep-me"  # the known key survives
+    assert "setting_from_the_future" in caplog.text  # and the user is told
 
 
 def test_a_partial_config_falls_back_to_defaults_per_field(config_path):
@@ -99,7 +103,7 @@ def test_a_partial_config_falls_back_to_defaults_per_field(config_path):
     config = personal_config.PersonalConfig.load(config_path)
 
     assert config.performance_mode == "safe"
-    assert config.supported_formats == ['.wav', '.wave']
+    assert config.supported_formats == [".wav", ".wave"]
 
 
 def test_malformed_json_names_the_file_and_says_what_to_do(config_path):
@@ -142,9 +146,13 @@ def test_a_directory_at_the_config_path_is_a_clear_error(tmp_path):
     assert "remove" in message.lower()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason=(
-    "os.chmod(0o000) on Windows only sets the read-only attribute, "
-    "which does not block reads -- the file stays readable"))
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason=(
+        "os.chmod(0o000) on Windows only sets the read-only attribute, "
+        "which does not block reads -- the file stays readable"
+    ),
+)
 def test_an_unreadable_config_file_is_a_clear_error(config_path):
     config_path.write_text("{}")
     config_path.chmod(0o000)
@@ -157,12 +165,14 @@ def test_an_unreadable_config_file_is_a_clear_error(config_path):
 
 # --- library manager ------------------------------------------------------
 
+
 @pytest.fixture
 def manager(tmp_path):
     config = personal_config.PersonalConfig(audio_library=str(tmp_path / "library"))
     (tmp_path / "library").mkdir()
     instance = personal_config.PersonalLibraryManager.__new__(
-        personal_config.PersonalLibraryManager)
+        personal_config.PersonalLibraryManager
+    )
     instance.config = config
     instance.library_path = Path(config.audio_library)
     instance.db_path = tmp_path / "library.json"
@@ -179,7 +189,8 @@ def test_playlists_created_at_different_times_get_different_timestamps(manager):
 
     # The old implementation returned the home directory's mtime for both.
     from datetime import datetime
-    datetime.fromisoformat(created_first)      # parses as a real timestamp
+
+    datetime.fromisoformat(created_first)  # parses as a real timestamp
     assert created_first <= created_second
 
 
@@ -188,7 +199,9 @@ def test_a_playlist_keeps_its_files(manager):
 
     assert manager.library_db["playlists"]["mix"]["files"] == ["a.wav", "b.wav"]
     assert json.loads(manager.db_path.read_text())["playlists"]["mix"]["files"] == [
-        "a.wav", "b.wav"]
+        "a.wav",
+        "b.wav",
+    ]
 
 
 def test_tags_are_added_to_matching_files_only(manager):
@@ -202,7 +215,9 @@ def test_tags_are_added_to_matching_files_only(manager):
 
     assert manager.library_db["files"]["drums/kick.wav"]["tags"] == ["percussion"]
     assert set(manager.library_db["files"]["drums/snare.wav"]["tags"]) == {
-        "existing", "percussion"}
+        "existing",
+        "percussion",
+    }
     assert manager.library_db["files"]["vocals/lead.wav"]["tags"] == []
 
 
@@ -223,7 +238,7 @@ def test_search_matches_filenames_and_tags(manager):
 
     assert manager.search("kick") == ["drums/kick.wav"]
     assert manager.search("percussion") == ["drums/kick.wav"]
-    assert manager.search("VOCALS") == ["vocals/lead.wav"]     # case-insensitive
+    assert manager.search("VOCALS") == ["vocals/lead.wav"]  # case-insensitive
     assert manager.search("nothing here") == []
 
 
@@ -235,12 +250,14 @@ def test_search_does_not_return_duplicates_when_name_and_tag_both_match(manager)
 
 # --- _load_db corrupt-shape recovery --------------------------------------
 
+
 def _manager_with_db(tmp_path, contents: str):
     """A manager whose on-disk db is `contents`, loaded via _load_db."""
     config = personal_config.PersonalConfig(audio_library=str(tmp_path / "library"))
     (tmp_path / "library").mkdir()
     instance = personal_config.PersonalLibraryManager.__new__(
-        personal_config.PersonalLibraryManager)
+        personal_config.PersonalLibraryManager
+    )
     instance.config = config
     instance.library_path = Path(config.audio_library)
     instance.db_path = tmp_path / "library.json"
@@ -263,22 +280,26 @@ def test_load_db_with_an_empty_object_starts_an_empty_library(tmp_path):
     # KeyError("files") on the first call after load.
     instance = _manager_with_db(tmp_path, "{}")
     assert instance.search("anything") == []
-    instance.add_tags("*.wav", ["t"])      # must not raise
+    instance.add_tags("*.wav", ["t"])  # must not raise
     assert instance.library_db["files"] == {}
 
 
-@pytest.mark.parametrize("contents", [
-    '{"files": "oops", "playlists": {}, "tags": {}}',
-    '{"files": {}, "playlists": [], "tags": {}}',
-    '{"files": {}, "playlists": {}, "tags": 42}',
-])
+@pytest.mark.parametrize(
+    "contents",
+    [
+        '{"files": "oops", "playlists": {}, "tags": {}}',
+        '{"files": {}, "playlists": [], "tags": {}}',
+        '{"files": {}, "playlists": {}, "tags": 42}',
+    ],
+)
 def test_load_db_with_a_wrong_typed_section_names_the_file(tmp_path, contents):
     instance_db = tmp_path / "library.json"
     instance_db.write_text(contents)
     config = personal_config.PersonalConfig(audio_library=str(tmp_path / "library"))
     (tmp_path / "library").mkdir()
     instance = personal_config.PersonalLibraryManager.__new__(
-        personal_config.PersonalLibraryManager)
+        personal_config.PersonalLibraryManager
+    )
     instance.config = config
     instance.db_path = instance_db
     with pytest.raises(ValueError) as excinfo:
@@ -290,12 +311,12 @@ def test_load_db_with_non_object_file_records_names_the_file(tmp_path):
     instance_db = tmp_path / "library.json"
     # A record that is not an object used to survive load and crash later:
     # add_tags hit AttributeError on 'str' object has no attribute 'get'.
-    instance_db.write_text(
-        '{"files": {"a.wav": "junk"}, "playlists": {}, "tags": {}}')
+    instance_db.write_text('{"files": {"a.wav": "junk"}, "playlists": {}, "tags": {}}')
     config = personal_config.PersonalConfig(audio_library=str(tmp_path / "library"))
     (tmp_path / "library").mkdir()
     instance = personal_config.PersonalLibraryManager.__new__(
-        personal_config.PersonalLibraryManager)
+        personal_config.PersonalLibraryManager
+    )
     instance.config = config
     instance.db_path = instance_db
     with pytest.raises(ValueError) as excinfo:
@@ -305,12 +326,14 @@ def test_load_db_with_non_object_file_records_names_the_file(tmp_path):
 
 # --- the workflows that admit they are unimplemented ----------------------
 
+
 @pytest.mark.parametrize("workflow", ["podcast_workflow", "music_workflow"])
 def test_placeholder_workflows_raise_and_point_at_the_real_commands(workflow, tmp_path):
     # These used to print step banners and a success line while doing nothing.
     with pytest.raises(NotImplementedError) as excinfo:
         getattr(personal_config.PersonalWorkflow, workflow)(
-            tmp_path / "in.wav", tmp_path / "out")
+            tmp_path / "in.wav", tmp_path / "out"
+        )
 
     assert "chameleon" in str(excinfo.value)
 
@@ -327,6 +350,7 @@ def test_placeholder_workflows_raise_and_point_at_the_real_commands(workflow, tm
 # never written by the documented flow. Both are fixed by having
 # `quick_setup()` call `create_quick_commands` itself and print commands that
 # were run, not guessed at, before being written down here.
+
 
 @pytest.fixture
 def home(tmp_path, monkeypatch):
@@ -376,8 +400,9 @@ def test_quick_setup_only_prints_aliases_it_actually_created(home, capsys):
     defined = set(re.findall(r"^alias ([\w-]+)=", aliases_sh, re.M))
     mentioned = set(re.findall(r"\b(audio-[\w-]+)\b", printed))
     assert mentioned, "expected quick_setup to mention at least one alias"
-    assert mentioned <= defined, (
-        f"quick_setup printed alias(es) it never defined: {mentioned - defined}")
+    assert (
+        mentioned <= defined
+    ), f"quick_setup printed alias(es) it never defined: {mentioned - defined}"
 
 
 def test_the_printed_direct_invocation_uses_a_real_cli_subcommand(home, capsys):
@@ -390,7 +415,9 @@ def test_the_printed_direct_invocation_uses_a_real_cli_subcommand(home, capsys):
 
     repo_root = Path(__file__).resolve().parent.parent
     help_text = subprocess.run(
-        [sys.executable, "main.py", "--help"], capture_output=True, text=True,
+        [sys.executable, "main.py", "--help"],
+        capture_output=True,
+        text=True,
         cwd=str(repo_root),
     ).stdout
     match = re.search(r"\{([a-z,]+)\}", help_text)
@@ -403,13 +430,18 @@ def test_the_printed_direct_invocation_uses_a_real_cli_subcommand(home, capsys):
     for named in re.finditer(r"python main\.py (\w+)", printed):
         assert named.group(1) in real_subcommands, (
             f"quick_setup recommends `python main.py {named.group(1)}`, "
-            "which is not a real subcommand")
+            "which is not a real subcommand"
+        )
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason=(
-    "the documented chain sources ~/.chameleon/aliases.sh through bash; "
-    "on Windows `bash` resolves to the WSL stub, which fails when no "
-    "distribution is installed -- the Windows equivalent is aliases.ps1"))
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason=(
+        "the documented chain sources ~/.chameleon/aliases.sh through bash; "
+        "on Windows `bash` resolves to the WSL stub, which fails when no "
+        "distribution is installed -- the Windows equivalent is aliases.ps1"
+    ),
+)
 def test_the_full_documented_flow_works_end_to_end(tmp_path):
     """The exact chain quick_install.sh promises: run `setup`, source the
     aliases it creates, then use the alias it told you about -- against a
@@ -426,7 +458,9 @@ def test_the_full_documented_flow_works_end_to_end(tmp_path):
 
     setup = subprocess.run(
         [sys.executable, "personal_config.py", "setup"],
-        input="\n\n\n", capture_output=True, text=True,
+        input="\n\n\n",
+        capture_output=True,
+        text=True,
         cwd=str(repo_root),
         # Path.home() consults HOME on POSIX and USERPROFILE on Windows --
         # set both or the wizard writes to the real profile (same pattern
@@ -471,6 +505,7 @@ def test_save_writes_atomically_no_partial_state(tmp_path):
     # sibling temp file + os.replace, so readers see old or new, never
     # a partial file -- and no .tmp is left behind on success.
     from personal_config import PersonalConfig
+
     target = tmp_path / "personal_config.json"
     cfg = PersonalConfig()
     cfg.save(target)
@@ -482,6 +517,7 @@ def test_save_writes_atomically_no_partial_state(tmp_path):
 
 
 # --- backup_workflow verifies the copies, not the sources ------------------
+
 
 def test_backup_workflow_reports_a_corrupted_copy(tmp_path, monkeypatch, capsys):
     # The manifest keys on source paths, so re-verifying it could never fail
@@ -546,11 +582,16 @@ def _run_setup(stdin_data, home):
     # Path.home() consults HOME on POSIX and USERPROFILE on Windows.
     env["HOME"] = str(home)
     env["USERPROFILE"] = str(home)
-    kwargs = {"stdin": subprocess.DEVNULL} if stdin_data is None \
-        else {"input": stdin_data}
+    kwargs = (
+        {"stdin": subprocess.DEVNULL} if stdin_data is None else {"input": stdin_data}
+    )
     return subprocess.run(
         [sys.executable, str(_REPO_ROOT / "personal_config.py"), "setup"],
-        capture_output=True, text=True, env=env, **kwargs)
+        capture_output=True,
+        text=True,
+        env=env,
+        **kwargs,
+    )
 
 
 def test_setup_aborts_cleanly_when_stdin_is_empty(tmp_path):
@@ -563,8 +604,7 @@ def test_setup_aborts_cleanly_when_stdin_is_empty(tmp_path):
     assert "interactive terminal" in result.stderr
     # Refusal before any prompt is answered must not persist a config the
     # user never confirmed.
-    assert not (tmp_path / "home" / ".chameleon"
-                / "personal_config.json").exists()
+    assert not (tmp_path / "home" / ".chameleon" / "personal_config.json").exists()
 
 
 def test_setup_reports_an_unusable_library_path_cleanly(tmp_path):
@@ -578,5 +618,4 @@ def test_setup_reports_an_unusable_library_path_cleanly(tmp_path):
     assert result.returncode != 0
     assert "Traceback" not in result.stderr
     assert "Setup failed" in result.stderr
-    assert not (tmp_path / "home" / ".chameleon"
-                / "personal_config.json").exists()
+    assert not (tmp_path / "home" / ".chameleon" / "personal_config.json").exists()

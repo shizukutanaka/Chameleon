@@ -32,7 +32,8 @@ def _reduction_db(compressor, level_db):
 
 def _compressor(threshold=-20.0, ratio=4.0, knee=6.0):
     config = mastering_chain.CompressorConfig(
-        threshold=threshold, ratio=ratio, knee=knee, makeup_gain=0.0)
+        threshold=threshold, ratio=ratio, knee=knee, makeup_gain=0.0
+    )
     return mastering_chain.Compressor(config, 48000)
 
 

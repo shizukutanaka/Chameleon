@@ -41,6 +41,7 @@ def test_deep_inspector_is_wired_into_core():
 # except). The sync _execute_operation now exists (mirrors the async twin),
 # so these tests assert per-file *success*, not just gathering counts.
 
+
 def test_real_wav_survives_process_directory_gathering(tmp_path):
     write_sine_wave(tmp_path / "tone.wav")
     processor = core.BatchProcessor()
@@ -49,8 +50,11 @@ def test_real_wav_survives_process_directory_gathering(tmp_path):
     results = processor.process_directory(str(tmp_path), "analyze")
 
     assert len(results) == 2
-    per_file = [r for r in results if isinstance(r.data, dict)
-                and r.data.get("operation") == "analyze"]
+    per_file = [
+        r
+        for r in results
+        if isinstance(r.data, dict) and r.data.get("operation") == "analyze"
+    ]
     assert len(per_file) == 1 and per_file[0].success
 
 
@@ -78,6 +82,7 @@ def test_suspicious_payload_wav_survives_process_directory_gathering(tmp_path):
 
 
 # ------------------------------------------- async batch_process_async API --
+
 
 def test_disguised_executable_is_filtered_from_batch_process_async(tmp_path):
     write_sine_wave(tmp_path / "good.wav")
@@ -118,8 +123,9 @@ def test_state_record_keeps_a_bounded_previous_reference(tmp_path):
 
     # State files must not compound: the second record carries no nested
     # copy of the first.
-    files = sorted(state_dir.glob("batch_state_*.json"),
-                   key=lambda p: p.stat().st_mtime)
+    files = sorted(
+        state_dir.glob("batch_state_*.json"), key=lambda p: p.stat().st_mtime
+    )
     assert len(files) == 2
     second = json.loads(files[1].read_text())
     assert "summary" not in second["summary"]["previous_state"]
@@ -129,8 +135,16 @@ def test_previous_reference_compacts_the_payload():
     # The state reference keeps only timestamp + counters from the stored
     # payload; a missing or shapeless payload yields None.
     ref = core.StateRecoveryManager._previous_reference(
-        {"timestamp": "t1", "summary": {"processed": 3, "successful": 2,
-                                        "failed": 1, "previous_state": {"x": 1}}})
+        {
+            "timestamp": "t1",
+            "summary": {
+                "processed": 3,
+                "successful": 2,
+                "failed": 1,
+                "previous_state": {"x": 1},
+            },
+        }
+    )
     assert ref == {"timestamp": "t1", "processed": 3, "successful": 2, "failed": 1}
     assert core.StateRecoveryManager._previous_reference(None) is None
     assert core.StateRecoveryManager._previous_reference({"timestamp": "t"}) is None

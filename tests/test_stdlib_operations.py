@@ -30,7 +30,7 @@ pytestmark = pytest.mark.integration
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-_BLOCKER = textwrap.dedent('''
+_BLOCKER = textwrap.dedent("""
     import sys
     from importlib.abc import MetaPathFinder
     class _Absent(MetaPathFinder):
@@ -39,7 +39,7 @@ _BLOCKER = textwrap.dedent('''
                 raise ModuleNotFoundError(f"No module named {name!r}", name=name)
             return None
     sys.meta_path.insert(0, _Absent())
-''')
+""")
 
 
 @pytest.fixture(scope="module")
@@ -69,7 +69,9 @@ def _write_stereo_wav(path, seconds=2.0, sample_rate=44100, silent_edges=True):
 def _run_cli(blocker_dir, *args):
     return subprocess.run(
         [sys.executable, "main.py", *args],
-        capture_output=True, text=True, cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+        cwd=str(REPO_ROOT),
         env={**os.environ, "PYTHONPATH": str(blocker_dir)},
     )
 
@@ -84,7 +86,8 @@ def test_numpy_really_is_unavailable_in_these_tests(blocker_dir):
     # for the wrong reason.
     result = subprocess.run(
         [sys.executable, "-c", "import numpy"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
         env={**os.environ, "PYTHONPATH": str(blocker_dir)},
     )
     assert result.returncode != 0
@@ -95,8 +98,9 @@ def test_mono_downmix_runs_without_numpy(blocker_dir, tmp_path):
     source = tmp_path / "in.wav"
     _write_stereo_wav(source)
 
-    result = _run_cli(blocker_dir, "process", str(source), "--mono",
-                      "--output-dir", str(tmp_path))
+    result = _run_cli(
+        blocker_dir, "process", str(source), "--mono", "--output-dir", str(tmp_path)
+    )
 
     assert result.returncode == 0, result.stderr
     channels, _ = _wav_info(tmp_path / "in_mono.wav")
@@ -107,8 +111,9 @@ def test_trim_silence_runs_without_numpy(blocker_dir, tmp_path):
     source = tmp_path / "in.wav"
     _write_stereo_wav(source, seconds=2.0)  # 0.25s of silence at each end
 
-    result = _run_cli(blocker_dir, "process", str(source), "--trim",
-                      "--output-dir", str(tmp_path))
+    result = _run_cli(
+        blocker_dir, "process", str(source), "--trim", "--output-dir", str(tmp_path)
+    )
 
     assert result.returncode == 0, result.stderr
     _, duration = _wav_info(tmp_path / "in_trimmed.wav")
@@ -119,8 +124,16 @@ def test_trim_threshold_is_honoured(blocker_dir, tmp_path):
     source = tmp_path / "in.wav"
     _write_stereo_wav(source)
 
-    result = _run_cli(blocker_dir, "process", str(source), "--trim",
-                      "--threshold", "0.02", "--output-dir", str(tmp_path))
+    result = _run_cli(
+        blocker_dir,
+        "process",
+        str(source),
+        "--trim",
+        "--threshold",
+        "0.02",
+        "--output-dir",
+        str(tmp_path),
+    )
 
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "in_trimmed.wav").exists()
@@ -130,8 +143,14 @@ def test_normalize_still_runs_without_numpy(blocker_dir, tmp_path):
     source = tmp_path / "in.wav"
     _write_stereo_wav(source)
 
-    result = _run_cli(blocker_dir, "process", str(source), "--normalize",
-                      "--output-dir", str(tmp_path))
+    result = _run_cli(
+        blocker_dir,
+        "process",
+        str(source),
+        "--normalize",
+        "--output-dir",
+        str(tmp_path),
+    )
 
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "in_normalized.wav").exists()
@@ -152,8 +171,9 @@ def test_batch_accepts_the_stdlib_operations(blocker_dir, tmp_path, operation):
     output = tmp_path / "out"
     output.mkdir()
 
-    result = _run_cli(blocker_dir, "batch", str(tmp_path), operation,
-                      "--output-dir", str(output))
+    result = _run_cli(
+        blocker_dir, "batch", str(tmp_path), operation, "--output-dir", str(output)
+    )
 
     assert result.returncode == 0, result.stderr
 
@@ -164,8 +184,9 @@ def test_operations_needing_numpy_still_say_so(blocker_dir, tmp_path):
     source = tmp_path / "in.wav"
     _write_stereo_wav(source)
 
-    result = _run_cli(blocker_dir, "process", str(source), "--denoise",
-                      "--output-dir", str(tmp_path))
+    result = _run_cli(
+        blocker_dir, "process", str(source), "--denoise", "--output-dir", str(tmp_path)
+    )
 
     combined = result.stdout + result.stderr
     assert "numpy" in combined.lower()
@@ -176,8 +197,15 @@ def test_mono_and_trim_can_be_combined(blocker_dir, tmp_path):
     source = tmp_path / "in.wav"
     _write_stereo_wav(source)
 
-    result = _run_cli(blocker_dir, "process", str(source), "--mono", "--trim",
-                      "--output-dir", str(tmp_path))
+    result = _run_cli(
+        blocker_dir,
+        "process",
+        str(source),
+        "--mono",
+        "--trim",
+        "--output-dir",
+        str(tmp_path),
+    )
 
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "in_mono.wav").exists()
@@ -204,8 +232,9 @@ def test_mono_is_idempotent_on_a_file_that_is_already_mono(blocker_dir, tmp_path
     source = tmp_path / "in.wav"
     _write_mono_wav(source)
 
-    result = _run_cli(blocker_dir, "process", str(source), "--mono",
-                      "--output-dir", str(tmp_path))
+    result = _run_cli(
+        blocker_dir, "process", str(source), "--mono", "--output-dir", str(tmp_path)
+    )
 
     assert result.returncode == 0, result.stderr
     assert "Error" not in result.stdout
@@ -218,7 +247,9 @@ def test_an_already_mono_file_is_copied_unchanged(blocker_dir, tmp_path):
     source = tmp_path / "in.wav"
     _write_mono_wav(source)
 
-    _run_cli(blocker_dir, "process", str(source), "--mono", "--output-dir", str(tmp_path))
+    _run_cli(
+        blocker_dir, "process", str(source), "--mono", "--output-dir", str(tmp_path)
+    )
 
     assert (tmp_path / "in_mono.wav").read_bytes() == source.read_bytes()
 
@@ -230,8 +261,9 @@ def test_a_batch_of_mixed_channel_counts_all_succeeds(blocker_dir, tmp_path):
     output = tmp_path / "out"
     output.mkdir()
 
-    result = _run_cli(blocker_dir, "batch", str(tmp_path), "mono",
-                      "--output-dir", str(output))
+    result = _run_cli(
+        blocker_dir, "batch", str(tmp_path), "mono", "--output-dir", str(output)
+    )
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "2/2" in result.stdout

@@ -35,7 +35,6 @@ pytest.importorskip("scipy")
 
 import audio_restoration
 
-
 SAMPLE_RATE = 44100
 
 
@@ -47,30 +46,40 @@ def _sine(freq, amplitude=0.5, seconds=1.0):
 def _level_db(signal, freq):
     spectrum = np.abs(np.fft.rfft(signal * np.hanning(len(signal))))
     freqs = np.fft.rfftfreq(len(signal), 1 / SAMPLE_RATE)
-    return 20.0 * np.log10(spectrum[np.argmin(np.abs(freqs - freq))] / len(signal) + 1e-20)
+    return 20.0 * np.log10(
+        spectrum[np.argmin(np.abs(freqs - freq))] / len(signal) + 1e-20
+    )
 
 
 # --- the central property -------------------------------------------------
 
-def test_restoring_clean_audio_changes_nothing():
-    restored, _ = audio_restoration.AudioRestorer().restore(_sine(440).copy(), SAMPLE_RATE)
 
-    assert np.abs(restored - _sine(440)).max() == 0.0, (
-        "restoration altered audio that had nothing wrong with it")
+def test_restoring_clean_audio_changes_nothing():
+    restored, _ = audio_restoration.AudioRestorer().restore(
+        _sine(440).copy(), SAMPLE_RATE
+    )
+
+    assert (
+        np.abs(restored - _sine(440)).max() == 0.0
+    ), "restoration altered audio that had nothing wrong with it"
 
 
 # --- reporting what actually ran ------------------------------------------
+
 
 def test_a_step_that_could_not_run_is_reported_as_skipped():
     _, info = audio_restoration.AudioRestorer().restore(_sine(440), SAMPLE_RATE)
 
     listed = set(info["applied_processes"]) | {
-        entry["process"] for entry in info["skipped_processes"]}
+        entry["process"] for entry in info["skipped_processes"]
+    }
     assert "denoising" in listed
 
     if not audio_restoration.HAS_LIBROSA:
         assert "denoising" not in info["applied_processes"]
-        skipped = {entry["process"]: entry["reason"] for entry in info["skipped_processes"]}
+        skipped = {
+            entry["process"]: entry["reason"] for entry in info["skipped_processes"]
+        }
         assert "librosa" in skipped["denoising"]
 
 
@@ -81,7 +90,9 @@ def test_the_librosa_stages_refuse_rather_than_no_op():
     with pytest.raises(RuntimeError, match="librosa"):
         audio_restoration.AdaptiveDenoiser().denoise(_sine(440), SAMPLE_RATE)
     with pytest.raises(RuntimeError, match="librosa"):
-        audio_restoration.SpectralRepairer().repair_gaps(_sine(440), [(100, 200)], SAMPLE_RATE)
+        audio_restoration.SpectralRepairer().repair_gaps(
+            _sine(440), [(100, 200)], SAMPLE_RATE
+        )
 
 
 def test_the_denoiser_refuses_on_stationary_material():
@@ -110,11 +121,13 @@ def test_vinyl_mode_reports_the_same_schema_as_other_modes():
     # denoiser's skip landed under `steps_skipped`/`"step"` instead of
     # `skipped_processes`/`"process"`.
     _, info = audio_restoration.AudioRestorer().restore(
-        _sine(440), SAMPLE_RATE, mode="vinyl")
+        _sine(440), SAMPLE_RATE, mode="vinyl"
+    )
 
     assert "steps_applied" not in info and "steps_skipped" not in info
     assert {"click_removal", "crackle_removal", "hum_removal"} <= set(
-        info["applied_processes"])
+        info["applied_processes"]
+    )
     for entry in info["skipped_processes"]:
         assert "process" in entry and "reason" in entry
 
@@ -122,11 +135,13 @@ def test_vinyl_mode_reports_the_same_schema_as_other_modes():
 def test_no_metric_is_called_snr_unless_it_is_one():
     _, info = audio_restoration.AudioRestorer().restore(_sine(440), SAMPLE_RATE)
 
-    assert "snr_db" not in info["quality_metrics"], (
-        "signal-to-change ratio must not ship under an SNR label")
+    assert (
+        "snr_db" not in info["quality_metrics"]
+    ), "signal-to-change ratio must not ship under an SNR label"
 
 
 # --- hum detection --------------------------------------------------------
+
 
 def test_hum_is_not_detected_in_audio_that_has_none():
     remover = audio_restoration.HumRemover()
@@ -148,7 +163,8 @@ def test_clean_audio_passes_through_the_hum_remover_untouched():
     clean = _sine(440)
 
     assert np.array_equal(
-        audio_restoration.HumRemover().remove_hum(clean.copy(), SAMPLE_RATE), clean)
+        audio_restoration.HumRemover().remove_hum(clean.copy(), SAMPLE_RATE), clean
+    )
 
 
 def test_hum_removal_cuts_the_hum_and_spares_the_music():
@@ -162,17 +178,20 @@ def test_hum_removal_cuts_the_hum_and_spares_the_music():
 
 # --- metrics that cannot blow up -----------------------------------------
 
+
 def test_quiet_residual_metric_survives_input_with_no_quiet_part():
     # np.std of an empty or single-element slice is NaN and raises under the
     # project's -W error::RuntimeWarning DSP gate.
     loud = np.full(100, 0.5)
 
-    assert audio_restoration.VinylRestorer()._calculate_snr_improvement(loud, loud) == 0.0
+    assert (
+        audio_restoration.VinylRestorer()._calculate_snr_improvement(loud, loud) == 0.0
+    )
 
 
 def test_quiet_residual_metric_reports_a_quieter_floor_as_positive():
     rng = np.random.default_rng(0)
-    noisy = rng.standard_normal(10000) * 0.01   # well inside the |x| < 0.1 window
+    noisy = rng.standard_normal(10000) * 0.01  # well inside the |x| < 0.1 window
     quieter = noisy * 0.5
 
     value = audio_restoration.VinylRestorer()._calculate_snr_improvement(noisy, quieter)
@@ -196,13 +215,16 @@ def test_the_quiet_window_is_absolute_and_that_biases_loud_noise_floors():
 
 # --- claims in comments ---------------------------------------------------
 
+
 def test_click_repair_does_not_claim_an_ar_model_it_never_fits():
     import inspect
+
     source = inspect.getsource(audio_restoration.ClickRemover.remove_clicks)
 
     assert "Use autoregressive prediction" not in source
-    assert "surrounding = np.concatenate" not in source, (
-        "the AR-model scaffolding was computed and discarded")
+    assert (
+        "surrounding = np.concatenate" not in source
+    ), "the AR-model scaffolding was computed and discarded"
 
 
 def test_auto_mode_does_not_run_unvetted_detectors():
@@ -217,10 +239,12 @@ def test_auto_mode_does_not_run_unvetted_detectors():
 
     assert "click_removal" not in info["applied_processes"]
     assert "decrackle" not in info["applied_processes"]
-    assert np.abs(restored - noise).max() == 0.0, (
-        "auto restoration rewrote noise it should have left alone")
+    assert (
+        np.abs(restored - noise).max() == 0.0
+    ), "auto restoration rewrote noise it should have left alone"
 
     restorer = audio_restoration.AudioRestorer(
-        audio_restoration.RestorationConfig(click_removal=True))
+        audio_restoration.RestorationConfig(click_removal=True)
+    )
     _, opt_in = restorer.restore(noise, SAMPLE_RATE)
     assert "click_removal" in opt_in["applied_processes"]

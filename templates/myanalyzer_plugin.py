@@ -6,6 +6,7 @@ Generated plugin template
 from typing import List, Dict, Any
 from plugin_system import AudioAnalyzerPlugin, PluginMetadata
 
+
 class MyAnalyzerPlugin(AudioAnalyzerPlugin):
     """
     MyAnalyzer - A Chameleon audio processing plugin
@@ -25,9 +26,9 @@ class MyAnalyzerPlugin(AudioAnalyzerPlugin):
                     "default": 1.0,
                     "min": 0.0,
                     "max": 2.0,
-                    "description": "Gain level"
+                    "description": "Gain level",
                 }
-            }
+            },
         )
 
     def initialize(self, config: Dict[str, Any]) -> bool:
@@ -42,12 +43,15 @@ class MyAnalyzerPlugin(AudioAnalyzerPlugin):
         # TODO: Add cleanup code here
         pass
 
-    def analyze_audio(self, audio_data: List[float], sample_rate: int, **params) -> Dict[str, Any]:
+    def analyze_audio(
+        self, audio_data: List[float], sample_rate: int, **params
+    ) -> Dict[str, Any]:
         """Analyze audio data"""
         # TODO: Implement your audio analysis here
         # Example: simple peak detection
         peak = max(abs(sample) for sample in audio_data) if audio_data else 0.0
         return {"peak_level": peak, "sample_count": len(audio_data)}
+
 
 # Plugin entry point
 def create_plugin():

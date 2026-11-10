@@ -124,14 +124,18 @@ def test_normalize_peak_rejects_non_finite_target():
             continue
         raise AssertionError(f"target_peak={bad} accepted")
     assert spectral_utils.normalize_peak(src, 0.5) == [
-        0.5 if s > 0 else -0.5 for s in src]
+        0.5 if s > 0 else -0.5 for s in src
+    ]
 
 
 def test_apply_spectral_mask_rejects_non_finite_gains():
     # 'gain < 0' let NaN through -- a NaN gain silently NaN'd the block.
     src = [0.5 * math.sin(2 * math.pi * 440 * i / 44100) for i in range(512)]
-    for kw in ({"low_gain": float("nan")}, {"mid_gain": float("inf")},
-               {"high_gain": float("nan")}):
+    for kw in (
+        {"low_gain": float("nan")},
+        {"mid_gain": float("inf")},
+        {"high_gain": float("nan")},
+    ):
         try:
             spectral_utils.apply_spectral_mask(src, 44100, **kw)
         except ValueError:
@@ -168,7 +172,8 @@ def test_apply_spectral_mask_rejects_bad_sample_rate():
         raise AssertionError(f"sample_rate={bad} accepted")
     # A valid rate still passes and applies per-band gains.
     out = spectral_utils.apply_spectral_mask(
-        src, 44100, low_gain=0.0, mid_gain=1.0, high_gain=1.0)
+        src, 44100, low_gain=0.0, mid_gain=1.0, high_gain=1.0
+    )
     assert len(out) == len(src)
 
 
@@ -182,10 +187,8 @@ def test_spectral_helpers_reject_non_finite_samples():
     calls = [
         lambda bad: spectral_utils.analyze_spectrum([0.1, bad, 0.5], 44100),
         lambda bad: spectral_utils.normalize_peak([0.1, bad, 0.5]),
-        lambda bad: spectral_utils.linear_resample(
-            [0.1, bad, 0.5], 8000, 16000),
-        lambda bad: spectral_utils.apply_spectral_mask(
-            [0.1, bad, 0.3, 0.5], 44100),
+        lambda bad: spectral_utils.linear_resample([0.1, bad, 0.5], 8000, 16000),
+        lambda bad: spectral_utils.apply_spectral_mask([0.1, bad, 0.3, 0.5], 44100),
         lambda bad: spectral_utils.sliding_window_rms([0.1, bad, 0.5], 2),
     ]
     for call in calls:

@@ -28,9 +28,11 @@ except ImportError:  # pragma: no cover - platform specific
 
 from security_validator import SecurityValidator, SecurityConfig, SecurityError
 
+
 @dataclass
 class PluginMetadata:
     """Plugin metadata and information"""
+
     name: str
     version: str
     author: str
@@ -44,6 +46,7 @@ class PluginMetadata:
     parameters: Dict[str, Dict] = field(default_factory=dict)
     enabled: bool = True
 
+
 # Top-level module names a plugin may import under the sandbox.
 # Deny-by-default: a blocklist names what is dangerous and silently admits
 # everything not yet named -- `import pathlib` bypassed the audit and
@@ -52,38 +55,81 @@ class PluginMetadata:
 # are admitted; anything filesystem-, network-, process- or
 # introspection-capable (pathlib, shutil, io, wave, sqlite3, logging
 # file handlers, gc, inspect, threading, ctypes, ...) fails the audit.
-DEFAULT_ALLOWED_IMPORTS: FrozenSet[str] = frozenset({
-    # the plugin framework itself
-    "plugin_system",
-    # future annotations / typing helpers
-    "__future__", "typing", "dataclasses", "enum", "abc", "types",
-    # containers & functional plumbing
-    "collections", "itertools", "functools", "operator", "heapq",
-    "bisect", "array", "queue", "copy", "pprint", "reprlib",
-    "contextlib", "weakref",
-    # text & data (no fs capability of their own)
-    "string", "textwrap", "re", "difflib", "unicodedata", "json",
-    "struct", "binascii", "base64", "csv", "html",
-    # math & numbers
-    "math", "cmath", "numbers", "statistics", "fractions",
-    "decimal", "random",
-    # clocks (runaway plugins are still bounded by the sandbox timeout)
-    "time", "datetime", "calendar", "zoneinfo",
-    # misc stdlib with no fs/net/process/introspection surface.
-    # `traceback` is deliberately absent: walk_stack()/walk_tb() hand back
-    # live host frames — exactly the introspection surface this allowlist
-    # is defined to exclude (verified: a probe plugin rode walk_stack to
-    # f_globals and then to exec).
-    "warnings", "hashlib", "hmac", "secrets",
-    # the documented audio plugin domain
-    "numpy", "scipy", "soundfile", "librosa",
-})
+DEFAULT_ALLOWED_IMPORTS: FrozenSet[str] = frozenset(
+    {
+        # the plugin framework itself
+        "plugin_system",
+        # future annotations / typing helpers
+        "__future__",
+        "typing",
+        "dataclasses",
+        "enum",
+        "abc",
+        "types",
+        # containers & functional plumbing
+        "collections",
+        "itertools",
+        "functools",
+        "operator",
+        "heapq",
+        "bisect",
+        "array",
+        "queue",
+        "copy",
+        "pprint",
+        "reprlib",
+        "contextlib",
+        "weakref",
+        # text & data (no fs capability of their own)
+        "string",
+        "textwrap",
+        "re",
+        "difflib",
+        "unicodedata",
+        "json",
+        "struct",
+        "binascii",
+        "base64",
+        "csv",
+        "html",
+        # math & numbers
+        "math",
+        "cmath",
+        "numbers",
+        "statistics",
+        "fractions",
+        "decimal",
+        "random",
+        # clocks (runaway plugins are still bounded by the sandbox timeout)
+        "time",
+        "datetime",
+        "calendar",
+        "zoneinfo",
+        # misc stdlib with no fs/net/process/introspection surface.
+        # `traceback` is deliberately absent: walk_stack()/walk_tb() hand back
+        # live host frames — exactly the introspection surface this allowlist
+        # is defined to exclude (verified: a probe plugin rode walk_stack to
+        # f_globals and then to exec).
+        "warnings",
+        "hashlib",
+        "hmac",
+        "secrets",
+        # the documented audio plugin domain
+        "numpy",
+        "scipy",
+        "soundfile",
+        "librosa",
+    }
+)
 
 
 @dataclass
 class PluginConfig:
     """Plugin system configuration"""
-    plugin_directories: List[str] = field(default_factory=lambda: ["plugins", "~/.chameleon/plugins"])
+
+    plugin_directories: List[str] = field(
+        default_factory=lambda: ["plugins", "~/.chameleon/plugins"]
+    )
     auto_discover: bool = True
     sandbox_mode: bool = True
     max_execution_time: float = 30.0
@@ -93,7 +139,9 @@ class PluginConfig:
     # Extend only deliberately -- every name added is a capability handed
     # to unaudited-in-depth code (this is a static audit, not a boundary).
     allowed_imports: FrozenSet[str] = field(
-        default_factory=lambda: DEFAULT_ALLOWED_IMPORTS)
+        default_factory=lambda: DEFAULT_ALLOWED_IMPORTS
+    )
+
 
 class PluginInterface(ABC):
     """Base interface for all Chameleon plugins"""
@@ -126,33 +174,45 @@ class PluginInterface(ABC):
         """Get plugin parameter definitions"""
         return self.metadata.parameters if self.metadata else {}
 
+
 class AudioEffectPlugin(PluginInterface):
     """Base class for audio effect plugins"""
 
     @abstractmethod
-    def process_audio(self, audio_data: List[float], sample_rate: int, **params) -> List[float]:
+    def process_audio(
+        self, audio_data: List[float], sample_rate: int, **params
+    ) -> List[float]:
         """Process audio data and return modified audio"""
         pass
 
-    def process_realtime(self, audio_chunk: List[float], sample_rate: int, **params) -> List[float]:
+    def process_realtime(
+        self, audio_chunk: List[float], sample_rate: int, **params
+    ) -> List[float]:
         """Process audio in real-time (default: use process_audio)"""
         return self.process_audio(audio_chunk, sample_rate, **params)
+
 
 class AudioAnalyzerPlugin(PluginInterface):
     """Base class for audio analyzer plugins"""
 
     @abstractmethod
-    def analyze_audio(self, audio_data: List[float], sample_rate: int, **params) -> Dict[str, Any]:
+    def analyze_audio(
+        self, audio_data: List[float], sample_rate: int, **params
+    ) -> Dict[str, Any]:
         """Analyze audio and return analysis results"""
         pass
+
 
 class AudioGeneratorPlugin(PluginInterface):
     """Base class for audio generator plugins"""
 
     @abstractmethod
-    def generate_audio(self, duration: float, sample_rate: int, **params) -> List[float]:
+    def generate_audio(
+        self, duration: float, sample_rate: int, **params
+    ) -> List[float]:
         """Generate audio data"""
         pass
+
 
 class UtilityPlugin(PluginInterface):
     """Base class for utility plugins"""
@@ -162,14 +222,23 @@ class UtilityPlugin(PluginInterface):
         """Execute utility function"""
         pass
 
+
 class PluginSandbox:
     """Security sandbox for plugin execution"""
 
     def __init__(self, config: PluginConfig):
         self.config = config
         self.restricted_modules = {
-            'os', 'sys', 'subprocess', 'socket', 'urllib', 'requests',
-            'ftplib', 'smtplib', 'telnetlib', 'xmlrpc'
+            "os",
+            "sys",
+            "subprocess",
+            "socket",
+            "urllib",
+            "requests",
+            "ftplib",
+            "smtplib",
+            "telnetlib",
+            "xmlrpc",
         }
         self.allowed_modules = set(config.allowed_imports)
         self.logger = logging.getLogger("plugin_sandbox")
@@ -186,7 +255,11 @@ class PluginSandbox:
 
         try:
             soft_before, hard_before = resource.getrlimit(resource.RLIMIT_AS)
-        except (ValueError, AttributeError, OSError):  # pragma: no cover - platform dependent
+        except (
+            ValueError,
+            AttributeError,
+            OSError,
+        ):  # pragma: no cover - platform dependent
             yield
             return
 
@@ -206,7 +279,11 @@ class PluginSandbox:
             # restore below failed EPERM. Keeping the hard limit as found
             # makes the restore legal for an unprivileged caller.
             resource.setrlimit(resource.RLIMIT_AS, (target_limit, hard_before))
-        except (ValueError, resource.error, OSError) as exc:  # pragma: no cover - platform dependent
+        except (
+            ValueError,
+            resource.error,
+            OSError,
+        ) as exc:  # pragma: no cover - platform dependent
             self.logger.warning("Failed to apply memory limit: %s", exc)
             yield
             return
@@ -217,7 +294,9 @@ class PluginSandbox:
             try:
                 resource.setrlimit(resource.RLIMIT_AS, (soft_before, hard_before))
             except Exception:  # pragma: no cover - best effort rollback
-                self.logger.warning("Unable to restore memory limit after sandbox execution")
+                self.logger.warning(
+                    "Unable to restore memory limit after sandbox execution"
+                )
 
     def is_safe_import(self, module_name: str) -> bool:
         """Check if module import is safe"""
@@ -241,7 +320,7 @@ class PluginSandbox:
 
         max_time = max(0.0, float(self.config.max_execution_time))
 
-        if os.name != 'nt':
+        if os.name != "nt":
             try:
                 import signal
             except ImportError:  # pragma: no cover - extremely rare
@@ -254,8 +333,12 @@ class PluginSandbox:
         # Off-main-thread callers take the thread-join fallback below.
         on_main_thread = threading.current_thread() is threading.main_thread()
 
-        if (signal is not None and hasattr(signal, 'SIGALRM')
-                and max_time > 0 and on_main_thread):
+        if (
+            signal is not None
+            and hasattr(signal, "SIGALRM")
+            and max_time > 0
+            and on_main_thread
+        ):
             previous_handler = signal.getsignal(signal.SIGALRM)
 
             def timeout_handler(signum, frame):  # pragma: no cover - requires timing
@@ -283,7 +366,9 @@ class PluginSandbox:
             else:
                 result_queue.put((True, value))
 
-        worker = threading.Thread(target=target, name="plugin-sandbox-exec", daemon=True)
+        worker = threading.Thread(
+            target=target, name="plugin-sandbox-exec", daemon=True
+        )
         worker.start()
 
         if max_time > 0:
@@ -293,7 +378,8 @@ class PluginSandbox:
 
         if worker.is_alive():
             self.logger.error(
-                "Plugin execution exceeded timeout of %.2f seconds; continuing with failure", max_time
+                "Plugin execution exceeded timeout of %.2f seconds; continuing with failure",
+                max_time,
             )
             raise TimeoutError("Plugin execution timed out")
 
@@ -307,14 +393,13 @@ class PluginSandbox:
 
         raise payload
 
+
 class PluginLoader:
     """Plugin loading and management system"""
 
-    _FILE_VALIDATOR = SecurityValidator(
-        SecurityConfig(allowed_extensions={'.py'})
-    )
-    _NAME_PATTERN = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$')
-    _SEMVER_PATTERN = re.compile(r'^(\d+)\.(\d+)\.(\d+)(?:[-+][A-Za-z0-9.-]+)?$')
+    _FILE_VALIDATOR = SecurityValidator(SecurityConfig(allowed_extensions={".py"}))
+    _NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+    _SEMVER_PATTERN = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:[-+][A-Za-z0-9.-]+)?$")
 
     def __init__(self, config: PluginConfig):
         self.config = config
@@ -329,18 +414,22 @@ class PluginLoader:
         try:
             resolved = expanded.resolve(strict=False)
         except Exception as exc:
-            self.logger.warning(f"Unable to resolve plugin directory {directory}: {exc}")
+            self.logger.warning(
+                f"Unable to resolve plugin directory {directory}: {exc}"
+            )
             return None
 
         if not resolved.is_absolute():
             resolved = resolved.parent.resolve(strict=False) / resolved.name
 
-        if os.name == 'posix':
+        if os.name == "posix":
             try:
                 resolved.mkdir(parents=True, exist_ok=True)
                 os.chmod(resolved, 0o750)
             except PermissionError:
-                self.logger.warning(f"Insufficient permissions to secure directory {resolved}")
+                self.logger.warning(
+                    f"Insufficient permissions to secure directory {resolved}"
+                )
         else:
             resolved.mkdir(parents=True, exist_ok=True)
 
@@ -384,7 +473,9 @@ class PluginLoader:
                     self.logger.info(f"Loading cached plugin: {cached_info['name']}")
 
             # Load module
-            spec = importlib.util.spec_from_file_location("plugin_module", str(validated_path))
+            spec = importlib.util.spec_from_file_location(
+                "plugin_module", str(validated_path)
+            )
             module = importlib.util.module_from_spec(spec)
 
             # Security check for imports
@@ -399,9 +490,11 @@ class PluginLoader:
             # Find plugin classes
             plugin_classes = []
             for name, obj in inspect.getmembers(module, inspect.isclass):
-                if (issubclass(obj, PluginInterface) and
-                    obj != PluginInterface and
-                    not inspect.isabstract(obj)):
+                if (
+                    issubclass(obj, PluginInterface)
+                    and obj != PluginInterface
+                    and not inspect.isabstract(obj)
+                ):
                     plugin_classes.append(obj)
 
             if not plugin_classes:
@@ -435,7 +528,7 @@ class PluginLoader:
                     "name": metadata.name,
                     "version": metadata.version,
                     "valid": True,
-                    "loaded_time": time.time()
+                    "loaded_time": time.time(),
                 }
 
             self.plugins[metadata.name] = plugin_instance
@@ -445,7 +538,7 @@ class PluginLoader:
                 metadata.name,
                 metadata.version,
                 plugin_hash,
-                load_duration
+                load_duration,
             )
 
             return plugin_instance
@@ -467,7 +560,7 @@ class PluginLoader:
     def _calculate_file_hash(self, file_path: Path) -> str:
         """Calculate hash of plugin file for caching"""
         hasher = hashlib.sha256()
-        with open(file_path, 'rb') as f:
+        with open(file_path, "rb") as f:
             for chunk in iter(lambda: f.read(65536), b""):
                 hasher.update(chunk)
         return hasher.hexdigest()
@@ -477,61 +570,106 @@ class PluginLoader:
     # caught by scanning ast.Import/ast.ImportFrom alone. Verified empirically:
     # a plugin containing `__import__("os")` with zero `import` statements
     # previously passed this check and ran unrestricted at module-exec time.
-    _DANGEROUS_CALL_NAMES = frozenset({
-        "__import__", "eval", "exec", "compile", "execfile",
-        # globals()/locals()/vars() hand back a live namespace dict, from
-        # which __builtins__ is reachable without any attribute access the
-        # walk below can see.
-        "globals", "locals", "vars",
-        # Builtins that need no import to escape the sandbox. open() reads
-        # and writes arbitrary files (verified: a plugin wrote /tmp/P5 via
-        # a bare open() call); input() hijacks the prompt; breakpoint()
-        # drops into pdb -- an interactive interpreter on the host;
-        # exit()/quit() kill the host interpreter outright.
-        "open", "input", "breakpoint", "exit", "quit", "help",
-        # Access-by-opaque-name primitives: every argument they take is an
-        # attribute name the audit cannot read in context (verified:
-        # operator.attrgetter("__class__.__subclasses__") reached os.system
-        # with zero flagged constructs). Denied outright, as with computed
-        # getattr names.
-        "attrgetter", "itemgetter", "methodcaller",
-        # Code-execution constructors on the allowlisted `types` module:
-        # FunctionType/CodeType build a runnable function from raw bytecode
-        # with no compile() call (verified end to end).
-        "FunctionType", "CodeType", "MethodType",
-    })
-    _DANGEROUS_REF_NAMES = _DANGEROUS_CALL_NAMES | frozenset({
-        # Referenced-but-not-called is the aliasing bypass: `e = eval` or
-        # `getattr(__builtins__, "ev" + "al")` never puts the name in Call
-        # position, so a Call-only check misses it entirely.
-        "__builtins__",
-    })
-    _DANGEROUS_ATTR_CALLS = frozenset({
-        ("importlib", "import_module"),
-        ("importlib", "__import__"),
-        ("importlib.util", "spec_from_file_location"),
-        ("importlib.util", "module_from_spec"),
-    })
+    _DANGEROUS_CALL_NAMES = frozenset(
+        {
+            "__import__",
+            "eval",
+            "exec",
+            "compile",
+            "execfile",
+            # globals()/locals()/vars() hand back a live namespace dict, from
+            # which __builtins__ is reachable without any attribute access the
+            # walk below can see.
+            "globals",
+            "locals",
+            "vars",
+            # Builtins that need no import to escape the sandbox. open() reads
+            # and writes arbitrary files (verified: a plugin wrote /tmp/P5 via
+            # a bare open() call); input() hijacks the prompt; breakpoint()
+            # drops into pdb -- an interactive interpreter on the host;
+            # exit()/quit() kill the host interpreter outright.
+            "open",
+            "input",
+            "breakpoint",
+            "exit",
+            "quit",
+            "help",
+            # Access-by-opaque-name primitives: every argument they take is an
+            # attribute name the audit cannot read in context (verified:
+            # operator.attrgetter("__class__.__subclasses__") reached os.system
+            # with zero flagged constructs). Denied outright, as with computed
+            # getattr names.
+            "attrgetter",
+            "itemgetter",
+            "methodcaller",
+            # Code-execution constructors on the allowlisted `types` module:
+            # FunctionType/CodeType build a runnable function from raw bytecode
+            # with no compile() call (verified end to end).
+            "FunctionType",
+            "CodeType",
+            "MethodType",
+        }
+    )
+    _DANGEROUS_REF_NAMES = _DANGEROUS_CALL_NAMES | frozenset(
+        {
+            # Referenced-but-not-called is the aliasing bypass: `e = eval` or
+            # `getattr(__builtins__, "ev" + "al")` never puts the name in Call
+            # position, so a Call-only check misses it entirely.
+            "__builtins__",
+        }
+    )
+    _DANGEROUS_ATTR_CALLS = frozenset(
+        {
+            ("importlib", "import_module"),
+            ("importlib", "__import__"),
+            ("importlib.util", "spec_from_file_location"),
+            ("importlib.util", "module_from_spec"),
+        }
+    )
     # Attribute names no plugin may read, by any access path — the ast walk
     # checks `.name`, getattr() literal args, and from-import bindings
     # against this one list so the three paths cannot drift apart (the
     # previous six-name getattr subset let "f_globals" through).
-    _DANGEROUS_ATTR_NAMES = frozenset({
-        "__globals__", "__builtins__", "__subclasses__", "__mro__",
-        "__bases__", "__base__", "__dict__", "__class__",
-        "__code__", "__getattribute__", "__func__", "__self__",
-        # frame access: e.__traceback__.tb_frame.f_globals needs
-        # no import and reaches __builtins__ (verified: a probe
-        # plugin passed audit with exactly this chain)
-        "__traceback__", "__context__", "__cause__", "tb_frame",
-        "tb_next", "f_globals", "f_builtins", "f_locals",
-        "f_back", "gi_frame", "cr_frame", "ag_frame",
-        # The string-name access primitives are attribute names too —
-        # `operator.attrgetter` must be denied as an attribute so that a
-        # non-call reference (`f = operator.attrgetter`) is caught.
-        "attrgetter", "itemgetter", "methodcaller",
-        "FunctionType", "CodeType", "MethodType",
-    })
+    _DANGEROUS_ATTR_NAMES = frozenset(
+        {
+            "__globals__",
+            "__builtins__",
+            "__subclasses__",
+            "__mro__",
+            "__bases__",
+            "__base__",
+            "__dict__",
+            "__class__",
+            "__code__",
+            "__getattribute__",
+            "__func__",
+            "__self__",
+            # frame access: e.__traceback__.tb_frame.f_globals needs
+            # no import and reaches __builtins__ (verified: a probe
+            # plugin passed audit with exactly this chain)
+            "__traceback__",
+            "__context__",
+            "__cause__",
+            "tb_frame",
+            "tb_next",
+            "f_globals",
+            "f_builtins",
+            "f_locals",
+            "f_back",
+            "gi_frame",
+            "cr_frame",
+            "ag_frame",
+            # The string-name access primitives are attribute names too —
+            # `operator.attrgetter` must be denied as an attribute so that a
+            # non-call reference (`f = operator.attrgetter`) is caught.
+            "attrgetter",
+            "itemgetter",
+            "methodcaller",
+            "FunctionType",
+            "CodeType",
+            "MethodType",
+        }
+    )
 
     def _check_module_safety(self, plugin_path: Path):
         """Check if plugin uses safe imports.
@@ -546,7 +684,7 @@ class PluginLoader:
         adversary — do not claim otherwise.
         """
         try:
-            with open(plugin_path, 'r', encoding='utf-8') as f:
+            with open(plugin_path, "r", encoding="utf-8") as f:
                 source = f.read()
                 parsed = ast.parse(source, filename=str(plugin_path))
         except SyntaxError as exc:
@@ -555,11 +693,11 @@ class PluginLoader:
         for node in ast.walk(parsed):
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    module_name = alias.name.split('.')[0]
+                    module_name = alias.name.split(".")[0]
                     if not self.sandbox.is_safe_import(module_name):
                         raise SecurityError(f"Unsafe import detected: {module_name}")
             elif isinstance(node, ast.ImportFrom):
-                module_name = (node.module or '').split('.')[0]
+                module_name = (node.module or "").split(".")[0]
                 if module_name and not self.sandbox.is_safe_import(module_name):
                     raise SecurityError(f"Unsafe import detected: {module_name}")
                 for alias in node.names:
@@ -568,9 +706,11 @@ class PluginLoader:
                     # fresh identifier the walk can no longer see (verified:
                     # this form reached os.system); '*' imports every name
                     # invisibly, audited or not.
-                    if (alias.name == "*"
-                            or alias.name in self._DANGEROUS_CALL_NAMES
-                            or alias.name in self._DANGEROUS_ATTR_NAMES):
+                    if (
+                        alias.name == "*"
+                        or alias.name in self._DANGEROUS_CALL_NAMES
+                        or alias.name in self._DANGEROUS_ATTR_NAMES
+                    ):
                         raise SecurityError(
                             f"Unsafe import detected: {alias.name} is a "
                             f"denied name from {module_name or 'the module'}"
@@ -600,8 +740,10 @@ class PluginLoader:
                         raise SecurityError(
                             f"Unsafe call detected: {base}.{func.attr}() can bypass the import sandbox"
                         )
-            elif (isinstance(node, ast.Attribute)
-                    and node.attr in self._DANGEROUS_ATTR_NAMES):
+            elif (
+                isinstance(node, ast.Attribute)
+                and node.attr in self._DANGEROUS_ATTR_NAMES
+            ):
                 raise SecurityError(
                     f"Unsafe attribute access detected: .{node.attr} can be used for sandbox escape"
                 )
@@ -623,13 +765,15 @@ class PluginLoader:
 
     def _validate_plugin_path(self, plugin_path: str) -> Path:
         try:
-            return self._FILE_VALIDATOR.validate_file_path(plugin_path, operation='read')
+            return self._FILE_VALIDATOR.validate_file_path(
+                plugin_path, operation="read"
+            )
         except SecurityError as exc:
             raise SecurityError(f"Plugin path rejected: {exc}") from exc
 
     def _is_safe_plugin_file(self, path: Path) -> bool:
         try:
-            self._FILE_VALIDATOR.validate_file_path(str(path), operation='read')
+            self._FILE_VALIDATOR.validate_file_path(str(path), operation="read")
             return True
         except SecurityError as exc:
             self.logger.warning(f"Skipping unsafe plugin file {path}: {exc}")
@@ -642,33 +786,39 @@ class PluginLoader:
             return False
 
         # Required fields
-        required_fields = ['name', 'version', 'author', 'description', 'category']
+        required_fields = ["name", "version", "author", "description", "category"]
         for field in required_fields:
             if not getattr(metadata, field):
                 self.logger.error(f"Plugin missing required field: {field}")
                 return False
 
         if not self._NAME_PATTERN.match(metadata.name):
-            self.logger.error("Plugin name contains prohibited characters: %s", metadata.name)
+            self.logger.error(
+                "Plugin name contains prohibited characters: %s", metadata.name
+            )
             return False
 
         if len(metadata.description) > 500:
-            self.logger.error("Plugin description exceeds 500 characters for %s", metadata.name)
+            self.logger.error(
+                "Plugin description exceeds 500 characters for %s", metadata.name
+            )
             return False
 
         if not self._SEMVER_PATTERN.match(metadata.version):
-            self.logger.error("Plugin version is not semver compliant: %s", metadata.version)
+            self.logger.error(
+                "Plugin version is not semver compliant: %s", metadata.version
+            )
             return False
 
         # Valid category
-        valid_categories = ['effect', 'analyzer', 'generator', 'utility']
+        valid_categories = ["effect", "analyzer", "generator", "utility"]
         if metadata.category not in valid_categories:
             self.logger.error(f"Invalid plugin category: {metadata.category}")
             return False
 
         if metadata.website:
             website = metadata.website.strip()
-            if not website.lower().startswith('https://'):
+            if not website.lower().startswith("https://"):
                 self.logger.error("Plugin website must use HTTPS: %s", website)
                 return False
             if len(website) > 2083:
@@ -691,8 +841,11 @@ class PluginLoader:
 
     def get_plugins_by_category(self, category: str) -> List[PluginInterface]:
         """Get all plugins of a specific category"""
-        return [p for p in self.plugins.values()
-                if p.metadata and p.metadata.category == category]
+        return [
+            p
+            for p in self.plugins.values()
+            if p.metadata and p.metadata.category == category
+        ]
 
     def reload_plugin(self, plugin_name: str, plugin_path: str) -> bool:
         """Reload a plugin"""
@@ -701,6 +854,7 @@ class PluginLoader:
 
         plugin = self.load_plugin(plugin_path)
         return plugin is not None
+
 
 class PluginManager:
     """Main plugin management system"""
@@ -745,7 +899,8 @@ class PluginManager:
             else:
                 self.load_failures.setdefault(
                     plugin_file,
-                    "no valid plugin class found, or plugin failed validation")
+                    "no valid plugin class found, or plugin failed validation",
+                )
 
         self.logger.info(f"Successfully loaded {loaded_count} plugins")
 
@@ -755,9 +910,11 @@ class PluginManager:
 
     def list_plugins(self) -> Dict[str, PluginMetadata]:
         """List all loaded plugins with their metadata"""
-        return {name: plugin.metadata
-                for name, plugin in self.loader.plugins.items()
-                if plugin.metadata}
+        return {
+            name: plugin.metadata
+            for name, plugin in self.loader.plugins.items()
+            if plugin.metadata
+        }
 
     def execute_plugin(self, plugin_name: str, operation: str, **params) -> Any:
         """Execute a plugin operation safely"""
@@ -775,7 +932,9 @@ class PluginManager:
         else:
             raise AttributeError(f"Plugin {plugin_name} has no method: {operation}")
 
-    def install_plugin(self, plugin_source: str, plugin_name: Optional[str] = None) -> bool:
+    def install_plugin(
+        self, plugin_source: str, plugin_name: Optional[str] = None
+    ) -> bool:
         """Install a plugin from source"""
         # This would implement plugin installation from various sources
         # For now, just load from local file
@@ -788,23 +947,27 @@ class PluginManager:
                 return True
         return False
 
-    def create_plugin_template(self, plugin_name: str, category: str, output_dir: str = "plugins"):
+    def create_plugin_template(
+        self, plugin_name: str, category: str, output_dir: str = "plugins"
+    ):
         """Create a plugin template for development"""
         # plugin_name is interpolated into both the output filename and the
         # generated class names. A non-identifier name either escapes
         # output_dir ("../x") or emits a plugin whose source cannot compile.
         if not isinstance(plugin_name, str) or not plugin_name.isidentifier():
             raise ValueError(
-                f"plugin_name must be a valid Python identifier, got {plugin_name!r}")
+                f"plugin_name must be a valid Python identifier, got {plugin_name!r}"
+            )
         if category not in ("effect", "analyzer", "generator", "utility"):
             raise ValueError(
-                f"category must be one of effect, analyzer, generator, utility; got {category!r}")
+                f"category must be one of effect, analyzer, generator, utility; got {category!r}"
+            )
         template = self._generate_plugin_template(plugin_name, category)
 
         output_path = Path(output_dir) / f"{plugin_name.lower()}_plugin.py"
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(output_path, 'w') as f:
+        with open(output_path, "w") as f:
             f.write(template)
 
         self.logger.info(f"Created plugin template: {output_path}")
@@ -916,7 +1079,9 @@ def create_plugin():
         # Shutdown executor
         self.executor.shutdown(wait=True)
 
+
 # SecurityError is imported from security_validator (single canonical type).
+
 
 def demo_plugin_system():
     """Demonstrate plugin system capabilities"""
@@ -927,7 +1092,7 @@ def demo_plugin_system():
     config = PluginConfig(
         plugin_directories=["plugins", "demo_plugins"],
         sandbox_mode=True,
-        auto_discover=True
+        auto_discover=True,
     )
 
     manager = PluginManager(config)
@@ -942,12 +1107,12 @@ def demo_plugin_system():
 
     # Simple gain effect plugin
     gain_template = manager._generate_plugin_template("SimpleGain", "effect")
-    with open(demo_dir / "simple_gain.py", 'w') as f:
+    with open(demo_dir / "simple_gain.py", "w") as f:
         f.write(gain_template)
 
     # Peak analyzer plugin
     analyzer_template = manager._generate_plugin_template("PeakAnalyzer", "analyzer")
-    with open(demo_dir / "peak_analyzer.py", 'w') as f:
+    with open(demo_dir / "peak_analyzer.py", "w") as f:
         f.write(analyzer_template)
 
     print("   ✅ Created SimpleGain effect plugin")
@@ -981,6 +1146,7 @@ def demo_plugin_system():
     print("   Ready for custom plugin development and execution")
 
     return True
+
 
 if __name__ == "__main__":
     demo_plugin_system()

@@ -6,6 +6,7 @@ Demonstrates audio effect plugin implementation
 from typing import List, Dict, Any
 from plugin_system import AudioEffectPlugin, PluginMetadata
 
+
 class SimpleReverbPlugin(AudioEffectPlugin):
     """
     Simple reverb effect using delay lines
@@ -30,23 +31,23 @@ class SimpleReverbPlugin(AudioEffectPlugin):
                     "default": 0.5,
                     "min": 0.0,
                     "max": 1.0,
-                    "description": "Room size (0=small, 1=large)"
+                    "description": "Room size (0=small, 1=large)",
                 },
                 "decay": {
                     "type": "float",
                     "default": 0.3,
                     "min": 0.0,
                     "max": 0.9,
-                    "description": "Decay amount"
+                    "description": "Decay amount",
                 },
                 "wet_level": {
                     "type": "float",
                     "default": 0.3,
                     "min": 0.0,
                     "max": 1.0,
-                    "description": "Wet signal level"
-                }
-            }
+                    "description": "Wet signal level",
+                },
+            },
         )
 
     def initialize(self, config: Dict[str, Any]) -> bool:
@@ -65,11 +66,13 @@ class SimpleReverbPlugin(AudioEffectPlugin):
         self.logger.info("Cleaning up SimpleReverb plugin")
         self.delay_buffer.clear()
 
-    def process_audio(self, audio_data: List[float], sample_rate: int, **params) -> List[float]:
+    def process_audio(
+        self, audio_data: List[float], sample_rate: int, **params
+    ) -> List[float]:
         """Process audio data with reverb effect"""
-        room_size = params.get('room_size', 0.5)
-        decay = params.get('decay', 0.3)
-        wet_level = params.get('wet_level', 0.3)
+        room_size = params.get("room_size", 0.5)
+        decay = params.get("decay", 0.3)
+        wet_level = params.get("wet_level", 0.3)
 
         # Adjust buffer size based on room size
         delay_samples = int(room_size * self.buffer_size)
@@ -100,6 +103,7 @@ class SimpleReverbPlugin(AudioEffectPlugin):
             output.append(output_sample)
 
         return output
+
 
 def create_plugin():
     return SimpleReverbPlugin()

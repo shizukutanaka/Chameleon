@@ -26,7 +26,7 @@ def _atomic_write_text(path: Path, content: str) -> None:
     one, never a partial write.
     """
     tmp = path.parent / (path.name + ".tmp")
-    with open(tmp, 'w') as f:
+    with open(tmp, "w") as f:
         f.write(content)
     os.replace(tmp, path)
 
@@ -70,12 +70,12 @@ class PersonalConfig:
 
     def __post_init__(self):
         if self.supported_formats is None:
-            self.supported_formats = ['.wav', '.wave']
+            self.supported_formats = [".wav", ".wave"]
         if self.favorite_operations is None:
-            self.favorite_operations = ['normalize', 'analyze', 'denoise']
+            self.favorite_operations = ["normalize", "analyze", "denoise"]
 
     @classmethod
-    def load(cls, config_path: Optional[Path] = None) -> 'PersonalConfig':
+    def load(cls, config_path: Optional[Path] = None) -> "PersonalConfig":
         """Load personal configuration, or write a default one if none exists.
 
         Tolerates a config written by a different version of Chameleon: keys
@@ -94,7 +94,7 @@ class PersonalConfig:
 
         if config_path.exists():
             try:
-                with open(config_path, 'r') as f:
+                with open(config_path, "r") as f:
                     data = json.load(f)
             except json.JSONDecodeError as exc:
                 raise ValueError(
@@ -121,7 +121,8 @@ class PersonalConfig:
             if unknown:
                 logger.warning(
                     "Ignoring unrecognised setting(s) in %s: %s",
-                    config_path, ", ".join(unknown)
+                    config_path,
+                    ", ".join(unknown),
                 )
             return cls(**{key: value for key, value in data.items() if key in known})
 
@@ -175,7 +176,7 @@ class PersonalSetup:
         # Auto-backup
         print(f"\n💾 Auto-Backup")
         backup_choice = input("   Enable automatic backups? (Y/n): ").strip().lower()
-        config.auto_backup = backup_choice != 'n'
+        config.auto_backup = backup_choice != "n"
 
         # Create directories
         Path(config.audio_library).mkdir(parents=True, exist_ok=True)
@@ -202,7 +203,9 @@ class PersonalSetup:
         print(f"\n✅ Setup Complete!")
         print(f"   Configuration saved to ~/.chameleon/personal_config.json")
         print(f"\n🚀 Quick Start Commands:")
-        print(f"   source ~/.chameleon/aliases.sh   # Linux/Mac -- or aliases.ps1 on Windows")
+        print(
+            f"   source ~/.chameleon/aliases.sh   # Linux/Mac -- or aliases.ps1 on Windows"
+        )
         print(f"   audio-analyze your_file.wav")
         print(f"   audio-batch analyze          # scans {config.audio_library}")
         print(f"\n   ...or directly, with no aliases loaded:")
@@ -312,7 +315,7 @@ class PersonalLibraryManager:
         offer recovery, not die on a raw JSONDecodeError traceback."""
         if self.db_path.exists():
             try:
-                with open(self.db_path, 'r') as f:
+                with open(self.db_path, "r") as f:
                     data = json.load(f)
             except json.JSONDecodeError as exc:
                 raise ValueError(
@@ -343,8 +346,9 @@ class PersonalLibraryManager:
                         f"found {type(value).__name__}. Fix it, or delete the "
                         "file to start again from an empty library."
                     )
-            bad_records = [k for k, v in data["files"].items()
-                           if not isinstance(v, dict)]
+            bad_records = [
+                k for k, v in data["files"].items() if not isinstance(v, dict)
+            ]
             if bad_records:
                 raise ValueError(
                     f"{self.db_path}: file record(s) {bad_records[:3]} should "
@@ -382,21 +386,25 @@ class PersonalLibraryManager:
                         "size": result.size_bytes,
                         "metadata": result.metadata,
                         "added": str(Path(file_path).stat().st_mtime),
-                        "tags": []
+                        "tags": [],
                     }
                     new_files.append(file_key)
                 else:
                     # Check if modified
-                    current_checksum = self.library_db["files"][file_key].get("checksum")
+                    current_checksum = self.library_db["files"][file_key].get(
+                        "checksum"
+                    )
                     result = inspector.inspect_file(file_path)
 
                     if result.checksum_sha256 != current_checksum:
-                        self.library_db["files"][file_key].update({
-                            "checksum": result.checksum_sha256,
-                            "size": result.size_bytes,
-                            "metadata": result.metadata,
-                            "modified": str(Path(file_path).stat().st_mtime)
-                        })
+                        self.library_db["files"][file_key].update(
+                            {
+                                "checksum": result.checksum_sha256,
+                                "size": result.size_bytes,
+                                "metadata": result.metadata,
+                                "modified": str(Path(file_path).stat().st_mtime),
+                            }
+                        )
                         updated_files.append(file_key)
 
         self._save_db()
@@ -406,7 +414,7 @@ class PersonalLibraryManager:
             "new_files": len(new_files),
             "updated_files": len(updated_files),
             "new": new_files[:10],  # Show first 10
-            "updated": updated_files[:10]
+            "updated": updated_files[:10],
         }
 
     def add_tags(self, file_pattern: str, tags: list) -> None:
@@ -416,7 +424,9 @@ class PersonalLibraryManager:
         for file_key in self.library_db["files"]:
             if fnmatch.fnmatch(file_key, file_pattern):
                 current_tags = self.library_db["files"][file_key].get("tags", [])
-                self.library_db["files"][file_key]["tags"] = list(set(current_tags + tags))
+                self.library_db["files"][file_key]["tags"] = list(
+                    set(current_tags + tags)
+                )
 
         self._save_db()
 
@@ -427,7 +437,7 @@ class PersonalLibraryManager:
         # playlist ever created and has nothing to do with when this one was.
         self.library_db["playlists"][name] = {
             "files": file_list,
-            "created": datetime.now(timezone.utc).isoformat()
+            "created": datetime.now(timezone.utc).isoformat(),
         }
         self._save_db()
 
@@ -496,6 +506,7 @@ class PersonalWorkflow:
         # 2. Copy files
         print("  [2/3] Copying files...")
         import shutil
+
         for file in files:
             rel_path = file.relative_to(library_path)
             dest = backup_path / rel_path
@@ -509,6 +520,7 @@ class PersonalWorkflow:
         print("  [3/3] Verifying backup...")
         import json
         from advanced_validation import DeepFileInspector
+
         with open(manifest_path) as f:
             expected = json.load(f)
         inspector = DeepFileInspector()
@@ -555,8 +567,10 @@ if __name__ == "__main__":
         try:
             PersonalSetup.quick_setup()
         except EOFError:
-            sys.exit("Setup needs an interactive terminal; stdin produced "
-                     "no input. Nothing was saved.")
+            sys.exit(
+                "Setup needs an interactive terminal; stdin produced "
+                "no input. Nothing was saved."
+            )
         except KeyboardInterrupt:
             sys.exit("Setup cancelled; nothing was saved.")
         except OSError as exc:

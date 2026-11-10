@@ -41,23 +41,20 @@ ENTRY_POINTS = ("main", "api_server")
 # Packaged modules that deliberately have no importer, and why. Each entry is a
 # standing decision recorded in CHARTER.md §9 -- not a to-do list.
 ALLOWED_ORPHANS = {
-    "personal_config":
-        "quick_install.sh / quick_install.ps1 document `python "
-        "personal_config.py setup` as the personal-use onboarding flow, and it "
-        "is the one documented entry point for advanced_validation's "
-        "IntegrityVerifier / SanitizationEngine. Reachable by a user, just not "
-        "by an import -- deleting it would mean redesigning that flow. Covered "
-        "by tests/test_personal_config.py, so being unimported no longer means "
-        "being unexercised.",
-    "batch_automation":
-        "A generic DAG/workflow engine. CHARTER.md §4 would call this a second "
-        "product, and its own demo builds tasks for transcoding this tool "
-        "cannot do -- but it is genuine, working capability, and the user "
-        "chose to keep it when asked directly on 2026-08-25.",
-    "spectral_editor":
-        "Interactive spectral editing, which points away from CHARTER.md §2's "
-        "user. Kept by explicit user decision on 2026-08-25; its STFT "
-        "machinery overlaps spectral_utils, but the editing surface is its own.",
+    "personal_config": "quick_install.sh / quick_install.ps1 document `python "
+    "personal_config.py setup` as the personal-use onboarding flow, and it "
+    "is the one documented entry point for advanced_validation's "
+    "IntegrityVerifier / SanitizationEngine. Reachable by a user, just not "
+    "by an import -- deleting it would mean redesigning that flow. Covered "
+    "by tests/test_personal_config.py, so being unimported no longer means "
+    "being unexercised.",
+    "batch_automation": "A generic DAG/workflow engine. CHARTER.md §4 would call this a second "
+    "product, and its own demo builds tasks for transcoding this tool "
+    "cannot do -- but it is genuine, working capability, and the user "
+    "chose to keep it when asked directly on 2026-08-25.",
+    "spectral_editor": "Interactive spectral editing, which points away from CHARTER.md §2's "
+    "user. Kept by explicit user decision on 2026-08-25; its STFT "
+    "machinery overlaps spectral_utils, but the editing surface is its own.",
 }
 
 
@@ -132,8 +129,9 @@ def test_each_allowed_orphan_gives_a_substantive_reason(module):
 def test_every_packaged_module_actually_exists():
     # Catches the other half of a deletion: removing the file but leaving the
     # name in py-modules, which builds a wheel that fails on import.
-    missing = sorted(m for m in _packaged_modules()
-                     if not (REPO_ROOT / f"{m}.py").is_file())
+    missing = sorted(
+        m for m in _packaged_modules() if not (REPO_ROOT / f"{m}.py").is_file()
+    )
     assert not missing, f"pyproject.toml packages nonexistent modules: {missing}"
 
 
@@ -165,8 +163,7 @@ _PEP585_NAMES = {"list", "dict", "tuple", "set", "frozenset", "type"}
 def _annotation_exprs(tree):
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            for arg in (*node.args.posonlyargs, *node.args.args,
-                        *node.args.kwonlyargs):
+            for arg in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs):
                 if arg.annotation is not None:
                     yield arg.annotation
             for extra in (node.args.vararg, node.args.kwarg):
@@ -180,8 +177,11 @@ def _annotation_exprs(tree):
 
 def _exceeds_py38(expr):
     for node in ast.walk(expr):
-        if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) \
-                and node.value.id in _PEP585_NAMES:
+        if (
+            isinstance(node, ast.Subscript)
+            and isinstance(node.value, ast.Name)
+            and node.value.id in _PEP585_NAMES
+        ):
             return True
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
             return True
@@ -194,7 +194,8 @@ def test_packaged_modules_respect_the_declared_python_floor():
         source = REPO_ROOT / f"{module}.py"
         tree = ast.parse(source.read_text(encoding="utf-8"))
         lazy_annotations = any(
-            isinstance(node, ast.ImportFrom) and node.module == "__future__"
+            isinstance(node, ast.ImportFrom)
+            and node.module == "__future__"
             and any(alias.name == "annotations" for alias in node.names)
             for node in tree.body
         )
@@ -206,5 +207,5 @@ def test_packaged_modules_respect_the_declared_python_floor():
         f"{violators} use PEP 585 (`tuple[...]`) or PEP 604 (`X | Y`) "
         "annotations without `from __future__ import annotations` -- the "
         "module fails to import on Python 3.8, which pyproject.toml still "
-        "declares as supported (requires-python = \">=3.8\")."
+        'declares as supported (requires-python = ">=3.8").'
     )

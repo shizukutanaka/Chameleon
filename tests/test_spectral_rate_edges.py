@@ -6,7 +6,6 @@ through, collapsed the duration to 0, and silently returned a one-sample
 negative count silently dropped peaks and a float count leaked TypeError.
 """
 
-
 import math
 
 import pytest
@@ -40,6 +39,9 @@ def test_analyze_spectrum_rejects_negative_or_float_max_peaks():
 
 def test_analyze_spectrum_max_peaks_boundaries():
     samples = [math.sin(2 * math.pi * n / 32) for n in range(256)]
-    assert spectral_utils.analyze_spectrum(samples, 44100, max_peaks=0).dominant_peaks == []
+    assert (
+        spectral_utils.analyze_spectrum(samples, 44100, max_peaks=0).dominant_peaks
+        == []
+    )
     report = spectral_utils.analyze_spectrum(samples, 44100, max_peaks=1)
     assert len(report.dominant_peaks) == 1

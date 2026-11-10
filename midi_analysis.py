@@ -17,12 +17,13 @@ from enum import Enum
 # estimate into the range listeners actually perceive as a pulse.
 _MIN_PLAUSIBLE_TEMPO = 40.0
 _MAX_PLAUSIBLE_TEMPO = 240.0
-_NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+_NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
 
 @dataclass
 class MIDIConfig:
     """Configuration for MIDI analysis and generation"""
+
     tempo: float = 120.0
     time_signature: Tuple[int, int] = (4, 4)
     key_signature: str = "C"
@@ -38,8 +39,10 @@ class MIDIConfig:
     # public config field is a breaking change; see PRODUCT_ANALYSIS.md.
     enable_composition_ai: bool = True  # (inert; no AI in this module)
 
+
 class NoteClass(Enum):
     """Musical note classes"""
+
     C = 0
     C_SHARP = 1
     D = 2
@@ -53,11 +56,13 @@ class NoteClass(Enum):
     A_SHARP = 10
     B = 11
 
+
 @dataclass
 class MIDINote:
     """MIDI note representation. start_time/duration are SECONDS -- the
     file writer converts to ticks via the tempo it writes into the
     header. Producers working in beats must convert first."""
+
     pitch: int
     velocity: int
     start_time: float
@@ -76,9 +81,11 @@ class MIDINote:
         """Convert MIDI pitch to frequency"""
         return 440.0 * (2.0 ** ((self.pitch - 69) / 12.0))
 
+
 @dataclass
 class Chord:
     """Musical chord representation"""
+
     root: int
     chord_type: str
     notes: List[int]
@@ -92,9 +99,11 @@ class Chord:
         root_name = _NOTE_NAMES[self.root % 12]
         return f"{root_name}{self.chord_type}"
 
+
 @dataclass
 class MusicalKey:
     """Musical key representation"""
+
     tonic: int
     mode: str
     confidence: float
@@ -114,6 +123,7 @@ class MusicalKey:
             intervals = [0, 2, 4, 5, 7, 9, 11]  # Default to major
 
         self.scale_notes = [(self.tonic + interval) % 12 for interval in intervals]
+
 
 class MIDIAnalyzer:
     """MIDI analysis: onset/pitch detection (YIN), chord and key detection,
@@ -140,20 +150,45 @@ class MIDIAnalyzer:
             "sus4": [0, 5, 7],
             "add9": [0, 4, 7, 14],
             "6": [0, 4, 7, 9],
-            "min6": [0, 3, 7, 9]
+            "min6": [0, 3, 7, 9],
         }
 
     def _initialize_key_profiles(self) -> Dict[str, List[float]]:
         """Initialize key detection profiles (Krumhansl-Schmuckler)"""
-        major_profile = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88]
-        minor_profile = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17]
+        major_profile = [
+            6.35,
+            2.23,
+            3.48,
+            2.33,
+            4.38,
+            4.09,
+            2.52,
+            5.19,
+            2.39,
+            3.66,
+            2.29,
+            2.88,
+        ]
+        minor_profile = [
+            6.33,
+            2.68,
+            3.52,
+            5.38,
+            2.60,
+            3.53,
+            2.54,
+            4.75,
+            3.98,
+            2.69,
+            3.34,
+            3.17,
+        ]
 
-        return {
-            "major": major_profile,
-            "minor": minor_profile
-        }
+        return {"major": major_profile, "minor": minor_profile}
 
-    def parse_midi_from_audio(self, audio_data: List[float], sample_rate: int) -> List[MIDINote]:
+    def parse_midi_from_audio(
+        self, audio_data: List[float], sample_rate: int
+    ) -> List[MIDINote]:
         """Extract MIDI notes from audio using onset detection and pitch tracking"""
         # A WAV fmt chunk can declare any rate, and callers feed it straight
         # in: a non-finite or non-positive rate maps to a negative frame size,
@@ -173,7 +208,7 @@ class MIDIAnalyzer:
         current_time = 0.0
 
         for i in range(0, len(audio_data) - frame_size, hop_size):
-            frame = audio_data[i:i + frame_size]
+            frame = audio_data[i : i + frame_size]
 
             # Simple energy-based onset detection
             energy = sum(x * x for x in frame)
@@ -186,13 +221,15 @@ class MIDIAnalyzer:
                     midi_pitch = self._hz_to_midi(pitch_hz)
                     velocity = min(127, int(energy * 1000))
 
-                    notes.append(MIDINote(
-                        pitch=midi_pitch,
-                        velocity=velocity,
-                        start_time=current_time,
-                        duration=0.1,  # Default duration
-                        channel=0
-                    ))
+                    notes.append(
+                        MIDINote(
+                            pitch=midi_pitch,
+                            velocity=velocity,
+                            start_time=current_time,
+                            duration=0.1,  # Default duration
+                            channel=0,
+                        )
+                    )
 
             current_time += hop_size / sample_rate
 
@@ -278,7 +315,6 @@ class MIDIAnalyzer:
             return frequency
         return None
 
-
     def _hz_to_midi(self, frequency: float) -> int:
         """Convert frequency to MIDI note number"""
         return int(round(69 + 12 * math.log2(frequency / 440.0)))
@@ -295,12 +331,14 @@ class MIDIAnalyzer:
         current_note = notes[0]
 
         for note in notes[1:]:
-            if (note.pitch == current_note.pitch and
-                note.start_time <= current_note.start_time + current_note.duration):
+            if (
+                note.pitch == current_note.pitch
+                and note.start_time <= current_note.start_time + current_note.duration
+            ):
                 # Merge notes
                 end_time = max(
                     current_note.start_time + current_note.duration,
-                    note.start_time + note.duration
+                    note.start_time + note.duration,
                 )
                 current_note.duration = end_time - current_note.start_time
                 current_note.velocity = max(current_note.velocity, note.velocity)
@@ -311,7 +349,9 @@ class MIDIAnalyzer:
         merged.append(current_note)
         return merged
 
-    def detect_chords(self, notes: List[MIDINote], window_size: float = 1.0) -> List[Chord]:
+    def detect_chords(
+        self, notes: List[MIDINote], window_size: float = 1.0
+    ) -> List[Chord]:
         """Detect chords from MIDI notes"""
         chords = []
         current_time = 0.0
@@ -319,7 +359,8 @@ class MIDIAnalyzer:
         while current_time < max(n.start_time + n.duration for n in notes):
             # Get notes active in current window
             active_notes = [
-                n for n in notes
+                n
+                for n in notes
                 if n.start_time <= current_time < n.start_time + n.duration
             ]
 
@@ -332,7 +373,9 @@ class MIDIAnalyzer:
 
         return self._merge_similar_chords(chords)
 
-    def _analyze_chord(self, notes: List[MIDINote], start_time: float, duration: float) -> Optional[Chord]:
+    def _analyze_chord(
+        self, notes: List[MIDINote], start_time: float, duration: float
+    ) -> Optional[Chord]:
         """Analyze a group of notes to identify chord type"""
         if len(notes) < 3:
             return None
@@ -389,7 +432,7 @@ class MIDIAnalyzer:
                         notes=pitch_classes,
                         start_time=start_time,
                         duration=duration,
-                        confidence=score
+                        confidence=score,
                     )
 
         return best_match
@@ -403,16 +446,21 @@ class MIDIAnalyzer:
         current_chord = chords[0]
 
         for chord in chords[1:]:
-            if (chord.root == current_chord.root and
-                chord.chord_type == current_chord.chord_type and
-                chord.start_time <= current_chord.start_time + current_chord.duration):
+            if (
+                chord.root == current_chord.root
+                and chord.chord_type == current_chord.chord_type
+                and chord.start_time
+                <= current_chord.start_time + current_chord.duration
+            ):
                 # Extend current chord
                 end_time = max(
                     current_chord.start_time + current_chord.duration,
-                    chord.start_time + chord.duration
+                    chord.start_time + chord.duration,
                 )
                 current_chord.duration = end_time - current_chord.start_time
-                current_chord.confidence = max(current_chord.confidence, chord.confidence)
+                current_chord.confidence = max(
+                    current_chord.confidence, chord.confidence
+                )
             else:
                 merged.append(current_chord)
                 current_chord = chord
@@ -456,14 +504,14 @@ class MIDIAnalyzer:
                 rotated_profile = [profile[(pc - tonic) % 12] for pc in range(12)]
 
                 # Calculate correlation
-                correlation = self._pearson_correlation(pitch_class_weights, rotated_profile)
+                correlation = self._pearson_correlation(
+                    pitch_class_weights, rotated_profile
+                )
 
                 if correlation > best_correlation:
                     best_correlation = correlation
                     best_key = MusicalKey(
-                        tonic=tonic,
-                        mode=mode,
-                        confidence=correlation
+                        tonic=tonic, mode=mode, confidence=correlation
                     )
 
         return best_key or MusicalKey(tonic=0, mode="major", confidence=0.0)
@@ -481,7 +529,7 @@ class MIDIAnalyzer:
         sum_y2 = sum(y[i] ** 2 for i in range(n))
 
         numerator = n * sum_xy - sum_x * sum_y
-        denominator = math.sqrt((n * sum_x2 - sum_x ** 2) * (n * sum_y2 - sum_y ** 2))
+        denominator = math.sqrt((n * sum_x2 - sum_x**2) * (n * sum_y2 - sum_y**2))
 
         if denominator == 0:
             return 0.0
@@ -494,7 +542,20 @@ class MIDIAnalyzer:
             return {"progression": [], "analysis": "No chords found"}
 
         progression = []
-        roman_numerals = ["I", "♭II", "II", "♭III", "III", "IV", "♭V", "V", "♭VI", "VI", "♭VII", "VII"]
+        roman_numerals = [
+            "I",
+            "♭II",
+            "II",
+            "♭III",
+            "III",
+            "IV",
+            "♭V",
+            "V",
+            "♭VI",
+            "VI",
+            "♭VII",
+            "VII",
+        ]
 
         for chord in chords:
             # Calculate scale degree
@@ -523,14 +584,16 @@ class MIDIAnalyzer:
                 quality = "major"
                 roman = roman_numerals[degree]
 
-            progression.append({
-                "chord": chord.name,
-                "roman": roman,
-                "degree": degree + 1,
-                "quality": quality,
-                "duration": chord.duration,
-                "confidence": chord.confidence
-            })
+            progression.append(
+                {
+                    "chord": chord.name,
+                    "roman": roman,
+                    "degree": degree + 1,
+                    "quality": quality,
+                    "duration": chord.duration,
+                    "confidence": chord.confidence,
+                }
+            )
 
         # Analyze common progressions
         analysis = self._analyze_common_progressions(progression)
@@ -539,7 +602,7 @@ class MIDIAnalyzer:
             "progression": progression,
             "analysis": analysis,
             "key": f"{_NOTE_NAMES[key.tonic % 12]} {key.mode}",
-            "key_confidence": key.confidence
+            "key_confidence": key.confidence,
         }
 
     def _analyze_common_progressions(self, progression: List[Dict]) -> str:
@@ -557,21 +620,22 @@ class MIDIAnalyzer:
             ("I", "vi", "IV", "V"): "I-vi-IV-V (50s progression)",
             ("ii", "V", "I"): "ii-V-I (Jazz progression)",
             ("I", "IV", "V", "I"): "I-IV-V-I (Authentic cadence)",
-            ("I", "V", "I"): "I-V-I (Perfect cadence)"
+            ("I", "V", "I"): "I-V-I (Perfect cadence)",
         }
 
         # Check for patterns
         for i in range(len(romans) - 1):
             for length in [4, 3, 2]:
                 if i + length <= len(romans):
-                    sequence = tuple(romans[i:i+length])
+                    sequence = tuple(romans[i : i + length])
                     if sequence in patterns:
                         return f"Contains {patterns[sequence]}"
 
         return "Original progression"
 
-    def generate_midi_file(self, notes: List[MIDINote], filename: str,
-                           tempo_bpm: float = 120.0) -> bool:
+    def generate_midi_file(
+        self, notes: List[MIDINote], filename: str, tempo_bpm: float = 120.0
+    ) -> bool:
         """Generate a basic MIDI file from notes.
 
         ``tempo_bpm`` is written as the FF 51 03 meta event -- without it
@@ -582,11 +646,11 @@ class MIDIAnalyzer:
             midi_data = bytearray()
 
             # MIDI Header chunk
-            midi_data.extend(b'MThd')  # Header chunk ID
-            midi_data.extend(struct.pack('>I', 6))  # Header length
-            midi_data.extend(struct.pack('>H', 1))  # Format type 1
-            midi_data.extend(struct.pack('>H', 1))  # Number of tracks
-            midi_data.extend(struct.pack('>H', 480))  # Ticks per quarter note
+            midi_data.extend(b"MThd")  # Header chunk ID
+            midi_data.extend(struct.pack(">I", 6))  # Header length
+            midi_data.extend(struct.pack(">H", 1))  # Format type 1
+            midi_data.extend(struct.pack(">H", 1))  # Number of tracks
+            midi_data.extend(struct.pack(">H", 480))  # Ticks per quarter note
 
             # Track chunk
             track_data = bytearray()
@@ -594,8 +658,8 @@ class MIDIAnalyzer:
             # Tempo meta event at tick 0 so the requested BPM reaches the
             # file instead of dying in the caller.
             us_per_quarter = int(round(60_000_000 / tempo_bpm))
-            track_data.extend(b'\x00\xff\x51\x03')
-            track_data.extend(us_per_quarter.to_bytes(3, 'big'))
+            track_data.extend(b"\x00\xff\x51\x03")
+            track_data.extend(us_per_quarter.to_bytes(3, "big"))
 
             # Sort notes by start time
             sorted_notes = sorted(notes, key=lambda n: n.start_time)
@@ -608,9 +672,10 @@ class MIDIAnalyzer:
             ticks_per_second = 480.0 * tempo_bpm / 60.0
             events = []
             for note in sorted_notes:
-                events.append((note.start_time, 'note_on', note.pitch, note.velocity))
-                events.append((note.start_time + note.duration, 'note_off',
-                               note.pitch, 0))
+                events.append((note.start_time, "note_on", note.pitch, note.velocity))
+                events.append(
+                    (note.start_time + note.duration, "note_off", note.pitch, 0)
+                )
 
             # Sort all events by time
             events.sort(key=lambda e: e[0])
@@ -623,7 +688,7 @@ class MIDIAnalyzer:
                 # Write variable-length delta time
                 track_data.extend(self._write_variable_length(delta_ticks))
 
-                if event_type == 'note_on':
+                if event_type == "note_on":
                     track_data.extend([0x90, pitch, velocity])  # Note on, channel 0
                 else:  # note_off
                     track_data.extend([0x80, pitch, velocity])  # Note off, channel 0
@@ -634,12 +699,12 @@ class MIDIAnalyzer:
             track_data.extend([0x00, 0xFF, 0x2F, 0x00])
 
             # Track header
-            midi_data.extend(b'MTrk')
-            midi_data.extend(struct.pack('>I', len(track_data)))
+            midi_data.extend(b"MTrk")
+            midi_data.extend(struct.pack(">I", len(track_data)))
             midi_data.extend(track_data)
 
             # Write to file
-            with open(filename, 'wb') as f:
+            with open(filename, "wb") as f:
                 f.write(midi_data)
 
             return True
@@ -673,12 +738,16 @@ class MIDIAnalyzer:
 
         # Calculate inter-onset intervals
         onsets = sorted([note.start_time for note in notes])
-        intervals = [onsets[i+1] - onsets[i] for i in range(len(onsets)-1)]
+        intervals = [onsets[i + 1] - onsets[i] for i in range(len(onsets) - 1)]
 
         if not intervals:
             # One note has no rhythm; 0 means "not estimable" like the
             # no-notes path above, not a default tempo dressed as a measure.
-            return {"tempo": 0, "time_signature": self.config.time_signature, "patterns": []}
+            return {
+                "tempo": 0,
+                "time_signature": self.config.time_signature,
+                "patterns": [],
+            }
 
         # Estimate the beat from the commonest inter-onset interval. Intervals
         # are grouped on a LOG scale (48 buckets to the octave, ~1.4% apart)
@@ -700,7 +769,11 @@ class MIDIAnalyzer:
             interval_buckets.setdefault(bucket, []).append(interval)
 
         if not interval_buckets:
-            return {"tempo": 0, "time_signature": self.config.time_signature, "patterns": []}
+            return {
+                "tempo": 0,
+                "time_signature": self.config.time_signature,
+                "patterns": [],
+            }
 
         largest = max(interval_buckets.values(), key=len)
         ordered = sorted(largest)
@@ -729,9 +802,14 @@ class MIDIAnalyzer:
         return {
             "tempo": estimated_tempo,
             "time_signature": self.config.time_signature,
-            "common_intervals": sorted(interval_counts.items(), key=lambda x: x[1], reverse=True)[:5],
-            "rhythmic_complexity": len(set(intervals)) / len(intervals) if intervals else 0
+            "common_intervals": sorted(
+                interval_counts.items(), key=lambda x: x[1], reverse=True
+            )[:5],
+            "rhythmic_complexity": (
+                len(set(intervals)) / len(intervals) if intervals else 0
+            ),
         }
+
 
 class MIDIComposer:
     """Rule-based chord-progression suggestions (a fixed Markov transition
@@ -741,7 +819,9 @@ class MIDIComposer:
         self.config = config or MIDIConfig()
         self.analyzer = MIDIAnalyzer(config)
 
-    def suggest_next_chord(self, current_progression: List[Chord], key: MusicalKey) -> List[Tuple[str, float]]:
+    def suggest_next_chord(
+        self, current_progression: List[Chord], key: MusicalKey
+    ) -> List[Tuple[str, float]]:
         """Suggest next chord based on current progression"""
         if not current_progression:
             # Start with tonic
@@ -755,9 +835,9 @@ class MIDIComposer:
         # uses for its roman_numerals table (0=I, 5=IV, 7=V, 9=vi).
         transition_probabilities = {
             0: [(7, 0.4), (5, 0.3), (9, 0.2), (2, 0.1)],  # I -> V, IV, vi, ii
-            5: [(7, 0.4), (0, 0.4), (2, 0.2)],            # IV -> V, I, ii
-            7: [(0, 0.5), (9, 0.3), (5, 0.2)],            # V -> I, vi, IV
-            9: [(5, 0.4), (0, 0.3), (7, 0.3)],            # vi -> IV, I, V
+            5: [(7, 0.4), (0, 0.4), (2, 0.2)],  # IV -> V, I, ii
+            7: [(0, 0.5), (9, 0.3), (5, 0.2)],  # V -> I, vi, IV
+            9: [(5, 0.4), (0, 0.3), (7, 0.3)],  # vi -> IV, I, V
         }
         minor_degrees = {
             "major": {2, 4, 9},
@@ -767,7 +847,20 @@ class MIDIComposer:
         suggestions = []
         if last_degree in transition_probabilities:
             for next_degree, prob in transition_probabilities[last_degree]:
-                roman_numerals = ["I", "♭II", "II", "♭III", "III", "IV", "♭V", "V", "♭VI", "VI", "♭VII", "VII"]
+                roman_numerals = [
+                    "I",
+                    "♭II",
+                    "II",
+                    "♭III",
+                    "III",
+                    "IV",
+                    "♭V",
+                    "V",
+                    "♭VI",
+                    "VI",
+                    "♭VII",
+                    "VII",
+                ]
                 roman = roman_numerals[next_degree]
                 if next_degree in minor_degrees:
                     roman = roman.lower()
@@ -775,13 +868,16 @@ class MIDIComposer:
 
         return suggestions or [("I", 1.0)]
 
-    def generate_melody(self, chords: List[Chord], key: MusicalKey, length: float = 8.0) -> List[MIDINote]:
+    def generate_melody(
+        self, chords: List[Chord], key: MusicalKey, length: float = 8.0
+    ) -> List[MIDINote]:
         """Generate a simple melody over chord progression"""
         # `while current_time < length` with length=inf never terminates;
         # nan/-1 silently return an empty melody. Bound the input instead.
         if not math.isfinite(length) or length <= 0:
             raise ValueError(
-                f"length must be a positive finite duration, got {length!r}")
+                f"length must be a positive finite duration, got {length!r}"
+            )
         melody = []
         # The melody runs over the progression, so its clock starts at the
         # first chord -- anchoring at 0.0 returns an empty list whenever the
@@ -812,16 +908,19 @@ class MIDIComposer:
                 # Add octave
                 pitch = pitch_class + 60  # Middle C octave
 
-                melody.append(MIDINote(
-                    pitch=pitch,
-                    velocity=80,
-                    start_time=current_time,
-                    duration=note_duration
-                ))
+                melody.append(
+                    MIDINote(
+                        pitch=pitch,
+                        velocity=80,
+                        start_time=current_time,
+                        duration=note_duration,
+                    )
+                )
 
             current_time += note_duration
 
         return melody
+
 
 def demo_midi_analysis():
     """Demonstrate MIDI analysis capabilities"""
@@ -847,20 +946,17 @@ def demo_midi_analysis():
     # Add chord progression (I-vi-IV-V)
     chord_notes = [
         # C major (I)
-        MIDINote(60, 70, 8.0, 2.0),   # C
-        MIDINote(64, 70, 8.0, 2.0),   # E
-        MIDINote(67, 70, 8.0, 2.0),   # G
-
+        MIDINote(60, 70, 8.0, 2.0),  # C
+        MIDINote(64, 70, 8.0, 2.0),  # E
+        MIDINote(67, 70, 8.0, 2.0),  # G
         # A minor (vi)
         MIDINote(57, 70, 10.0, 2.0),  # A
         MIDINote(60, 70, 10.0, 2.0),  # C
         MIDINote(64, 70, 10.0, 2.0),  # E
-
         # F major (IV)
         MIDINote(53, 70, 12.0, 2.0),  # F
         MIDINote(57, 70, 12.0, 2.0),  # A
         MIDINote(60, 70, 12.0, 2.0),  # C
-
         # G major (V)
         MIDINote(55, 70, 14.0, 2.0),  # G
         MIDINote(59, 70, 14.0, 2.0),  # B
@@ -871,13 +967,15 @@ def demo_midi_analysis():
 
     print("📝 Sample MIDI Notes:")
     for i, note in enumerate(all_notes[:5]):  # Show first 5
-        print(f"  {i+1}. {note.note_name} (vel: {note.velocity}, time: {note.start_time:.1f}s)")
+        print(
+            f"  {i+1}. {note.note_name} (vel: {note.velocity}, time: {note.start_time:.1f}s)"
+        )
     print(f"  ... and {len(all_notes)-5} more notes")
 
     # Detect key
     print("\n🎵 Key Detection:")
     detected_key = analyzer.detect_key(all_notes)
-    note_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+    note_names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
     key_name = note_names[detected_key.tonic]
     print(f"  Detected Key: {key_name} {detected_key.mode}")
     print(f"  Confidence: {detected_key.confidence:.3f}")
@@ -886,23 +984,29 @@ def demo_midi_analysis():
     print("\n🎸 Chord Detection:")
     chords = analyzer.detect_chords(all_notes)
     for i, chord in enumerate(chords):
-        print(f"  {i+1}. {chord.name} (time: {chord.start_time:.1f}s, conf: {chord.confidence:.3f})")
+        print(
+            f"  {i+1}. {chord.name} (time: {chord.start_time:.1f}s, conf: {chord.confidence:.3f})"
+        )
 
     # Analyze harmony
     print("\n🎼 Harmonic Analysis:")
     harmony = analyzer.analyze_harmony(chords, detected_key)
     for i, chord_info in enumerate(harmony["progression"]):
-        print(f"  {i+1}. {chord_info['chord']} ({chord_info['roman']}) - {chord_info['quality']}")
+        print(
+            f"  {i+1}. {chord_info['chord']} ({chord_info['roman']}) - {chord_info['quality']}"
+        )
     print(f"  Analysis: {harmony['analysis']}")
 
     # Rhythm analysis
     print("\n🥁 Rhythm Analysis:")
     rhythm = analyzer.analyze_rhythm(all_notes)
-    if rhythm['tempo'] > 0:
+    if rhythm["tempo"] > 0:
         print(f"  Estimated Tempo: {rhythm['tempo']:.1f} BPM")
     else:
         print("  Estimated Tempo: not estimable (insufficient onsets)")
-    print(f"  Time Signature: {rhythm['time_signature'][0]}/{rhythm['time_signature'][1]}")
+    print(
+        f"  Time Signature: {rhythm['time_signature'][0]}/{rhythm['time_signature'][1]}"
+    )
     print(f"  Rhythmic Complexity: {rhythm['rhythmic_complexity']:.3f}")
 
     # Composition suggestions (rule-based Markov table, not AI/ML)
@@ -920,6 +1024,7 @@ def demo_midi_analysis():
         print(f"  {i+1}. {note.note_name} (time: {note.start_time:.1f}s)")
 
     return True
+
 
 if __name__ == "__main__":
     demo_midi_analysis()

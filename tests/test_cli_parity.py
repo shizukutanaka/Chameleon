@@ -32,14 +32,17 @@ def _run(*args, cwd=None):
 
 def _peak(wav_path) -> float:
     import wave
+
     with wave.open(str(wav_path), "rb") as handle:
         frames = handle.readframes(handle.getnframes())
     import array
+
     samples = array.array("h", frames)
     return max(abs(s) for s in samples) / 32768.0
 
 
 # -- removed ghost parameters: argparse must now reject them (exit 2) --------
+
 
 def test_process_parallel_flag_removed(tmp_path):
     wav = write_sine_wave(tmp_path / "tone.wav")
@@ -69,12 +72,19 @@ def test_stream_device_flags_require_int(tmp_path):
 
 # -- --target-peak wired end-to-end ------------------------------------------
 
+
 def test_process_target_peak_is_honored(tmp_path):
     wav = write_sine_wave(tmp_path / "tone.wav", amplitude=8000)
     out_dir = tmp_path / "out"
     result = _run(
-        "process", str(wav), "--normalize", "--target-peak", "0.5",
-        "--output-dir", str(out_dir), cwd=str(tmp_path),
+        "process",
+        str(wav),
+        "--normalize",
+        "--target-peak",
+        "0.5",
+        "--output-dir",
+        str(out_dir),
+        cwd=str(tmp_path),
     )
     assert result.returncode == 0
     produced = list(out_dir.glob("*.wav"))
@@ -86,8 +96,14 @@ def test_batch_target_peak_is_honored(tmp_path):
     write_sine_wave(tmp_path / "tone.wav", amplitude=8000)
     out_dir = tmp_path / "out"
     result = _run(
-        "batch", str(tmp_path), "normalize", "--target-peak", "0.4",
-        "--output-dir", str(out_dir), cwd=str(tmp_path),
+        "batch",
+        str(tmp_path),
+        "normalize",
+        "--target-peak",
+        "0.4",
+        "--output-dir",
+        str(out_dir),
+        cwd=str(tmp_path),
     )
     assert result.returncode == 0
     produced = list(out_dir.glob("*.wav"))
@@ -97,27 +113,37 @@ def test_batch_target_peak_is_honored(tmp_path):
 
 # -- batch effects operation --------------------------------------------------
 
+
 def test_batch_effects_requires_effects_flag(tmp_path):
     write_sine_wave(tmp_path / "tone.wav")
     result = _run("batch", str(tmp_path), "effects", cwd=str(tmp_path))
     assert result.returncode == 2
 
 
-@pytest.mark.skipif(not main.HAS_NUMPY,
-                    reason="the effects operation needs numpy; the stdlib core has no effects")
+@pytest.mark.skipif(
+    not main.HAS_NUMPY,
+    reason="the effects operation needs numpy; the stdlib core has no effects",
+)
 def test_batch_effects_runs_with_effects_file(tmp_path):
     write_sine_wave(tmp_path / "tone.wav")
     effects_file = tmp_path / "effects.json"
     effects_file.write_text(json.dumps({}))
     out_dir = tmp_path / "out"
     result = _run(
-        "batch", str(tmp_path), "effects", "--effects", str(effects_file),
-        "--output-dir", str(out_dir), cwd=str(tmp_path),
+        "batch",
+        str(tmp_path),
+        "effects",
+        "--effects",
+        str(effects_file),
+        "--output-dir",
+        str(out_dir),
+        cwd=str(tmp_path),
     )
     assert result.returncode == 0, result.stdout + result.stderr
 
 
 # -- batch --quality now sets the shared AudioProcessor config --------------
+
 
 def test_batch_quality_flag_sets_processor_config(tmp_path, monkeypatch):
     write_sine_wave(tmp_path / "tone.wav")
@@ -130,7 +156,8 @@ def test_batch_quality_flag_sets_processor_config(tmp_path, monkeypatch):
 
     monkeypatch.setattr(main.AudioProcessor, "__init__", spy_init)
     monkeypatch.setattr(
-        sys, "argv",
+        sys,
+        "argv",
         ["main.py", "batch", str(tmp_path), "normalize", "--quality", "low"],
     )
     monkeypatch.chdir(tmp_path)
@@ -144,11 +171,13 @@ def test_batch_quality_flag_sets_processor_config(tmp_path, monkeypatch):
 
 # -- midi --key/--mode: wired for real (previously accepted and ignored) -----
 
+
 def _midi_pitch_classes(mid_path):
     """Pitch classes of note-on/note-off events in a SMF file."""
     data = Path(mid_path).read_bytes()
     pitches = [
-        data[i - 1] for i in range(2, len(data))
+        data[i - 1]
+        for i in range(2, len(data))
         if data[i - 2] in (0x90, 0x80) and 0 < data[i - 1] < 128
     ]
     return {p % 12 for p in pitches}
@@ -157,7 +186,14 @@ def _midi_pitch_classes(mid_path):
 def test_midi_generate_honors_key_and_mode(tmp_path):
     out = tmp_path / "ebm.mid"
     result = _run(
-        "midi", "generate", "--key", "Eb", "--mode", "minor", "--output", str(out),
+        "midi",
+        "generate",
+        "--key",
+        "Eb",
+        "--mode",
+        "minor",
+        "--output",
+        str(out),
         cwd=str(tmp_path),
     )
     assert result.returncode == 0, result.stdout + result.stderr
@@ -170,7 +206,14 @@ def test_midi_generate_honors_key_and_mode(tmp_path):
 def test_midi_compose_honors_key_and_mode(tmp_path):
     out = tmp_path / "gm.mid"
     result = _run(
-        "midi", "compose", "--key", "G", "--mode", "minor", "--output", str(out),
+        "midi",
+        "compose",
+        "--key",
+        "G",
+        "--mode",
+        "minor",
+        "--output",
+        str(out),
         cwd=str(tmp_path),
     )
     assert result.returncode == 0, result.stdout + result.stderr
@@ -181,7 +224,12 @@ def test_midi_compose_honors_key_and_mode(tmp_path):
 
 def test_midi_generate_rejects_an_unknown_key(tmp_path):
     result = _run(
-        "midi", "generate", "--key", "ZZ", "--output", str(tmp_path / "x.mid"),
+        "midi",
+        "generate",
+        "--key",
+        "ZZ",
+        "--output",
+        str(tmp_path / "x.mid"),
         cwd=str(tmp_path),
     )
     assert result.returncode == 3  # INPUT -- a bad key is a bad argument
@@ -190,10 +238,12 @@ def test_midi_generate_rejects_an_unknown_key(tmp_path):
 
 # -- --target-peak range: the documented (0, 1.0] contract is enforced ------
 
+
 def test_process_rejects_target_peak_above_one(tmp_path):
     wav = write_sine_wave(tmp_path / "tone.wav")
-    result = _run("process", str(wav), "--normalize", "--target-peak", "2.0",
-                  cwd=str(tmp_path))
+    result = _run(
+        "process", str(wav), "--normalize", "--target-peak", "2.0", cwd=str(tmp_path)
+    )
     assert result.returncode == 3  # INPUT
     # Above-unity targets used to "succeed" while the soft clipper silently
     # crushed the overshoot; nothing may be written on rejection.
@@ -202,12 +252,14 @@ def test_process_rejects_target_peak_above_one(tmp_path):
 
 def test_batch_rejects_target_peak_zero(tmp_path):
     write_sine_wave(tmp_path / "tone.wav")
-    result = _run("batch", str(tmp_path), "normalize", "--target-peak", "0",
-                  cwd=str(tmp_path))
+    result = _run(
+        "batch", str(tmp_path), "normalize", "--target-peak", "0", cwd=str(tmp_path)
+    )
     assert result.returncode == 3  # INPUT
 
 
 # -- plugins flags work in the documented post-subcommand position ----------
+
 
 def test_plugins_list_accepts_json_after_subcommand(tmp_path):
     result = _run("plugins", "list", "--json", cwd=str(tmp_path))
@@ -221,8 +273,16 @@ def test_plugins_directory_positions_merge(tmp_path):
     b = tmp_path / "dir_b"
     a.mkdir()
     b.mkdir()
-    result = _run("plugins", "--directory", str(a), "list",
-                  "--directory", str(b), "--json", cwd=str(tmp_path))
+    result = _run(
+        "plugins",
+        "--directory",
+        str(a),
+        "list",
+        "--directory",
+        str(b),
+        "--json",
+        cwd=str(tmp_path),
+    )
     assert result.returncode == 0
     dirs = json.loads(result.stdout)["directories"]
     assert str(a) in dirs and str(b) in dirs, dirs
@@ -231,8 +291,7 @@ def test_plugins_directory_positions_merge(tmp_path):
 def test_plugins_directory_that_is_a_file_exits_input(tmp_path):
     not_a_dir = tmp_path / "a_file"
     not_a_dir.write_text("x")
-    result = _run("plugins", "list", "--directory", str(not_a_dir),
-                  cwd=str(tmp_path))
+    result = _run("plugins", "list", "--directory", str(not_a_dir), cwd=str(tmp_path))
     assert result.returncode == 3  # INPUT
     assert "not a directory" in result.stderr
 
@@ -240,8 +299,15 @@ def test_plugins_directory_that_is_a_file_exits_input(tmp_path):
 def test_batch_dry_run_writes_nothing(tmp_path):
     write_sine_wave(tmp_path / "tone.wav")
     out = tmp_path / "out"
-    result = _run("batch", str(tmp_path), "normalize", "--dry-run",
-                  "--output-dir", str(out), cwd=str(tmp_path))
+    result = _run(
+        "batch",
+        str(tmp_path),
+        "normalize",
+        "--dry-run",
+        "--output-dir",
+        str(out),
+        cwd=str(tmp_path),
+    )
     assert result.returncode == 0
     # README promises a preview; nothing may be written, and the summary
     # must not claim files were processed.
@@ -252,32 +318,37 @@ def test_batch_dry_run_writes_nothing(tmp_path):
 
 # -- Op-scoped flags are rejected when their operation is absent ---------
 
+
 def test_process_rejects_threshold_without_trim(tmp_path):
     wav = write_sine_wave(tmp_path / "tone.wav")
-    result = _run("process", str(wav), "--normalize", "--threshold", "0.5",
-                  cwd=str(tmp_path))
+    result = _run(
+        "process", str(wav), "--normalize", "--threshold", "0.5", cwd=str(tmp_path)
+    )
     # --threshold only feeds --trim; without it the flag was silently ignored.
     assert result.returncode == 2  # USAGE
 
 
 def test_process_rejects_convert_flag_without_convert(tmp_path):
     wav = write_sine_wave(tmp_path / "tone.wav")
-    result = _run("process", str(wav), "--mono", "--convert-bit-depth", "24",
-                  cwd=str(tmp_path))
+    result = _run(
+        "process", str(wav), "--mono", "--convert-bit-depth", "24", cwd=str(tmp_path)
+    )
     assert result.returncode == 2
 
 
 def test_batch_rejects_convert_flags_on_normalize(tmp_path):
     write_sine_wave(tmp_path / "tone.wav")
-    result = _run("batch", str(tmp_path), "normalize", "--sample-rate", "22050",
-                  cwd=str(tmp_path))
+    result = _run(
+        "batch", str(tmp_path), "normalize", "--sample-rate", "22050", cwd=str(tmp_path)
+    )
     assert result.returncode == 2
 
 
 def test_batch_rejects_quality_on_mono(tmp_path):
     write_sine_wave(tmp_path / "tone.wav")
-    result = _run("batch", str(tmp_path), "mono", "--quality", "high",
-                  cwd=str(tmp_path))
+    result = _run(
+        "batch", str(tmp_path), "mono", "--quality", "high", cwd=str(tmp_path)
+    )
     assert result.returncode == 2
 
 
@@ -285,8 +356,9 @@ def test_batch_rejects_effects_on_normalize(tmp_path):
     write_sine_wave(tmp_path / "tone.wav")
     fx = tmp_path / "fx.json"
     fx.write_text('{"reverb": {"wet": 0.3}}')
-    result = _run("batch", str(tmp_path), "normalize", "--effects", str(fx),
-                  cwd=str(tmp_path))
+    result = _run(
+        "batch", str(tmp_path), "normalize", "--effects", str(fx), cwd=str(tmp_path)
+    )
     assert result.returncode == 2
 
 
@@ -307,26 +379,40 @@ def test_midi_compose_tempo_reaches_the_file(tmp_path):
     """--tempo was accepted but never written: the file had no FF 51 03
     meta event, so every composition played at the player's default 120."""
     out = tmp_path / "t.mid"
-    result = _run("midi", "compose", "--key", "C", "--tempo", "60",
-                  "--output", str(out), cwd=str(tmp_path))
+    result = _run(
+        "midi",
+        "compose",
+        "--key",
+        "C",
+        "--tempo",
+        "60",
+        "--output",
+        str(out),
+        cwd=str(tmp_path),
+    )
     assert result.returncode == 0
     data = out.read_bytes()
     i = data.find(b"\xff\x51\x03")
     assert i >= 0, "no tempo meta-event in file"
-    uspq = int.from_bytes(data[i+3:i+6], "big")
+    uspq = int.from_bytes(data[i + 3 : i + 6], "big")
     assert uspq == 1_000_000  # 60 BPM
 
 
 # -- midi op-scoped flags: a flag the operation ignores must be rejected ----
 
+
 def test_midi_analyze_rejects_output_flags(tmp_path):
     """`midi analyze` only consumes --input; every other flag used to be
     silently ignored (same class as the process/batch scoping fix)."""
     wav = write_sine_wave(tmp_path / "tone.wav")
-    for flag, value in [("--tempo", "90"), ("--key", "G"),
-                        ("--output", str(tmp_path / "x.mid"))]:
-        result = _run("midi", "analyze", "--input", str(wav), flag, value,
-                      cwd=str(tmp_path))
+    for flag, value in [
+        ("--tempo", "90"),
+        ("--key", "G"),
+        ("--output", str(tmp_path / "x.mid")),
+    ]:
+        result = _run(
+            "midi", "analyze", "--input", str(wav), flag, value, cwd=str(tmp_path)
+        )
         assert result.returncode == 2, (flag, result.stdout + result.stderr)
         assert flag in result.stderr
 
@@ -339,30 +425,51 @@ def test_midi_compose_rejects_input(tmp_path):
 
 
 def test_midi_generate_rejects_length(tmp_path):
-    result = _run("midi", "generate", "--output", str(tmp_path / "x.mid"),
-                  "--length", "30", cwd=str(tmp_path))
+    result = _run(
+        "midi",
+        "generate",
+        "--output",
+        str(tmp_path / "x.mid"),
+        "--length",
+        "30",
+        cwd=str(tmp_path),
+    )
     assert result.returncode == 2
     assert "--length" in result.stderr
 
 
 # -- numeric flag ranges: values that crash the encoder are bad input -------
 
+
 def test_midi_tempo_out_of_encodable_range_rejected(tmp_path):
     """--tempo 0 used to surface as 'float division by zero' inside the file
     writer, and --tempo 2 overflowed the 24-bit us-per-quarter field. Both
     are input errors, not encoder crashes."""
     for bad in ("0", "-120", "2"):
-        result = _run("midi", "generate",
-                      "--output", str(tmp_path / "x.mid"),
-                      "--tempo", bad, cwd=str(tmp_path))
+        result = _run(
+            "midi",
+            "generate",
+            "--output",
+            str(tmp_path / "x.mid"),
+            "--tempo",
+            bad,
+            cwd=str(tmp_path),
+        )
         assert result.returncode == 3, (bad, result.stdout + result.stderr)
         assert "--tempo" in result.stderr
         assert not (tmp_path / "x.mid").exists()
 
 
 def test_midi_compose_rejects_nonpositive_length(tmp_path):
-    result = _run("midi", "compose", "--length", "-5",
-                  "--output", str(tmp_path / "x.mid"), cwd=str(tmp_path))
+    result = _run(
+        "midi",
+        "compose",
+        "--length",
+        "-5",
+        "--output",
+        str(tmp_path / "x.mid"),
+        cwd=str(tmp_path),
+    )
     assert result.returncode == 3
     assert "--length" in result.stderr
 
@@ -379,13 +486,13 @@ def test_process_rejects_out_of_range_threshold(tmp_path):
     """--threshold is documented 0-1; an out-of-range value used to become
     a per-file ERROR(1) deep in core instead of an upfront INPUT."""
     wav = write_sine_wave(tmp_path / "tone.wav")
-    result = _run("process", str(wav), "--trim", "--threshold", "5",
-                  cwd=str(tmp_path))
+    result = _run("process", str(wav), "--trim", "--threshold", "5", cwd=str(tmp_path))
     assert result.returncode == 3
     assert "--threshold" in result.stderr
 
 
 # -- effects-file parameter domains: nonsense values are bad input ---------
+
 
 def _effects_file(tmp_path, payload: dict):
     p = tmp_path / "fx.json"
@@ -427,8 +534,7 @@ def test_analyze_export_unwritable_path_is_input_error(tmp_path):
     FileNotFoundError, so cli()'s tidy handler never saw them)."""
     wav = write_sine_wave(tmp_path / "tone.wav")
     for bad in (str(tmp_path), str(tmp_path / "no-such-dir" / "x.json")):
-        result = _run("analyze", str(wav), "--export", bad,
-                      cwd=str(tmp_path))
+        result = _run("analyze", str(wav), "--export", bad, cwd=str(tmp_path))
         assert result.returncode == 3, (bad, result.stdout + result.stderr)
         assert "Traceback" not in result.stderr
 
@@ -437,8 +543,7 @@ def test_midi_output_path_is_preflighted(tmp_path):
     """A bad --output destination used to reach the writer and surface as
     'Error generating MIDI file: <errno>' with ERROR(1)."""
     for bad in (str(tmp_path), str(tmp_path / "no-dir" / "x.mid")):
-        result = _run("midi", "generate", "--output", bad,
-                      cwd=str(tmp_path))
+        result = _run("midi", "generate", "--output", bad, cwd=str(tmp_path))
         assert result.returncode == 3, (bad, result.stdout + result.stderr)
         assert not (tmp_path / "x.mid").exists()
 
@@ -447,8 +552,9 @@ def test_batch_rejects_unknown_format_upfront(tmp_path):
     """--format had no choices: 'mp3' parsed and then every file failed
     identically inside convert_audio."""
     write_sine_wave(tmp_path / "tone.wav")
-    result = _run("batch", str(tmp_path), "convert", "--format", "mp3",
-                  cwd=str(tmp_path))
+    result = _run(
+        "batch", str(tmp_path), "convert", "--format", "mp3", cwd=str(tmp_path)
+    )
     assert result.returncode == 2  # argparse invalid choice
 
 
@@ -456,11 +562,18 @@ def test_negative_sample_rate_rejected_upfront(tmp_path):
     """--sample-rate -1 used to parse and then fail identically on every
     file inside convert_audio."""
     wav = write_sine_wave(tmp_path / "tone.wav")
-    batch = _run("batch", str(tmp_path), "convert", "--sample-rate", "-1",
-                 cwd=str(tmp_path))
+    batch = _run(
+        "batch", str(tmp_path), "convert", "--sample-rate", "-1", cwd=str(tmp_path)
+    )
     assert batch.returncode == 3
-    single = _run("process", str(wav), "--convert", "--convert-sample-rate",
-                  "0", cwd=str(tmp_path))
+    single = _run(
+        "process",
+        str(wav),
+        "--convert",
+        "--convert-sample-rate",
+        "0",
+        cwd=str(tmp_path),
+    )
     assert single.returncode == 3
 
 
@@ -495,15 +608,21 @@ def test_zero_frame_wav_analyze_and_transforms_are_identity(tmp_path):
     empty file, the same way normalize/mono already did."""
     import subprocess, sys, wave
     from pathlib import Path
+
     main_py = str(Path(__file__).resolve().parent.parent / "main.py")
     wav = tmp_path / "zero.wav"
     with wave.open(str(wav), "wb") as w:
-        w.setnchannels(1); w.setsampwidth(2); w.setframerate(44100)
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(44100)
         w.writeframes(b"")
 
     proc = subprocess.run(
         [sys.executable, main_py, "analyze", str(wav)],
-        capture_output=True, text=True, timeout=30)
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
     assert proc.returncode == 0, proc.stderr
     assert "Peak Level: 0.000" in proc.stdout
 
@@ -511,6 +630,7 @@ def test_zero_frame_wav_analyze_and_transforms_are_identity(tmp_path):
     # tiers (the stdlib path's own convention: "No audio signal found");
     # --mono is the exception that writes an empty identity output.
     import importlib.util
+
     try:
         has_numpy = importlib.util.find_spec("numpy") is not None
     except ModuleNotFoundError:
@@ -520,7 +640,10 @@ def test_zero_frame_wav_analyze_and_transforms_are_identity(tmp_path):
     for op in (*ops, ["--normalize"], ["--trim"]):
         proc = subprocess.run(
             [sys.executable, main_py, "process", str(wav)] + op,
-            capture_output=True, text=True, timeout=30)
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
         assert proc.returncode == 3, f"{op}: {proc.returncode} {proc.stderr}"
         assert "No audio" in proc.stderr
 
@@ -531,19 +654,34 @@ def test_process_warns_when_inputs_collide_in_output_dir(tmp_path):
     hear about it."""
     import subprocess, sys
     from pathlib import Path
+
     main_py = str(Path(__file__).resolve().parent.parent / "main.py")
-    d1, d2, out = tmp_path/"d1", tmp_path/"d2", tmp_path/"out"
-    d1.mkdir(); d2.mkdir()
+    d1, d2, out = tmp_path / "d1", tmp_path / "d2", tmp_path / "out"
+    d1.mkdir()
+    d2.mkdir()
     import wave
+
     for d in (d1, d2):
-        with wave.open(str(d/"same.wav"), "wb") as w:
-            w.setnchannels(1); w.setsampwidth(2); w.setframerate(44100)
+        with wave.open(str(d / "same.wav"), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(44100)
             w.writeframes(b"\x01\x00" * 1000)
     proc = subprocess.run(
-        [sys.executable, main_py, "process",
-         str(d1/"same.wav"), str(d2/"same.wav"),
-         "--normalize", "--output-dir", str(out)],
-        capture_output=True, text=True, timeout=60)
+        [
+            sys.executable,
+            main_py,
+            "process",
+            str(d1 / "same.wav"),
+            str(d2 / "same.wav"),
+            "--normalize",
+            "--output-dir",
+            str(out),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
     assert proc.returncode == 0, proc.stderr
     assert "overwrite" in proc.stderr
     assert "same" in proc.stderr
@@ -556,10 +694,14 @@ def test_docs_synopsis_lists_only_real_subcommands():
     be compared against the parser's actual choices, not pattern-scanned."""
     import re, subprocess, sys
     from pathlib import Path
+
     root = Path(__file__).resolve().parent.parent
     help_out = subprocess.run(
         [sys.executable, str(root / "main.py"), "--help"],
-        capture_output=True, text=True, timeout=30).stdout
+        capture_output=True,
+        text=True,
+        timeout=30,
+    ).stdout
     real = set(re.search(r"\{([a-z,]+)\}", help_out).group(1).split(","))
     for doc in (root / "docs").rglob("commands.md"):
         # utf-8 explicitly: read_text() defaults to the locale codec, and
@@ -568,8 +710,9 @@ def test_docs_synopsis_lists_only_real_subcommands():
         m = re.search(r"\{([a-z,]+)\}", doc.read_text(encoding="utf-8"))
         assert m, f"{doc} has no subcommand synopsis to check"
         listed = set(m.group(1).split(","))
-        assert listed == real, (
-            f"{doc}: synopsis {sorted(listed)} != parser {sorted(real)}")
+        assert (
+            listed == real
+        ), f"{doc}: synopsis {sorted(listed)} != parser {sorted(real)}"
 
 
 def test_server_rejects_multi_worker():
@@ -579,7 +722,9 @@ def test_server_rejects_multi_worker():
     # must refuse loudly rather than start an API that forgets logins.
     result = subprocess.run(
         [sys.executable, MAIN_PY, "server", "--workers", "2"],
-        capture_output=True, text=True, timeout=30,
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
     assert result.returncode == 3
     assert "--workers must be 1" in result.stderr
@@ -591,15 +736,16 @@ def test_convert_bit_depth_32_writes_pcm_not_float(tmp_path):
     # PCM_32 so the artifact stays readable without the [audio] extra.
     pytest.importorskip("soundfile")
     wav = write_sine_wave(tmp_path / "tone.wav")
-    result = _run("process", str(wav), "--convert", "--convert-bit-depth", "32",
-                  cwd=str(tmp_path))
+    result = _run(
+        "process", str(wav), "--convert", "--convert-bit-depth", "32", cwd=str(tmp_path)
+    )
     assert result.returncode == 0, result.stderr
 
     out = tmp_path / "tone_converted_32bit.wav"
     body = out.read_bytes()
     fmt_off = body.find(b"fmt ")
     assert fmt_off > 0
-    format_tag = int.from_bytes(body[fmt_off + 8:fmt_off + 10], "little")
+    format_tag = int.from_bytes(body[fmt_off + 8 : fmt_off + 10], "little")
     assert format_tag == 1  # PCM, not IEEE float (3)
 
 
@@ -614,19 +760,21 @@ def test_direct_api_normalize_rejects_out_of_range_target_peak(tmp_path):
 
     for bad in (0.0, -0.5, float("nan"), 2.0):
         results = processor.batch_process(
-            [str(wav)], "normalize",
-            output_dir=str(out_dir), target_peak=bad)
+            [str(wav)], "normalize", output_dir=str(out_dir), target_peak=bad
+        )
         assert "error" in results[0], (bad, results)
         # numpy path raises "target_peak must be ..."; the stdlib core
         # reports "Invalid target peak (0-1.0)".
-        assert "target_peak" in results[0]["error"] \
+        assert (
+            "target_peak" in results[0]["error"]
             or "target peak" in results[0]["error"].lower()
+        )
 
     out_file = out_dir / "tone_normalized.wav"
     assert not out_file.exists()
 
     results = processor.batch_process(
-        [str(wav)], "normalize",
-        output_dir=str(out_dir), target_peak=0.5)
+        [str(wav)], "normalize", output_dir=str(out_dir), target_peak=0.5
+    )
     assert "error" not in results[0], results
     assert 0.49 < _peak(out_file) < 0.51

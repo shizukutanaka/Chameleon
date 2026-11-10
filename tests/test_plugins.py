@@ -26,8 +26,21 @@ def test_sandbox_allows_safe_imports():
 
 @pytest.mark.parametrize(
     "module",
-    ["pathlib", "shutil", "io", "ctypes", "gc", "inspect", "threading",
-     "logging", "sqlite3", "importlib", "wave", "pickle", "mmap"],
+    [
+        "pathlib",
+        "shutil",
+        "io",
+        "ctypes",
+        "gc",
+        "inspect",
+        "threading",
+        "logging",
+        "sqlite3",
+        "importlib",
+        "wave",
+        "pickle",
+        "mmap",
+    ],
 )
 def test_sandbox_import_policy_is_deny_by_default(module):
     """A blocklist names what is dangerous and admits everything else;
@@ -39,8 +52,17 @@ def test_sandbox_import_policy_is_deny_by_default(module):
 
 @pytest.mark.parametrize(
     "attr",
-    ["__traceback__", "tb_frame", "f_globals", "f_builtins", "f_locals",
-     "f_back", "gi_frame", "cr_frame", "ag_frame"],
+    [
+        "__traceback__",
+        "tb_frame",
+        "f_globals",
+        "f_builtins",
+        "f_locals",
+        "f_back",
+        "gi_frame",
+        "cr_frame",
+        "ag_frame",
+    ],
 )
 def test_check_module_safety_rejects_frame_reaching_attrs(tmp_path, attr):
     """e.__traceback__.tb_frame.f_globals reaches __builtins__ with no
@@ -89,6 +111,7 @@ def test_check_module_safety_rejects_invalid_syntax(tmp_path):
 # verified empirically before this fix landed. These pin the specific
 # bypasses that are now caught.
 
+
 def test_check_module_safety_rejects_dunder_import_call(tmp_path):
     loader = PluginLoader(PluginConfig())
     bad = tmp_path / "bypass1.py"
@@ -109,7 +132,9 @@ def test_check_module_safety_rejects_importlib_import_module(tmp_path):
         loader._check_module_safety(Path(bad))
 
 
-@pytest.mark.parametrize("call", ["eval('1+1')", "exec('x=1')", "compile('1', '<s>', 'eval')"])
+@pytest.mark.parametrize(
+    "call", ["eval('1+1')", "exec('x=1')", "compile('1', '<s>', 'eval')"]
+)
 def test_check_module_safety_rejects_eval_exec_compile(tmp_path, call):
     loader = PluginLoader(PluginConfig())
     bad = tmp_path / "bypass3.py"
@@ -130,7 +155,15 @@ def test_check_module_safety_rejects_dunder_globals_access(tmp_path):
 
 @pytest.mark.parametrize(
     "attr",
-    ["__dict__", "__class__", "__base__", "__code__", "__getattribute__", "__func__", "__self__"],
+    [
+        "__dict__",
+        "__class__",
+        "__base__",
+        "__code__",
+        "__getattribute__",
+        "__func__",
+        "__self__",
+    ],
 )
 def test_check_module_safety_rejects_introspection_dunders(tmp_path, attr):
     loader = PluginLoader(PluginConfig())
@@ -146,9 +179,7 @@ def test_check_module_safety_still_accepts_safe_plugin_after_hardening(tmp_path)
     code that merely calls unrelated functions or uses normal attributes."""
     loader = PluginLoader(PluginConfig())
     good = tmp_path / "still_good.py"
-    good.write_text(
-        "import math\n\n\ndef process(x):\n    return math.sqrt(abs(x))\n"
-    )
+    good.write_text("import math\n\n\ndef process(x):\n    return math.sqrt(abs(x))\n")
 
     loader._check_module_safety(Path(good))  # must not raise
 
@@ -225,15 +256,26 @@ def test_plugins_list_json_reports_load_failures(tmp_path):
     import subprocess
     import sys
     from pathlib import Path
+
     main_py = str(Path(__file__).resolve().parent.parent / "main.py")
 
     (tmp_path / "bad.py").write_text("import os\nx = os\n")
     out = subprocess.run(
-        [sys.executable, main_py, "plugins", "list",
-         "--directory", str(tmp_path), "--json"],
-        capture_output=True, text=True, timeout=30)
+        [
+            sys.executable,
+            main_py,
+            "plugins",
+            "list",
+            "--directory",
+            str(tmp_path),
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
     assert out.returncode == 0
-    payload = json.loads(out.stdout[out.stdout.index("{"):])
+    payload = json.loads(out.stdout[out.stdout.index("{") :])
     failures = payload.get("load_failures", {})
     assert any("bad.py" in path for path in failures)
     # The failure reason must carry the sandbox's specific verdict, not the
@@ -251,6 +293,7 @@ def test_load_plugin_initialize_timeout_is_reported_not_swallowed(tmp_path):
     reach load_failures as a TimeoutError, not collapse to a generic
     'no valid plugin class'."""
     import time
+
     loader = PluginLoader(PluginConfig(max_execution_time=1))
     slow = tmp_path / "slow_init.py"
     slow.write_text(
@@ -282,20 +325,22 @@ def test_load_plugin_limits_all_plugin_code_sites(tmp_path, hang_site):
     initialize. Until the wrap, only execute_plugin() was bounded; a
     sleep in any of the others hung `plugins list` (verified)."""
     import time
+
     loader = PluginLoader(PluginConfig(max_execution_time=1))
     body = "import time\n" + ("time.sleep(30)\n" if hang_site == "module" else "")
-    init_sleep = "        time.sleep(30)\n" if hang_site == "init" else "        return True\n"
+    init_sleep = (
+        "        time.sleep(30)\n" if hang_site == "init" else "        return True\n"
+    )
     meta_sleep = "        time.sleep(30)\n" if hang_site == "metadata" else ""
     plugin = tmp_path / "hanging.py"
     plugin.write_text(
-        body +
-        "from plugin_system import AudioEffectPlugin, PluginMetadata\n"
+        body + "from plugin_system import AudioEffectPlugin, PluginMetadata\n"
         "class H(AudioEffectPlugin):\n"
-        "    def get_metadata(self):\n" + meta_sleep +
-        "        return PluginMetadata(name='h', version='1.0.0', author='t',\n"
+        "    def get_metadata(self):\n"
+        + meta_sleep
+        + "        return PluginMetadata(name='h', version='1.0.0', author='t',\n"
         "                              description='t', category='effect')\n"
-        "    def initialize(self, config):\n" + init_sleep +
-        "    def cleanup(self):\n"
+        "    def initialize(self, config):\n" + init_sleep + "    def cleanup(self):\n"
         "        pass\n"
         "    def process_audio(self, audio_data, sample_rate, **params):\n"
         "        return audio_data\n"
@@ -380,7 +425,6 @@ def test_check_module_safety_rejects_getattr_literal_danger_names(tmp_path):
         loader._check_module_safety(Path(bad))
 
 
-
 def test_execute_with_limits_runs_off_main_thread():
     """SIGALRM delivery exists only in the main thread -- on any other
     thread signal.signal() raised ValueError before the plugin callable
@@ -404,6 +448,7 @@ def test_execute_with_limits_times_out_off_main_thread():
     """The thread-join fallback must still enforce the timeout for
     off-main-thread callers."""
     import time
+
     sandbox = PluginSandbox(PluginConfig(max_execution_time=1))
     result = []
 
@@ -444,7 +489,8 @@ class _PosixRlimit:
         soft_req, hard_req = limits
         finite_hard = self.hard != self.RLIM_INFINITY
         raises_hard = hard_req == self.RLIM_INFINITY or (
-            finite_hard and hard_req > self.hard)
+            finite_hard and hard_req > self.hard
+        )
         if raises_hard:
             raise self.error("cannot raise hard limit without privilege")
         self.soft, self.hard = limits
@@ -500,4 +546,3 @@ def test_execute_with_limits_restores_memory_off_main_thread(monkeypatch):
         pytest.skip(f"environment cannot spawn the sandbox worker: {result[0]}")
     assert result == [42]
     assert (state.soft, state.hard) == (4 << 30, 8 << 30)
-

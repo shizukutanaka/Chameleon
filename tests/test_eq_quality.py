@@ -46,7 +46,9 @@ def _tone(freq, amplitude=0.3, seconds=1.0, sample_rate=SAMPLE_RATE):
 def _level_db(signal, freq, sample_rate=SAMPLE_RATE):
     spectrum = np.abs(np.fft.rfft(signal * np.hanning(len(signal))))
     freqs = np.fft.rfftfreq(len(signal), 1 / sample_rate)
-    return 20.0 * math.log10(spectrum[np.argmin(np.abs(freqs - freq))] / len(signal) + 1e-20)
+    return 20.0 * math.log10(
+        spectrum[np.argmin(np.abs(freqs - freq))] / len(signal) + 1e-20
+    )
 
 
 def _apply_eq(signal, bands):
@@ -55,6 +57,7 @@ def _apply_eq(signal, bands):
 
 
 # --- the defining property: selectivity -----------------------------------
+
 
 def test_peaking_eq_leaves_out_of_band_content_alone():
     signal = _tone(200) + _tone(3000)
@@ -83,10 +86,11 @@ def test_boost_then_equal_cut_restores_the_original():
 
     # Skip the filter's start-up transient before comparing.
     difference = restored[2000:] - signal[2000:]
-    assert 20.0 * math.log10(np.sqrt((difference ** 2).mean()) + 1e-20) < -60.0
+    assert 20.0 * math.log10(np.sqrt((difference**2).mean()) + 1e-20) < -60.0
 
 
 # --- RBJ coefficient properties -------------------------------------------
+
 
 def _response_db(b, a, freq):
     scipy_signal = pytest.importorskip("scipy.signal")
@@ -113,15 +117,21 @@ def test_shelf_design_reaches_full_gain_in_its_band_and_unity_outside():
 
 # --- mastering chain ------------------------------------------------------
 
+
 def test_parametric_eq_bell_boosts_its_band_without_erasing_the_rest():
     signal = _tone(200) + _tone(1000) + _tone(8000)
 
     equalizer = mastering_chain.ParametricEQ(SAMPLE_RATE)
-    equalizer.add_band(mastering_chain.EQBand(
-        frequency=1000, gain=6.0, q_factor=1.0, filter_type="bell"))
+    equalizer.add_band(
+        mastering_chain.EQBand(
+            frequency=1000, gain=6.0, q_factor=1.0, filter_type="bell"
+        )
+    )
     processed = equalizer.process(signal.copy())
 
-    assert _level_db(processed, 1000) - _level_db(signal, 1000) == pytest.approx(6.0, abs=0.3)
+    assert _level_db(processed, 1000) - _level_db(signal, 1000) == pytest.approx(
+        6.0, abs=0.3
+    )
     for freq in (200, 8000):
         assert abs(_level_db(processed, freq) - _level_db(signal, freq)) < 1.0
 
@@ -143,6 +153,7 @@ def test_streaming_preset_applies_its_requested_boosts():
 
 
 # --- determinism ----------------------------------------------------------
+
 
 def test_reverb_is_reproducible():
     # The impulse response is synthetic noise; it must be seeded, or the same

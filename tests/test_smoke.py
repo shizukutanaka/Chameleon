@@ -29,15 +29,19 @@ def test_core_modules_import(module_name):
     assert importlib.import_module(module_name) is not None
 
 
-def _write_sine_wave(path: Path, duration: float = 0.3, frequency: float = 440.0) -> Path:
+def _write_sine_wave(
+    path: Path, duration: float = 0.3, frequency: float = 440.0
+) -> Path:
     sample_rate = 44100
     count = int(sample_rate * duration)
     with wave.open(str(path), "wb") as handle:
         handle.setnchannels(1)
         handle.setsampwidth(2)
         handle.setframerate(sample_rate)
-        frames = [int(12000 * math.sin(2 * math.pi * frequency * i / sample_rate))
-                  for i in range(count)]
+        frames = [
+            int(12000 * math.sin(2 * math.pi * frequency * i / sample_rate))
+            for i in range(count)
+        ]
         handle.writeframes(struct.pack("<" + "h" * len(frames), *frames))
     return path
 

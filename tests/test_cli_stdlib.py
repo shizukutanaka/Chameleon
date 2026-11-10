@@ -21,9 +21,7 @@ def _processor():
 def test_stdlib_analyze_returns_metadata(tmp_path):
     wav = write_sine_wave(tmp_path / "tone.wav", duration=0.5)
 
-    result = _processor()._process_single_file_stdlib(
-        str(wav), "analyze", time.time()
-    )
+    result = _processor()._process_single_file_stdlib(str(wav), "analyze", time.time())
 
     assert "error" not in result, result
     meta = result["metadata"]
@@ -61,7 +59,9 @@ def test_stdlib_normalize_dry_run_does_not_write(tmp_path):
     assert list(out_dir.iterdir()) == []
 
 
-@pytest.mark.skipif(main.HAS_NUMPY, reason="numpy present; numpy-only op does not raise")
+@pytest.mark.skipif(
+    main.HAS_NUMPY, reason="numpy present; numpy-only op does not raise"
+)
 def test_numpy_only_operation_raises_clear_error(tmp_path):
     src = write_sine_wave(tmp_path / "in.wav", duration=0.3)
 

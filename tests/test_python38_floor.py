@@ -15,10 +15,12 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 FORBIDDEN_CALLS = [
-    re.compile(r"\.is_relative_to\("),   # pathlib, added 3.9
-    re.compile(r"\.removeprefix\("),     # str/bytes, added 3.9
-    re.compile(r"\.removesuffix\("),     # str/bytes, added 3.9
-    re.compile(r"\bfunctools\.cache\b"), # functools.cache, added 3.9 (lru_cache exists)
+    re.compile(r"\.is_relative_to\("),  # pathlib, added 3.9
+    re.compile(r"\.removeprefix\("),  # str/bytes, added 3.9
+    re.compile(r"\.removesuffix\("),  # str/bytes, added 3.9
+    re.compile(
+        r"\bfunctools\.cache\b"
+    ),  # functools.cache, added 3.9 (lru_cache exists)
     re.compile(r"\brandom\.randbytes\("),
 ]
 
@@ -33,7 +35,8 @@ def test_no_python39_only_apis_in_product_code():
     offenders = []
     for path in _product_sources():
         for lineno, line in enumerate(
-                path.read_text(encoding="utf-8").splitlines(), start=1):
+            path.read_text(encoding="utf-8").splitlines(), start=1
+        ):
             if line.lstrip().startswith("#"):
                 continue
             for pattern in FORBIDDEN_CALLS:
@@ -41,7 +44,8 @@ def test_no_python39_only_apis_in_product_code():
                     offenders.append(
                         f"{path.name}:{lineno}: {pattern.pattern!r} -> {line.strip()}"
                     )
-    assert not offenders, (
-        "Python >=3.9-only API used in product code (floor is 3.8):\n"
-        + "\n".join(offenders)
+    assert (
+        not offenders
+    ), "Python >=3.9-only API used in product code (floor is 3.8):\n" + "\n".join(
+        offenders
     )

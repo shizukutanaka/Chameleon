@@ -32,14 +32,17 @@ def _tone(freq, amplitude=0.3, seconds=1.0):
 def _level_db(signal, freq):
     spectrum = np.abs(np.fft.rfft(signal * np.hanning(len(signal))))
     freqs = np.fft.rfftfreq(len(signal), 1 / SAMPLE_RATE)
-    return 20.0 * np.log10(spectrum[np.argmin(np.abs(freqs - freq))] / len(signal) + 1e-20)
+    return 20.0 * np.log10(
+        spectrum[np.argmin(np.abs(freqs - freq))] / len(signal) + 1e-20
+    )
 
 
 def _process(left, right, **config):
     settings = {"width": 1.0, "bass_mono": False, "mono_freq": 120.0}
     settings.update(config)
     processor = mastering_chain.StereoProcessor(
-        mastering_chain.StereoConfig(**settings), SAMPLE_RATE)
+        mastering_chain.StereoConfig(**settings), SAMPLE_RATE
+    )
     return processor.process(np.array([left, right]))
 
 
@@ -48,6 +51,7 @@ def _mid_side(stereo):
 
 
 # --- width ----------------------------------------------------------------
+
 
 def test_unit_width_is_a_passthrough():
     left, right = _tone(1000.0), _tone(1000.0, amplitude=0.1)
@@ -89,6 +93,7 @@ def test_mono_content_stays_mono_at_any_width():
 
 # --- bass mono ------------------------------------------------------------
 
+
 def test_bass_mono_removes_low_frequencies_from_the_side_channel():
     # Out-of-phase bass plus out-of-phase treble: all side, no mid.
     bass, treble = _tone(60.0, amplitude=0.4), _tone(2000.0)
@@ -127,9 +132,11 @@ def test_bass_mono_disabled_keeps_side_bass():
 
 # --- shape handling -------------------------------------------------------
 
+
 def test_mono_input_is_duplicated_to_stereo():
     processor = mastering_chain.StereoProcessor(
-        mastering_chain.StereoConfig(), SAMPLE_RATE)
+        mastering_chain.StereoConfig(), SAMPLE_RATE
+    )
     signal = _tone(1000.0)
 
     result = processor.process(signal)
@@ -146,5 +153,6 @@ def test_the_stereo_enhancement_config_field_is_inert():
     assert config.stereo_enhancement == 1.0  # stored...
     # ...and never consulted: the stereo stage reads StereoConfig only.
     import inspect
+
     source = inspect.getsource(mastering_chain.StereoProcessor)
     assert "stereo_enhancement" not in source

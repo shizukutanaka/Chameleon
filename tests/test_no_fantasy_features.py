@@ -49,12 +49,28 @@ FORBIDDEN_PATTERNS = [
 ]
 
 # Substrings that mark a line as a sanctioned removal / avoidance record.
-REMOVAL_MARKERS = ("removed", "avoid", "no longer", "= false", "deprecated",
-                   "do not reintroduce", "non-goal")
+REMOVAL_MARKERS = (
+    "removed",
+    "avoid",
+    "no longer",
+    "= false",
+    "deprecated",
+    "do not reintroduce",
+    "non-goal",
+)
 
 
 # Build artifacts that must never be scanned as project sources.
-_EXCLUDE_DIRS = {"tests", "__pycache__", ".venv", "venv", ".git", ".tox", "build", "dist"}
+_EXCLUDE_DIRS = {
+    "tests",
+    "__pycache__",
+    ".venv",
+    "venv",
+    ".git",
+    ".tox",
+    "build",
+    "dist",
+}
 
 
 def _python_sources():
@@ -109,8 +125,17 @@ def test_no_reintroduced_fantasy_features():
 # main() and is not importable, and refactoring product code to suit a guard
 # would be the wrong way round.
 
-CLI_FORBIDDEN_NAMES = {"ml", "ai", "neural", "quantum", "gpu", "transcribe",
-                       "separate", "generate-music", "compose-ai"}
+CLI_FORBIDDEN_NAMES = {
+    "ml",
+    "ai",
+    "neural",
+    "quantum",
+    "gpu",
+    "transcribe",
+    "separate",
+    "generate-music",
+    "compose-ai",
+}
 
 CLI_FORBIDDEN_HELP = [
     re.compile(r"\bmachine[\s-]*learning\b", re.IGNORECASE),
@@ -126,9 +151,13 @@ CLI_FORBIDDEN_HELP = [
 def _cli_help(*args):
     import subprocess
     import sys
+
     result = subprocess.run(
         [sys.executable, str(PROJECT_ROOT / "main.py"), *args, "--help"],
-        capture_output=True, text=True, cwd=str(PROJECT_ROOT), timeout=120,
+        capture_output=True,
+        text=True,
+        cwd=str(PROJECT_ROOT),
+        timeout=120,
     )
     return result.stdout
 
@@ -164,8 +193,9 @@ def test_no_help_text_claims_a_non_goal():
                     violations.append(f"{where}: {line.strip()}")
                     break
 
-    assert not violations, (
-        "CHARTER §4 claim(s) in user-facing help text:\n  " + "\n  ".join(violations))
+    assert (
+        not violations
+    ), "CHARTER §4 claim(s) in user-facing help text:\n  " + "\n  ".join(violations)
 
 
 # --- user-facing documents --------------------------------------------------
@@ -186,7 +216,7 @@ def _user_facing_docs():
     yield PROJECT_ROOT / "README.md"
     yield PROJECT_ROOT / "QUICKSTART.md"
     for path in (PROJECT_ROOT / "docs").rglob("*.md"):
-        if "agents" not in path.parts:      # agent instructions discuss non-goals by name
+        if "agents" not in path.parts:  # agent instructions discuss non-goals by name
             yield path
 
 
@@ -200,7 +230,9 @@ def test_no_user_facing_doc_advertises_a_non_goal():
                 continue
             for pattern in DOC_FORBIDDEN:
                 if pattern.search(line):
-                    violations.append(f"{path.relative_to(PROJECT_ROOT)}:{lineno}: {line.strip()}")
+                    violations.append(
+                        f"{path.relative_to(PROJECT_ROOT)}:{lineno}: {line.strip()}"
+                    )
                     break
 
     assert not violations, (
@@ -211,8 +243,10 @@ def test_no_user_facing_doc_advertises_a_non_goal():
 
 
 def test_the_doc_guard_would_catch_the_line_it_was_written_for():
-    assert any(p.search("(advanced spectral/ML processing, real-time streaming)")
-               for p in DOC_FORBIDDEN)
+    assert any(
+        p.search("(advanced spectral/ML processing, real-time streaming)")
+        for p in DOC_FORBIDDEN
+    )
     # ...and does not fire on a sentence that records a removal.
     assert _is_removal_record("the add-then-remove cycle of ML features was removed")
     # ...nor on ordinary words that happen to contain the letters.
@@ -224,8 +258,9 @@ def test_the_cli_guard_would_catch_the_command_it_was_written_for():
     # for its whole life. A guard nobody has seen fail is a guard nobody knows
     # works.
     assert "ml" in CLI_FORBIDDEN_NAMES
-    assert any(p.search("Audio enhancement using machine learning")
-               for p in CLI_FORBIDDEN_HELP)
+    assert any(
+        p.search("Audio enhancement using machine learning") for p in CLI_FORBIDDEN_HELP
+    )
     assert not any(p.search("Remove noise") for p in CLI_FORBIDDEN_HELP)
 
 

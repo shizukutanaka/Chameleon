@@ -11,8 +11,14 @@ import struct
 import tempfile
 from pathlib import Path
 
-def create_test_wav(filename: str, frequency: float = 440.0, duration: float = 1.0,
-                   sample_rate: int = 44100, amplitude: float = 0.5):
+
+def create_test_wav(
+    filename: str,
+    frequency: float = 440.0,
+    duration: float = 1.0,
+    sample_rate: int = 44100,
+    amplitude: float = 0.5,
+):
     """Create a simple test WAV file without numpy"""
     samples = int(duration * sample_rate)
 
@@ -20,33 +26,38 @@ def create_test_wav(filename: str, frequency: float = 440.0, duration: float = 1
     audio_data = []
     for i in range(samples):
         t = i / sample_rate
-        sample = int(amplitude * 32767 * __import__('math').sin(2 * __import__('math').pi * frequency * t))
+        sample = int(
+            amplitude
+            * 32767
+            * __import__("math").sin(2 * __import__("math").pi * frequency * t)
+        )
         audio_data.append(sample)
 
     # Write WAV file
-    with open(filename, 'wb') as f:
+    with open(filename, "wb") as f:
         # RIFF header
-        f.write(b'RIFF')
-        f.write(struct.pack('<I', 36 + samples * 2))
-        f.write(b'WAVE')
+        f.write(b"RIFF")
+        f.write(struct.pack("<I", 36 + samples * 2))
+        f.write(b"WAVE")
 
         # fmt chunk
-        f.write(b'fmt ')
-        f.write(struct.pack('<I', 16))  # Chunk size
-        f.write(struct.pack('<H', 1))   # Audio format (PCM)
-        f.write(struct.pack('<H', 1))   # Channels
-        f.write(struct.pack('<I', sample_rate))
-        f.write(struct.pack('<I', sample_rate * 2))  # Byte rate
-        f.write(struct.pack('<H', 2))   # Block align
-        f.write(struct.pack('<H', 16))  # Bits per sample
+        f.write(b"fmt ")
+        f.write(struct.pack("<I", 16))  # Chunk size
+        f.write(struct.pack("<H", 1))  # Audio format (PCM)
+        f.write(struct.pack("<H", 1))  # Channels
+        f.write(struct.pack("<I", sample_rate))
+        f.write(struct.pack("<I", sample_rate * 2))  # Byte rate
+        f.write(struct.pack("<H", 2))  # Block align
+        f.write(struct.pack("<H", 16))  # Bits per sample
 
         # data chunk
-        f.write(b'data')
-        f.write(struct.pack('<I', samples * 2))
+        f.write(b"data")
+        f.write(struct.pack("<I", samples * 2))
 
         # Write audio samples
         for sample in audio_data:
-            f.write(struct.pack('<h', sample))
+            f.write(struct.pack("<h", sample))
+
 
 def test_wav_file_creation():
     """Test WAV file creation and validation"""
@@ -64,12 +75,13 @@ def test_wav_file_creation():
         assert file_size > 100, f"File too small: {file_size} bytes"
 
         # Validate WAV header
-        with open(test_file, 'rb') as f:
+        with open(test_file, "rb") as f:
             header = f.read(12)
-            assert header[:4] == b'RIFF', "Missing RIFF header"
-            assert header[8:12] == b'WAVE', "Missing WAVE header"
+            assert header[:4] == b"RIFF", "Missing RIFF header"
+            assert header[8:12] == b"WAVE", "Missing WAVE header"
 
         print("✓ WAV file creation test passed")
+
 
 def test_basic_audio_analysis():
     """Test basic audio analysis without external libraries"""
@@ -80,21 +92,21 @@ def test_basic_audio_analysis():
         create_test_wav(test_file, 440.0, 2.0, 44100, 0.7)
 
         # Read WAV file header
-        with open(test_file, 'rb') as f:
+        with open(test_file, "rb") as f:
             # Skip RIFF header
             f.seek(12)
 
             # Read fmt chunk
             chunk_id = f.read(4)
-            assert chunk_id == b'fmt ', f"Expected fmt chunk, got {chunk_id}"
+            assert chunk_id == b"fmt ", f"Expected fmt chunk, got {chunk_id}"
 
-            chunk_size = struct.unpack('<I', f.read(4))[0]
-            format_tag = struct.unpack('<H', f.read(2))[0]
-            channels = struct.unpack('<H', f.read(2))[0]
-            sample_rate = struct.unpack('<I', f.read(4))[0]
-            byte_rate = struct.unpack('<I', f.read(4))[0]
-            block_align = struct.unpack('<H', f.read(2))[0]
-            bits_per_sample = struct.unpack('<H', f.read(2))[0]
+            chunk_size = struct.unpack("<I", f.read(4))[0]
+            format_tag = struct.unpack("<H", f.read(2))[0]
+            channels = struct.unpack("<H", f.read(2))[0]
+            sample_rate = struct.unpack("<I", f.read(4))[0]
+            byte_rate = struct.unpack("<I", f.read(4))[0]
+            block_align = struct.unpack("<H", f.read(2))[0]
+            bits_per_sample = struct.unpack("<H", f.read(2))[0]
 
             # Validate format
             assert format_tag == 1, f"Expected PCM format, got {format_tag}"
@@ -109,17 +121,22 @@ def test_basic_audio_analysis():
                     break
 
                 chunk_id = chunk_header[:4]
-                chunk_size = struct.unpack('<I', chunk_header[4:8])[0]
+                chunk_size = struct.unpack("<I", chunk_header[4:8])[0]
 
-                if chunk_id == b'data':
+                if chunk_id == b"data":
                     # Calculate duration
-                    duration = chunk_size / (sample_rate * channels * (bits_per_sample // 8))
-                    assert abs(duration - 2.0) < 0.1, f"Expected 2s duration, got {duration}s"
+                    duration = chunk_size / (
+                        sample_rate * channels * (bits_per_sample // 8)
+                    )
+                    assert (
+                        abs(duration - 2.0) < 0.1
+                    ), f"Expected 2s duration, got {duration}s"
                     break
                 else:
                     f.seek(chunk_size, 1)
 
         print("✓ Basic audio analysis test passed")
+
 
 def test_file_operations():
     """Test file I/O operations"""
@@ -150,6 +167,7 @@ def test_file_operations():
 
         print("✓ File operations test passed")
 
+
 def test_performance_basic():
     """Test basic performance without heavy computations"""
     print("Testing basic performance...")
@@ -178,7 +196,7 @@ def test_performance_basic():
 
         # Read file multiple times
         for _ in range(5):
-            with open(test_file, 'rb') as f:
+            with open(test_file, "rb") as f:
                 data = f.read()
                 assert len(data) > 1000, "File data too small"
 
@@ -186,6 +204,7 @@ def test_performance_basic():
 
     print(f"✓ Read 5s file 5 times in {read_time:.3f}s")
     print("✓ Performance test passed")
+
 
 def test_security_validation():
     """Test basic security validation"""
@@ -198,10 +217,10 @@ def test_security_validation():
         "/etc/passwd",
         "C:\\Windows\\System32\\config",
         "test\x00.wav",
-        "a" * 1000 + ".wav"  # Very long filename
+        "a" * 1000 + ".wav",  # Very long filename
     ]
 
-    blocked_patterns = ['../', '..\\', '\x00', '/etc/', '/proc/', '/sys/']
+    blocked_patterns = ["../", "..\\", "\x00", "/etc/", "/proc/", "/sys/"]
 
     for path in dangerous_paths:
         is_dangerous = any(pattern in path.lower() for pattern in blocked_patterns)
@@ -214,13 +233,14 @@ def test_security_validation():
 
     # Test file size limits
     max_size = 500 * 1024 * 1024  # 500MB
-    test_sizes = [0, 1000, 1024*1024, max_size - 1, max_size + 1]
+    test_sizes = [0, 1000, 1024 * 1024, max_size - 1, max_size + 1]
 
     for size in test_sizes:
         is_valid = 0 < size <= max_size
         print(f"✓ Size {size:,} bytes: {'valid' if is_valid else 'invalid'}")
 
     print("✓ Security validation test passed")
+
 
 def test_core_modules():
     """Test that core modules can be imported"""
@@ -242,6 +262,7 @@ def test_core_modules():
         from dataclasses import dataclass
         from functools import lru_cache
         import logging
+
         print("✓ All required standard library modules available")
     except ImportError as e:
         print(f"✗ Missing standard library module: {e}")
@@ -254,7 +275,7 @@ def test_core_modules():
         ("librosa", "Audio analysis features"),
         ("pyaudio", "Real-time audio processing"),
         ("rich", "Enhanced CLI interface"),
-        ("click", "Advanced CLI features")
+        ("click", "Advanced CLI features"),
     ]
 
     for module, description in optional_modules:
@@ -265,6 +286,7 @@ def test_core_modules():
             print(f"⚠ Optional module {module} missing: {description}")
 
     print("✓ Core module test completed")
+
 
 def run_all_tests():
     """Run all validation tests"""
@@ -278,7 +300,7 @@ def run_all_tests():
         test_basic_audio_analysis,
         test_file_operations,
         test_performance_basic,
-        test_security_validation
+        test_security_validation,
     ]
 
     passed = 0
@@ -310,6 +332,7 @@ def run_all_tests():
         print("❌ Some tests failed. Please check the implementation.")
 
     return failed == 0
+
 
 if __name__ == "__main__":
     success = run_all_tests()

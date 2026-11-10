@@ -113,10 +113,12 @@ def _inverse_real_transform(spectrum: Sequence[complex], length: int) -> List[fl
     return output
 
 
-def _compute_bandwidth(magnitudes: Sequence[float], sample_rate: int) -> Tuple[float, float]:
+def _compute_bandwidth(
+    magnitudes: Sequence[float], sample_rate: int
+) -> Tuple[float, float]:
     """Estimate effective bandwidth using cumulative energy thresholds."""
 
-    total_energy = sum(value ** 2 for value in magnitudes)
+    total_energy = sum(value**2 for value in magnitudes)
     if total_energy <= 0:
         return 0.0, 0.0
 
@@ -127,7 +129,7 @@ def _compute_bandwidth(magnitudes: Sequence[float], sample_rate: int) -> Tuple[f
     high_threshold = 0.95 * total_energy
 
     for index, magnitude in enumerate(magnitudes):
-        energy = magnitude ** 2
+        energy = magnitude**2
         cumulative += energy
         if cumulative <= low_threshold:
             lower_index = index
@@ -149,10 +151,14 @@ def _hann_window(length: int) -> List[float]:
 
     if length <= 1:
         return [1.0] * max(length, 0)
-    return [0.5 - 0.5 * math.cos(2.0 * math.pi * n / (length - 1)) for n in range(length)]
+    return [
+        0.5 - 0.5 * math.cos(2.0 * math.pi * n / (length - 1)) for n in range(length)
+    ]
 
 
-def _detect_peaks(magnitudes: Sequence[float], sample_rate: int, max_peaks: int) -> List[SpectrumPeak]:
+def _detect_peaks(
+    magnitudes: Sequence[float], sample_rate: int, max_peaks: int
+) -> List[SpectrumPeak]:
     """Select dominant peaks by neighbourhood comparison with sub-bin refinement.
 
     Each local maximum is refined with parabolic (quadratic) interpolation over
@@ -217,7 +223,7 @@ def analyze_spectrum(
     spectrum = _discrete_fourier_transform(windowed)
     magnitudes = [abs(value) for value in spectrum]
 
-    rms = math.sqrt(sum(sample ** 2 for sample in buffer) / len(buffer))
+    rms = math.sqrt(sum(sample**2 for sample in buffer) / len(buffer))
     dc_offset = statistics.mean(buffer)
     bandwidth = _compute_bandwidth(magnitudes, sample_rate)
     peaks = _detect_peaks(magnitudes, sample_rate, max_peaks)
@@ -249,7 +255,9 @@ def normalize_peak(samples: Sequence[float], target_peak: float = 0.95) -> List[
     return [sample * scale for sample in buffer]
 
 
-def linear_resample(samples: Sequence[float], source_rate: int, target_rate: int) -> List[float]:
+def linear_resample(
+    samples: Sequence[float], source_rate: int, target_rate: int
+) -> List[float]:
     """Resample using linear interpolation.
 
     Note: this applies no anti-aliasing filter. When downsampling
@@ -324,8 +332,9 @@ def apply_spectral_mask(
     if not math.isfinite(sample_rate) or sample_rate <= 0:
         raise ValueError("sample_rate must be a positive integer")
 
-    if any(not math.isfinite(gain) or gain < 0
-           for gain in (low_gain, mid_gain, high_gain)):
+    if any(
+        not math.isfinite(gain) or gain < 0 for gain in (low_gain, mid_gain, high_gain)
+    ):
         raise ValueError("gain factors must be non-negative")
 
     buffer = _to_float_sequence(samples)
@@ -337,9 +346,11 @@ def apply_spectral_mask(
     step = len(buffer) if HAS_NUMPY else 4096
     processed: List[float] = []
     for start in range(0, len(buffer), step):
-        block = buffer[start:start + step]
+        block = buffer[start : start + step]
         spectrum = _discrete_fourier_transform(block)
-        adjusted = _apply_band_gains(spectrum, sample_rate, low_gain, mid_gain, high_gain)
+        adjusted = _apply_band_gains(
+            spectrum, sample_rate, low_gain, mid_gain, high_gain
+        )
         processed.extend(_inverse_real_transform(adjusted, len(block)))
     return processed
 

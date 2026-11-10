@@ -83,7 +83,7 @@ def _json_export_default(obj):
         if d.get("tempo") == 0.0:
             d["tempo"] = None
         return d
-    item = getattr(obj, 'item', None)
+    item = getattr(obj, "item", None)
     if callable(item):  # numpy scalar -> Python scalar
         return item()
     return str(obj)
@@ -185,7 +185,9 @@ def _load_effects(effects_path: str) -> Dict[str, Any]:
         with open(effects_path) as f:
             effects = json.load(f)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"Effects file '{effects_path}' is not valid JSON: {exc}") from exc
+        raise ValueError(
+            f"Effects file '{effects_path}' is not valid JSON: {exc}"
+        ) from exc
     except OSError as exc:
         raise ValueError(f"Cannot read effects file '{effects_path}': {exc}") from exc
 
@@ -203,8 +205,14 @@ def _load_effects(effects_path: str) -> Dict[str, Any]:
     known_params = {
         "eq": {"frequency", "gain", "q"},
         "reverb": {"room_size", "wet"},
-        "compression": {"threshold", "ratio", "attack", "release", "knee",
-                        "makeup_gain"},
+        "compression": {
+            "threshold",
+            "ratio",
+            "attack",
+            "release",
+            "knee",
+            "makeup_gain",
+        },
     }
 
     for name, params in effects.items():
@@ -221,9 +229,11 @@ def _load_effects(effects_path: str) -> Dict[str, Any]:
                         f"Effect 'eq' band #{i} must be a parameter object, got {type(band).__name__}"
                     )
                 for key in ("frequency", "gain"):
-                    if (key not in band
-                            or not isinstance(band[key], (int, float))
-                            or not math.isfinite(band[key])):
+                    if (
+                        key not in band
+                        or not isinstance(band[key], (int, float))
+                        or not math.isfinite(band[key])
+                    ):
                         raise ValueError(
                             f"Effect 'eq' band #{i} needs a finite numeric '{key}'"
                         )
@@ -235,16 +245,21 @@ def _load_effects(effects_path: str) -> Dict[str, Any]:
                         f"Effect 'eq' band #{i} frequency must be positive, "
                         f"got {band['frequency']}"
                     )
-                if "q" in band and (not isinstance(band["q"], (int, float))
-                                    or not math.isfinite(band["q"])
-                                    or band["q"] <= 0):
+                if "q" in band and (
+                    not isinstance(band["q"], (int, float))
+                    or not math.isfinite(band["q"])
+                    or band["q"] <= 0
+                ):
                     raise ValueError(
                         f"Effect 'eq' band #{i} 'q' must be a positive number"
                     )
                 for key in band:
                     if key not in known_params["eq"]:
-                        print(f"Warning: unknown eq parameter '{key}' in band "
-                              f"#{i} will be ignored", file=sys.stderr)
+                        print(
+                            f"Warning: unknown eq parameter '{key}' in band "
+                            f"#{i} will be ignored",
+                            file=sys.stderr,
+                        )
         elif not isinstance(params, dict):
             raise ValueError(
                 f"Effect '{name}' must map to a parameter object, got {type(params).__name__}"
@@ -252,12 +267,17 @@ def _load_effects(effects_path: str) -> Dict[str, Any]:
         else:
             for key in params:
                 if name in known_params and key not in known_params[name]:
-                    print(f"Warning: unknown parameter '{key}' for effect "
-                          f"'{name}' will be ignored", file=sys.stderr)
+                    print(
+                        f"Warning: unknown parameter '{key}' for effect "
+                        f"'{name}' will be ignored",
+                        file=sys.stderr,
+                    )
             if name == "reverb":
                 for key in ("room_size", "wet"):
-                    if key in params and (not isinstance(params[key], (int, float))
-                                          or not math.isfinite(params[key])):
+                    if key in params and (
+                        not isinstance(params[key], (int, float))
+                        or not math.isfinite(params[key])
+                    ):
                         raise ValueError(
                             f"Effect 'reverb' '{key}' must be a finite number, "
                             f"got {params[key]!r}"
@@ -273,10 +293,18 @@ def _load_effects(effects_path: str) -> Dict[str, Any]:
                 # Type-check before any domain comparison: a string here used
                 # to reach `<=`/`<` and leak a TypeError traceback instead of
                 # a validation error.
-                for key in ("threshold", "ratio", "attack", "release",
-                            "knee", "makeup_gain"):
-                    if key in params and (not isinstance(params[key], (int, float))
-                                          or not math.isfinite(params[key])):
+                for key in (
+                    "threshold",
+                    "ratio",
+                    "attack",
+                    "release",
+                    "knee",
+                    "makeup_gain",
+                ):
+                    if key in params and (
+                        not isinstance(params[key], (int, float))
+                        or not math.isfinite(params[key])
+                    ):
                         raise ValueError(
                             f"Effect 'compression' '{key}' must be a finite "
                             f"number, got {params[key]!r}"
@@ -294,8 +322,11 @@ def _load_effects(effects_path: str) -> Dict[str, Any]:
                             f"got {params[key]}"
                         )
         if name not in known:
-            print(f"Warning: unknown effect '{name}' in effects file will be ignored "
-                  f"(known effects: {', '.join(sorted(known))})", file=sys.stderr)
+            print(
+                f"Warning: unknown effect '{name}' in effects file will be ignored "
+                f"(known effects: {', '.join(sorted(known))})",
+                file=sys.stderr,
+            )
 
     return effects
 
@@ -310,7 +341,9 @@ def _sanitize_plugin_directory(directory: str) -> Path:
     try:
         resolved = expanded.resolve(strict=False)
     except Exception as exc:
-        raise ValueError(f"Failed to resolve plugin directory '{directory}': {exc}") from exc
+        raise ValueError(
+            f"Failed to resolve plugin directory '{directory}': {exc}"
+        ) from exc
 
     if not resolved.is_absolute():
         # Windows resolve() can return a drive-less "\x\y" form (rooted but
@@ -330,7 +363,9 @@ def _sanitize_plugin_directory(directory: str) -> Path:
     return resolved
 
 
-def _initialize_plugin_manager(directories: Optional[List[str]]) -> Tuple[PluginManager, List[Path]]:
+def _initialize_plugin_manager(
+    directories: Optional[List[str]],
+) -> Tuple[PluginManager, List[Path]]:
     """Create and initialize a plugin manager with sanitized directories."""
 
     config = PluginConfig()
@@ -367,6 +402,7 @@ def _serialize_result(value: Any) -> Any:
 
     return value
 
+
 # Import audio libraries with graceful fallback
 try:
     if not TYPE_CHECKING:
@@ -388,13 +424,17 @@ if not HAS_NUMPY:
 
 try:
     import scipy.signal as signal
+
     HAS_SCIPY = True
 except ImportError:
     HAS_SCIPY = False
-    _optional_dep_logger.debug("SciPy not installed. Advanced processing features disabled.")
+    _optional_dep_logger.debug(
+        "SciPy not installed. Advanced processing features disabled."
+    )
 
 try:
     import librosa
+
     HAS_LIBROSA = True
 except ImportError:
     HAS_LIBROSA = False
@@ -402,6 +442,7 @@ except ImportError:
 
 try:
     import soundfile as sf
+
     HAS_SOUNDFILE = True
 except ImportError:
     HAS_SOUNDFILE = False
@@ -410,6 +451,7 @@ except ImportError:
 # Import MIDI analysis module
 try:
     from midi_analysis import MIDIAnalyzer, MIDIComposer, MIDIConfig, MIDINote
+
     HAS_MIDI = True
 except ImportError:
     HAS_MIDI = False
@@ -417,6 +459,7 @@ except ImportError:
 
 try:
     import pyaudio
+
     HAS_PYAUDIO = True
 except ImportError:
     HAS_PYAUDIO = False
@@ -429,6 +472,7 @@ except ImportError:
 # extra format check when it is unavailable.
 try:
     from advanced_validation import DeepFileInspector
+
     HAS_DEEP_INSPECTOR = True
 except ImportError:
     HAS_DEEP_INSPECTOR = False
@@ -438,6 +482,7 @@ except ImportError:
 # trimmed checkout should still run the CLI without progress bars/colour.
 try:
     from ux_improvements import ProgressBar, ColorText
+
     HAS_UX_IMPROVEMENTS = True
 except ImportError:
     HAS_UX_IMPROVEMENTS = False
@@ -447,6 +492,7 @@ except ImportError:
 # imports so a trimmed checkout still runs the CLI without --spectrum.
 try:
     import spectral_utils
+
     HAS_SPECTRAL_UTILS = True
 except ImportError:
     HAS_SPECTRAL_UTILS = False
@@ -459,6 +505,7 @@ except ImportError:
 try:
     import mastering_chain
     from mastering_chain import MasteringChain, create_mastering_preset
+
     HAS_MASTERING_CHAIN = True
 except ImportError:
     HAS_MASTERING_CHAIN = False
@@ -471,6 +518,7 @@ except ImportError:
 # a trimmed checkout still runs the CLI without --loudness.
 try:
     import bs1770_loudness
+
     HAS_BS1770_LOUDNESS = True
 except ImportError:
     HAS_BS1770_LOUDNESS = False
@@ -500,29 +548,34 @@ MAX_TARGET_SAMPLE_RATE = 768_000
 # two of the four dependency-free operations out of users' reach while the
 # product's whole claim is its dependency-free core.
 _STDLIB_FILE_OPERATIONS = {
-    "normalize": ("_normalized.wav",
-                  lambda src, dst, kw: core.normalize(src, dst, kw.get("target_peak", 0.95))),
-    "mono": ("_mono.wav",
-             lambda src, dst, kw: core.to_mono(src, dst)),
-    "trim": ("_trimmed.wav",
-             lambda src, dst, kw: core.trim_silence(src, dst, kw.get("threshold", 0.01))),
+    "normalize": (
+        "_normalized.wav",
+        lambda src, dst, kw: core.normalize(src, dst, kw.get("target_peak", 0.95)),
+    ),
+    "mono": ("_mono.wav", lambda src, dst, kw: core.to_mono(src, dst)),
+    "trim": (
+        "_trimmed.wav",
+        lambda src, dst, kw: core.trim_silence(src, dst, kw.get("threshold", 0.01)),
+    ),
 }
 # WAV is always supported through the standard-library loader. Extra formats are
 # advertised only when a backend that can actually decode them is installed, so the
 # default dependency-free install stays honestly WAV-only (see CHARTER.md §3) while the
 # `[audio]` extra turns mp3/flac/ogg into a real, working input path instead of a gate
 # that rejects them at load time even though load_audio (below) is wired for them.
-SUPPORTED_FORMATS = {'.wav', '.wave'}
+SUPPORTED_FORMATS = {".wav", ".wave"}
 if HAS_LIBROSA or HAS_SOUNDFILE:
     # soundfile/libsndfile and librosa both decode these natively.
-    SUPPORTED_FORMATS |= {'.flac', '.ogg', '.oga', '.aiff', '.aif'}
+    SUPPORTED_FORMATS |= {".flac", ".ogg", ".oga", ".aiff", ".aif"}
 if HAS_LIBROSA:
     # librosa reaches mp3/m4a via audioread/ffmpeg; soundfile alone may not.
-    SUPPORTED_FORMATS |= {'.mp3', '.m4a'}
+    SUPPORTED_FORMATS |= {".mp3", ".m4a"}
+
 
 @dataclass
 class AudioMetadata:
     """Enhanced audio metadata with comprehensive information"""
+
     duration: float
     sample_rate: int
     channels: int
@@ -544,9 +597,11 @@ class AudioMetadata:
     spectral_centroid: Optional[float] = None
     zero_crossing_rate: Optional[float] = None
 
+
 @dataclass
 class ProcessingConfig:
     """Configuration for audio processing operations"""
+
     sample_rate: int = 44100
     channels: int = 2
     bit_depth: int = 16
@@ -598,6 +653,7 @@ class ProcessingConfig:
 
         return config
 
+
 class AudioProcessor:
     """Audio processor: analysis, normalization, batch processing, and
     (optionally, via the [audio] extra) real-time streaming and a mastering
@@ -616,11 +672,15 @@ class AudioProcessor:
         if max_workers is not None:
             self.config.max_workers = max(1, max_workers)
 
-        self.max_workers = max(1, min(self.config.max_workers, os.cpu_count() or self.config.max_workers))
+        self.max_workers = max(
+            1, min(self.config.max_workers, os.cpu_count() or self.config.max_workers)
+        )
 
     def setup_logging(self):
         """Configure logging with rotation and secure storage"""
-        log_dir = Path(os.getenv("CHAMELEON_LOG_DIR", Path.home() / ".chameleon" / "logs"))
+        log_dir = Path(
+            os.getenv("CHAMELEON_LOG_DIR", Path.home() / ".chameleon" / "logs")
+        )
         try:
             log_dir.mkdir(parents=True, exist_ok=True)
             if os.name != "nt":
@@ -631,8 +691,12 @@ class AudioProcessor:
 
         log_file = log_dir / "chameleon.log"
 
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        file_handler = RotatingFileHandler(log_file, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8")
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
+        file_handler = RotatingFileHandler(
+            log_file, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
+        )
         file_handler.setFormatter(formatter)
         console_handler = logging.StreamHandler()
         console_handler.setFormatter(formatter)
@@ -646,7 +710,7 @@ class AudioProcessor:
 
         self.logger = logger
 
-    def load_audio(self, file_path: str) -> Tuple['np.ndarray', int]:
+    def load_audio(self, file_path: str) -> Tuple["np.ndarray", int]:
         """Load audio file into a numpy array, with multiple backend support.
 
         Checks for numpy here rather than letting each caller discover it.
@@ -698,21 +762,23 @@ class AudioProcessor:
 
     def _load_wav_basic(self, file_path: str) -> Tuple[np.ndarray, int]:
         """Basic WAV file loader without external dependencies"""
-        handle = SecurityValidator.safe_open_file(file_path, 'rb')
+        handle = SecurityValidator.safe_open_file(file_path, "rb")
         if handle is None:
             raise ValueError(f"Unsafe or unreadable WAV file: {file_path}")
 
         with handle as f:
             # Read RIFF header
             riff = f.read(12)
-            if riff[:4] != b'RIFF' or riff[8:12] != b'WAVE':
+            if riff[:4] != b"RIFF" or riff[8:12] != b"WAVE":
                 raise ValueError("Not a valid WAV file")
 
             # PCM subformat GUIDs for WAVE_FORMAT_EXTENSIBLE.
-            pcm_guid = (b'\x01\x00\x00\x00\x00\x00\x10\x00'
-                        b'\x80\x00\x00\xaa\x00\x38\x9b\x71')
-            float_guid = (b'\x03\x00\x00\x00\x00\x00\x10\x00'
-                          b'\x80\x00\x00\xaa\x00\x38\x9b\x71')
+            pcm_guid = (
+                b"\x01\x00\x00\x00\x00\x00\x10\x00" b"\x80\x00\x00\xaa\x00\x38\x9b\x71"
+            )
+            float_guid = (
+                b"\x03\x00\x00\x00\x00\x00\x10\x00" b"\x80\x00\x00\xaa\x00\x38\x9b\x71"
+            )
 
             audio_format = None
 
@@ -724,17 +790,25 @@ class AudioProcessor:
                     break
 
                 chunk_id = chunk_header[:4]
-                chunk_size = struct.unpack('<I', chunk_header[4:8])[0]
+                chunk_size = struct.unpack("<I", chunk_header[4:8])[0]
 
-                if chunk_id == b'fmt ':
+                if chunk_id == b"fmt ":
                     fmt_data = f.read(chunk_size)
                     if len(fmt_data) < 16:
                         raise ValueError("Truncated fmt chunk")
-                    audio_format, channels, sample_rate, byte_rate, block_align, bits_per_sample = \
-                        struct.unpack('<HHIIHH', fmt_data[:16])
+                    (
+                        audio_format,
+                        channels,
+                        sample_rate,
+                        byte_rate,
+                        block_align,
+                        bits_per_sample,
+                    ) = struct.unpack("<HHIIHH", fmt_data[:16])
                     if audio_format == 0xFFFE:
                         if len(fmt_data) < 40:
-                            raise ValueError("Truncated WAVE_FORMAT_EXTENSIBLE fmt chunk")
+                            raise ValueError(
+                                "Truncated WAVE_FORMAT_EXTENSIBLE fmt chunk"
+                            )
                         guid = fmt_data[24:40]
                         if guid == pcm_guid:
                             audio_format = 1
@@ -743,14 +817,15 @@ class AudioProcessor:
                         else:
                             raise ValueError("Unsupported WAV subformat")
 
-                elif chunk_id == b'data':
+                elif chunk_id == b"data":
                     if audio_format is None:
                         raise ValueError("WAV data chunk before fmt chunk")
                     audio_bytes = f.read(chunk_size)
                     if len(audio_bytes) < chunk_size:
                         self.logger.warning(
                             "Data chunk truncated: declared %d bytes, %d present",
-                            chunk_size, len(audio_bytes),
+                            chunk_size,
+                            len(audio_bytes),
                         )
 
                     # Decode by (format tag, bit depth) — anything else is an
@@ -762,8 +837,13 @@ class AudioProcessor:
                         audio = np.frombuffer(audio_bytes, dtype=np.int16)
                         audio = audio.astype(np.float32) / 32768.0
                     elif audio_format == 1 and bits_per_sample == 24:
-                        raw = np.frombuffer(audio_bytes[:len(audio_bytes) // 3 * 3],
-                                            dtype=np.uint8).reshape(-1, 3).astype(np.int32)
+                        raw = (
+                            np.frombuffer(
+                                audio_bytes[: len(audio_bytes) // 3 * 3], dtype=np.uint8
+                            )
+                            .reshape(-1, 3)
+                            .astype(np.int32)
+                        )
                         values = raw[:, 0] | (raw[:, 1] << 8) | (raw[:, 2] << 16)
                         values = np.where(values >= 1 << 23, values - (1 << 24), values)
                         audio = values.astype(np.float32) / float(1 << 23)
@@ -775,7 +855,8 @@ class AudioProcessor:
                     else:
                         raise ValueError(
                             f"Unsupported WAV format: tag={audio_format}, "
-                            f"bits={bits_per_sample}")
+                            f"bits={bits_per_sample}"
+                        )
 
                     # Reshape for channels (drop a trailing partial frame).
                     if channels > 1:
@@ -799,7 +880,7 @@ class AudioProcessor:
             channels=1 if audio.ndim == 1 else audio.shape[0],
             bit_depth=16,  # Default, will be updated
             size_bytes=audio.nbytes,
-            format="array"
+            format="array",
         )
 
         # Basic statistics -- an empty (0-frame) file has no peak/RMS to
@@ -812,7 +893,9 @@ class AudioProcessor:
 
         # Dynamic range
         if metadata.rms_level > 0:
-            metadata.dynamic_range = 20 * np.log10(metadata.peak_level / metadata.rms_level)
+            metadata.dynamic_range = 20 * np.log10(
+                metadata.peak_level / metadata.rms_level
+            )
 
         # Advanced features with librosa
         if HAS_LIBROSA and audio.size:
@@ -830,7 +913,9 @@ class AudioProcessor:
                     return metadata
 
                 # Spectral features
-                spectral_centroids = librosa.feature.spectral_centroid(y=audio_mono, sr=sr)[0]
+                spectral_centroids = librosa.feature.spectral_centroid(
+                    y=audio_mono, sr=sr
+                )[0]
                 metadata.spectral_centroid = float(np.mean(spectral_centroids))
 
                 # Zero crossing rate
@@ -854,26 +939,34 @@ class AudioProcessor:
                 threshold = magnitude_sum.max() * 0.01
                 active_freqs = freq_bins[magnitude_sum > threshold]
                 if len(active_freqs) > 0:
-                    metadata.frequency_range = (float(active_freqs[0]), float(active_freqs[-1]))
+                    metadata.frequency_range = (
+                        float(active_freqs[0]),
+                        float(active_freqs[-1]),
+                    )
 
             except Exception as e:
                 self.logger.warning(f"Advanced analysis failed: {e}")
 
         return metadata
 
-    def normalize_audio(self, audio: np.ndarray, target_peak: float = 0.95) -> np.ndarray:
+    def normalize_audio(
+        self, audio: np.ndarray, target_peak: float = 0.95
+    ) -> np.ndarray:
         """Normalize audio with advanced algorithms"""
         # The CLI gates target_peak to (0, 1]; the direct-API path
         # (batch_process kwargs) used to skip that gate -- target_peak=0
         # wrote an all-zero file, -1 a phase-inverted one, NaN a garbage
         # one, all reported as successful normalization. Same contract
         # here as at the CLI boundary.
-        if (not isinstance(target_peak, (int, float))
-                or not math.isfinite(target_peak)
-                or not 0.0 < target_peak <= 1.0):
+        if (
+            not isinstance(target_peak, (int, float))
+            or not math.isfinite(target_peak)
+            or not 0.0 < target_peak <= 1.0
+        ):
             raise ValueError(
                 f"target_peak must be a finite number in (0, 1], "
-                f"got {target_peak!r}")
+                f"got {target_peak!r}"
+            )
 
         if audio.size == 0:
             return audio
@@ -894,8 +987,9 @@ class AudioProcessor:
         return normalized
 
     @staticmethod
-    def _bandlimited_resample(channel: np.ndarray, source_sr: int, target_sr: int,
-                              half_taps: int = 16) -> np.ndarray:
+    def _bandlimited_resample(
+        channel: np.ndarray, source_sr: int, target_sr: int, half_taps: int = 16
+    ) -> np.ndarray:
         """Band-limited resample via windowed-sinc interpolation (numpy only).
 
         Used when neither librosa nor scipy is installed. The anti-aliasing is
@@ -951,7 +1045,9 @@ class AudioProcessor:
         tap_sum = np.where(np.abs(tap_sum) < 1e-12, 1.0, tap_sum)
         return (accumulated / tap_sum).astype(np.float32)
 
-    def _resample_audio(self, audio: np.ndarray, source_sr: int, target_sr: int) -> np.ndarray:
+    def _resample_audio(
+        self, audio: np.ndarray, source_sr: int, target_sr: int
+    ) -> np.ndarray:
         """Resample audio data to a new sample rate with minimal dependencies.
 
         Picks the best resampler available: librosa, then scipy's
@@ -973,7 +1069,9 @@ class AudioProcessor:
         resampled_channels = []
         for channel in channels:
             if HAS_LIBROSA:
-                resampled = librosa.resample(channel, orig_sr=source_sr, target_sr=target_sr)
+                resampled = librosa.resample(
+                    channel, orig_sr=source_sr, target_sr=target_sr
+                )
             elif HAS_SCIPY:
                 gcd = math.gcd(source_sr, target_sr)
                 up = target_sr // gcd
@@ -1004,12 +1102,17 @@ class AudioProcessor:
         # Soft clipping using tanh
         over_threshold = np.abs(audio) > threshold
         if np.any(over_threshold):
-            audio[over_threshold] = np.sign(audio[over_threshold]) * \
-                                   (threshold + (1 - threshold) * np.tanh((np.abs(audio[over_threshold]) - threshold) * 10))
+            audio[over_threshold] = np.sign(audio[over_threshold]) * (
+                threshold
+                + (1 - threshold)
+                * np.tanh((np.abs(audio[over_threshold]) - threshold) * 10)
+            )
 
         return audio
 
-    def remove_noise(self, audio: np.ndarray, sr: int, noise_profile: Optional[np.ndarray] = None) -> np.ndarray:
+    def remove_noise(
+        self, audio: np.ndarray, sr: int, noise_profile: Optional[np.ndarray] = None
+    ) -> np.ndarray:
         """Advanced noise reduction using spectral subtraction"""
         if not HAS_SCIPY:
             return audio
@@ -1059,9 +1162,12 @@ class AudioProcessor:
         # that has to be assumed noise-only.
         if noise_profile is None:
             if magnitude.shape[1] > 0:
-                percentile_to_median = math.sqrt(2.0 * math.log(2.0)) / math.sqrt(-2.0 * math.log(0.9))
+                percentile_to_median = math.sqrt(2.0 * math.log(2.0)) / math.sqrt(
+                    -2.0 * math.log(0.9)
+                )
                 estimate = (
-                    np.percentile(magnitude, 10, axis=1, keepdims=True) * percentile_to_median
+                    np.percentile(magnitude, 10, axis=1, keepdims=True)
+                    * percentile_to_median
                 )
                 # A bin that never goes quiet has no observable noise floor:
                 # its p10 is the steady content itself, so scaling it
@@ -1093,7 +1199,7 @@ class AudioProcessor:
         cleaned_stft = cleaned_magnitude * np.exp(1j * phase)
         _, cleaned_audio = signal.istft(cleaned_stft, fs=sr, nperseg=nperseg)
 
-        return cleaned_audio[..., :audio.shape[-1]]
+        return cleaned_audio[..., : audio.shape[-1]]
 
     # The repairs from audio_restoration.py that are verified to work *and* to
     # leave clean audio alone. "It exists" is not the same as "it is known to
@@ -1144,10 +1250,12 @@ class AudioProcessor:
         audio_restoration._require_restoration_deps()
 
         processors = {
-            "declip": lambda channel: audio_restoration.DeclippingProcessor()
-                                      .restore_clipped(channel, sr),
-            "dehum": lambda channel: audio_restoration.HumRemover()
-                                     .remove_hum(channel, sr),
+            "declip": lambda channel: audio_restoration.DeclippingProcessor().restore_clipped(
+                channel, sr
+            ),
+            "dehum": lambda channel: audio_restoration.HumRemover().remove_hum(
+                channel, sr
+            ),
         }
         # Apply in canonical order however the caller listed them.
         repairs = [name for name in self.RESTORATION_REPAIRS if name in repairs]
@@ -1161,8 +1269,9 @@ class AudioProcessor:
         if audio.ndim == 1:
             repaired = repair_channel(audio).astype(audio.dtype, copy=False)
         else:
-            repaired = np.stack([repair_channel(audio[index])
-                                 for index in range(audio.shape[0])])
+            repaired = np.stack(
+                [repair_channel(audio[index]) for index in range(audio.shape[0])]
+            )
             repaired = repaired.astype(audio.dtype, copy=False)
 
         # Declipping restores crests *above* the clip rail, i.e. peaks > 1.0,
@@ -1183,7 +1292,9 @@ class AudioProcessor:
         "compression": ("numpy", lambda: HAS_MASTERING_CHAIN),
     }
 
-    def apply_effects(self, audio: np.ndarray, sr: int, effects: Dict[str, Any]) -> np.ndarray:
+    def apply_effects(
+        self, audio: np.ndarray, sr: int, effects: Dict[str, Any]
+    ) -> np.ndarray:
         """Apply various audio effects.
 
         Raises if an effect was asked for and cannot be applied. Silently
@@ -1202,8 +1313,9 @@ class AudioProcessor:
         ]
         if unavailable:
             raise ValueError(
-                "Cannot apply " + ", ".join(unavailable) +
-                ". Install the optional audio extra: pip install -e .[audio]"
+                "Cannot apply "
+                + ", ".join(unavailable)
+                + ". Install the optional audio extra: pip install -e .[audio]"
             )
 
         if audio.size == 0:
@@ -1234,8 +1346,11 @@ class AudioProcessor:
                 elif freq >= sr / 2:
                     # A band above Nyquist cannot be represented; skipping it
                     # silently would report "Processed" for a no-op band.
-                    print(f"Warning: eq band at {freq} Hz exceeds Nyquist "
-                          f"({sr / 2:.0f} Hz) -- skipped", file=sys.stderr)
+                    print(
+                        f"Warning: eq band at {freq} Hz exceeds Nyquist "
+                        f"({sr / 2:.0f} Hz) -- skipped",
+                        file=sys.stderr,
+                    )
 
         # Reverb (simple convolution)
         if "reverb" in effects and HAS_SCIPY:
@@ -1249,19 +1364,21 @@ class AudioProcessor:
             # results, and an unseeded np.random.randn made every run differ.
             ir_length = max(1, int(room_size * sr))
             rng = np.random.default_rng(0)
-            ir = rng.standard_normal(ir_length) * np.exp(-3 * np.linspace(0, 1, ir_length))
+            ir = rng.standard_normal(ir_length) * np.exp(
+                -3 * np.linspace(0, 1, ir_length)
+            )
 
             # Convolve per channel — audio is (channels, samples), so pad the
             # 1-D impulse response to (1, ir_length): 'same' then returns
             # (channels, samples), identical to convolving each channel.
             kernel = ir[np.newaxis, :] if processed.ndim > 1 else ir
-            reverb_signal = signal.convolve(processed, kernel, mode='same')
+            reverb_signal = signal.convolve(processed, kernel, mode="same")
             # The noise IR above is not normalized: a room_size-0.3 kernel
             # applies ~+10 dB of random gain, so the wet path drowned the
             # dry one. Scale the convolved signal to the input's RMS so the
             # 'wet' knob controls the blend ratio, not the loudness.
-            dry_rms = float(np.sqrt(np.mean(processed ** 2)))
-            wet_rms = float(np.sqrt(np.mean(reverb_signal ** 2)))
+            dry_rms = float(np.sqrt(np.mean(processed**2)))
+            wet_rms = float(np.sqrt(np.mean(reverb_signal**2)))
             if wet_rms > 0:
                 reverb_signal = reverb_signal * (dry_rms / wet_rms)
             processed = (1 - wet) * processed + wet * reverb_signal
@@ -1295,13 +1412,15 @@ class AudioProcessor:
         *,
         target_format: str = "wav",
         target_sample_rate: Optional[int] = None,
-        bit_depth: int = 16
+        bit_depth: int = 16,
     ) -> Tuple[np.ndarray, int, int]:
         """Convert audio to the desired format, sample rate, and bit depth."""
 
         normalized_format = (target_format or "wav").lower()
         if normalized_format != "wav":
-            raise ValueError(f"Unsupported target format: {normalized_format}. Only 'wav' is supported.")
+            raise ValueError(
+                f"Unsupported target format: {normalized_format}. Only 'wav' is supported."
+            )
 
         if bit_depth not in {16, 24, 32}:
             raise ValueError("Bit depth must be one of {16, 24, 32}.")
@@ -1332,9 +1451,12 @@ class AudioProcessor:
 
         return converted, new_sr, bit_depth
 
-    async def process_stream(self, input_device: Optional[int] = None,
-                             output_device: Optional[int] = None,
-                             effects: Optional[Dict] = None):
+    async def process_stream(
+        self,
+        input_device: Optional[int] = None,
+        output_device: Optional[int] = None,
+        effects: Optional[Dict] = None,
+    ):
         """Process audio stream in real-time.
 
         *input_device*/*output_device* are PyAudio device indices; ``None``
@@ -1374,7 +1496,7 @@ class AudioProcessor:
             output=True,
             input_device_index=input_device,
             output_device_index=output_device,
-            stream_callback=stream_callback
+            stream_callback=stream_callback,
         )
 
         stream.start_stream()
@@ -1388,7 +1510,9 @@ class AudioProcessor:
             stream.close()
             p.terminate()
 
-    def extract_midi(self, audio: np.ndarray, sr: int, config: Optional[MIDIConfig] = None) -> List[MIDINote]:
+    def extract_midi(
+        self, audio: np.ndarray, sr: int, config: Optional[MIDIConfig] = None
+    ) -> List[MIDINote]:
         """Extract MIDI notes from audio"""
         if not HAS_MIDI:
             self.logger.warning("MIDI analysis not available")
@@ -1396,7 +1520,7 @@ class AudioProcessor:
 
         try:
             # Convert to list for MIDI analyzer
-            audio_list = audio.tolist() if hasattr(audio, 'tolist') else list(audio)
+            audio_list = audio.tolist() if hasattr(audio, "tolist") else list(audio)
 
             analyzer = MIDIAnalyzer(config)
             notes = analyzer.parse_midi_from_audio(audio_list, sr)
@@ -1443,30 +1567,29 @@ class AudioProcessor:
                 "key": {
                     "tonic": key.tonic,
                     "mode": key.mode,
-                    "confidence": key.confidence
+                    "confidence": key.confidence,
                 },
                 "chords": [
                     {
                         "name": chord.name,
                         "start_time": chord.start_time,
                         "duration": chord.duration,
-                        "confidence": chord.confidence
+                        "confidence": chord.confidence,
                     }
                     for chord in chords
                 ],
                 "harmony": harmony,
                 "rhythm": rhythm,
-                "suggestions": {
-                    "next_chords": next_chords
-                }
+                "suggestions": {"next_chords": next_chords},
             }
 
         except Exception as e:
             self.logger.error(f"Musical analysis failed: {e}")
             return {"error": str(e)}
 
-    def generate_midi(self, notes: List[MIDINote], output_path: str,
-                      tempo_bpm: float = 120.0) -> bool:
+    def generate_midi(
+        self, notes: List[MIDINote], output_path: str, tempo_bpm: float = 120.0
+    ) -> bool:
         """Generate MIDI file from notes"""
         if not HAS_MIDI:
             self.logger.warning("MIDI generation not available")
@@ -1474,8 +1597,9 @@ class AudioProcessor:
 
         try:
             analyzer = MIDIAnalyzer()
-            success = analyzer.generate_midi_file(notes, output_path,
-                                                  tempo_bpm=tempo_bpm)
+            success = analyzer.generate_midi_file(
+                notes, output_path, tempo_bpm=tempo_bpm
+            )
 
             if success:
                 self.logger.info(f"MIDI file generated: {output_path}")
@@ -1488,7 +1612,9 @@ class AudioProcessor:
             self.logger.error(f"MIDI generation error: {e}")
             return False
 
-    def compose_melody(self, chords: List[Dict], key_info: Dict, length: float = 8.0) -> List[MIDINote]:
+    def compose_melody(
+        self, chords: List[Dict], key_info: Dict, length: float = 8.0
+    ) -> List[MIDINote]:
         """Generate melody over chord progression"""
         if not HAS_MIDI:
             self.logger.warning("MIDI composition not available")
@@ -1505,14 +1631,14 @@ class AudioProcessor:
                     chord_type=chord_dict.get("chord_type", "major"),
                     notes=chord_dict.get("notes", []),
                     start_time=chord_dict.get("start_time", 0.0),
-                    duration=chord_dict.get("duration", 2.0)
+                    duration=chord_dict.get("duration", 2.0),
                 )
                 chord_objects.append(chord)
 
             key = MusicalKey(
                 tonic=key_info.get("tonic", 0),
                 mode=key_info.get("mode", "major"),
-                confidence=key_info.get("confidence", 1.0)
+                confidence=key_info.get("confidence", 1.0),
             )
 
             composer = MIDIComposer()
@@ -1525,8 +1651,9 @@ class AudioProcessor:
             self.logger.error(f"Melody composition failed: {e}")
             return []
 
-    def batch_process(self, files: List[str], operation: str, *,
-                      show_progress: bool = False, **kwargs) -> List[Dict]:
+    def batch_process(
+        self, files: List[str], operation: str, *, show_progress: bool = False, **kwargs
+    ) -> List[Dict]:
         """Process multiple files with secure validation and optional threading.
 
         *show_progress* renders a live terminal progress bar (opt-in; the CLI
@@ -1547,15 +1674,17 @@ class AudioProcessor:
             # for input-validation rejections, SECURITY when a security
             # policy (trusted roots, size cap) did the rejecting. SECURITY
             # wins when a mixed batch hit both.
-            return [{
-                "error": "No valid audio files to process.",
-                "files": [path for path, _ in rejections],
-                "exit_code": (
-                    ExitCode.SECURITY
-                    if any(kind == "security" for _, kind in rejections)
-                    else ExitCode.INPUT
-                ),
-            }]
+            return [
+                {
+                    "error": "No valid audio files to process.",
+                    "files": [path for path, _ in rejections],
+                    "exit_code": (
+                        ExitCode.SECURITY
+                        if any(kind == "security" for _, kind in rejections)
+                        else ExitCode.INPUT
+                    ),
+                }
+            ]
 
         progress = None
         if show_progress and HAS_UX_IMPROVEMENTS:
@@ -1573,7 +1702,7 @@ class AudioProcessor:
                         file_path,
                         operation,
                         dry_run=dry_run,
-                        **operation_kwargs
+                        **operation_kwargs,
                     ): file_path
                     for file_path in safe_files
                 }
@@ -1583,11 +1712,13 @@ class AudioProcessor:
                         results.append(future.result())
                     except Exception as exc:
                         self.logger.error(f"Failed to process {file_path}: {exc}")
-                        results.append({
-                            "error": str(exc),
-                            "file": file_path,
-                            "kind": _error_kind(exc),
-                        })
+                        results.append(
+                            {
+                                "error": str(exc),
+                                "file": file_path,
+                                "kind": _error_kind(exc),
+                            }
+                        )
                     if progress is not None:
                         progress.update()
             except BaseException:
@@ -1602,19 +1733,18 @@ class AudioProcessor:
                 try:
                     results.append(
                         self._process_single_file(
-                            file_path,
-                            operation,
-                            dry_run=dry_run,
-                            **operation_kwargs
+                            file_path, operation, dry_run=dry_run, **operation_kwargs
                         )
                     )
                 except Exception as exc:
                     self.logger.error(f"Failed to process {file_path}: {exc}")
-                    results.append({
-                        "error": str(exc),
-                        "file": file_path,
-                        "kind": _error_kind(exc),
-                    })
+                    results.append(
+                        {
+                            "error": str(exc),
+                            "file": file_path,
+                            "kind": _error_kind(exc),
+                        }
+                    )
                 if progress is not None:
                     progress.update()
 
@@ -1626,11 +1756,13 @@ class AudioProcessor:
         # were refused. Surface them so the denominator and exit code tell
         # the truth (same classification as the all-rejected sentinel).
         for path, kind in rejections:
-            results.append({
-                "file": path,
-                "error": "rejected in pre-flight validation",
-                "kind": kind,
-            })
+            results.append(
+                {
+                    "file": path,
+                    "error": "rejected in pre-flight validation",
+                    "kind": kind,
+                }
+            )
 
         return results
 
@@ -1679,7 +1811,7 @@ class AudioProcessor:
             # payload can legitimately contain them. Skipped for mp3/flac/etc.,
             # which the inspector does not understand (those rely on the
             # `[audio]` backend instead).
-            if inspector is not None and suffix in {'.wav', '.wave'}:
+            if inspector is not None and suffix in {".wav", ".wave"}:
                 result = inspector.validate_for_processing(Path(file_path))
                 if not result.is_valid:
                     self.logger.warning(
@@ -1700,7 +1832,9 @@ class AudioProcessor:
 
         return safe, rejections
 
-    def _process_single_file(self, file_path: str, operation: str, *, dry_run: bool = False, **kwargs) -> Dict:
+    def _process_single_file(
+        self, file_path: str, operation: str, *, dry_run: bool = False, **kwargs
+    ) -> Dict:
         """Process a single file"""
         start_time = time.time()
 
@@ -1710,7 +1844,9 @@ class AudioProcessor:
         # mono/trim/normalize have exact dependency-free implementations in
         # core.py, so route them there whether or not numpy is present -- the
         # stdlib path is the reference behaviour, not a degraded fallback.
-        if operation in ("mono", "trim") or (not HAS_NUMPY and operation in ("analyze", "normalize")):
+        if operation in ("mono", "trim") or (
+            not HAS_NUMPY and operation in ("analyze", "normalize")
+        ):
             return self._process_single_file_stdlib(
                 file_path, operation, start_time, dry_run=dry_run, **kwargs
             )
@@ -1740,9 +1876,9 @@ class AudioProcessor:
             # doesn't describe a different object per install.
             try:
                 result.size_bytes = os.path.getsize(file_path)
-                result.format = (Path(file_path).suffix.lstrip('.').lower()
-                                 or "wav")
+                result.format = Path(file_path).suffix.lstrip(".").lower() or "wav"
                 import wave
+
                 with wave.open(file_path) as wf:
                     result.bit_depth = wf.getsampwidth() * 8
             except (OSError, wave.Error, EOFError):
@@ -1751,7 +1887,7 @@ class AudioProcessor:
                 "file": file_path,
                 "metadata": result,
                 "time": time.time() - start_time,
-                "dry_run": dry_run
+                "dry_run": dry_run,
             }
 
         elif operation == "normalize":
@@ -1760,14 +1896,14 @@ class AudioProcessor:
                 suffix="_normalized.wav",
                 explicit_path=kwargs.get("output_path"),
                 output_dir=kwargs.get("output_dir"),
-                create_dirs=not dry_run
+                create_dirs=not dry_run,
             )
             if dry_run:
                 return {
                     "file": file_path,
                     "planned_output": str(output_path),
                     "time": time.time() - start_time,
-                    "dry_run": True
+                    "dry_run": True,
                 }
 
             processed = self.normalize_audio(audio, kwargs.get("target_peak", 0.95))
@@ -1776,7 +1912,7 @@ class AudioProcessor:
                 "file": file_path,
                 "output": str(output_path),
                 "time": time.time() - start_time,
-                "dry_run": False
+                "dry_run": False,
             }
 
         elif operation == "denoise":
@@ -1785,14 +1921,14 @@ class AudioProcessor:
                 suffix="_denoised.wav",
                 explicit_path=kwargs.get("output_path"),
                 output_dir=kwargs.get("output_dir"),
-                create_dirs=not dry_run
+                create_dirs=not dry_run,
             )
             if dry_run:
                 return {
                     "file": file_path,
                     "planned_output": str(output_path),
                     "time": time.time() - start_time,
-                    "dry_run": True
+                    "dry_run": True,
                 }
 
             processed = self.remove_noise(audio, sr)
@@ -1801,7 +1937,7 @@ class AudioProcessor:
                 "file": file_path,
                 "output": str(output_path),
                 "time": time.time() - start_time,
-                "dry_run": False
+                "dry_run": False,
             }
 
         elif operation == "restore":
@@ -1811,14 +1947,14 @@ class AudioProcessor:
                 suffix="_restored.wav",
                 explicit_path=kwargs.get("output_path"),
                 output_dir=kwargs.get("output_dir"),
-                create_dirs=not dry_run
+                create_dirs=not dry_run,
             )
             if dry_run:
                 return {
                     "file": file_path,
                     "planned_output": str(output_path),
                     "time": time.time() - start_time,
-                    "dry_run": True
+                    "dry_run": True,
                 }
 
             processed = self.repair_audio(audio, sr, repairs)
@@ -1828,7 +1964,7 @@ class AudioProcessor:
                 "output": str(output_path),
                 "repairs": list(repairs),
                 "time": time.time() - start_time,
-                "dry_run": False
+                "dry_run": False,
             }
 
         elif operation == "effects":
@@ -1838,14 +1974,14 @@ class AudioProcessor:
                 suffix="_processed.wav",
                 explicit_path=kwargs.get("output_path"),
                 output_dir=kwargs.get("output_dir"),
-                create_dirs=not dry_run
+                create_dirs=not dry_run,
             )
             if dry_run:
                 return {
                     "file": file_path,
                     "planned_output": str(output_path),
                     "time": time.time() - start_time,
-                    "dry_run": True
+                    "dry_run": True,
                 }
 
             processed = self.apply_effects(audio, sr, effects)
@@ -1854,7 +1990,7 @@ class AudioProcessor:
                 "file": file_path,
                 "output": str(output_path),
                 "time": time.time() - start_time,
-                "dry_run": False
+                "dry_run": False,
             }
 
         elif operation == "master":
@@ -1868,14 +2004,14 @@ class AudioProcessor:
                 suffix="_mastered.wav",
                 explicit_path=kwargs.get("output_path"),
                 output_dir=kwargs.get("output_dir"),
-                create_dirs=not dry_run
+                create_dirs=not dry_run,
             )
             if dry_run:
                 return {
                     "file": file_path,
                     "planned_output": str(output_path),
                     "time": time.time() - start_time,
-                    "dry_run": True
+                    "dry_run": True,
                 }
 
             preset = kwargs.get("master_preset", "default")
@@ -1928,7 +2064,7 @@ class AudioProcessor:
                 suffix=suffix,
                 explicit_path=kwargs.get("output_path"),
                 output_dir=kwargs.get("output_dir"),
-                create_dirs=not dry_run
+                create_dirs=not dry_run,
             )
 
             if dry_run:
@@ -1938,7 +2074,7 @@ class AudioProcessor:
                     "time": time.time() - start_time,
                     "sample_rate": planned_sr,
                     "bit_depth": resolved_bit_depth,
-                    "dry_run": True
+                    "dry_run": True,
                 }
 
             converted, converted_sr, resolved_bit_depth = self.convert_audio(
@@ -1946,10 +2082,12 @@ class AudioProcessor:
                 sr,
                 target_format=target_format,
                 target_sample_rate=target_sample_rate,
-                bit_depth=resolved_bit_depth
+                bit_depth=resolved_bit_depth,
             )
 
-            saved_bit_depth = self.save_audio(converted, str(output_path), converted_sr, bit_depth=resolved_bit_depth)
+            saved_bit_depth = self.save_audio(
+                converted, str(output_path), converted_sr, bit_depth=resolved_bit_depth
+            )
 
             return {
                 "file": file_path,
@@ -1957,25 +2095,37 @@ class AudioProcessor:
                 "time": time.time() - start_time,
                 "sample_rate": converted_sr,
                 "bit_depth": saved_bit_depth,
-                "dry_run": False
+                "dry_run": False,
             }
 
         else:
             raise ValueError(f"Unknown operation: {operation}")
 
-    def _process_single_file_stdlib(self, file_path: str, operation: str, start_time: float,
-                                    *, dry_run: bool = False, **kwargs) -> Dict:
+    def _process_single_file_stdlib(
+        self,
+        file_path: str,
+        operation: str,
+        start_time: float,
+        *,
+        dry_run: bool = False,
+        **kwargs,
+    ) -> Dict:
         """analyze/normalize via the dependency-free core (numpy unavailable)."""
         if operation == "analyze":
             result = core.analyze(file_path)
             if not result.success:
                 # A valid file in a non-PCM encoding is a capability gap,
                 # not bad input -- ERROR(1), same as a missing extra.
-                kind = ("internal" if result.message.startswith("Unsupported")
-                        else "input")
-                return {"file": file_path, "error": result.message,
-                        "kind": kind,
-                        "time": time.time() - start_time, "dry_run": dry_run}
+                kind = (
+                    "internal" if result.message.startswith("Unsupported") else "input"
+                )
+                return {
+                    "file": file_path,
+                    "error": result.message,
+                    "kind": kind,
+                    "time": time.time() - start_time,
+                    "dry_run": dry_run,
+                }
             info = result.data
             metadata = AudioMetadata(
                 duration=info.duration,
@@ -1991,11 +2141,18 @@ class AudioProcessor:
                 # `analyze --detailed` printed "Dynamic Range: 0.0dB" for a
                 # sine whose crest factor is 3.01 dB -- a default presented as
                 # a measurement, on the install this project leads with.
-                dynamic_range=(20 * math.log10(info.peak_level / info.rms_level)
-                               if info.rms_level > 0 and info.peak_level > 0 else 0.0),
+                dynamic_range=(
+                    20 * math.log10(info.peak_level / info.rms_level)
+                    if info.rms_level > 0 and info.peak_level > 0
+                    else 0.0
+                ),
             )
-            return {"file": file_path, "metadata": metadata,
-                    "time": time.time() - start_time, "dry_run": dry_run}
+            return {
+                "file": file_path,
+                "metadata": metadata,
+                "time": time.time() - start_time,
+                "dry_run": dry_run,
+            }
 
         # The remaining stdlib operations all follow the same shape: resolve an
         # output path, then hand off to the dependency-free core.
@@ -2008,19 +2165,32 @@ class AudioProcessor:
             create_dirs=not dry_run,
         )
         if dry_run:
-            return {"file": file_path, "planned_output": str(output_path),
-                    "time": time.time() - start_time, "dry_run": True}
+            return {
+                "file": file_path,
+                "planned_output": str(output_path),
+                "time": time.time() - start_time,
+                "dry_run": True,
+            }
         result = run(file_path, str(output_path), kwargs)
         if not result.success:
-            kind = ("internal" if result.message.startswith("Unsupported")
-                    else "input")
-            return {"file": file_path, "error": result.message,
-                    "kind": kind,
-                    "time": time.time() - start_time, "dry_run": False}
-        return {"file": file_path, "output": str(output_path),
-                "time": time.time() - start_time, "dry_run": False}
+            kind = "internal" if result.message.startswith("Unsupported") else "input"
+            return {
+                "file": file_path,
+                "error": result.message,
+                "kind": kind,
+                "time": time.time() - start_time,
+                "dry_run": False,
+            }
+        return {
+            "file": file_path,
+            "output": str(output_path),
+            "time": time.time() - start_time,
+            "dry_run": False,
+        }
 
-    def save_audio(self, audio: np.ndarray, file_path: str, sr: int, *, bit_depth: int = 16) -> int:
+    def save_audio(
+        self, audio: np.ndarray, file_path: str, sr: int, *, bit_depth: int = 16
+    ) -> int:
         """Save audio to file with multiple backend support.
 
         Returns the bit depth that was ultimately written."""
@@ -2040,7 +2210,8 @@ class AudioProcessor:
             self.logger.warning(
                 "%d non-finite samples (NaN/inf) in %s; writing NaN as "
                 "silence and clipping inf to full scale",
-                nonfinite, file_path,
+                nonfinite,
+                file_path,
             )
         if nonfinite:
             audio = np.nan_to_num(audio, nan=0.0, posinf=1.0, neginf=-1.0)
@@ -2052,13 +2223,17 @@ class AudioProcessor:
         if over and self.logger:
             self.logger.warning(
                 "%d samples exceed [-1, 1] and will hard-clip on write to %s",
-                over, file_path,
+                over,
+                file_path,
             )
         audio = np.clip(audio, -1.0, 1.0)
 
         target_bit_depth = bit_depth if bit_depth in {16, 24, 32} else 16
         if bit_depth not in {16, 24, 32} and self.logger:
-            self.logger.warning("Unsupported bit depth %s requested; defaulting to 16-bit PCM.", bit_depth)
+            self.logger.warning(
+                "Unsupported bit depth %s requested; defaulting to 16-bit PCM.",
+                bit_depth,
+            )
 
         # Try soundfile first
         if HAS_SOUNDFILE:
@@ -2066,8 +2241,10 @@ class AudioProcessor:
             subtype = subtype_map.get(target_bit_depth)
             try:
                 write_audio = audio
-                if getattr(self.config, "apply_dither", False) and \
-                        target_bit_depth < 32:
+                if (
+                    getattr(self.config, "apply_dither", False)
+                    and target_bit_depth < 32
+                ):
                     # TPDF dither at 2 LSB peak-to-peak of the target depth,
                     # applied in float: the flag used to take effect only on
                     # the stdlib fallback path, so the same config produced
@@ -2076,14 +2253,15 @@ class AudioProcessor:
                     # dither -- its LSB is far below float32 resolution.
                     lsb = 2.0 ** (1 - target_bit_depth)
                     rng = np.random.default_rng()
-                    write_audio = write_audio + (
-                        rng.random(audio.shape) - rng.random(audio.shape)
-                    ) * lsb
+                    write_audio = (
+                        write_audio
+                        + (rng.random(audio.shape) - rng.random(audio.shape)) * lsb
+                    )
                 sf.write(
                     file_path,
                     write_audio.T if write_audio.ndim > 1 else write_audio,
                     sr,
-                    subtype=subtype
+                    subtype=subtype,
                 )
                 return target_bit_depth
             except Exception as e:
@@ -2094,7 +2272,7 @@ class AudioProcessor:
             self.logger.warning(
                 "Falling back to 16-bit WAV output for %s (requested %s-bit).",
                 file_path,
-                target_bit_depth
+                target_bit_depth,
             )
 
         self._save_wav_basic(audio, file_path, sr, bit_depth=16)
@@ -2107,7 +2285,7 @@ class AudioProcessor:
         suffix: str,
         explicit_path: Optional[str],
         output_dir: Optional[str],
-        create_dirs: bool = True
+        create_dirs: bool = True,
     ) -> Path:
         source_path = Path(source_file)
 
@@ -2125,14 +2303,18 @@ class AudioProcessor:
             else:
                 destination_dir = source_path.parent
 
-            sanitized_name = SecurityValidator.sanitize_filename(f"{source_path.stem}{suffix}")
+            sanitized_name = SecurityValidator.sanitize_filename(
+                f"{source_path.stem}{suffix}"
+            )
             destination = destination_dir / sanitized_name
 
         if create_dirs:
             destination.parent.mkdir(parents=True, exist_ok=True)
         return destination
 
-    def _save_wav_basic(self, audio: np.ndarray, file_path: str, sr: int, *, bit_depth: int = 16):
+    def _save_wav_basic(
+        self, audio: np.ndarray, file_path: str, sr: int, *, bit_depth: int = 16
+    ):
         """Basic WAV file writer without external dependencies.
 
         Always writes 16-bit PCM regardless of `bit_depth` (callers that need
@@ -2173,24 +2355,24 @@ class AudioProcessor:
 
         channels = 1 if pcm_audio.ndim == 1 else pcm_audio.shape[0]
 
-        with open_secure(file_path, 'wb') as f:
+        with open_secure(file_path, "wb") as f:
             # RIFF header
-            f.write(b'RIFF')
-            f.write(struct.pack('<I', 0))  # File size (will update later)
-            f.write(b'WAVE')
+            f.write(b"RIFF")
+            f.write(struct.pack("<I", 0))  # File size (will update later)
+            f.write(b"WAVE")
 
             # fmt chunk
-            f.write(b'fmt ')
-            f.write(struct.pack('<I', 16))  # Chunk size
-            f.write(struct.pack('<H', 1))   # Audio format (PCM)
-            f.write(struct.pack('<H', channels))
-            f.write(struct.pack('<I', sr))
-            f.write(struct.pack('<I', sr * channels * 2))  # Byte rate
-            f.write(struct.pack('<H', channels * 2))  # Block align
-            f.write(struct.pack('<H', 16))  # Bits per sample
+            f.write(b"fmt ")
+            f.write(struct.pack("<I", 16))  # Chunk size
+            f.write(struct.pack("<H", 1))  # Audio format (PCM)
+            f.write(struct.pack("<H", channels))
+            f.write(struct.pack("<I", sr))
+            f.write(struct.pack("<I", sr * channels * 2))  # Byte rate
+            f.write(struct.pack("<H", channels * 2))  # Block align
+            f.write(struct.pack("<H", 16))  # Bits per sample
 
             # data chunk
-            f.write(b'data')
+            f.write(b"data")
 
             # Prepare audio data
             if channels > 1:
@@ -2200,16 +2382,17 @@ class AudioProcessor:
                 audio_data = pcm_audio
 
             audio_bytes = audio_data.tobytes()
-            f.write(struct.pack('<I', len(audio_bytes)))
+            f.write(struct.pack("<I", len(audio_bytes)))
             f.write(audio_bytes)
 
             # Update file size
             file_size = f.tell() - 8
             f.seek(4)
-            f.write(struct.pack('<I', file_size))
+            f.write(struct.pack("<I", file_size))
 
-_MIDI_NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-_MIDI_FLATS = {'Db': 'C#', 'Eb': 'D#', 'Gb': 'F#', 'Ab': 'G#', 'Bb': 'A#'}
+
+_MIDI_NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+_MIDI_FLATS = {"Db": "C#", "Eb": "D#", "Gb": "F#", "Ab": "G#", "Bb": "A#"}
 
 
 def _midi_tonic(key: Optional[str]) -> Optional[int]:
@@ -2224,62 +2407,114 @@ def create_cli():
     """Create comprehensive CLI interface"""
     parser = argparse.ArgumentParser(
         description=f"Chameleon Audio Processing System v{VERSION}",
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
     parser.add_argument("--version", action="version", version=f"chameleon {VERSION}")
-    parser.add_argument("--max-workers", type=int, help="Limit worker threads for batch operations")
-    parser.add_argument("--no-parallel", action="store_true", help="Disable parallel execution even when available")
+    parser.add_argument(
+        "--max-workers", type=int, help="Limit worker threads for batch operations"
+    )
+    parser.add_argument(
+        "--no-parallel",
+        action="store_true",
+        help="Disable parallel execution even when available",
+    )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # Analyze command
     analyze = subparsers.add_parser("analyze", help="Analyze audio files")
     analyze.add_argument("files", nargs="+", help="Audio files to analyze")
-    analyze.add_argument("--detailed", action="store_true", help="Show detailed analysis")
+    analyze.add_argument(
+        "--detailed", action="store_true", help="Show detailed analysis"
+    )
     analyze.add_argument("--export", help="Export analysis to JSON file")
-    analyze.add_argument("--spectrum", action="store_true",
-                         help="Also report dominant frequencies, bandwidth, and RMS "
-                              "via deterministic spectral analysis (stdlib-only)")
-    analyze.add_argument("--loudness", action="store_true",
-                         help="Also report integrated loudness (LUFS) via a pure "
-                              "Python ITU-R BS.1770 K-weighted gated meter (stdlib-only). "
-                              "Applies the standard surround weighting when the WAV "
-                              "carries a dwChannelMask (equal weights otherwise) and "
-                              "reports a 4x-oversampled true-peak estimate; bounded to "
-                              "a prefix of the file -- not a certified full-track measurement.")
+    analyze.add_argument(
+        "--spectrum",
+        action="store_true",
+        help="Also report dominant frequencies, bandwidth, and RMS "
+        "via deterministic spectral analysis (stdlib-only)",
+    )
+    analyze.add_argument(
+        "--loudness",
+        action="store_true",
+        help="Also report integrated loudness (LUFS) via a pure "
+        "Python ITU-R BS.1770 K-weighted gated meter (stdlib-only). "
+        "Applies the standard surround weighting when the WAV "
+        "carries a dwChannelMask (equal weights otherwise) and "
+        "reports a 4x-oversampled true-peak estimate; bounded to "
+        "a prefix of the file -- not a certified full-track measurement.",
+    )
 
     # Process command
     process = subparsers.add_parser("process", help="Process audio files")
     process.add_argument("files", nargs="+", help="Audio files to process")
     process.add_argument("--normalize", action="store_true", help="Normalize audio")
-    process.add_argument("--target-peak", type=float,
-                         help="Target peak level for --normalize, 0.0-1.0 (default 0.95)")
-    process.add_argument("--mono", action="store_true",
-                         help="Downmix to mono (standard library only)")
-    process.add_argument("--trim", action="store_true",
-                         help="Trim leading/trailing silence (standard library only)")
-    process.add_argument("--threshold", type=float,
-                         help="Silence threshold for --trim, 0.0-1.0 (default 0.01)")
+    process.add_argument(
+        "--target-peak",
+        type=float,
+        help="Target peak level for --normalize, 0.0-1.0 (default 0.95)",
+    )
+    process.add_argument(
+        "--mono", action="store_true", help="Downmix to mono (standard library only)"
+    )
+    process.add_argument(
+        "--trim",
+        action="store_true",
+        help="Trim leading/trailing silence (standard library only)",
+    )
+    process.add_argument(
+        "--threshold",
+        type=float,
+        help="Silence threshold for --trim, 0.0-1.0 (default 0.01)",
+    )
     process.add_argument("--denoise", action="store_true", help="Remove noise")
-    process.add_argument("--dehum", action="store_true",
-                         help="Remove 50/60 Hz mains hum and its harmonics, if present "
-                              "(requires the [audio] extra)")
-    process.add_argument("--declip", action="store_true",
-                         help="Reconstruct peaks flattened by clipping "
-                              "(requires the [audio] extra)")
-    process.add_argument("--master", choices=["default", "streaming", "cd", "vinyl"],
-                         help="Apply a full mastering chain (EQ/compressor/limiter/loudness); "
-                              "requires numpy, scipy recommended for the full chain")
+    process.add_argument(
+        "--dehum",
+        action="store_true",
+        help="Remove 50/60 Hz mains hum and its harmonics, if present "
+        "(requires the [audio] extra)",
+    )
+    process.add_argument(
+        "--declip",
+        action="store_true",
+        help="Reconstruct peaks flattened by clipping " "(requires the [audio] extra)",
+    )
+    process.add_argument(
+        "--master",
+        choices=["default", "streaming", "cd", "vinyl"],
+        help="Apply a full mastering chain (EQ/compressor/limiter/loudness); "
+        "requires numpy, scipy recommended for the full chain",
+    )
     process.add_argument("--effects", help="Apply effects (JSON file)")
     process.add_argument("--output-dir", help="Output directory")
-    process.add_argument("--convert", action="store_true", help="Convert audio format or resolution")
-    process.add_argument("--convert-format", choices=["wav"],
-                         help="Target format (only wav is supported)")
-    process.add_argument("--convert-sample-rate", type=int, help="Target sample rate for conversion")
-    process.add_argument("--convert-bit-depth", type=int, choices=[16, 24, 32], help="Target bit depth for conversion")
-    process.add_argument("--dry-run", action="store_true", help="Preview planned operations without writing files")
-    process.add_argument("--json", action="store_true", help="Emit structured JSON output summarizing operations")
+    process.add_argument(
+        "--convert", action="store_true", help="Convert audio format or resolution"
+    )
+    process.add_argument(
+        "--convert-format",
+        choices=["wav"],
+        help="Target format (only wav is supported)",
+    )
+    process.add_argument(
+        "--convert-sample-rate", type=int, help="Target sample rate for conversion"
+    )
+    process.add_argument(
+        "--convert-bit-depth",
+        type=int,
+        choices=[16, 24, 32],
+        help="Target bit depth for conversion",
+    )
+    process.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview planned operations without writing files",
+    )
+    process.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit structured JSON output summarizing operations",
+    )
 
     # Stream command
     stream = subparsers.add_parser("stream", help="Real-time audio processing")
@@ -2290,27 +2525,55 @@ def create_cli():
     # Batch command
     batch = subparsers.add_parser("batch", help="Batch processing")
     batch.add_argument("directory", help="Directory to process")
-    batch.add_argument("operation",
-                       choices=["analyze", "normalize", "mono", "trim", "denoise", "restore",
-                                "convert", "effects"])
+    batch.add_argument(
+        "operation",
+        choices=[
+            "analyze",
+            "normalize",
+            "mono",
+            "trim",
+            "denoise",
+            "restore",
+            "convert",
+            "effects",
+        ],
+    )
     batch.add_argument("--recursive", action="store_true", help="Process recursively")
     batch.add_argument("--output-dir", help="Output directory")
     # Only 'wav' exists as a converter; a free-form value used to parse and
     # then fail identically on every file in the batch.
     batch.add_argument("--format", choices=["wav"], help="Output format")
-    batch.add_argument("--quality", choices=["standard", "high", "low", "medium", "lossless"],
-                       default=None,
-                       help="Normalize only: 'high' applies soft-clipping headroom, "
-                            "'standard' does not. Legacy values low/medium/lossless are "
-                            "accepted but equivalent to 'standard' -- they never had "
-                            "separate behavior.")
-    batch.add_argument("--target-peak", type=float,
-                       help="Target peak level for the normalize operation, 0.0-1.0 (default 0.95)")
-    batch.add_argument("--sample-rate", type=int, help="Target sample rate for conversion")
-    batch.add_argument("--bit-depth", type=int, choices=[16, 24, 32], help="Target bit depth for conversion")
-    batch.add_argument("--effects", help="Effects configuration for the effects operation (JSON file)")
-    batch.add_argument("--dry-run", action="store_true",
-                       help="Preview planned operations without writing files")
+    batch.add_argument(
+        "--quality",
+        choices=["standard", "high", "low", "medium", "lossless"],
+        default=None,
+        help="Normalize only: 'high' applies soft-clipping headroom, "
+        "'standard' does not. Legacy values low/medium/lossless are "
+        "accepted but equivalent to 'standard' -- they never had "
+        "separate behavior.",
+    )
+    batch.add_argument(
+        "--target-peak",
+        type=float,
+        help="Target peak level for the normalize operation, 0.0-1.0 (default 0.95)",
+    )
+    batch.add_argument(
+        "--sample-rate", type=int, help="Target sample rate for conversion"
+    )
+    batch.add_argument(
+        "--bit-depth",
+        type=int,
+        choices=[16, 24, 32],
+        help="Target bit depth for conversion",
+    )
+    batch.add_argument(
+        "--effects", help="Effects configuration for the effects operation (JSON file)"
+    )
+    batch.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview planned operations without writing files",
+    )
 
     # The `ml` command was removed in 2026-08. Its one operation, `enhance`,
     # called remove_noise() then normalize_audio() -- two pieces of
@@ -2321,7 +2584,9 @@ def create_cli():
 
     # MIDI command
     midi = subparsers.add_parser("midi", help="MIDI analysis and composition")
-    midi.add_argument("operation", choices=["extract", "analyze", "compose", "generate"])
+    midi.add_argument(
+        "operation", choices=["extract", "analyze", "compose", "generate"]
+    )
     midi.add_argument("--input", help="Input audio file")
     midi.add_argument("--output", help="Output MIDI file")
     # Defaults are None so the dispatcher can tell an explicitly-typed flag
@@ -2336,10 +2601,14 @@ def create_cli():
     plugins_cmd.add_argument(
         "--directory",
         action="append",
-        help="Absolute plugin directory to inspect; may be specified multiple times"
+        help="Absolute plugin directory to inspect; may be specified multiple times",
     )
-    plugins_cmd.add_argument("--json", action="store_true", help="Emit structured JSON output")
-    plugin_subparsers = plugins_cmd.add_subparsers(dest="plugins_command", help="Plugin operations")
+    plugins_cmd.add_argument(
+        "--json", action="store_true", help="Emit structured JSON output"
+    )
+    plugin_subparsers = plugins_cmd.add_subparsers(
+        dest="plugins_command", help="Plugin operations"
+    )
     if hasattr(plugin_subparsers, "required"):
         plugin_subparsers.required = True
 
@@ -2349,27 +2618,43 @@ def create_cli():
     # already-parsed value, and append would drop earlier --directory values.
     # Distinct dests are merged onto args.directory/args.json at dispatch.
     list_parser = plugin_subparsers.add_parser(
-        "list", help="List discovered plugins and metadata")
+        "list", help="List discovered plugins and metadata"
+    )
     audit = plugin_subparsers.add_parser(
-        "audit", help="Audit plugin files for sandbox compliance")
-    audit.add_argument("--fail-fast", action="store_true", help="Stop on first plugin failure")
+        "audit", help="Audit plugin files for sandbox compliance"
+    )
+    audit.add_argument(
+        "--fail-fast", action="store_true", help="Stop on first plugin failure"
+    )
     for sub in (list_parser, audit):
         sub.add_argument(
-            "--directory", action="append", dest="plugins_sub_directory", metavar="DIR",
-            help="Absolute plugin directory to inspect; may be specified multiple times")
+            "--directory",
+            action="append",
+            dest="plugins_sub_directory",
+            metavar="DIR",
+            help="Absolute plugin directory to inspect; may be specified multiple times",
+        )
         sub.add_argument(
-            "--json", action="store_true", dest="plugins_sub_json",
-            help="Emit structured JSON output")
+            "--json",
+            action="store_true",
+            dest="plugins_sub_json",
+            help="Emit structured JSON output",
+        )
 
     # Server command
     server = subparsers.add_parser("server", help="Start API server")
     server.add_argument("--port", type=int, default=8000, help="Server port")
     server.add_argument("--host", default="localhost", help="Server host")
-    server.add_argument("--workers", type=int, default=1,
-                        help="Number of workers (must be 1: sessions, jobs and the "
-                             "audit log live in per-process memory)")
+    server.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Number of workers (must be 1: sessions, jobs and the "
+        "audit log live in per-process memory)",
+    )
 
     return parser
+
 
 async def main():
     """Main entry point"""
@@ -2397,8 +2682,7 @@ async def main():
     config = ProcessingConfig.from_environment()
     if args.max_workers is not None:
         if args.max_workers <= 0:
-            print(f"Error: --max-workers must be positive, got "
-                  f"{args.max_workers}")
+            print(f"Error: --max-workers must be positive, got " f"{args.max_workers}")
             return ExitCode.INPUT
         config.max_workers = args.max_workers
     if args.no_parallel:
@@ -2450,19 +2734,23 @@ async def main():
                     # `--spectrum` measures the same thing for real, in pure
                     # Python, on every install.
                     if metadata.frequency_range != (0.0, 0.0):
-                        print(f"  Frequency Range: {metadata.frequency_range[0]:.1f}-{metadata.frequency_range[1]:.1f}Hz")
+                        print(
+                            f"  Frequency Range: {metadata.frequency_range[0]:.1f}-{metadata.frequency_range[1]:.1f}Hz"
+                        )
                     elif not args.spectrum:
                         print("  Frequency Range: not measured (use --spectrum)")
                     if metadata.tempo:
                         print(f"  Tempo: {metadata.tempo:.1f} BPM")
                     if metadata.spectral_centroid:
-                        print(f"  Spectral Centroid: {metadata.spectral_centroid:.1f}Hz")
+                        print(
+                            f"  Spectral Centroid: {metadata.spectral_centroid:.1f}Hz"
+                        )
 
                 if args.spectrum:
                     if not HAS_SPECTRAL_UTILS:
                         print("  Spectrum: unavailable (spectral_utils not importable)")
                     else:
-                        samples_result = core.get_samples_for_analysis(result['file'])
+                        samples_result = core.get_samples_for_analysis(result["file"])
                         if not samples_result.success:
                             print(f"  Spectrum: {samples_result.message}")
                         else:
@@ -2471,15 +2759,20 @@ async def main():
                                 samples_result.data["sample_rate"],
                             )
                             print(f"  Spectrum RMS: {report.rms_level:.3f}")
-                            print(f"  Spectrum Bandwidth: {report.bandwidth[0]:.1f}-{report.bandwidth[1]:.1f}Hz")
+                            print(
+                                f"  Spectrum Bandwidth: {report.bandwidth[0]:.1f}-{report.bandwidth[1]:.1f}Hz"
+                            )
                             peaks = ", ".join(
-                                f"{peak.frequency_hz:.1f}Hz" for peak in report.dominant_peaks
+                                f"{peak.frequency_hz:.1f}Hz"
+                                for peak in report.dominant_peaks
                             )
                             print(f"  Dominant Frequencies: {peaks or 'none detected'}")
 
                 if args.loudness:
                     if not HAS_BS1770_LOUDNESS:
-                        print("  Loudness: unavailable (bs1770_loudness not importable)")
+                        print(
+                            "  Loudness: unavailable (bs1770_loudness not importable)"
+                        )
                     else:
                         # separate_channels=True + measure_integrated_loudness_multichannel
                         # sums per-channel energy per BS.1770 instead of averaging
@@ -2488,7 +2781,8 @@ async def main():
                         # exact for mono too (a single-channel list), so it's used
                         # unconditionally rather than branching on channel count.
                         samples_result = core.get_samples_for_analysis(
-                            result['file'], max_samples=LOUDNESS_MAX_SAMPLES,
+                            result["file"],
+                            max_samples=LOUDNESS_MAX_SAMPLES,
                             separate_channels=True,
                         )
                         if not samples_result.success:
@@ -2504,30 +2798,43 @@ async def main():
                                 print(f"  Loudness: unsupported ({exc})")
                             else:
                                 if not math.isfinite(lufs):
-                                    print("  Loudness: below measurement gate (silent or too short)")
+                                    print(
+                                        "  Loudness: below measurement gate (silent or too short)"
+                                    )
                                 else:
                                     weighting_label = (
                                         "BS.1770 surround weighting"
-                                        if any(w != 1.0 for w in
-                                               bs1770_loudness._channel_weights(
-                                                   samples_result.data.get("channel_mask", 0),
-                                                   len(samples_result.data["channels"])))
+                                        if any(
+                                            w != 1.0
+                                            for w in bs1770_loudness._channel_weights(
+                                                samples_result.data.get(
+                                                    "channel_mask", 0
+                                                ),
+                                                len(samples_result.data["channels"]),
+                                            )
+                                        )
                                         else "no surround weighting"
                                     )
                                     metadata.loudness_lufs = lufs
-                                    print(f"  Loudness: {lufs:.1f} LUFS (integrated, "
-                                          f"ITU-R BS.1770 K-weighting, {weighting_label}, first "
-                                          f"{LOUDNESS_MAX_SAMPLES / samples_result.data['sample_rate']:.0f}s max)")
+                                    print(
+                                        f"  Loudness: {lufs:.1f} LUFS (integrated, "
+                                        f"ITU-R BS.1770 K-weighting, {weighting_label}, first "
+                                        f"{LOUDNESS_MAX_SAMPLES / samples_result.data['sample_rate']:.0f}s max)"
+                                    )
                                 # True-peak (dBTP) over the same bounded prefix -- 4x
                                 # oversampled inter-sample peak per BS.1770-4 Annex 2,
                                 # pure stdlib (no numpy needed for --loudness).
-                                true_peak = bs1770_loudness.measure_true_peak_multichannel(
-                                    samples_result.data["channels"]
+                                true_peak = (
+                                    bs1770_loudness.measure_true_peak_multichannel(
+                                        samples_result.data["channels"]
+                                    )
                                 )
                                 if math.isfinite(true_peak):
                                     metadata.true_peak_dbtp = true_peak
-                                    print(f"  True Peak: {true_peak:+.1f} dBTP "
-                                          f"(4x-oversampled inter-sample peak estimate)")
+                                    print(
+                                        f"  True Peak: {true_peak:+.1f} dBTP "
+                                        f"(4x-oversampled inter-sample peak estimate)"
+                                    )
                                 # EBU Mode (Tech 3341) completes the integrated
                                 # reading with the two ungated sliding-window
                                 # meters: Max-M (400ms) and Max-S (3s).
@@ -2541,10 +2848,14 @@ async def main():
                                 )
                                 if math.isfinite(max_m):
                                     metadata.max_momentary_lufs = max_m
-                                    print(f"  Max Momentary: {max_m:.1f} LUFS (400ms window, ungated)")
+                                    print(
+                                        f"  Max Momentary: {max_m:.1f} LUFS (400ms window, ungated)"
+                                    )
                                 if math.isfinite(max_s):
                                     metadata.max_short_term_lufs = max_s
-                                    print(f"  Max Short-term: {max_s:.1f} LUFS (3s window, ungated)")
+                                    print(
+                                        f"  Max Short-term: {max_s:.1f} LUFS (3s window, ungated)"
+                                    )
                                 # Loudness range (EBU Tech 3342) completes EBU Mode.
                                 lra = bs1770_loudness.measure_loudness_range(
                                     samples_result.data["channels"],
@@ -2561,12 +2872,15 @@ async def main():
                                     # reads a bounded prefix, so say so plainly
                                     # rather than presenting a settled figure.
                                     stability = (
-                                        "" if analysed_seconds >= 60
+                                        ""
+                                        if analysed_seconds >= 60
                                         else f", not yet stable — only {analysed_seconds:.0f}s analysed, "
-                                             f"Tech 3342 considers LRA unsettled below 60s"
+                                        f"Tech 3342 considers LRA unsettled below 60s"
                                     )
-                                    print(f"  Loudness Range: {lra:.1f} LU "
-                                          f"(EBU Tech 3342, P95-P10 of gated short-term{stability})")
+                                    print(
+                                        f"  Loudness Range: {lra:.1f} LU "
+                                        f"(EBU Tech 3342, P95-P10 of gated short-term{stability})"
+                                    )
 
         if args.export:
             # The export destination is user input: an unwritable or
@@ -2574,11 +2888,10 @@ async def main():
             # the whole family (missing dir, directory-as-file, permissions).
             try:
                 export_path = _sanitize_cli_input(args.export, "export path")
-                with open(export_path, 'w') as f:
+                with open(export_path, "w") as f:
                     json.dump(results, f, indent=2, default=_json_export_default)
             except (OSError, ValueError) as exc:
-                print(f"Error: cannot write analysis export: {exc}",
-                      file=sys.stderr)
+                print(f"Error: cannot write analysis export: {exc}", file=sys.stderr)
                 return ExitCode.INPUT
             print(f"\nAnalysis exported to {export_path}")
 
@@ -2599,7 +2912,8 @@ async def main():
         try:
             files = [_sanitize_cli_input(path, "files") for path in args.files]
             output_dir = _preflight_output_dir(
-                _sanitize_optional_input(args.output_dir, "output_dir"))
+                _sanitize_optional_input(args.output_dir, "output_dir")
+            )
             effects_path = _sanitize_optional_input(args.effects, "effects")
             _assert_unique_paths(files, "file input")
         except ValueError as exc:
@@ -2611,18 +2925,18 @@ async def main():
             # (stem + op suffix) into --output-dir: the later result
             # silently overwrites the earlier one. Warn now, while the
             # user can still pick distinct names or a per-file run.
-            dupes = sorted(s for s, n in
-                           Counter(Path(f).stem for f in files).items()
-                           if n > 1)
+            dupes = sorted(
+                s for s, n in Counter(Path(f).stem for f in files).items() if n > 1
+            )
             if dupes:
-                print(f"Warning: inputs sharing the name(s) "
-                      f"{', '.join(dupes)} will overwrite each other's "
-                      f"output in {output_dir}", file=sys.stderr)
+                print(
+                    f"Warning: inputs sharing the name(s) "
+                    f"{', '.join(dupes)} will overwrite each other's "
+                    f"output in {output_dir}",
+                    file=sys.stderr,
+                )
 
-        kwargs: Dict[str, Any] = {
-            "output_dir": output_dir,
-            "dry_run": args.dry_run
-        }
+        kwargs: Dict[str, Any] = {"output_dir": output_dir, "dry_run": args.dry_run}
 
         # Op-specific flags on a command that did not request the op are
         # silently ignored otherwise -- the user reads a flag they typed as
@@ -2636,22 +2950,32 @@ async def main():
         if args.threshold is not None and not 0.0 < args.threshold < 1.0:
             # trim_silence rejects the same range downstream; validating here
             # answers INPUT instead of a per-file ERROR, and matches the docs.
-            print(f"Error: --threshold must be within (0.0, 1.0), got "
-                  f"{args.threshold}", file=sys.stderr)
+            print(
+                f"Error: --threshold must be within (0.0, 1.0), got "
+                f"{args.threshold}",
+                file=sys.stderr,
+            )
             return ExitCode.INPUT
-        convert_flags = {"--convert-format": args.convert_format,
-                         "--convert-sample-rate": args.convert_sample_rate,
-                         "--convert-bit-depth": args.convert_bit_depth}
+        convert_flags = {
+            "--convert-format": args.convert_format,
+            "--convert-sample-rate": args.convert_sample_rate,
+            "--convert-bit-depth": args.convert_bit_depth,
+        }
         if not args.convert:
             used = [name for name, v in convert_flags.items() if v is not None]
             if used:
                 print(f"Error: {used[0]} requires --convert", file=sys.stderr)
                 return ExitCode.USAGE
-        if (args.convert_sample_rate is not None
-                and not 0 < args.convert_sample_rate <= MAX_TARGET_SAMPLE_RATE):
-            print(f"Error: --convert-sample-rate must be within "
-                  f"(0, {MAX_TARGET_SAMPLE_RATE}], got "
-                  f"{args.convert_sample_rate}", file=sys.stderr)
+        if (
+            args.convert_sample_rate is not None
+            and not 0 < args.convert_sample_rate <= MAX_TARGET_SAMPLE_RATE
+        ):
+            print(
+                f"Error: --convert-sample-rate must be within "
+                f"(0, {MAX_TARGET_SAMPLE_RATE}], got "
+                f"{args.convert_sample_rate}",
+                file=sys.stderr,
+            )
             return ExitCode.INPUT
 
         if args.normalize:
@@ -2661,8 +2985,11 @@ async def main():
                 # cannot be reached without clipping, so silently clamping
                 # it would lie about what happened to the audio.
                 if not 0.0 < args.target_peak <= 1.0:
-                    print(f"Error: --target-peak must be within (0, 1.0], "
-                          f"got {args.target_peak}", file=sys.stderr)
+                    print(
+                        f"Error: --target-peak must be within (0, 1.0], "
+                        f"got {args.target_peak}",
+                        file=sys.stderr,
+                    )
                     return ExitCode.INPUT
                 kwargs["target_peak"] = args.target_peak
         if args.mono:
@@ -2675,8 +3002,9 @@ async def main():
             operations.append("denoise")
         # Canonical order, not command-line order -- see RESTORATION_REPAIRS.
         requested = {"dehum": args.dehum, "declip": args.declip}
-        repairs = [name for name in AudioProcessor.RESTORATION_REPAIRS
-                   if requested[name]]
+        repairs = [
+            name for name in AudioProcessor.RESTORATION_REPAIRS if requested[name]
+        ]
         if repairs:
             operations.append("restore")
             kwargs["repairs"] = repairs
@@ -2699,7 +3027,10 @@ async def main():
             kwargs["bit_depth"] = args.convert_bit_depth or 16
 
         if not operations:
-            print("Error: specify at least one processing option (e.g., --normalize, --denoise, --declip, --effects, or --convert).", file=sys.stderr)
+            print(
+                "Error: specify at least one processing option (e.g., --normalize, --denoise, --declip, --effects, or --convert).",
+                file=sys.stderr,
+            )
             return ExitCode.USAGE
 
         if args.no_parallel:
@@ -2731,7 +3062,11 @@ async def main():
                     # are both available (the common case); otherwise it falls back to a
                     # rough RMS-based approximation. Label honestly either way, rather
                     # than a blanket "(approx)" that understates the common case.
-                    is_bs1770 = HAS_MASTERING_CHAIN and mastering_chain.HAS_SCIPY and mastering_chain.HAS_BS1770
+                    is_bs1770 = (
+                        HAS_MASTERING_CHAIN
+                        and mastering_chain.HAS_SCIPY
+                        and mastering_chain.HAS_BS1770
+                    )
                     label = "LUFS" if is_bs1770 else "LUFS (approx)"
                     converted_details.append(f"{result['lufs_after']:.1f} {label}")
                     converted_details.append(f"{result['peak_change_db']:+.1f}dB peak")
@@ -2740,7 +3075,11 @@ async def main():
                     # value falls back to sample peak, so only advertise "dBTP"
                     # when the real oversampled path ran.
                     if tp is not None and math.isfinite(tp):
-                        tp_label = "dBTP" if (HAS_MASTERING_CHAIN and mastering_chain.HAS_SCIPY) else "dBTP (sample-peak fallback)"
+                        tp_label = (
+                            "dBTP"
+                            if (HAS_MASTERING_CHAIN and mastering_chain.HAS_SCIPY)
+                            else "dBTP (sample-peak fallback)"
+                        )
                         converted_details.append(f"{tp:+.1f} {tp_label}")
                     # Loudness range is only meaningful on the real BS.1770
                     # path; without scipy the meter returns a placeholder 0.0,
@@ -2750,16 +3089,27 @@ async def main():
                         converted_details.append(f"{lra_after:.1f} LU range")
                 if result.get("dry_run"):
                     converted_details.append("dry-run")
-                detail_suffix = f" [{', '.join(converted_details)}]" if converted_details else ""
+                detail_suffix = (
+                    f" [{', '.join(converted_details)}]" if converted_details else ""
+                )
 
                 if args.json:
-                    print(json.dumps({
-                        "operation": operation,
-                        "result": _serialize_result(result)
-                    }, default=str))
+                    print(
+                        json.dumps(
+                            {
+                                "operation": operation,
+                                "result": _serialize_result(result),
+                            },
+                            default=str,
+                        )
+                    )
                 else:
-                    output_path = result.get("output") or result.get("planned_output") or "done"
-                    print(f"Processed {result['file']} -> {output_path} ({result['time']:.2f}s){detail_suffix}")
+                    output_path = (
+                        result.get("output") or result.get("planned_output") or "done"
+                    )
+                    print(
+                        f"Processed {result['file']} -> {output_path} ({result['time']:.2f}s){detail_suffix}"
+                    )
 
             if had_error:
                 exit_code = ExitCode.ERROR
@@ -2775,11 +3125,12 @@ async def main():
     elif args.command == "stream":
         # Device indices are non-negative PyAudio indexes; a negative one
         # would reach the backend and fail opaquely.
-        for flag, dev in (("--input-device", args.input_device),
-                          ("--output-device", args.output_device)):
+        for flag, dev in (
+            ("--input-device", args.input_device),
+            ("--output-device", args.output_device),
+        ):
             if dev is not None and dev < 0:
-                print(f"Error: {flag} must be >= 0, got {dev}",
-                      file=sys.stderr)
+                print(f"Error: {flag} must be >= 0, got {dev}", file=sys.stderr)
                 return ExitCode.INPUT
         input_device = args.input_device
         output_device = args.output_device
@@ -2824,7 +3175,9 @@ async def main():
         try:
             directories = None
             if args.directory:
-                directories = [_sanitize_cli_input(d, "plugin directory") for d in args.directory]
+                directories = [
+                    _sanitize_cli_input(d, "plugin directory") for d in args.directory
+                ]
                 _assert_unique_paths(directories, "plugin directory")
 
             manager, sanitized_dirs = _initialize_plugin_manager(directories)
@@ -2888,7 +3241,7 @@ async def main():
                 record: Dict[str, Any] = {
                     "path": plugin_path,
                     "passed": True,
-                    "errors": []
+                    "errors": [],
                 }
 
                 try:
@@ -2906,7 +3259,7 @@ async def main():
             if args.json:
                 payload = {
                     "directories": [str(path) for path in sanitized_dirs],
-                    "results": audit_results
+                    "results": audit_results,
                 }
                 print(json.dumps(payload, indent=2))
             else:
@@ -2925,7 +3278,8 @@ async def main():
             directory_arg = _sanitize_cli_input(args.directory, "directory")
             directory = Path(directory_arg)
             output_dir = _preflight_output_dir(
-                _sanitize_optional_input(args.output_dir, "output_dir"))
+                _sanitize_optional_input(args.output_dir, "output_dir")
+            )
             format_arg = _sanitize_optional_input(args.format, "format")
             effects_path = _sanitize_optional_input(args.effects, "effects")
         except ValueError as exc:
@@ -2937,39 +3291,57 @@ async def main():
             return ExitCode.INPUT
 
         if not directory.is_dir():
-            print(f"Error: specified path is not a directory: {directory}", file=sys.stderr)
+            print(
+                f"Error: specified path is not a directory: {directory}",
+                file=sys.stderr,
+            )
             return ExitCode.INPUT
 
         # Flags scoped to an operation that was not requested would be
         # silently ignored -- reject them instead of pretending they ran.
         if args.operation != "convert":
-            for flag, value in (("--format", args.format),
-                                ("--sample-rate", args.sample_rate),
-                                ("--bit-depth", args.bit_depth)):
+            for flag, value in (
+                ("--format", args.format),
+                ("--sample-rate", args.sample_rate),
+                ("--bit-depth", args.bit_depth),
+            ):
                 if value is not None:
-                    print(f"Error: {flag} only applies to the convert operation",
-                          file=sys.stderr)
+                    print(
+                        f"Error: {flag} only applies to the convert operation",
+                        file=sys.stderr,
+                    )
                     return ExitCode.USAGE
         if args.operation != "normalize":
             if args.target_peak is not None:
-                print("Error: --target-peak only applies to the normalize operation",
-                      file=sys.stderr)
+                print(
+                    "Error: --target-peak only applies to the normalize operation",
+                    file=sys.stderr,
+                )
                 return ExitCode.USAGE
             if args.quality is not None:
-                print("Error: --quality only applies to the normalize operation",
-                      file=sys.stderr)
+                print(
+                    "Error: --quality only applies to the normalize operation",
+                    file=sys.stderr,
+                )
                 return ExitCode.USAGE
-        if (args.sample_rate is not None
-                and not 0 < args.sample_rate <= MAX_TARGET_SAMPLE_RATE):
+        if (
+            args.sample_rate is not None
+            and not 0 < args.sample_rate <= MAX_TARGET_SAMPLE_RATE
+        ):
             # convert_audio raises per-file downstream; an out-of-domain rate
             # is bad input, not a batch of identical failures.
-            print(f"Error: --sample-rate must be within "
-                  f"(0, {MAX_TARGET_SAMPLE_RATE}], got "
-                  f"{args.sample_rate}", file=sys.stderr)
+            print(
+                f"Error: --sample-rate must be within "
+                f"(0, {MAX_TARGET_SAMPLE_RATE}], got "
+                f"{args.sample_rate}",
+                file=sys.stderr,
+            )
             return ExitCode.INPUT
         if args.operation != "effects" and args.effects:
-            print("Error: --effects only applies to the effects operation",
-                  file=sys.stderr)
+            print(
+                "Error: --effects only applies to the effects operation",
+                file=sys.stderr,
+            )
             return ExitCode.USAGE
 
         pattern = "**/*" if args.recursive else "*"
@@ -2983,7 +3355,9 @@ async def main():
             return ExitCode.INPUT
 
         try:
-            resolved_files = SecurityValidator.resolve_unique_paths([str(f) for f in gathered_files])
+            resolved_files = SecurityValidator.resolve_unique_paths(
+                [str(f) for f in gathered_files]
+            )
         except ValueError as exc:
             print(f"Input validation error: {exc}", file=sys.stderr)
             return ExitCode.INPUT
@@ -2995,13 +3369,16 @@ async def main():
             # Recursive gathers can hold identically-named files from
             # different subdirs; each op writes stem+suffix into
             # --output-dir, so later results overwrite earlier ones.
-            dupes = sorted(s for s, n in
-                           Counter(Path(f).stem for f in file_list).items()
-                           if n > 1)
+            dupes = sorted(
+                s for s, n in Counter(Path(f).stem for f in file_list).items() if n > 1
+            )
             if dupes:
-                print(f"Warning: files sharing the name(s) "
-                      f"{', '.join(dupes)} will overwrite each other's "
-                      f"output in {output_dir}", file=sys.stderr)
+                print(
+                    f"Warning: files sharing the name(s) "
+                    f"{', '.join(dupes)} will overwrite each other's "
+                    f"output in {output_dir}",
+                    file=sys.stderr,
+                )
 
             # Outputs written inside the scanned tree are
             # indistinguishable from inputs on the next run -- every
@@ -3021,10 +3398,12 @@ async def main():
                 else:
                     inside = True
                 if inside:
-                    print(f"Warning: --output-dir {output_dir} is inside "
-                          f"the scanned directory; its outputs will be "
-                          f"re-processed as inputs on future runs",
-                          file=sys.stderr)
+                    print(
+                        f"Warning: --output-dir {output_dir} is inside "
+                        f"the scanned directory; its outputs will be "
+                        f"re-processed as inputs on future runs",
+                        file=sys.stderr,
+                    )
             except OSError:
                 pass
 
@@ -3042,14 +3421,20 @@ async def main():
 
         if args.operation == "normalize" and args.target_peak is not None:
             if not 0.0 < args.target_peak <= 1.0:
-                print(f"Error: --target-peak must be within (0, 1.0], "
-                      f"got {args.target_peak}", file=sys.stderr)
+                print(
+                    f"Error: --target-peak must be within (0, 1.0], "
+                    f"got {args.target_peak}",
+                    file=sys.stderr,
+                )
                 return ExitCode.INPUT
             kwargs["target_peak"] = args.target_peak
 
         if args.operation == "effects":
             if not effects_path:
-                print("Error: --effects <file> is required for the effects operation", file=sys.stderr)
+                print(
+                    "Error: --effects <file> is required for the effects operation",
+                    file=sys.stderr,
+                )
                 return ExitCode.USAGE
             try:
                 kwargs["effects"] = _load_effects(effects_path)
@@ -3065,8 +3450,11 @@ async def main():
             # Accept the legacy names rather than break scripts, but say so
             # instead of letting them imply a difference that is not there.
             if args.quality in ("low", "medium", "lossless"):
-                print(f"Note: --quality {args.quality} is equivalent to 'standard' "
-                      "(no soft clipping); only 'high' enables it.", file=sys.stderr)
+                print(
+                    f"Note: --quality {args.quality} is equivalent to 'standard' "
+                    "(no soft clipping); only 'high' enables it.",
+                    file=sys.stderr,
+                )
                 args.quality = "standard"
             processor.config.quality = args.quality
         processor.update_worker_limits()
@@ -3083,7 +3471,11 @@ async def main():
         verb = "Would process" if args.dry_run else "Processed"
         summary = f"{verb} {successful}/{len(results)} files successfully"
         if HAS_UX_IMPROVEMENTS:
-            summary = ColorText.success(summary) if successful == len(results) else ColorText.error(summary)
+            summary = (
+                ColorText.success(summary)
+                if successful == len(results)
+                else ColorText.error(summary)
+            )
         print(f"\n{summary}")
 
         if successful != len(results):
@@ -3128,17 +3520,26 @@ async def main():
         if args.tempo is not None:
             # isfinite first: NaN defeats `<= 0` (it's False) and inf makes
             # us-per-quarter 0 -- both reached the encoder as int(nan) errors.
-            if not math.isfinite(args.tempo) \
-                    or args.tempo <= 0 or 60_000_000 / args.tempo > 0xFFFFFF:
-                print("Error: --tempo must be a finite positive BPM encodable "
-                      "in the MIDI 24-bit us-per-quarter field (>= ~3.6)",
-                      file=sys.stderr)
+            if (
+                not math.isfinite(args.tempo)
+                or args.tempo <= 0
+                or 60_000_000 / args.tempo > 0xFFFFFF
+            ):
+                print(
+                    "Error: --tempo must be a finite positive BPM encodable "
+                    "in the MIDI 24-bit us-per-quarter field (>= ~3.6)",
+                    file=sys.stderr,
+                )
                 return ExitCode.INPUT
-        if (args.length is not None
-                and (not math.isfinite(args.length) or args.length <= 0)):
+        if args.length is not None and (
+            not math.isfinite(args.length) or args.length <= 0
+        ):
             # inf would loop forever generating notes; NaN defeats <= 0.
-            print(f"Error: --length must be a positive finite duration, got "
-                  f"{args.length}", file=sys.stderr)
+            print(
+                f"Error: --length must be a positive finite duration, got "
+                f"{args.length}",
+                file=sys.stderr,
+            )
             return ExitCode.INPUT
 
         # The MIDI writer builds the file in memory and opens once at the
@@ -3153,20 +3554,27 @@ async def main():
         if output_path:
             parent = os.path.dirname(output_path) or "."
             if os.path.isdir(output_path) or not os.path.isdir(parent):
-                print(f"Error: cannot write MIDI output to '{output_path}' "
-                      f"(missing parent directory, or path is a directory)",
-                      file=sys.stderr)
+                print(
+                    f"Error: cannot write MIDI output to '{output_path}' "
+                    f"(missing parent directory, or path is a directory)",
+                    file=sys.stderr,
+                )
                 return ExitCode.INPUT
             if not os.access(parent, os.W_OK | os.X_OK):
-                print(f"Error: cannot write MIDI output to '{output_path}' "
-                      f"(parent directory not writable)",
-                      file=sys.stderr)
+                print(
+                    f"Error: cannot write MIDI output to '{output_path}' "
+                    f"(parent directory not writable)",
+                    file=sys.stderr,
+                )
                 return ExitCode.INPUT
 
         print(f"MIDI operation '{args.operation}'")
 
         if args.operation in ["extract", "analyze"] and not args.input:
-            print("Error: --input required for extract/analyze operations", file=sys.stderr)
+            print(
+                "Error: --input required for extract/analyze operations",
+                file=sys.stderr,
+            )
             return ExitCode.USAGE
 
         if args.operation in ("extract", "analyze") and args.input:
@@ -3175,10 +3583,13 @@ async def main():
             # "Unsupported file type" leaves the user guessing which part
             # was wrong, so name the trap.
             if os.path.splitext(args.input)[1].lower() in (".mid", ".midi"):
-                print("Error: midi extract/analyze take an audio file "
-                      "(e.g. .wav) and analyze its musical content; a .mid "
-                      "file is already MIDI -- there is nothing to extract "
-                      "or analyze.", file=sys.stderr)
+                print(
+                    "Error: midi extract/analyze take an audio file "
+                    "(e.g. .wav) and analyze its musical content; a .mid "
+                    "file is already MIDI -- there is nothing to extract "
+                    "or analyze.",
+                    file=sys.stderr,
+                )
                 return ExitCode.INPUT
 
         if args.operation == "extract":
@@ -3191,29 +3602,37 @@ async def main():
 
             if notes:
                 print(f"Extracted {len(notes)} MIDI notes:")
-                n_samples = (audio.shape[-1] if hasattr(audio, 'shape')
-                             else len(audio))
+                n_samples = audio.shape[-1] if hasattr(audio, "shape") else len(audio)
                 duration_s = n_samples / sr if sr else 0
                 # Extraction is monophonic (YIN): a plausible melody stays
                 # under ~20 notes/sec. Denser output means the input was
                 # probably polyphonic and most of these notes are spurious.
                 if duration_s > 0 and len(notes) / duration_s > 25:
-                    print("  Warning: note density is implausibly high for a "
-                          "monophonic source -- the input likely contains chords; "
-                          "this extractor tracks one pitch per frame.",
-                          file=sys.stderr)
+                    print(
+                        "  Warning: note density is implausibly high for a "
+                        "monophonic source -- the input likely contains chords; "
+                        "this extractor tracks one pitch per frame.",
+                        file=sys.stderr,
+                    )
                 for i, note in enumerate(notes[:10]):  # Show first 10
-                    print(f"  {i+1}. {note.note_name} (vel: {note.velocity}, time: {note.start_time:.2f}s)")
+                    print(
+                        f"  {i+1}. {note.note_name} (vel: {note.velocity}, time: {note.start_time:.2f}s)"
+                    )
                 if len(notes) > 10:
                     print(f"  ... and {len(notes)-10} more notes")
 
                 # Save to MIDI file if output specified
                 if output_path:
-                    success = processor.generate_midi(notes, output_path, tempo_bpm=tempo)
+                    success = processor.generate_midi(
+                        notes, output_path, tempo_bpm=tempo
+                    )
                     if success:
                         print(f"MIDI file saved to {args.output}")
                     else:
-                        print(f"Error: failed to write MIDI file to {args.output}", file=sys.stderr)
+                        print(
+                            f"Error: failed to write MIDI file to {args.output}",
+                            file=sys.stderr,
+                        )
                         exit_code = ExitCode.ERROR
             else:
                 print("No MIDI notes extracted")
@@ -3230,26 +3649,43 @@ async def main():
                 print("\n🎵 Musical Analysis Results:")
                 print(f"📊 Notes extracted: {analysis['notes']}")
 
-                key_info = analysis['key']
-                note_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-                key_name = note_names[key_info['tonic']]
-                print(f"🎼 Key: {key_name} {key_info['mode']} (confidence: {key_info['confidence']:.3f})")
+                key_info = analysis["key"]
+                note_names = [
+                    "C",
+                    "C#",
+                    "D",
+                    "D#",
+                    "E",
+                    "F",
+                    "F#",
+                    "G",
+                    "G#",
+                    "A",
+                    "A#",
+                    "B",
+                ]
+                key_name = note_names[key_info["tonic"]]
+                print(
+                    f"🎼 Key: {key_name} {key_info['mode']} (confidence: {key_info['confidence']:.3f})"
+                )
 
-                if analysis['chords']:
+                if analysis["chords"]:
                     print(f"🎸 Chords detected: {len(analysis['chords'])}")
-                    for i, chord in enumerate(analysis['chords'][:5]):  # Show first 5
-                        print(f"  {i+1}. {chord['name']} (time: {chord['start_time']:.1f}s)")
+                    for i, chord in enumerate(analysis["chords"][:5]):  # Show first 5
+                        print(
+                            f"  {i+1}. {chord['name']} (time: {chord['start_time']:.1f}s)"
+                        )
 
-                if analysis['rhythm']:
-                    rhythm = analysis['rhythm']
-                    if rhythm['tempo'] > 0:
+                if analysis["rhythm"]:
+                    rhythm = analysis["rhythm"]
+                    if rhythm["tempo"] > 0:
                         print(f"🥁 Estimated tempo: {rhythm['tempo']:.1f} BPM")
                     else:
                         print("🥁 Estimated tempo: not estimable (insufficient onsets)")
 
-                if analysis['suggestions']['next_chords']:
+                if analysis["suggestions"]["next_chords"]:
                     print("🤖 Next chord suggestions:")
-                    for chord, prob in analysis['suggestions']['next_chords'][:3]:
+                    for chord, prob in analysis["suggestions"]["next_chords"][:3]:
                         print(f"  {chord} (probability: {prob:.2f})")
 
         elif args.operation == "compose":
@@ -3261,8 +3697,10 @@ async def main():
             # composition came out in C major.
             tonic = _midi_tonic(args.key)
             if tonic is None:
-                print(f"Error: unknown key '{args.key}' "
-                      f"(expected e.g. C, F#, Bb)", file=sys.stderr)
+                print(
+                    f"Error: unknown key '{args.key}' " f"(expected e.g. C, F#, Bb)",
+                    file=sys.stderr,
+                )
                 return ExitCode.INPUT
 
             print("🎵 Generating musical composition...")
@@ -3315,11 +3753,16 @@ async def main():
             if melody:
                 print(f"Generated melody with {len(melody)} notes")
                 if output_path:
-                    success = processor.generate_midi(melody, output_path, tempo_bpm=tempo)
+                    success = processor.generate_midi(
+                        melody, output_path, tempo_bpm=tempo
+                    )
                     if success:
                         print(f"Composition saved to {args.output}")
                     else:
-                        print(f"Error: failed to write composition to {args.output}", file=sys.stderr)
+                        print(
+                            f"Error: failed to write composition to {args.output}",
+                            file=sys.stderr,
+                        )
                         exit_code = ExitCode.ERROR
             else:
                 print("Error: failed to generate composition", file=sys.stderr)
@@ -3328,13 +3771,17 @@ async def main():
         elif args.operation == "generate":
             # Generate MIDI file from scratch
             if not output_path:
-                print("Error: --output required for generate operation", file=sys.stderr)
+                print(
+                    "Error: --output required for generate operation", file=sys.stderr
+                )
                 return ExitCode.USAGE
 
             tonic = _midi_tonic(args.key)
             if tonic is None:
-                print(f"Error: unknown key '{args.key}' "
-                      f"(expected e.g. C, F#, Bb)", file=sys.stderr)
+                print(
+                    f"Error: unknown key '{args.key}' " f"(expected e.g. C, F#, Bb)",
+                    file=sys.stderr,
+                )
                 return ExitCode.INPUT
 
             print("🎼 Generating MIDI demo...")
@@ -3344,27 +3791,33 @@ async def main():
 
             # A one-octave scale in the requested key/mode starting at C4-ish
             # (MIDI 60 + tonic). Major and natural minor intervals.
-            intervals = [0, 2, 4, 5, 7, 9, 11] if mode == "major" else [0, 2, 3, 5, 7, 8, 10]
+            intervals = (
+                [0, 2, 4, 5, 7, 9, 11] if mode == "major" else [0, 2, 3, 5, 7, 8, 10]
+            )
             scale_notes = [60 + tonic + i for i in intervals] + [60 + tonic + 12]
             demo_notes = []
 
             for i, pitch in enumerate(scale_notes):
-                note = MIDINote(
-                    pitch=pitch,
-                    velocity=80,
-                    start_time=i * 0.5,
-                    duration=0.4
-                ) if HAS_MIDI else None
+                note = (
+                    MIDINote(pitch=pitch, velocity=80, start_time=i * 0.5, duration=0.4)
+                    if HAS_MIDI
+                    else None
+                )
 
                 if note:
                     demo_notes.append(note)
 
             if demo_notes:
-                success = processor.generate_midi(demo_notes, output_path, tempo_bpm=tempo)
+                success = processor.generate_midi(
+                    demo_notes, output_path, tempo_bpm=tempo
+                )
                 if success:
                     print(f"Demo MIDI file generated: {args.output}")
                 else:
-                    print(f"Error: failed to write MIDI demo to {args.output}", file=sys.stderr)
+                    print(
+                        f"Error: failed to write MIDI demo to {args.output}",
+                        file=sys.stderr,
+                    )
                     exit_code = ExitCode.ERROR
             else:
                 print("Error: failed to generate MIDI demo", file=sys.stderr)
@@ -3375,8 +3828,7 @@ async def main():
         # advertise a port nobody is listening on; negative values crash
         # inside uvicorn with an OverflowError traceback.
         if not 1 <= args.port <= 65535:
-            print(f"Error: --port must be 1-65535, got {args.port}",
-                  file=sys.stderr)
+            print(f"Error: --port must be 1-65535, got {args.port}", file=sys.stderr)
             return ExitCode.INPUT
         if args.workers != 1:
             # api_state (sessions, token index, job registry, audit log,
@@ -3388,16 +3840,19 @@ async def main():
                 "live in this process's memory; multiple uvicorn workers "
                 "cannot share it. Run several processes behind a real "
                 "load balancer instead (each with its own state).",
-                file=sys.stderr)
+                file=sys.stderr,
+            )
             return ExitCode.INPUT
         # The banner claims a server is starting; when uvicorn is absent
         # the call below always fails, so the claim must not be printed.
         try:
             import uvicorn  # type: ignore
         except ImportError:
-            print("The API server requires fastapi and uvicorn. "
-                  "Install them with: pip install -e .[api]",
-                  file=sys.stderr)
+            print(
+                "The API server requires fastapi and uvicorn. "
+                "Install them with: pip install -e .[api]",
+                file=sys.stderr,
+            )
             exit_code = ExitCode.ERROR
         else:
             print(f"Starting API server on {args.host}:{args.port}")

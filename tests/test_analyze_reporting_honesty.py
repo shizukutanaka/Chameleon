@@ -37,8 +37,9 @@ SINE_CREST_FACTOR_DB = 20 * math.log10(math.sqrt(2))
 
 
 def _run(*args):
-    return subprocess.run([sys.executable, MAIN_PY, *args],
-                          capture_output=True, text=True)
+    return subprocess.run(
+        [sys.executable, MAIN_PY, *args], capture_output=True, text=True
+    )
 
 
 def _field(output, label):
@@ -58,8 +59,9 @@ def test_dynamic_range_is_the_real_crest_factor(tone):
     assert result.returncode == 0, result.stderr
 
     reported = float(_field(result.stdout, "Dynamic Range").rstrip("dB"))
-    assert reported == pytest.approx(SINE_CREST_FACTOR_DB, abs=0.2), (
-        f"a sine's crest factor is {SINE_CREST_FACTOR_DB:.2f} dB, reported {reported}")
+    assert reported == pytest.approx(
+        SINE_CREST_FACTOR_DB, abs=0.2
+    ), f"a sine's crest factor is {SINE_CREST_FACTOR_DB:.2f} dB, reported {reported}"
 
 
 def test_dynamic_range_is_never_reported_as_zero_for_a_tone(tone):
@@ -87,8 +89,10 @@ def test_spectrum_measures_what_detailed_could_not(tone):
     result = _run("analyze", str(tone), "--spectrum")
     assert result.returncode == 0, result.stderr
 
-    low, high = (float(v) for v in
-                 _field(result.stdout, "Spectrum Bandwidth").rstrip("Hz").split("-"))
+    low, high = (
+        float(v)
+        for v in _field(result.stdout, "Spectrum Bandwidth").rstrip("Hz").split("-")
+    )
     assert low < 440.0 < high
 
 

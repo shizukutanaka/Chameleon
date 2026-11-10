@@ -36,7 +36,6 @@ import pytest
 
 from advanced_validation import DeepFileInspector
 
-
 SAMPLE_RATE = 44100
 
 
@@ -56,18 +55,24 @@ def _write_wav(path, frames):
 
 def _tone_frames(seconds=1.0, freq=440.0):
     import math
+
     count = int(SAMPLE_RATE * seconds)
     return b"".join(
-        struct.pack("<h", int(0.5 * 32767 * math.sin(2 * math.pi * freq * i / SAMPLE_RATE)))
+        struct.pack(
+            "<h", int(0.5 * 32767 * math.sin(2 * math.pi * freq * i / SAMPLE_RATE))
+        )
         for i in range(count)
     )
 
 
 def _warnings(inspector, path):
-    return [w for w in inspector.inspect_file(path).warnings if "Suspicious pattern" in w]
+    return [
+        w for w in inspector.inspect_file(path).warnings if "Suspicious pattern" in w
+    ]
 
 
 # --- ordinary audio is not suspicious ------------------------------------
+
 
 @pytest.mark.parametrize("freq", [100.0, 440.0, 1000.0])
 def test_a_plain_tone_raises_no_suspicion(inspector, tmp_path, freq):
@@ -76,7 +81,9 @@ def test_a_plain_tone_raises_no_suspicion(inspector, tmp_path, freq):
     assert _warnings(inspector, wav) == []
 
 
-def test_a_tone_long_enough_to_hit_every_two_byte_pattern_is_still_clean(inspector, tmp_path):
+def test_a_tone_long_enough_to_hit_every_two_byte_pattern_is_still_clean(
+    inspector, tmp_path
+):
     # Ten seconds is 882,000 samples: `#!` and `MZ` are each near-certain to
     # occur somewhere in the payload by chance. That is exactly the case the
     # old whole-file scan flagged.
@@ -85,11 +92,15 @@ def test_a_tone_long_enough_to_hit_every_two_byte_pattern_is_still_clean(inspect
     assert _warnings(inspector, wav) == []
 
 
-def test_bytes_that_spell_code_inside_the_data_chunk_are_just_audio(inspector, tmp_path):
+def test_bytes_that_spell_code_inside_the_data_chunk_are_just_audio(
+    inspector, tmp_path
+):
     payload = b"MZ\x7fELF#!<?php <script import os; eval( exec( system( <html"
     if len(payload) % 2:
         payload += b"\x00"
-    wav = _write_wav(tmp_path / "payload.wav", b"\x00\x00" * 50 + payload + b"\x00\x00" * 50)
+    wav = _write_wav(
+        tmp_path / "payload.wav", b"\x00\x00" * 50 + payload + b"\x00\x00" * 50
+    )
 
     result = inspector.inspect_file(wav)
     assert result.is_valid
@@ -98,12 +109,18 @@ def test_bytes_that_spell_code_inside_the_data_chunk_are_just_audio(inspector, t
 
 # --- real threats are still caught ---------------------------------------
 
-@pytest.mark.parametrize("signature,label", [
-    (b"#!/bin/sh\necho hello\n", "shell script"),
-    (b"\x7fELF\x02\x01\x01\x00" + b"\x00" * 100, "ELF binary"),
-    (b"MZ\x90\x00\x03" + b"\x00" * 100, "DOS/Windows executable"),
-])
-def test_an_executable_signature_at_offset_zero_is_reported(inspector, tmp_path, signature, label):
+
+@pytest.mark.parametrize(
+    "signature,label",
+    [
+        (b"#!/bin/sh\necho hello\n", "shell script"),
+        (b"\x7fELF\x02\x01\x01\x00" + b"\x00" * 100, "ELF binary"),
+        (b"MZ\x90\x00\x03" + b"\x00" * 100, "DOS/Windows executable"),
+    ],
+)
+def test_an_executable_signature_at_offset_zero_is_reported(
+    inspector, tmp_path, signature, label
+):
     disguised = tmp_path / "not-really.wav"
     disguised.write_bytes(signature)
 
@@ -146,6 +163,7 @@ def test_a_non_riff_file_is_scanned_in_full(inspector, tmp_path):
 
 # --- degenerate inputs ---------------------------------------------------
 
+
 def test_an_empty_file_does_not_crash(inspector, tmp_path):
     empty = tmp_path / "empty.wav"
     empty.write_bytes(b"")
@@ -164,17 +182,29 @@ def test_a_chunk_claiming_an_absurd_size_terminates(inspector, tmp_path):
     # A hostile size field must not send the chunk walk past the mapping or
     # into a loop -- the scan runs on untrusted input by definition.
     hostile = tmp_path / "hostile.wav"
-    hostile.write_bytes(b"RIFF" + struct.pack("<I", 0xFFFFFFF0) + b"WAVE"
-                        + b"data" + struct.pack("<I", 0xFFFFFFF0) + b"\x00" * 32)
+    hostile.write_bytes(
+        b"RIFF"
+        + struct.pack("<I", 0xFFFFFFF0)
+        + b"WAVE"
+        + b"data"
+        + struct.pack("<I", 0xFFFFFFF0)
+        + b"\x00" * 32
+    )
 
     assert inspector.inspect_file(hostile) is not None
 
 
 def test_a_zero_length_chunk_does_not_loop_forever(inspector, tmp_path):
     empty_chunk = tmp_path / "zero.wav"
-    empty_chunk.write_bytes(b"RIFF" + struct.pack("<I", 20) + b"WAVE"
-                            + b"LIST" + struct.pack("<I", 0)
-                            + b"data" + struct.pack("<I", 0))
+    empty_chunk.write_bytes(
+        b"RIFF"
+        + struct.pack("<I", 20)
+        + b"WAVE"
+        + b"LIST"
+        + struct.pack("<I", 0)
+        + b"data"
+        + struct.pack("<I", 0)
+    )
 
     assert inspector.inspect_file(empty_chunk) is not None
 
@@ -185,4 +215,5 @@ def test_the_scan_does_not_rely_on_mmap():
     # warnings (observed on CI). A plain read of the same <=10 MB window has
     # no such failure mode, so mmap is gone from this module on purpose.
     import advanced_validation
+
     assert not hasattr(advanced_validation, "mmap")

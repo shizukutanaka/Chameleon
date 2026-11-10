@@ -23,10 +23,10 @@ from security_validator import (
     SecureFileOperations,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _validator(**kwargs) -> SecurityValidator:
     return SecurityValidator(SecurityConfig(**kwargs))
@@ -35,6 +35,7 @@ def _validator(**kwargs) -> SecurityValidator:
 def _core_enhanced():
     # core.py carries a twin sanitize_filename; keep both honest.
     from core import EnhancedSecurityValidator
+
     return EnhancedSecurityValidator
 
 
@@ -52,6 +53,7 @@ def _write_wav(path: Path, n_samples: int = 100) -> Path:
 # Path-shape safety (traversal patterns, suspicious chars, length)
 # ---------------------------------------------------------------------------
 
+
 class TestPathShapeSafety:
     """Tests for the _is_path_shape_safe internal helper.
 
@@ -67,12 +69,15 @@ class TestPathShapeSafety:
     def _shape_safe(self, path_str: str) -> bool:
         return SecurityValidator()._is_path_shape_safe(path_str)
 
-    @pytest.mark.parametrize("bad_path", [
-        "/safe/dir/../etc/passwd",      # raw traversal (pre-resolve)
-        "/safe/%2e%2e/passwd",          # URL-encoded traversal
-        "/safe/dir/..%2f../etc",
-        "/safe/dir/%2e%2e%2f../etc",
-    ])
+    @pytest.mark.parametrize(
+        "bad_path",
+        [
+            "/safe/dir/../etc/passwd",  # raw traversal (pre-resolve)
+            "/safe/%2e%2e/passwd",  # URL-encoded traversal
+            "/safe/dir/..%2f../etc",
+            "/safe/dir/%2e%2e%2f../etc",
+        ],
+    )
     def test_traversal_patterns_rejected_before_resolve(self, bad_path):
         assert self._shape_safe(bad_path) is False
 
@@ -93,6 +98,7 @@ class TestPathShapeSafety:
 # ---------------------------------------------------------------------------
 # Trusted-root enforcement
 # ---------------------------------------------------------------------------
+
 
 class TestTrustedRoots:
     def test_path_inside_trusted_root_accepted(self, tmp_path):
@@ -147,6 +153,7 @@ class TestTrustedRoots:
 # Extension allowlist
 # ---------------------------------------------------------------------------
 
+
 class TestExtensionFilter:
     def test_allowed_extension_passes(self, tmp_path):
         p = _write_wav(tmp_path / "good.wav")
@@ -169,6 +176,7 @@ class TestExtensionFilter:
 # File-size limit (resource-exhaustion mitigation — CHARTER §5)
 # ---------------------------------------------------------------------------
 
+
 class TestFileSizeLimit:
     def test_file_within_limit_accepted(self, tmp_path):
         p = _write_wav(tmp_path / "small.wav")
@@ -182,12 +190,15 @@ class TestFileSizeLimit:
         assert v.validate_file_size(str(p)) is False
 
     def test_nonexistent_file_returns_false(self, tmp_path):
-        assert SecurityValidator.validate_file_size(str(tmp_path / "ghost.wav")) is False
+        assert (
+            SecurityValidator.validate_file_size(str(tmp_path / "ghost.wav")) is False
+        )
 
 
 # ---------------------------------------------------------------------------
 # validate_path class-method vs instance behaviour
 # ---------------------------------------------------------------------------
+
 
 class TestHybridMethod:
     def test_class_level_call_does_not_raise(self, tmp_path):
@@ -208,6 +219,7 @@ class TestHybridMethod:
 # (validate_path returns bool; these raise SecurityError with a reason —
 # the branches below were uncovered and are the messages callers surface)
 # ---------------------------------------------------------------------------
+
 
 class TestValidateFilePathRaises:
     def test_missing_file_for_read_raises(self, tmp_path):
@@ -235,10 +247,14 @@ class TestValidateFilePathRaises:
         resolved = v.validate_file_path(str(target), operation="write")
         assert resolved == target.resolve()
 
-    @pytest.mark.skipif(sys.platform == "win32", reason=(
-        "'<' is illegal in Windows file names: the OS refuses to create "
-        "the fixture (WinError 123), so a resolved path can never carry "
-        "the suspicious character this test feeds"))
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason=(
+            "'<' is illegal in Windows file names: the OS refuses to create "
+            "the fixture (WinError 123), so a resolved path can never carry "
+            "the suspicious character this test feeds"
+        ),
+    )
     def test_suspicious_char_in_resolved_path_raises(self, tmp_path):
         # validate_file_path resolves first, so a raw ".." resolves away and is
         # caught by the roots check instead; the shape branch fires when the
@@ -252,9 +268,13 @@ class TestValidateFilePathRaises:
 
 
 class TestValidateDirectory:
-    @pytest.mark.skipif(sys.platform == "win32", reason=(
-        "'<' is illegal in Windows file names; resolve() on such a path "
-        "fails with WinError 123 before the shape check can fire"))
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason=(
+            "'<' is illegal in Windows file names; resolve() on such a path "
+            "fails with WinError 123 before the shape check can fire"
+        ),
+    )
     def test_suspicious_char_in_resolved_path_raises(self, tmp_path):
         # Same resolve-first semantics as validate_file_path.
         v = _validator()
@@ -317,22 +337,37 @@ class TestSanitizeFilename:
 
     def test_dangerous_chars_replaced_with_underscores(self):
         assert SecurityValidator.sanitize_filename("///...") == "___..."
-        assert SecurityValidator.sanitize_filename('<>:|?*') == "______"
+        assert SecurityValidator.sanitize_filename("<>:|?*") == "______"
 
     def test_empty_name_falls_back_to_untitled(self):
         assert SecurityValidator.sanitize_filename("") == "untitled"
 
-    @pytest.mark.parametrize("name,expected", [
-        ("CON", "untitled"), ("con", "untitled"), ("PRN", "untitled"),
-        ("AUX", "untitled"), ("NUL", "untitled"),
-        ("COM1", "untitled"), ("com9", "untitled"),
-        ("LPT3", "untitled"), ("lpt9", "untitled"),
-        ("CON.wav", "untitled.wav"), ("nul.txt", "untitled.txt"),
-        ("aux.bin.wav", "untitled.wav"), ("Com1.md", "untitled.md"),
-        ("com¹", "untitled"), ("com²", "untitled"), ("com³", "untitled"),
-        ("lpt¹", "untitled"), ("lpt²", "untitled"), ("lpt³", "untitled"),
-        (" CON ", "untitled"), ("con .wav", "untitled.wav"),
-    ])
+    @pytest.mark.parametrize(
+        "name,expected",
+        [
+            ("CON", "untitled"),
+            ("con", "untitled"),
+            ("PRN", "untitled"),
+            ("AUX", "untitled"),
+            ("NUL", "untitled"),
+            ("COM1", "untitled"),
+            ("com9", "untitled"),
+            ("LPT3", "untitled"),
+            ("lpt9", "untitled"),
+            ("CON.wav", "untitled.wav"),
+            ("nul.txt", "untitled.txt"),
+            ("aux.bin.wav", "untitled.wav"),
+            ("Com1.md", "untitled.md"),
+            ("com¹", "untitled"),
+            ("com²", "untitled"),
+            ("com³", "untitled"),
+            ("lpt¹", "untitled"),
+            ("lpt²", "untitled"),
+            ("lpt³", "untitled"),
+            (" CON ", "untitled"),
+            ("con .wav", "untitled.wav"),
+        ],
+    )
     def test_windows_reserved_device_names_fall_back(self, name, expected):
         # Windows reserves these stems directory-wide, extension or not;
         # the sanitized output must not be a name Windows cannot open.
@@ -349,11 +384,22 @@ class TestSanitizeFilename:
         assert out.split(".", 1)[0] == "untitled"
         assert len(out) <= 255
 
-    @pytest.mark.parametrize("name", [
-        "console.wav", "combat.wav", "auxiliary.wav", "null.wav",
-        "com0.wav", "lpt0.wav", "xcon.wav", "acon.wav", "con_x.wav",
-        "some.com1", "file.lpt9.bak.txt",
-    ])
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "console.wav",
+            "combat.wav",
+            "auxiliary.wav",
+            "null.wav",
+            "com0.wav",
+            "lpt0.wav",
+            "xcon.wav",
+            "acon.wav",
+            "con_x.wav",
+            "some.com1",
+            "file.lpt9.bak.txt",
+        ],
+    )
     def test_non_reserved_names_pass_through(self, name):
         assert SecurityValidator.sanitize_filename(name) == name
 
@@ -435,9 +481,12 @@ def test_sanitize_filename_collapses_dot_and_space_only_names():
     under a directory. Dot/space-only results are unusable everywhere
     (the FS strips trailing dots/spaces), so they fall back like empty."""
     import core
+
     for name in ("..", "...", "   ", "  .  "):
         assert SecurityValidator.sanitize_filename(name) == "untitled", name
-        assert core.EnhancedSecurityValidator.sanitize_filename(name) == "untitled", name
+        assert (
+            core.EnhancedSecurityValidator.sanitize_filename(name) == "untitled"
+        ), name
 
 
 def test_sanitize_filename_keeps_names_with_real_characters():

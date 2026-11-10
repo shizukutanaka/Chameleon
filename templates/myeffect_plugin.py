@@ -6,6 +6,7 @@ Generated plugin template
 from typing import List, Dict, Any
 from plugin_system import AudioEffectPlugin, PluginMetadata
 
+
 class MyEffectPlugin(AudioEffectPlugin):
     """
     MyEffect - A Chameleon audio processing plugin
@@ -25,9 +26,9 @@ class MyEffectPlugin(AudioEffectPlugin):
                     "default": 1.0,
                     "min": 0.0,
                     "max": 2.0,
-                    "description": "Gain level"
+                    "description": "Gain level",
                 }
-            }
+            },
         )
 
     def initialize(self, config: Dict[str, Any]) -> bool:
@@ -42,12 +43,15 @@ class MyEffectPlugin(AudioEffectPlugin):
         # TODO: Add cleanup code here
         pass
 
-    def process_audio(self, audio_data: List[float], sample_rate: int, **params) -> List[float]:
+    def process_audio(
+        self, audio_data: List[float], sample_rate: int, **params
+    ) -> List[float]:
         """Process audio data"""
         # TODO: Implement your audio effect here
         # Example: simple gain
-        gain = params.get('gain', 1.0)
+        gain = params.get("gain", 1.0)
         return [sample * gain for sample in audio_data]
+
 
 # Plugin entry point
 def create_plugin():

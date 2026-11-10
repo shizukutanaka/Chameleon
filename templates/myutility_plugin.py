@@ -6,6 +6,7 @@ Generated plugin template
 from typing import List, Dict, Any
 from plugin_system import UtilityPlugin, PluginMetadata
 
+
 class MyUtilityPlugin(UtilityPlugin):
     """
     MyUtility - A Chameleon audio processing plugin
@@ -25,9 +26,9 @@ class MyUtilityPlugin(UtilityPlugin):
                     "default": 1.0,
                     "min": 0.0,
                     "max": 2.0,
-                    "description": "Gain level"
+                    "description": "Gain level",
                 }
-            }
+            },
         )
 
     def initialize(self, config: Dict[str, Any]) -> bool:
@@ -46,6 +47,7 @@ class MyUtilityPlugin(UtilityPlugin):
         """Execute utility function"""
         # TODO: Implement your utility here
         return {"status": "success", "message": "Utility executed"}
+
 
 # Plugin entry point
 def create_plugin():

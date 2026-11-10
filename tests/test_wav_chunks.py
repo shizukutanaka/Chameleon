@@ -21,8 +21,8 @@ from tests._helpers import sine_frames, write_wav_raw
 
 TONE = sine_frames(count=4410)  # 0.1s @ 44100, mono int16 range
 
-LIST_INFO = (b'LIST', b'INFO' + b'ICMT' + struct.pack('<I', 12) + b'a dawcomment')
-ODD_JUNK = (b'JUNK', b'\x00\x01\x02')  # odd size → needs RIFF pad byte
+LIST_INFO = (b"LIST", b"INFO" + b"ICMT" + struct.pack("<I", 12) + b"a dawcomment")
+ODD_JUNK = (b"JUNK", b"\x00\x01\x02")  # odd size → needs RIFF pad byte
 
 
 def _plain(tmp_path, name="plain.wav", **kw):
@@ -31,10 +31,12 @@ def _plain(tmp_path, name="plain.wav", **kw):
 
 # ---------------------------------------------------------------- analysis --
 
+
 def test_list_chunk_analysis_matches_plain_twin(tmp_path):
     plain, _ = _plain(tmp_path)
-    listy, off = write_wav_raw(tmp_path / "listy.wav", frames=TONE,
-                               pre_data_chunks=[LIST_INFO])
+    listy, off = write_wav_raw(
+        tmp_path / "listy.wav", frames=TONE, pre_data_chunks=[LIST_INFO]
+    )
     assert off > 44
 
     ra = core.analyze(str(plain))
@@ -53,8 +55,9 @@ def test_18_byte_fmt_duration_is_correct(tmp_path):
 
 
 def test_extensible_pcm_is_accepted(tmp_path):
-    wav, _ = write_wav_raw(tmp_path / "ext.wav", frames=TONE,
-                           fmt_variant="extensible", format_tag=1)
+    wav, _ = write_wav_raw(
+        tmp_path / "ext.wav", frames=TONE, fmt_variant="extensible", format_tag=1
+    )
     result = core.analyze(str(wav))
     assert result.success, result.message
     assert result.data.channels == 1
@@ -67,20 +70,28 @@ def test_extensible_unknown_subformat_reports_encoding_not_invalid(tmp_path):
     # class as the float path below, so it owes the user the same kind of
     # reason. A bare return reported it as a corrupt file instead.
     import struct
-    fmt = struct.pack('<HHIIHH', 0xFFFE, 1, 44100, 44100 * 2, 2, 16)
-    fmt += struct.pack('<HHI', 22, 16, 0)
-    fmt += bytes.fromhex('5500000000001000800000aa00389b71')  # MP3 subformat
-    data = struct.pack('<100h', *([0] * 100))
-    body = b'WAVE' + b'fmt ' + struct.pack('<I', len(fmt)) + fmt + \
-        b'data' + struct.pack('<I', len(data)) + data
-    wav = tmp_path / 'ext_mp3.wav'
-    wav.write_bytes(b'RIFF' + struct.pack('<I', len(body)) + body)
+
+    fmt = struct.pack("<HHIIHH", 0xFFFE, 1, 44100, 44100 * 2, 2, 16)
+    fmt += struct.pack("<HHI", 22, 16, 0)
+    fmt += bytes.fromhex("5500000000001000800000aa00389b71")  # MP3 subformat
+    data = struct.pack("<100h", *([0] * 100))
+    body = (
+        b"WAVE"
+        + b"fmt "
+        + struct.pack("<I", len(fmt))
+        + fmt
+        + b"data"
+        + struct.pack("<I", len(data))
+        + data
+    )
+    wav = tmp_path / "ext_mp3.wav"
+    wav.write_bytes(b"RIFF" + struct.pack("<I", len(body)) + body)
 
     result = core.analyze(str(wav))
     assert not result.success
-    assert 'Unsupported WAV encoding' in result.message
-    assert 'subformat tag 85' in result.message
-    assert 'Invalid' not in result.message
+    assert "Unsupported WAV encoding" in result.message
+    assert "subformat tag 85" in result.message
+    assert "Invalid" not in result.message
 
 
 def test_extensible_unknown_subformat_without_data_is_invalid(tmp_path):
@@ -88,17 +99,17 @@ def test_extensible_unknown_subformat_without_data_is_invalid(tmp_path):
     # merely unsupported, so it must report the generic 'invalid' (the CLI
     # classifies 'Unsupported...' messages as a capability gap and would
     # exit ERROR where this corrupt input owes INPUT).
-    fmt = struct.pack('<HHIIHH', 0xFFFE, 1, 44100, 44100 * 2, 2, 16)
-    fmt += struct.pack('<HHI', 22, 16, 0)
-    fmt += bytes.fromhex('5500000000001000800000aa00389b71')  # MP3 subformat
-    body = b'WAVE' + b'fmt ' + struct.pack('<I', len(fmt)) + fmt
-    wav = tmp_path / 'ext_mp3_truncated.wav'
-    wav.write_bytes(b'RIFF' + struct.pack('<I', len(body)) + body)
+    fmt = struct.pack("<HHIIHH", 0xFFFE, 1, 44100, 44100 * 2, 2, 16)
+    fmt += struct.pack("<HHI", 22, 16, 0)
+    fmt += bytes.fromhex("5500000000001000800000aa00389b71")  # MP3 subformat
+    body = b"WAVE" + b"fmt " + struct.pack("<I", len(fmt)) + fmt
+    wav = tmp_path / "ext_mp3_truncated.wav"
+    wav.write_bytes(b"RIFF" + struct.pack("<I", len(body)) + body)
 
     result = core.analyze(str(wav))
     assert not result.success
-    assert 'Invalid' in result.message
-    assert 'Unsupported WAV encoding' not in result.message
+    assert "Invalid" in result.message
+    assert "Unsupported WAV encoding" not in result.message
 
 
 def test_extensible_foreign_guid_reports_guid_not_phantom_tag(tmp_path):
@@ -107,27 +118,35 @@ def test_extensible_foreign_guid_reports_guid_not_phantom_tag(tmp_path):
     # not encode a format tag. Reporting 'subformat tag 1' would name
     # ordinary PCM for a custom subformat; the full GUID is the honest
     # label instead.
-    fmt = struct.pack('<HHIIHH', 0xFFFE, 1, 44100, 44100 * 2, 2, 16)
-    fmt += struct.pack('<HHI', 22, 16, 0)
-    guid = bytes.fromhex('01000100' '0000' '1000' '8000' '00aa00389b71')
+    fmt = struct.pack("<HHIIHH", 0xFFFE, 1, 44100, 44100 * 2, 2, 16)
+    fmt += struct.pack("<HHI", 22, 16, 0)
+    guid = bytes.fromhex("01000100" "0000" "1000" "8000" "00aa00389b71")
     fmt += guid
-    data = struct.pack('<100h', *([0] * 100))
-    body = b'WAVE' + b'fmt ' + struct.pack('<I', len(fmt)) + fmt + \
-        b'data' + struct.pack('<I', len(data)) + data
-    wav = tmp_path / 'ext_custom.wav'
-    wav.write_bytes(b'RIFF' + struct.pack('<I', len(body)) + body)
+    data = struct.pack("<100h", *([0] * 100))
+    body = (
+        b"WAVE"
+        + b"fmt "
+        + struct.pack("<I", len(fmt))
+        + fmt
+        + b"data"
+        + struct.pack("<I", len(data))
+        + data
+    )
+    wav = tmp_path / "ext_custom.wav"
+    wav.write_bytes(b"RIFF" + struct.pack("<I", len(body)) + body)
 
     result = core.analyze(str(wav))
     assert not result.success
-    assert 'Unsupported WAV encoding' in result.message
-    assert 'subformat tag 1)' not in result.message
+    assert "Unsupported WAV encoding" in result.message
+    assert "subformat tag 1)" not in result.message
     assert guid.hex() in result.message
 
 
 def test_odd_sized_junk_chunk_with_pad_byte(tmp_path):
     plain, _ = _plain(tmp_path)
-    junky, _ = write_wav_raw(tmp_path / "junky.wav", frames=TONE,
-                             pre_data_chunks=[ODD_JUNK])
+    junky, _ = write_wav_raw(
+        tmp_path / "junky.wav", frames=TONE, pre_data_chunks=[ODD_JUNK]
+    )
     ra = core.analyze(str(plain))
     rb = core.analyze(str(junky))
     assert rb.success, rb.message
@@ -136,8 +155,11 @@ def test_odd_sized_junk_chunk_with_pad_byte(tmp_path):
 
 def test_post_data_chunk_not_decoded_as_audio(tmp_path):
     plain, _ = _plain(tmp_path)
-    trailed, _ = write_wav_raw(tmp_path / "trailed.wav", frames=TONE,
-                               post_data_chunks=[(b'LIST', b'INFO' + b'\x7f' * 400)])
+    trailed, _ = write_wav_raw(
+        tmp_path / "trailed.wav",
+        frames=TONE,
+        post_data_chunks=[(b"LIST", b"INFO" + b"\x7f" * 400)],
+    )
     ra = core.analyze(str(plain))
     rb = core.analyze(str(trailed))
     assert rb.success
@@ -146,8 +168,9 @@ def test_post_data_chunk_not_decoded_as_audio(tmp_path):
 
 
 def test_float32_wav_is_rejected_cleanly_by_core(tmp_path):
-    wav, _ = write_wav_raw(tmp_path / "float.wav",
-                           frames=[0.0, 0.5, -0.5, 0.25], format_tag=3)
+    wav, _ = write_wav_raw(
+        tmp_path / "float.wav", frames=[0.0, 0.5, -0.5, 0.25], format_tag=3
+    )
     result = core.analyze(str(wav))
     assert not result.success  # PCM-only core: clean rejection, not garbage
 
@@ -164,8 +187,9 @@ def test_24bit_negative_sample_levels(tmp_path):
 
 def test_get_samples_for_analysis_honors_data_offset(tmp_path):
     plain, _ = _plain(tmp_path)
-    listy, _ = write_wav_raw(tmp_path / "listy.wav", frames=TONE,
-                             pre_data_chunks=[LIST_INFO])
+    listy, _ = write_wav_raw(
+        tmp_path / "listy.wav", frames=TONE, pre_data_chunks=[LIST_INFO]
+    )
     sa = core.get_samples_for_analysis(str(plain))
     sb = core.get_samples_for_analysis(str(listy))
     assert sa.success and sb.success
@@ -174,9 +198,11 @@ def test_get_samples_for_analysis_honors_data_offset(tmp_path):
 
 # -------------------------------------------------------------- processing --
 
+
 def test_normalize_preserves_chunked_header_and_scales(tmp_path):
-    listy, _ = write_wav_raw(tmp_path / "listy.wav", frames=TONE,
-                             pre_data_chunks=[LIST_INFO])
+    listy, _ = write_wav_raw(
+        tmp_path / "listy.wav", frames=TONE, pre_data_chunks=[LIST_INFO]
+    )
     out = tmp_path / "out.wav"
 
     result = core.normalize(str(listy), str(out), 0.5)
@@ -186,13 +212,14 @@ def test_normalize_preserves_chunked_header_and_scales(tmp_path):
     assert reread.success, reread.message
     assert reread.data.peak_level == pytest.approx(0.5, abs=0.01)
     # The LIST chunk survives in the output header prefix.
-    assert b'dawcomment' in out.read_bytes()
+    assert b"dawcomment" in out.read_bytes()
 
 
 def test_mono_conversion_on_chunked_stereo_file(tmp_path):
     stereo = sine_frames(count=2205, channels=2)
-    src, _ = write_wav_raw(tmp_path / "st.wav", frames=stereo, channels=2,
-                           pre_data_chunks=[LIST_INFO])
+    src, _ = write_wav_raw(
+        tmp_path / "st.wav", frames=stereo, channels=2, pre_data_chunks=[LIST_INFO]
+    )
     out = tmp_path / "mono.wav"
 
     result = core.to_mono(str(src), str(out))
@@ -210,9 +237,11 @@ def test_mono_conversion_on_chunked_stereo_file(tmp_path):
 def test_trim_silence_on_chunked_file(tmp_path):
     silence = [0] * 2000
     tone = sine_frames(count=2000)
-    src, _ = write_wav_raw(tmp_path / "padded.wav",
-                           frames=silence + tone + silence,
-                           pre_data_chunks=[ODD_JUNK])
+    src, _ = write_wav_raw(
+        tmp_path / "padded.wav",
+        frames=silence + tone + silence,
+        pre_data_chunks=[ODD_JUNK],
+    )
     out = tmp_path / "trimmed.wav"
 
     result = core.trim_silence(str(src), str(out), 0.05)
@@ -223,6 +252,7 @@ def test_trim_silence_on_chunked_file(tmp_path):
 
 
 # ------------------------------------------------- main.py basic WAV loader --
+
 
 @pytest.mark.skipif(not main.HAS_NUMPY, reason="_load_wav_basic decode needs numpy")
 def test_load_wav_basic_decodes_float32(tmp_path):
@@ -253,6 +283,7 @@ def test_load_wav_basic_8bit_unsigned_offset(tmp_path):
 
 # ------------------------------------------------- same-file in-place guard --
 
+
 def test_in_place_normalize_refuses_instead_of_truncating_input(tmp_path):
     # normalize/trim/mono stream input -> output inside one `with` that opens
     # the output O_TRUNC: the same path on both sides zeroed the user's file
@@ -270,8 +301,9 @@ def test_in_place_normalize_refuses_instead_of_truncating_input(tmp_path):
 def test_in_place_trim_and_stereo_mono_refuse_and_preserve_input(tmp_path):
     stereo = sine_frames(count=2205, channels=2)
     src, _ = write_wav_raw(tmp_path / "st.wav", frames=stereo, channels=2)
-    padded, _ = write_wav_raw(tmp_path / "pd.wav",
-                              frames=[0] * 2000 + sine_frames(count=2000))
+    padded, _ = write_wav_raw(
+        tmp_path / "pd.wav", frames=[0] * 2000 + sine_frames(count=2000)
+    )
     before = {p: p.read_bytes() for p in (src, padded)}
 
     assert not core.to_mono(str(src), str(src)).success

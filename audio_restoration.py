@@ -20,21 +20,28 @@ from dataclasses import dataclass
 
 try:
     import numpy as np
+
     HAS_NUMPY = True
 except ImportError:  # keep the module import-safe on the stdlib-only install
     HAS_NUMPY = False
-    warnings.warn("NumPy not available. Audio restoration requires the optional [audio] extra.")
+    warnings.warn(
+        "NumPy not available. Audio restoration requires the optional [audio] extra."
+    )
 
 try:
     from scipy import signal, interpolate
     from scipy.ndimage import median_filter
+
     HAS_SCIPY = True
 except ImportError:
     HAS_SCIPY = False
-    warnings.warn("SciPy not available. Audio restoration requires the optional [audio] extra.")
+    warnings.warn(
+        "SciPy not available. Audio restoration requires the optional [audio] extra."
+    )
 
 try:
     import librosa
+
     HAS_LIBROSA = True
 except ImportError:
     # Deliberately silent. librosa is in no extra of this project, so its
@@ -47,12 +54,17 @@ except ImportError:
 
 def _require_restoration_deps() -> None:
     """Raise a clear error if a restoration entry point is used without numpy/scipy."""
-    missing = [name for name, present in (("NumPy", HAS_NUMPY), ("SciPy", HAS_SCIPY)) if not present]
+    missing = [
+        name
+        for name, present in (("NumPy", HAS_NUMPY), ("SciPy", HAS_SCIPY))
+        if not present
+    ]
     if missing:
         raise RuntimeError(
             f"Audio restoration requires {' and '.join(missing)}. "
             "Install the optional audio extra: pip install -e .[audio]"
         )
+
 
 @dataclass
 class RestorationConfig:
@@ -66,11 +78,13 @@ class RestorationConfig:
     runs them unconditionally because clicks genuinely exist in vinyl
     material and the mode is itself an explicit opt-in.
     """
+
     click_removal: bool = False
     decrackle: bool = False
     dehum: bool = True
     denoise: bool = True
     declip: bool = True
+
 
 class ClickRemover:
     """Remove clicks and pops from audio"""
@@ -86,8 +100,12 @@ class ClickRemover:
 
         # Compute local mean and std
         audio_abs = np.abs(audio)
-        local_mean = signal.convolve(audio_abs, window/np.sum(window), mode='same')
-        local_std = np.sqrt(signal.convolve((audio_abs - local_mean)**2, window/np.sum(window), mode='same'))
+        local_mean = signal.convolve(audio_abs, window / np.sum(window), mode="same")
+        local_std = np.sqrt(
+            signal.convolve(
+                (audio_abs - local_mean) ** 2, window / np.sum(window), mode="same"
+            )
+        )
 
         # Detect outliers
         z_score = np.abs((audio_abs - local_mean) / (local_std + 1e-10))
@@ -130,13 +148,14 @@ class ClickRemover:
                 # is removed rather than the method upgraded, because what
                 # ships should be what the comment says.
                 repair_length = end - start
-                repaired = np.linspace(result[start-1], result[end], repair_length)
+                repaired = np.linspace(result[start - 1], result[end], repair_length)
 
                 # Apply windowing for smooth transition
                 window = signal.windows.tukey(repair_length, 0.5)
                 result[start:end] = repaired * window + result[start:end] * (1 - window)
 
         return result
+
 
 class CrackleRemover:
     """Remove crackle noise from vinyl or old recordings"""
@@ -171,12 +190,13 @@ class CrackleRemover:
                     fade_len = min(5, (end - start) // 2)
                     if fade_len > 0:
                         fade_in = np.linspace(0, 1, fade_len)
-                        result[start:start+fade_len] = (
-                            audio[start:start+fade_len] * (1 - fade_in) +
-                            result[start:start+fade_len] * fade_in
+                        result[start : start + fade_len] = (
+                            audio[start : start + fade_len] * (1 - fade_in)
+                            + result[start : start + fade_len] * fade_in
                         )
 
         return result
+
 
 class HumRemover:
     """Remove electrical hum and buzz"""
@@ -225,7 +245,7 @@ class HumRemover:
         # smear across the low end and manufacture a peak here.
         window = np.hanning(len(audio))
         fft = np.fft.rfft(audio * window)
-        freqs = np.fft.rfftfreq(len(audio), 1/sample_rate)
+        freqs = np.fft.rfftfreq(len(audio), 1 / sample_rate)
 
         # Find bin closest to target frequency
         target_bin = np.argmin(np.abs(freqs - freq))
@@ -241,17 +261,21 @@ class HumRemover:
         low = max(0, target_bin - window_bins)
         high = min(len(fft), target_bin + window_bins + 1)
 
-        neighbourhood = np.concatenate([
-            np.abs(fft[low:max(low, target_bin - leak)]),
-            np.abs(fft[min(high, target_bin + leak + 1):high]),
-        ])
+        neighbourhood = np.concatenate(
+            [
+                np.abs(fft[low : max(low, target_bin - leak)]),
+                np.abs(fft[min(high, target_bin + leak + 1) : high]),
+            ]
+        )
         if neighbourhood.size == 0:
             return False
 
         # Median, not mean: one strong neighbouring partial should not raise
         # the bar for detecting hum, and hum sits in an otherwise quiet band.
         reference = np.median(neighbourhood)
-        peak_value = np.max(np.abs(fft[max(0, target_bin - leak):target_bin + leak + 1]))
+        peak_value = np.max(
+            np.abs(fft[max(0, target_bin - leak) : target_bin + leak + 1])
+        )
 
         # Hann's coherent gain is 0.5, so a sinusoid of amplitude A peaks at
         # A * N / 4 in this transform.
@@ -260,6 +284,7 @@ class HumRemover:
             return False
 
         return bool(peak_value > self.prominence_ratio * (reference + 1e-20))
+
 
 class DeclippingProcessor:
     """Restore clipped audio signals"""
@@ -273,7 +298,7 @@ class DeclippingProcessor:
         # accident. Four samples clears every full-scale pure tone above
         # 33 Hz at 44.1 kHz; see the note in detect_clipping.
         self.min_run_length = 4
-        self.interpolation_method = 'cubic'
+        self.interpolation_method = "cubic"
 
     def detect_clipping(self, audio: np.ndarray) -> Tuple[List[int], List[int]]:
         """Detect clipped regions: runs of samples held flat at the peak.
@@ -323,21 +348,21 @@ class DeclippingProcessor:
                 context_after = min(len(audio), end + 50)
 
                 # Create interpolation points
-                x_known = np.concatenate([
-                    np.arange(context_before, start),
-                    np.arange(end, context_after)
-                ])
-                y_known = np.concatenate([
-                    result[context_before:start],
-                    result[end:context_after]
-                ])
+                x_known = np.concatenate(
+                    [np.arange(context_before, start), np.arange(end, context_after)]
+                )
+                y_known = np.concatenate(
+                    [result[context_before:start], result[end:context_after]]
+                )
 
                 if len(x_known) > 3:
                     # Interpolate clipped region
                     x_clip = np.arange(start, end)
 
-                    if self.interpolation_method == 'cubic' and len(x_known) > 3:
-                        f = interpolate.interp1d(x_known, y_known, kind='cubic', fill_value='extrapolate')
+                    if self.interpolation_method == "cubic" and len(x_known) > 3:
+                        f = interpolate.interp1d(
+                            x_known, y_known, kind="cubic", fill_value="extrapolate"
+                        )
                         restored = f(x_clip)
                     else:
                         restored = np.interp(x_clip, x_known, y_known)
@@ -347,10 +372,12 @@ class DeclippingProcessor:
                     # be on the second term made every region edge come out at
                     # half amplitude, punching a hole where it was repairing.
                     window = signal.windows.tukey(len(restored), 0.5)
-                    result[start:end] = (restored * window
-                                         + result[start:end] * (1.0 - window))
+                    result[start:end] = restored * window + result[start:end] * (
+                        1.0 - window
+                    )
 
         return result
+
 
 class SpectralRepairer:
     """Repair audio using spectral interpolation"""
@@ -359,7 +386,9 @@ class SpectralRepairer:
         self.fft_size = 2048
         self.hop_size = 512
 
-    def repair_gaps(self, audio: np.ndarray, gap_positions: List[Tuple[int, int]], sample_rate: int) -> np.ndarray:
+    def repair_gaps(
+        self, audio: np.ndarray, gap_positions: List[Tuple[int, int]], sample_rate: int
+    ) -> np.ndarray:
         """Repair gaps by interpolating across them in the STFT domain.
 
         Requires librosa; raises rather than returning the input unchanged,
@@ -383,7 +412,7 @@ class SpectralRepairer:
             if start_frame > 0 and end_frame < magnitude.shape[1]:
                 # Interpolate magnitude
                 for freq_bin in range(magnitude.shape[0]):
-                    before = magnitude[freq_bin, start_frame-1]
+                    before = magnitude[freq_bin, start_frame - 1]
                     after = magnitude[freq_bin, end_frame]
 
                     # Linear interpolation
@@ -393,17 +422,22 @@ class SpectralRepairer:
                 # Phase interpolation (unwrapped)
                 for freq_bin in range(phase.shape[0]):
                     phase_unwrapped = np.unwrap(phase[freq_bin, :])
-                    before = phase_unwrapped[start_frame-1]
+                    before = phase_unwrapped[start_frame - 1]
                     after = phase_unwrapped[end_frame]
 
                     interp_values = np.linspace(before, after, end_frame - start_frame)
-                    phase[freq_bin, start_frame:end_frame] = np.angle(np.exp(1j * interp_values))
+                    phase[freq_bin, start_frame:end_frame] = np.angle(
+                        np.exp(1j * interp_values)
+                    )
 
         # Reconstruct
         stft_repaired = magnitude * np.exp(1j * phase)
-        repaired = librosa.istft(stft_repaired, hop_length=self.hop_size, length=len(audio))
+        repaired = librosa.istft(
+            stft_repaired, hop_length=self.hop_size, length=len(audio)
+        )
 
         return repaired
+
 
 class AdaptiveDenoiser:
     """Advanced adaptive denoising"""
@@ -490,6 +524,7 @@ class AdaptiveDenoiser:
 
         return denoised
 
+
 class VinylRestorer:
     """Specialized restoration for vinyl recordings"""
 
@@ -499,7 +534,9 @@ class VinylRestorer:
         self.hum_remover = HumRemover()
         self.denoiser = AdaptiveDenoiser()
 
-    def restore(self, audio: np.ndarray, sample_rate: int) -> Tuple[np.ndarray, Dict[str, Any]]:
+    def restore(
+        self, audio: np.ndarray, sample_rate: int
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """Complete vinyl restoration pipeline.
 
         Reports under the same keys ``AudioRestorer.restore`` uses --
@@ -530,14 +567,17 @@ class VinylRestorer:
             info["applied_processes"].append("denoising")
         except RuntimeError as exc:
             info["skipped_processes"].append(
-                {"process": "denoising", "reason": str(exc)})
+                {"process": "denoising", "reason": str(exc)}
+            )
 
         # Calculate improvement metrics
         info["snr_improvement"] = self._calculate_snr_improvement(audio, result)
 
         return result, info
 
-    def _calculate_snr_improvement(self, original: np.ndarray, restored: np.ndarray) -> float:
+    def _calculate_snr_improvement(
+        self, original: np.ndarray, restored: np.ndarray
+    ) -> float:
         """Change in residual level between the quiet parts, in dB.
 
         Deliberately *not* an SNR: this compares the spread of the near-silent
@@ -560,6 +600,7 @@ class VinylRestorer:
             return float(20 * np.log10(noise_original / noise_restored))
         return 0.0
 
+
 class AudioRestorer:
     """Main audio restoration interface"""
 
@@ -573,7 +614,9 @@ class AudioRestorer:
         self.denoiser = AdaptiveDenoiser()
         self.vinyl_restorer = VinylRestorer()
 
-    def restore(self, audio: np.ndarray, sample_rate: int, mode: str = "auto") -> Tuple[np.ndarray, Dict[str, Any]]:
+    def restore(
+        self, audio: np.ndarray, sample_rate: int, mode: str = "auto"
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """
         Restore audio with specified mode
 
@@ -589,7 +632,7 @@ class AudioRestorer:
             # reason. A caller that prints `applied_processes` alone should
             # never be able to claim work that did not happen.
             "skipped_processes": [],
-            "quality_metrics": {}
+            "quality_metrics": {},
         }
 
         result = audio.copy()
@@ -623,14 +666,17 @@ class AudioRestorer:
                     info["applied_processes"].append("denoising")
                 except RuntimeError as exc:
                     info["skipped_processes"].append(
-                        {"process": "denoising", "reason": str(exc)})
+                        {"process": "denoising", "reason": str(exc)}
+                    )
 
         # Calculate quality metrics
         info["quality_metrics"] = self._calculate_metrics(audio, result)
 
         return result, info
 
-    def _calculate_metrics(self, original: np.ndarray, restored: np.ndarray) -> Dict[str, float]:
+    def _calculate_metrics(
+        self, original: np.ndarray, restored: np.ndarray
+    ) -> Dict[str, float]:
         """Calculate restoration quality metrics"""
         metrics = {}
 
@@ -639,11 +685,12 @@ class AudioRestorer:
         # barely touched the audio and small when it intervened heavily, and
         # it says nothing about whether the change was an improvement. It was
         # previously exported as "snr_db", which invited the opposite reading.
-        signal_power = np.mean(restored ** 2)
+        signal_power = np.mean(restored**2)
         change_power = np.mean((original - restored) ** 2)
         if change_power > 0:
             metrics["signal_to_change_db"] = float(
-                10 * np.log10(signal_power / change_power))
+                10 * np.log10(signal_power / change_power)
+            )
 
         # Dynamic range
         metrics["dynamic_range_original"] = 20 * np.log10(
@@ -655,11 +702,12 @@ class AudioRestorer:
 
         # Clarity (high-frequency preservation)
         if HAS_LIBROSA:
-            orig_hf = np.sum(np.abs(np.fft.rfft(original)[len(original)//4:]))
-            rest_hf = np.sum(np.abs(np.fft.rfft(restored)[len(restored)//4:]))
+            orig_hf = np.sum(np.abs(np.fft.rfft(original)[len(original) // 4 :]))
+            rest_hf = np.sum(np.abs(np.fft.rfft(restored)[len(restored) // 4 :]))
             metrics["hf_preservation"] = rest_hf / (orig_hf + 1e-10)
 
         return metrics
+
 
 # Example usage
 if __name__ == "__main__":
@@ -678,7 +726,7 @@ if __name__ == "__main__":
     # Add clicks
     click_positions = [1000, 5000, 10000, 20000]
     for pos in click_positions:
-        noisy[pos:pos+3] = np.random.randn(3) * 0.9
+        noisy[pos : pos + 3] = np.random.randn(3) * 0.9
 
     # Add hum
     noisy += 0.1 * np.sin(2 * np.pi * 60 * t)

@@ -17,11 +17,13 @@ import bs1770_loudness as bs1770
 
 
 def _sine(freq, sample_rate, count, amplitude=1.0):
-    return [amplitude * math.sin(2 * math.pi * freq * i / sample_rate)
-            for i in range(count)]
+    return [
+        amplitude * math.sin(2 * math.pi * freq * i / sample_rate) for i in range(count)
+    ]
 
 
 # --- K-weighting coefficients (reference values from BS.1770-4 Annex 1) ----
+
 
 def test_stage1_coefficients_match_published_reference_at_48k():
     coeffs = bs1770._stage1_head_effects(48000)
@@ -45,19 +47,22 @@ def test_stage2_coefficients_match_published_reference_at_48k():
 
 # --- Integrated loudness: physical invariants -------------------------------
 
+
 def test_silence_returns_negative_infinity():
     sample_rate = 44100
-    assert bs1770.measure_integrated_loudness([0.0] * sample_rate, sample_rate) == float('-inf')
+    assert bs1770.measure_integrated_loudness(
+        [0.0] * sample_rate, sample_rate
+    ) == float("-inf")
 
 
 def test_empty_input_returns_negative_infinity():
-    assert bs1770.measure_integrated_loudness([], 44100) == float('-inf')
+    assert bs1770.measure_integrated_loudness([], 44100) == float("-inf")
 
 
 def test_signal_shorter_than_one_block_returns_negative_infinity():
     sample_rate = 44100
     short = _sine(1000.0, sample_rate, int(sample_rate * 0.1))  # 100ms < 400ms block
-    assert bs1770.measure_integrated_loudness(short, sample_rate) == float('-inf')
+    assert bs1770.measure_integrated_loudness(short, sample_rate) == float("-inf")
 
 
 def test_six_db_gain_doubles_measured_loudness_by_6_02_db():
@@ -145,6 +150,7 @@ def test_apply_k_weighting_accepts_the_stability_floor():
 
 # --- Multichannel: BS.1770-correct energy summing vs. mono-downmix ---------
 
+
 def test_multichannel_matches_mono_for_a_single_channel():
     # A single-channel list must reduce to exactly the mono function's result
     # (same K-weighting, same gating), since summing one channel's energy is
@@ -169,13 +175,17 @@ def test_multichannel_identical_stereo_reads_3_01_lu_louder_than_mono_downmix():
     downmixed = tone  # averaging two identical channels reproduces the same signal
 
     loud_downmix = bs1770.measure_integrated_loudness(downmixed, sample_rate)
-    loud_multichannel = bs1770.measure_integrated_loudness_multichannel([tone, tone], sample_rate)
+    loud_multichannel = bs1770.measure_integrated_loudness_multichannel(
+        [tone, tone], sample_rate
+    )
 
-    assert loud_multichannel - loud_downmix == pytest.approx(10 * math.log10(2), abs=0.05)
+    assert loud_multichannel - loud_downmix == pytest.approx(
+        10 * math.log10(2), abs=0.05
+    )
 
 
 def test_multichannel_empty_channel_list_returns_negative_infinity():
-    assert bs1770.measure_integrated_loudness_multichannel([], 48000) == float('-inf')
+    assert bs1770.measure_integrated_loudness_multichannel([], 48000) == float("-inf")
 
 
 def test_multichannel_uses_the_shorter_channel_length():
@@ -185,15 +195,20 @@ def test_multichannel_uses_the_shorter_channel_length():
     long_tone = _sine(1000.0, sample_rate, int(sample_rate * 3.0))
     short_tone = long_tone[: int(sample_rate * 2.0)]
 
-    result = bs1770.measure_integrated_loudness_multichannel([long_tone, short_tone], sample_rate)
+    result = bs1770.measure_integrated_loudness_multichannel(
+        [long_tone, short_tone], sample_rate
+    )
     assert math.isfinite(result)
 
 
 # --- True-peak (dBTP), BS.1770-4 Annex 2 oversample-then-peak method -------
 
+
 def _phase_sine(freq, sample_rate, count, amplitude=1.0, phase=0.0):
-    return [amplitude * math.sin(2 * math.pi * freq * i / sample_rate + phase)
-            for i in range(count)]
+    return [
+        amplitude * math.sin(2 * math.pi * freq * i / sample_rate + phase)
+        for i in range(count)
+    ]
 
 
 def test_true_peak_recovers_inter_sample_peak_above_sample_peak():
@@ -221,12 +236,12 @@ def test_true_peak_never_below_sample_peak():
 
 
 def test_true_peak_empty_and_silent_return_negative_infinity():
-    assert bs1770.measure_true_peak([]) == float('-inf')
-    assert bs1770.measure_true_peak([0.0] * 500) == float('-inf')
+    assert bs1770.measure_true_peak([]) == float("-inf")
+    assert bs1770.measure_true_peak([0.0] * 500) == float("-inf")
 
 
 def test_true_peak_nan_input_returns_nan():
-    assert math.isnan(bs1770.measure_true_peak([0.1, float('nan'), 0.2, 0.3]))
+    assert math.isnan(bs1770.measure_true_peak([0.1, float("nan"), 0.2, 0.3]))
 
 
 def test_true_peak_multichannel_takes_the_loudest_channel():
@@ -241,5 +256,7 @@ def test_true_peak_multichannel_takes_the_loudest_channel():
 
 
 def test_true_peak_multichannel_empty_and_nan():
-    assert bs1770.measure_true_peak_multichannel([]) == float('-inf')
-    assert math.isnan(bs1770.measure_true_peak_multichannel([[0.1, 0.2], [float('nan'), 0.1]]))
+    assert bs1770.measure_true_peak_multichannel([]) == float("-inf")
+    assert math.isnan(
+        bs1770.measure_true_peak_multichannel([[0.1, 0.2], [float("nan"), 0.1]])
+    )

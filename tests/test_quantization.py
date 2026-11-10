@@ -149,9 +149,9 @@ def test_non_finite_samples_write_defined_pcm_not_garbage():
 
     assert not [w for w in caught if issubclass(w.category, RuntimeWarning)]
     assert written[0] == round(0.5 * 32767)
-    assert written[1] == 0          # NaN -> silence
-    assert written[2] == -32767     # -inf -> lower rail
-    assert written[3] == 32767      # +inf -> upper rail
+    assert written[1] == 0  # NaN -> silence
+    assert written[2] == -32767  # -inf -> lower rail
+    assert written[3] == 32767  # +inf -> upper rail
     assert written[4] == round(0.25 * 32767)
     assert np.isfinite(written).all()
 
@@ -205,8 +205,8 @@ def _save_and_read_via_save_audio(signal, *, apply_dither=False, bit_depth=16):
     directory = Path(tempfile.mkdtemp())
     path = directory / "out.wav"
     written = processor.save_audio(
-        np.asarray(signal, dtype=np.float32), str(path), 48000,
-        bit_depth=bit_depth)
+        np.asarray(signal, dtype=np.float32), str(path), 48000, bit_depth=bit_depth
+    )
     assert written == bit_depth
 
     with wave.open(str(path)) as handle:
@@ -216,9 +216,11 @@ def _save_and_read_via_save_audio(signal, *, apply_dither=False, bit_depth=16):
         return np.frombuffer(raw, dtype=np.int16).astype(float)
     # 24-bit PCM: unpack manually (little-endian, sign-extended)
     a = np.frombuffer(raw, dtype=np.uint8).reshape(-1, 3)
-    ints = (a[:, 0].astype(np.int32)
-            | (a[:, 1].astype(np.int32) << 8)
-            | (a[:, 2].astype(np.int32) << 16))
+    ints = (
+        a[:, 0].astype(np.int32)
+        | (a[:, 1].astype(np.int32) << 8)
+        | (a[:, 2].astype(np.int32) << 16)
+    )
     ints = np.where(ints & 0x800000, ints - 0x1000000, ints)
     return ints.astype(float)
 
@@ -251,8 +253,7 @@ def test_apply_dither_scales_to_24_bit_depth():
         pytest.skip("soundfile not installed")
 
     signal = np.full(20000, 0.3, dtype=np.float32)
-    codes = _save_and_read_via_save_audio(
-        signal, apply_dither=True, bit_depth=24)
+    codes = _save_and_read_via_save_audio(signal, apply_dither=True, bit_depth=24)
     ideal = 0.3 * 8388607.0
 
     # The spread that proves dithering happened, but bounded at +-3 LSB of

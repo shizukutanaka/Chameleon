@@ -7,6 +7,7 @@ import math
 from typing import List, Dict, Any
 from plugin_system import AudioGeneratorPlugin, PluginMetadata
 
+
 class ToneGeneratorPlugin(AudioGeneratorPlugin):
     """
     Multi-waveform tone generator
@@ -26,29 +27,29 @@ class ToneGeneratorPlugin(AudioGeneratorPlugin):
                     "default": 440.0,
                     "min": 20.0,
                     "max": 20000.0,
-                    "description": "Frequency in Hz"
+                    "description": "Frequency in Hz",
                 },
                 "waveform": {
                     "type": "string",
                     "default": "sine",
                     "options": ["sine", "square", "sawtooth", "triangle"],
-                    "description": "Waveform type"
+                    "description": "Waveform type",
                 },
                 "amplitude": {
                     "type": "float",
                     "default": 0.5,
                     "min": 0.0,
                     "max": 1.0,
-                    "description": "Amplitude (0-1)"
+                    "description": "Amplitude (0-1)",
                 },
                 "phase": {
                     "type": "float",
                     "default": 0.0,
                     "min": 0.0,
                     "max": 360.0,
-                    "description": "Phase offset in degrees"
-                }
-            }
+                    "description": "Phase offset in degrees",
+                },
+            },
         )
 
     def initialize(self, config: Dict[str, Any]) -> bool:
@@ -60,12 +61,14 @@ class ToneGeneratorPlugin(AudioGeneratorPlugin):
         """Cleanup plugin resources"""
         self.logger.info("Cleaning up ToneGenerator plugin")
 
-    def generate_audio(self, duration: float, sample_rate: int, **params) -> List[float]:
+    def generate_audio(
+        self, duration: float, sample_rate: int, **params
+    ) -> List[float]:
         """Generate audio tone"""
-        frequency = params.get('frequency', 440.0)
-        waveform = params.get('waveform', 'sine')
-        amplitude = params.get('amplitude', 0.5)
-        phase_degrees = params.get('phase', 0.0)
+        frequency = params.get("frequency", 440.0)
+        waveform = params.get("waveform", "sine")
+        amplitude = params.get("amplitude", 0.5)
+        phase_degrees = params.get("phase", 0.0)
 
         # Convert phase to radians
         phase = math.radians(phase_degrees)
@@ -77,14 +80,14 @@ class ToneGeneratorPlugin(AudioGeneratorPlugin):
             t = i / sample_rate
             angle = 2 * math.pi * frequency * t + phase
 
-            if waveform == 'sine':
+            if waveform == "sine":
                 sample = math.sin(angle)
-            elif waveform == 'square':
+            elif waveform == "square":
                 sample = 1.0 if math.sin(angle) >= 0 else -1.0
-            elif waveform == 'sawtooth':
+            elif waveform == "sawtooth":
                 # Sawtooth from -1 to 1
                 sample = 2.0 * (angle / (2 * math.pi) % 1.0) - 1.0
-            elif waveform == 'triangle':
+            elif waveform == "triangle":
                 # Triangle wave
                 normalized = (angle / (2 * math.pi)) % 1.0
                 if normalized < 0.5:
@@ -102,6 +105,7 @@ class ToneGeneratorPlugin(AudioGeneratorPlugin):
             samples.append(sample)
 
         return samples
+
 
 def create_plugin():
     return ToneGeneratorPlugin()

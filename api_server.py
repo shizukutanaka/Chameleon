@@ -23,7 +23,16 @@ from typing import Dict, List, Optional, Any, Deque
 import uuid
 
 # Core frameworks
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Query, Request, status
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    Depends,
+    UploadFile,
+    File,
+    Query,
+    Request,
+    status,
+)
 from fastapi.exceptions import RequestValidationError
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
@@ -54,8 +63,10 @@ def _model_to_json(model):
         return model.model_dump_json()
     return model.json()
 
+
 try:
     import psutil  # type: ignore
+
     HAS_PSUTIL = True
 except ImportError:  # pragma: no cover - optional dependency
     HAS_PSUTIL = False
@@ -71,69 +82,78 @@ from security_validator import (
 # the core's ProcessingResult into the dict shape the endpoints expect.
 import core as _core
 
+
 async def analyze_audio_fast(file_path) -> Dict[str, Any]:
     """Analyze an audio file using the standard-library core."""
     result = await _core.analyze_async(str(file_path))
     data = result.data or {}
     response: Dict[str, Any] = {
-        'success': result.success,
-        'processing_time': result.duration_ms / 1000.0,
-        'processing_method': 'stdlib-core',
+        "success": result.success,
+        "processing_time": result.duration_ms / 1000.0,
+        "processing_method": "stdlib-core",
     }
     if result.success:
-        response.update({
-            'duration': data.get('duration'),
-            'sample_rate': data.get('sample_rate'),
-            'channels': data.get('channels'),
-            'bit_depth': data.get('bit_depth'),
-            'peak_level': data.get('peak_level'),
-            'rms_level': data.get('rms_level'),
-            'file_size': data.get('size_bytes'),
-        })
+        response.update(
+            {
+                "duration": data.get("duration"),
+                "sample_rate": data.get("sample_rate"),
+                "channels": data.get("channels"),
+                "bit_depth": data.get("bit_depth"),
+                "peak_level": data.get("peak_level"),
+                "rms_level": data.get("rms_level"),
+                "file_size": data.get("size_bytes"),
+            }
+        )
     else:
-        response['error'] = result.message
+        response["error"] = result.message
     return response
 
-async def normalize_audio_fast(input_path, output_path, target_peak: float = 0.95) -> Dict[str, Any]:
+
+async def normalize_audio_fast(
+    input_path, output_path, target_peak: float = 0.95
+) -> Dict[str, Any]:
     """Normalize an audio file using the standard-library core."""
     result = await _core.normalize_async(str(input_path), str(output_path), target_peak)
     data = result.data or {}
     response: Dict[str, Any] = {
-        'success': result.success,
-        'processing_time': result.duration_ms / 1000.0,
+        "success": result.success,
+        "processing_time": result.duration_ms / 1000.0,
     }
     if result.success:
-        response.update({
-            'scale_factor': data.get('gain_applied'),
-            'original_peak': data.get('original_peak'),
-            'target_peak': data.get('target_peak', target_peak),
-        })
+        response.update(
+            {
+                "scale_factor": data.get("gain_applied"),
+                "original_peak": data.get("original_peak"),
+                "target_peak": data.get("target_peak", target_peak),
+            }
+        )
     else:
-        response['error'] = result.message
+        response["error"] = result.message
     return response
+
 
 # API metadata
 API_VERSION = "1.0.0"
 
 # Security configuration
 SECURITY_CONFIG = {
-    'require_authentication': True,
-    'enable_rate_limiting': True,
-    'rate_limit_window_seconds': 60,
-    'rate_limit_max_requests': 120,
-    'max_file_size': 100 * 1024 * 1024,  # 100MB
+    "require_authentication": True,
+    "enable_rate_limiting": True,
+    "rate_limit_window_seconds": 60,
+    "rate_limit_max_requests": 120,
+    "max_file_size": 100 * 1024 * 1024,  # 100MB
     # WAV only: analyze_audio_fast/normalize_audio_fast go through the stdlib
     # core, which cannot parse FLAC. Accepting .flac uploads here meant every
     # such upload would predictably fail at analyze/normalize with "Invalid
     # WAV file format" — reject it at the upload boundary instead.
-    'allowed_file_types': ['.wav', '.wave'],
-    'session_timeout': 3600,  # 1 hour
-    'max_session_idle_seconds': 900,
-    'max_concurrent_jobs': 10,
-    'max_active_sessions': 100,
-    'max_job_history': 200,
-    'max_job_queue_size': 200,
-    'api_key_header': 'X-API-Key',
+    "allowed_file_types": [".wav", ".wave"],
+    "session_timeout": 3600,  # 1 hour
+    "max_session_idle_seconds": 900,
+    "max_concurrent_jobs": 10,
+    "max_active_sessions": 100,
+    "max_job_history": 200,
+    "max_job_queue_size": 200,
+    "api_key_header": "X-API-Key",
 }
 
 PRIVILEGED_CLEARANCE = {"SECRET", "TOP_SECRET"}
@@ -144,15 +164,14 @@ PRIVILEGED_CLEARANCE = {"SECRET", "TOP_SECRET"}
 # the client alone decides its own privilege ceiling. Default keeps the
 # historical behavior (any declared level honored).
 _CLEARANCE_ORDER = ["UNCLASSIFIED", "CONFIDENTIAL", "SECRET", "TOP_SECRET"]
-_MAX_CLAIMABLE_CLEARANCE = os.environ.get(
-    'CHAMELEON_API_MAX_CLEARANCE', 'TOP_SECRET')
+_MAX_CLAIMABLE_CLEARANCE = os.environ.get("CHAMELEON_API_MAX_CLEARANCE", "TOP_SECRET")
 if _MAX_CLAIMABLE_CLEARANCE not in _CLEARANCE_ORDER:
     # A typo here silently grants the *maximum* cap -- name it.
     logging.warning(
         "Invalid CHAMELEON_API_MAX_CLEARANCE %r; capping at TOP_SECRET",
         _MAX_CLAIMABLE_CLEARANCE,
     )
-    _MAX_CLAIMABLE_CLEARANCE = 'TOP_SECRET'
+    _MAX_CLAIMABLE_CLEARANCE = "TOP_SECRET"
 
 
 def _cap_clearance(requested: str) -> str:
@@ -161,13 +180,18 @@ def _cap_clearance(requested: str) -> str:
     req_idx = _CLEARANCE_ORDER.index(requested)
     return _CLEARANCE_ORDER[min(req_idx, cap_idx)]
 
+
 # The file this points at must exist: the root endpoint advertises it, and for
 # a long time it advertised docs/user_manual.md, which does not.
-_DEFAULT_DOC_PATH = Path(__file__).resolve().parent / 'docs' / 'api_documentation.md'
-if os.environ.get('CHAMELEON_API_DOC'):
-    DOCUMENTATION_REFERENCE = os.environ['CHAMELEON_API_DOC']
+_DEFAULT_DOC_PATH = Path(__file__).resolve().parent / "docs" / "api_documentation.md"
+if os.environ.get("CHAMELEON_API_DOC"):
+    DOCUMENTATION_REFERENCE = os.environ["CHAMELEON_API_DOC"]
 else:
-    DOCUMENTATION_REFERENCE = _DEFAULT_DOC_PATH.as_uri() if _DEFAULT_DOC_PATH.exists() else str(_DEFAULT_DOC_PATH)
+    DOCUMENTATION_REFERENCE = (
+        _DEFAULT_DOC_PATH.as_uri()
+        if _DEFAULT_DOC_PATH.exists()
+        else str(_DEFAULT_DOC_PATH)
+    )
 
 
 def _current_timestamp() -> str:
@@ -183,11 +207,11 @@ def _get_request_ip(request: Request) -> str:
 
 def _enforce_rate_limit(identifier: str) -> None:
     """Enforce simple fixed-window rate limiting per identifier."""
-    if not SECURITY_CONFIG.get('enable_rate_limiting', False):
+    if not SECURITY_CONFIG.get("enable_rate_limiting", False):
         return
 
-    window_seconds = SECURITY_CONFIG.get('rate_limit_window_seconds', 60)
-    max_requests = SECURITY_CONFIG.get('rate_limit_max_requests', 120)
+    window_seconds = SECURITY_CONFIG.get("rate_limit_window_seconds", 60)
+    max_requests = SECURITY_CONFIG.get("rate_limit_max_requests", 120)
     now = time.time()
 
     windows = api_state._rate_limit_windows
@@ -197,7 +221,7 @@ def _enforce_rate_limit(identifier: str) -> None:
         window.popleft()
 
     if len(window) >= max_requests:
-        api_state.stats['rate_limited_requests'] += 1
+        api_state.stats["rate_limited_requests"] += 1
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Rate limit exceeded",
@@ -213,15 +237,20 @@ def _enforce_rate_limit(identifier: str) -> None:
     # the window too, or this dict grows unboundedly on exactly the spray
     # this comment describes.
     if len(windows) > max(200, max_requests):
-        for stale_id in [k for k, w in windows.items()
-                         if not w or now - w[-1] > window_seconds]:
+        for stale_id in [
+            k for k, w in windows.items() if not w or now - w[-1] > window_seconds
+        ]:
             del windows[stale_id]
+
 
 # API Models
 class AuthenticationRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     password: str = Field(..., min_length=8)
-    clearance_level: str = Field(..., **{_PATTERN_KW: r'^(UNCLASSIFIED|CONFIDENTIAL|SECRET|TOP_SECRET)$'})
+    clearance_level: str = Field(
+        ..., **{_PATTERN_KW: r"^(UNCLASSIFIED|CONFIDENTIAL|SECRET|TOP_SECRET)$"}
+    )
+
 
 class AuthenticationResponse(BaseModel):
     success: bool
@@ -230,8 +259,10 @@ class AuthenticationResponse(BaseModel):
     expires_at: Optional[datetime] = None
     error: Optional[str] = None
 
+
 class AudioAnalysisRequest(BaseModel):
     file_name: str
+
 
 class AudioAnalysisResponse(BaseModel):
     success: bool
@@ -246,13 +277,15 @@ class AudioAnalysisResponse(BaseModel):
     processing_method: Optional[str] = None
     error: Optional[str] = None
 
+
 class AudioNormalizationRequest(BaseModel):
     file_name: str
     target_peak: float = Field(0.95, ge=0.1, le=1.0)
     # WAV only: normalize_audio_fast writes through the stdlib core, which has
     # no FLAC encoder. Previously accepted "flac" here produced a file with a
     # .flac extension containing raw WAV bytes — an unbacked capability claim.
-    output_format: str = Field('wav', **{_PATTERN_KW: r'^(wav)$'})
+    output_format: str = Field("wav", **{_PATTERN_KW: r"^(wav)$"})
+
 
 class AudioNormalizationResponse(BaseModel):
     success: bool
@@ -263,9 +296,10 @@ class AudioNormalizationResponse(BaseModel):
     processing_time: Optional[float] = None
     error: Optional[str] = None
 
+
 class BatchJobRequest(BaseModel):
     files: List[str]
-    operation: str = Field(..., **{_PATTERN_KW: r'^(analyze|normalize)$'})
+    operation: str = Field(..., **{_PATTERN_KW: r"^(analyze|normalize)$"})
     options: Dict[str, Any] = Field(default_factory=dict)
 
     @_pydantic.root_validator
@@ -278,23 +312,27 @@ class BatchJobRequest(BaseModel):
         CLI flag, so unknown keys (and normalize's out-of-range values)
         are rejected here at submit time instead.
         """
-        operation = values.get('operation')
-        options = values.get('options') or {}
-        allowed = {'normalize': {'target_peak'}, 'analyze': set()}.get(operation, set())
+        operation = values.get("operation")
+        options = values.get("options") or {}
+        allowed = {"normalize": {"target_peak"}, "analyze": set()}.get(operation, set())
         unknown = set(options) - allowed
         if unknown:
             raise ValueError(
                 f"operation '{operation}' does not accept option(s): "
                 f"{', '.join(sorted(unknown))}"
             )
-        if 'target_peak' in options:
-            value = options['target_peak']
+        if "target_peak" in options:
+            value = options["target_peak"]
             # bool is an int subclass -- exclude it, "target_peak: true"
             # is a type error, not 1.0.
-            if not isinstance(value, (int, float)) or isinstance(value, bool) \
-                    or not 0.0 < value <= 1.0:
+            if (
+                not isinstance(value, (int, float))
+                or isinstance(value, bool)
+                or not 0.0 < value <= 1.0
+            ):
                 raise ValueError("options.target_peak must be a number in (0, 1.0]")
         return values
+
 
 class BatchJobResponse(BaseModel):
     success: bool
@@ -302,6 +340,7 @@ class BatchJobResponse(BaseModel):
     total_files: Optional[int] = None
     estimated_duration: Optional[float] = None
     error: Optional[str] = None
+
 
 class BatchJobStatus(BaseModel):
     job_id: str
@@ -315,6 +354,7 @@ class BatchJobStatus(BaseModel):
     started_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+
 
 class SystemStatusResponse(BaseModel):
     status: str
@@ -335,6 +375,7 @@ class SystemStatusResponse(BaseModel):
     request_latency_p95_ms: Optional[float]
     requests_per_minute: float
 
+
 class AuditLogEntry(BaseModel):
     timestamp: datetime
     user: str
@@ -345,6 +386,7 @@ class AuditLogEntry(BaseModel):
     ip_address: str
     session_id: str
     request_id: Optional[str] = None
+
 
 # Global state management
 class APIState:
@@ -358,22 +400,24 @@ class APIState:
         # exists only to serve /audit/log reads and must not grow
         # without limit on a long-running server.
         self.audit_log: Deque[AuditLogEntry] = deque(
-            maxlen=SECURITY_CONFIG.get('max_audit_log_entries') or 10_000
+            maxlen=SECURITY_CONFIG.get("max_audit_log_entries") or 10_000
         )
         self.server_start_time = time.time()
         self.stats = {
-            'completed_jobs': 0,
-            'failed_jobs': 0,
-            'total_requests': 0,
-            'rate_limited_requests': 0,
-            'last_request_timestamp': None,
-            'last_job_error': None,
-            'request_latency_ewma_ms': None,
-            'request_histogram_ms': [],
+            "completed_jobs": 0,
+            "failed_jobs": 0,
+            "total_requests": 0,
+            "rate_limited_requests": 0,
+            "last_request_timestamp": None,
+            "last_job_error": None,
+            "request_latency_ewma_ms": None,
+            "request_histogram_ms": [],
         }
         self._rate_limit_windows: Dict[str, deque] = {}
-        history_size = SECURITY_CONFIG.get('max_job_history')
-        self.job_history: Deque[str] = deque(maxlen=history_size if history_size and history_size > 0 else None)
+        history_size = SECURITY_CONFIG.get("max_job_history")
+        self.job_history: Deque[str] = deque(
+            maxlen=history_size if history_size and history_size > 0 else None
+        )
         self.job_failures_window: Deque[float] = deque()
         self.circuit_breaker_open: bool = False
         self.request_window: Deque[float] = deque()
@@ -382,7 +426,7 @@ class APIState:
     def add_session(self, session_id: str, session_data: Dict[str, Any]) -> None:
         """Register a new active session and index its token."""
         self.active_sessions[session_id] = session_data
-        token = session_data.get('token')
+        token = session_data.get("token")
         if token:
             self.token_index[token] = session_id
 
@@ -391,7 +435,7 @@ class APIState:
         session = self.active_sessions.pop(session_id, None)
         if not session:
             return
-        token = session.get('token')
+        token = session.get("token")
         if token:
             self.token_index.pop(token, None)
 
@@ -407,14 +451,14 @@ class APIState:
         """Record metadata for a freshly uploaded file."""
         timestamp = _current_timestamp()
         self.uploaded_files[file_name] = {
-            'owner': owner,
-            'size': size,
-            'original_name': original_name,
-            'session_id': session_id,
-            'created_at': timestamp,
-            'last_modified': timestamp,
-            'operation': 'upload',
-            'source_files': [],
+            "owner": owner,
+            "size": size,
+            "original_name": original_name,
+            "session_id": session_id,
+            "created_at": timestamp,
+            "last_modified": timestamp,
+            "operation": "upload",
+            "source_files": [],
         }
 
     def register_generated_file(
@@ -430,21 +474,22 @@ class APIState:
         """Record metadata for files generated by server-side processing."""
         timestamp = _current_timestamp()
         self.uploaded_files[file_name] = {
-            'owner': owner,
-            'size': size,
-            'original_name': file_name,
-            'session_id': session_id,
-            'created_at': timestamp,
-            'last_modified': timestamp,
-            'operation': operation,
-            'source_files': source_files,
+            "owner": owner,
+            "size": size,
+            "original_name": file_name,
+            "session_id": session_id,
+            "created_at": timestamp,
+            "last_modified": timestamp,
+            "operation": operation,
+            "source_files": source_files,
         }
 
     def touch_file_metadata(self, file_name: str) -> None:
         """Update last access timestamp for tracked files."""
         metadata = self.uploaded_files.get(file_name)
         if metadata is not None:
-            metadata['last_modified'] = _current_timestamp()
+            metadata["last_modified"] = _current_timestamp()
+
 
 api_state = APIState()
 
@@ -452,7 +497,7 @@ api_state = APIState()
 # Hardened audit logging helpers
 _AUDIT_VALIDATOR = ChameleonSecurityValidator(
     ChameleonSecurityConfig(
-        allowed_extensions={'.log'},
+        allowed_extensions={".log"},
         log_security_events=False,
         max_file_size=10 * 1024 * 1024,
     )
@@ -463,7 +508,7 @@ _REQUEST_VALIDATOR = ChameleonSecurityValidator(
     ChameleonSecurityConfig(
         # .flac dropped: the stdlib core this API adapts to cannot read or
         # write FLAC (see SECURITY_CONFIG['allowed_file_types'] above).
-        allowed_extensions={'.wav', '.wave', '.json', '.zip'},
+        allowed_extensions={".wav", ".wave", ".json", ".zip"},
         log_security_events=False,
     )
 )
@@ -474,17 +519,17 @@ _UPLOAD_FILES = SecureFileOperations(_REQUEST_VALIDATOR)
 def _cleanup_expired_sessions() -> None:
     """Remove expired sessions from active registry."""
     now = datetime.now(timezone.utc)
-    idle_timeout = SECURITY_CONFIG.get('max_session_idle_seconds')
+    idle_timeout = SECURITY_CONFIG.get("max_session_idle_seconds")
     expired_ids: List[str] = []
 
     for session_id, data in list(api_state.active_sessions.items()):
-        expires_at = data.get('expires_at')
+        expires_at = data.get("expires_at")
         if expires_at and expires_at <= now:
             expired_ids.append(session_id)
             continue
 
         if idle_timeout:
-            last_seen = data.get('last_seen_at')
+            last_seen = data.get("last_seen_at")
             if last_seen and (now - last_seen).total_seconds() >= idle_timeout:
                 expired_ids.append(session_id)
 
@@ -494,7 +539,7 @@ def _cleanup_expired_sessions() -> None:
 
 def _enforce_session_capacity() -> None:
     """Ensure active session count stays within configured limit."""
-    limit = SECURITY_CONFIG.get('max_active_sessions')
+    limit = SECURITY_CONFIG.get("max_active_sessions")
     if not limit:
         return
 
@@ -507,11 +552,11 @@ def _enforce_session_capacity() -> None:
 
 def _resolve_upload_directory() -> Path:
     """Resolve and validate upload directory."""
-    env_override = os.environ.get('CHAMELEON_UPLOAD_DIR')
+    env_override = os.environ.get("CHAMELEON_UPLOAD_DIR")
     if env_override:
         candidate = Path(env_override)
     else:
-        candidate = Path(tempfile.gettempdir()) / 'chameleon' / 'uploads'
+        candidate = Path(tempfile.gettempdir()) / "chameleon" / "uploads"
 
     return _REQUEST_VALIDATOR.validate_directory(
         candidate,
@@ -523,7 +568,7 @@ def _resolve_upload_directory() -> Path:
 def _determine_upload_chunk_size() -> int:
     """Determine upload chunk size with sane bounds."""
     default = 1024 * 1024  # 1MB
-    raw_value = os.environ.get('CHAMELEON_UPLOAD_CHUNK_SIZE')
+    raw_value = os.environ.get("CHAMELEON_UPLOAD_CHUNK_SIZE")
     if not raw_value:
         return default
 
@@ -538,7 +583,7 @@ def _determine_upload_chunk_size() -> int:
         return default
 
     minimum = 64 * 1024  # 64KB
-    maximum = SECURITY_CONFIG['max_file_size']
+    maximum = SECURITY_CONFIG["max_file_size"]
     return max(minimum, min(value, maximum))
 
 
@@ -546,23 +591,31 @@ UPLOAD_DIRECTORY = _resolve_upload_directory()
 UPLOAD_CHUNK_SIZE = _determine_upload_chunk_size()
 
 # Request tracing context
-REQUEST_ID_CTX: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("chameleon_request_id", default=None)
+REQUEST_ID_CTX: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "chameleon_request_id", default=None
+)
 REQUEST_ID_HEADER = "X-Request-ID"
 
 # Concurrency guard for batch jobs
-JOB_WORKER_SEMAPHORE = asyncio.Semaphore(SECURITY_CONFIG['max_concurrent_jobs'])
+JOB_WORKER_SEMAPHORE = asyncio.Semaphore(SECURITY_CONFIG["max_concurrent_jobs"])
 
 # Circuit breaker configuration for background workers
-CIRCUIT_BREAKER_THRESHOLD_FAILURES = SECURITY_CONFIG.get('circuit_breaker_failure_threshold', 5)
-CIRCUIT_BREAKER_WINDOW_SECONDS = SECURITY_CONFIG.get('circuit_breaker_window_seconds', 60)
-CIRCUIT_BREAKER_RESET_SECONDS = SECURITY_CONFIG.get('circuit_breaker_reset_seconds', 120)
+CIRCUIT_BREAKER_THRESHOLD_FAILURES = SECURITY_CONFIG.get(
+    "circuit_breaker_failure_threshold", 5
+)
+CIRCUIT_BREAKER_WINDOW_SECONDS = SECURITY_CONFIG.get(
+    "circuit_breaker_window_seconds", 60
+)
+CIRCUIT_BREAKER_RESET_SECONDS = SECURITY_CONFIG.get(
+    "circuit_breaker_reset_seconds", 120
+)
 REQUEST_LATENCY_SMOOTHING = 0.2
 
 
 def _validate_upload_extension(filename: str) -> None:
     """Validate extension of uploaded files."""
     suffix = Path(filename).suffix.lower()
-    if suffix not in SECURITY_CONFIG['allowed_file_types']:
+    if suffix not in SECURITY_CONFIG["allowed_file_types"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid file type",
@@ -576,19 +629,24 @@ def _sanitize_uploaded_name(name: str) -> str:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="File name is required")
 
     if any(sep in normalized for sep in ("/", "\\")):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Nested paths are not permitted")
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail="Nested paths are not permitted"
+        )
 
     sanitized = _REQUEST_VALIDATOR.sanitize_filename(normalized)
     if sanitized != normalized:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="File name contained disallowed characters")
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="File name contained disallowed characters",
+        )
 
     return sanitized
 
 
 def _load_dev_credentials() -> tuple[Optional[str], Optional[str]]:
     """Load developer fallback credentials from environment."""
-    username = os.environ.get('CHAMELEON_DEV_USERNAME')
-    password_hash = os.environ.get('CHAMELEON_DEV_PASSWORD_HASH')
+    username = os.environ.get("CHAMELEON_DEV_USERNAME")
+    password_hash = os.environ.get("CHAMELEON_DEV_PASSWORD_HASH")
     return username, password_hash
 
 
@@ -598,19 +656,21 @@ _DEV_USERNAME, _DEV_PASSWORD_HASH = _load_dev_credentials()
 async def _persist_upload(file: UploadFile, destination: Path) -> int:
     """Persist upload safely to destination."""
     try:
-        target_path = _REQUEST_VALIDATOR.validate_file_path(destination, operation="create")
+        target_path = _REQUEST_VALIDATOR.validate_file_path(
+            destination, operation="create"
+        )
     except ChameleonSecurityError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     total_bytes = 0
     try:
-        with _UPLOAD_FILES.secure_open(target_path, 'wb') as buffer:
+        with _UPLOAD_FILES.secure_open(target_path, "wb") as buffer:
             while True:
                 chunk = await file.read(UPLOAD_CHUNK_SIZE)
                 if not chunk:
                     break
                 total_bytes += len(chunk)
-                if total_bytes > SECURITY_CONFIG['max_file_size']:
+                if total_bytes > SECURITY_CONFIG["max_file_size"]:
                     raise HTTPException(
                         status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                         detail="File too large",
@@ -630,11 +690,14 @@ async def _persist_upload(file: UploadFile, destination: Path) -> int:
             except OSError:
                 logging.warning("Failed to remove partial upload: %s", target_path)
         logging.error("Unexpected error while persisting upload: %s", exc)
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Upload persistence failed") from exc
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Upload persistence failed"
+        ) from exc
     finally:
         await file.close()
 
     return total_bytes
+
 
 def _resolve_uploaded_path(name: str) -> Path:
     """Resolve uploaded file path within the secure upload directory."""
@@ -643,7 +706,9 @@ def _resolve_uploaded_path(name: str) -> Path:
 
     upload_root = UPLOAD_DIRECTORY.resolve(strict=False)
     if candidate.parent != upload_root:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="File reference outside upload area")
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail="File reference outside upload area"
+        )
 
     try:
         _REQUEST_VALIDATOR.validate_file_path(candidate, operation="read")
@@ -656,16 +721,22 @@ def _resolve_uploaded_path(name: str) -> Path:
     return candidate
 
 
-def _get_authorized_file_path(file_name: str, user: dict, allow_privileged: bool = True) -> Path:
+def _get_authorized_file_path(
+    file_name: str, user: dict, allow_privileged: bool = True
+) -> Path:
     """Authorize access to user file and return secure resolved path."""
     metadata = api_state.uploaded_files.get(file_name)
     if metadata is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not registered")
 
-    is_owner = metadata.get('owner') == user.get('username')
-    has_privilege = allow_privileged and user.get('clearance_level') in PRIVILEGED_CLEARANCE
+    is_owner = metadata.get("owner") == user.get("username")
+    has_privilege = (
+        allow_privileged and user.get("clearance_level") in PRIVILEGED_CLEARANCE
+    )
     if not (is_owner or has_privilege):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Access denied for requested file")
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, detail="Access denied for requested file"
+        )
 
     path = _resolve_uploaded_path(file_name)
     api_state.touch_file_metadata(file_name)
@@ -681,10 +752,12 @@ def _validate_cors_origin(origin: str) -> str:
     from urllib.parse import urlparse
 
     parsed = urlparse(origin)
-    if parsed.scheme not in ('http', 'https') or not parsed.hostname:
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
         raise ChameleonSecurityError(f"Invalid origin scheme or host: {origin}")
-    if parsed.path not in ('', '/') or parsed.query or parsed.fragment:
-        raise ChameleonSecurityError(f"Origin must not contain a path or query: {origin}")
+    if parsed.path not in ("", "/") or parsed.query or parsed.fragment:
+        raise ChameleonSecurityError(
+            f"Origin must not contain a path or query: {origin}"
+        )
     # Reconstruct from validated components to drop any trailing slash/credentials.
     netloc = parsed.hostname
     if parsed.port:
@@ -693,7 +766,9 @@ def _validate_cors_origin(origin: str) -> str:
 
 
 def _get_allowed_origins() -> list[str]:
-    raw_origins = os.environ.get('CHAMELEON_ALLOWED_ORIGINS', 'https://localhost:3000').split(',')
+    raw_origins = os.environ.get(
+        "CHAMELEON_ALLOWED_ORIGINS", "https://localhost:3000"
+    ).split(",")
     sanitized: List[str] = []
     for origin in raw_origins:
         origin = origin.strip()
@@ -704,12 +779,12 @@ def _get_allowed_origins() -> list[str]:
         except ChameleonSecurityError:
             logging.warning("Invalid origin supplied: %s", origin)
             continue
-    return sanitized or ['https://localhost:3000']
+    return sanitized or ["https://localhost:3000"]
 
 
 def _resolve_audit_log_path() -> Path:
     """Return secure audit log path with directory validation."""
-    preferred_dir = Path.home() / '.chameleon' / 'logs'
+    preferred_dir = Path.home() / ".chameleon" / "logs"
 
     try:
         log_dir = _AUDIT_VALIDATOR.validate_directory(
@@ -718,36 +793,36 @@ def _resolve_audit_log_path() -> Path:
             allow_create=True,
         )
     except ChameleonSecurityError:
-        fallback = Path(tempfile.gettempdir()) / 'chameleon' / 'logs'
+        fallback = Path(tempfile.gettempdir()) / "chameleon" / "logs"
         log_dir = _AUDIT_VALIDATOR.validate_directory(
             fallback,
             require_exists=False,
             allow_create=True,
         )
 
-    return log_dir / 'api-audit.log'
+    return log_dir / "api-audit.log"
+
 
 # FastAPI app initialization
 app = FastAPI(
     title="Chameleon Audio API",
     description="Authenticated REST API over the Chameleon stdlib WAV-processing core.",
     version=API_VERSION,
-    docs_url="/docs" if not SECURITY_CONFIG['require_authentication'] else None,
-    redoc_url="/redoc" if not SECURITY_CONFIG['require_authentication'] else None,
+    docs_url="/docs" if not SECURITY_CONFIG["require_authentication"] else None,
+    redoc_url="/redoc" if not SECURITY_CONFIG["require_authentication"] else None,
     openapi_url="/openapi.json",
 )
 
 # Security middleware
 allowed_hosts_env = os.environ.get("CHAMELEON_ALLOWED_HOSTS")
 if allowed_hosts_env:
-    allowed_hosts = [host.strip() for host in allowed_hosts_env.split(",") if host.strip()]
+    allowed_hosts = [
+        host.strip() for host in allowed_hosts_env.split(",") if host.strip()
+    ]
 else:
     allowed_hosts = ["localhost", "127.0.0.1"]
 
-app.add_middleware(
-    TrustedHostMiddleware,
-    allowed_hosts=allowed_hosts
-)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 
 app.add_middleware(
     CORSMiddleware,
@@ -791,12 +866,14 @@ async def request_context_middleware(request: Request, call_next):
     response.headers.setdefault(REQUEST_ID_HEADER, request_id)
 
     elapsed_ms = (end_time - start_time) * 1000
-    prev = api_state.stats['request_latency_ewma_ms']
+    prev = api_state.stats["request_latency_ewma_ms"]
     if prev is None:
-        api_state.stats['request_latency_ewma_ms'] = elapsed_ms
+        api_state.stats["request_latency_ewma_ms"] = elapsed_ms
     else:
-        api_state.stats['request_latency_ewma_ms'] = (REQUEST_LATENCY_SMOOTHING * elapsed_ms) + ((1 - REQUEST_LATENCY_SMOOTHING) * prev)
-    histogram = api_state.stats['request_histogram_ms']
+        api_state.stats["request_latency_ewma_ms"] = (
+            REQUEST_LATENCY_SMOOTHING * elapsed_ms
+        ) + ((1 - REQUEST_LATENCY_SMOOTHING) * prev)
+    histogram = api_state.stats["request_histogram_ms"]
     histogram.append(elapsed_ms)
     if len(histogram) > 1000:
         histogram.pop(0)
@@ -811,10 +888,15 @@ async def request_context_middleware(request: Request, call_next):
 
 # Security schemes
 security = HTTPBearer()
-api_key_header_name = SECURITY_CONFIG.get('api_key_header')
-API_KEY_SCHEME = APIKeyHeader(name=api_key_header_name, auto_error=False) if api_key_header_name else None
+api_key_header_name = SECURITY_CONFIG.get("api_key_header")
+API_KEY_SCHEME = (
+    APIKeyHeader(name=api_key_header_name, auto_error=False)
+    if api_key_header_name
+    else None
+)
 
 # Utility functions
+
 
 def generate_secure_token() -> str:
     """Generate cryptographically secure API token"""
@@ -823,12 +905,14 @@ def generate_secure_token() -> str:
 
 def _compute_token_signature(token: str, secret: str) -> str:
     """Compute deterministic HMAC signature for issued tokens."""
-    return hmac.new(secret.encode('utf-8'), token.encode('utf-8'), hashlib.sha256).hexdigest()
+    return hmac.new(
+        secret.encode("utf-8"), token.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
 
 
 def hash_password(password: str, salt: bytes) -> bytes:
     """Hash password using PBKDF2"""
-    return hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 100000)
+    return hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 100000)
 
 
 def verify_token_signature(token: str, secret: str, expected_signature: str) -> bool:
@@ -845,25 +929,37 @@ def verify_token_signature(token: str, secret: str, expected_signature: str) -> 
 def _derive_session_secret(username: str, session_id: str) -> str:
     """Derive a session-specific secret for token validation."""
     seed = f"{username}:{session_id}:{SECURITY_CONFIG['session_timeout']}"
-    return hashlib.sha256(seed.encode('utf-8')).hexdigest()
+    return hashlib.sha256(seed.encode("utf-8")).hexdigest()
 
 
-def _audit_denied(user: dict, operation: str, resource: str,
-                  exc: HTTPException, http_request: Request) -> None:
+def _audit_denied(
+    user: dict, operation: str, resource: str, exc: HTTPException, http_request: Request
+) -> None:
     """Record refused requests. A log that only shows successes cannot
     reveal filename probing or permission escalation attempts."""
     try:
         log_audit_event(
-            user.get('username', 'unknown'), operation, resource, "DENIED",
+            user.get("username", "unknown"),
+            operation,
+            resource,
+            "DENIED",
             f"HTTP {exc.status_code}: {exc.detail}",
-            _get_request_ip(http_request), user.get('session_id', ''),
+            _get_request_ip(http_request),
+            user.get("session_id", ""),
         )
     except Exception:
         logging.debug("denied-request audit write failed", exc_info=True)
 
 
-def log_audit_event(user: str, operation: str, resource: str, result: str,
-                   details: str, ip_address: str, session_id: str):
+def log_audit_event(
+    user: str,
+    operation: str,
+    resource: str,
+    result: str,
+    details: str,
+    ip_address: str,
+    session_id: str,
+):
     """Log security audit event"""
     request_id = REQUEST_ID_CTX.get()
     entry = AuditLogEntry(
@@ -882,7 +978,7 @@ def log_audit_event(user: str, operation: str, resource: str, result: str,
     # Also log to file for persistent storage
     try:
         log_file = _resolve_audit_log_path()
-        with _AUDIT_FILES.secure_open(log_file, 'a', encoding='utf-8') as f:
+        with _AUDIT_FILES.secure_open(log_file, "a", encoding="utf-8") as f:
             f.write(f"{_model_to_json(entry)}\n")
     except Exception as e:
         logging.error(f"Failed to write audit log: {e}")
@@ -898,7 +994,9 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     }
     if request_id:
         payload["request_id"] = request_id
-    return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=payload)
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=payload
+    )
 
 
 @app.exception_handler(Exception)
@@ -908,7 +1006,9 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     payload = {"detail": "Internal server error"}
     if request_id:
         payload["request_id"] = request_id
-    return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content=payload)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content=payload
+    )
 
 
 def _update_circuit_breaker(success: bool) -> None:
@@ -922,7 +1022,9 @@ def _update_circuit_breaker(success: bool) -> None:
         window.popleft()
 
     if success:
-        if api_state.circuit_breaker_open and (not window or (now - window[-1]) > CIRCUIT_BREAKER_RESET_SECONDS):
+        if api_state.circuit_breaker_open and (
+            not window or (now - window[-1]) > CIRCUIT_BREAKER_RESET_SECONDS
+        ):
             api_state.circuit_breaker_open = False
         return
 
@@ -944,15 +1046,17 @@ def _record_job_completion(job_id: str) -> None:
 
     if stale_id:
         stale_job = api_state.active_jobs.get(stale_id)
-        if stale_job and stale_job.get('status') in {'completed', 'failed'}:
+        if stale_job and stale_job.get("status") in {"completed", "failed"}:
             api_state.active_jobs.pop(stale_id, None)
 
 
 # Authentication dependency
-async def get_current_user(request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def get_current_user(
+    request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)
+):
     """Validate authentication token and return user info"""
-    api_state.stats['total_requests'] += 1
-    api_state.stats['last_request_timestamp'] = datetime.now(timezone.utc).isoformat()
+    api_state.stats["total_requests"] += 1
+    api_state.stats["last_request_timestamp"] = datetime.now(timezone.utc).isoformat()
     _cleanup_expired_sessions()
 
     # No bypass branch: SECURITY_CONFIG['require_authentication'] is always
@@ -963,10 +1067,12 @@ async def get_current_user(request: Request, credentials: HTTPAuthorizationCrede
     # Optional API key verification layered on top of JWT/session auth
     if API_KEY_SCHEME is not None:
         api_key = request.headers.get(api_key_header_name)
-        expected_key = os.environ.get('CHAMELEON_API_KEY')
+        expected_key = os.environ.get("CHAMELEON_API_KEY")
         if expected_key:
             if not api_key or not hmac.compare_digest(api_key, expected_key):
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid API key")
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN, detail="Invalid API key"
+                )
 
     token = credentials.credentials
     client_id = _get_request_ip(request)
@@ -978,7 +1084,7 @@ async def get_current_user(request: Request, credentials: HTTPAuthorizationCrede
     if session_data is None:
         # Backwards compatibility: fall back to search and re-index token
         for candidate_id, candidate_data in api_state.active_sessions.items():
-            stored = candidate_data.get('token')
+            stored = candidate_data.get("token")
             if stored is not None and hmac.compare_digest(stored, token):
                 session_id = candidate_id
                 session_data = candidate_data
@@ -988,36 +1094,38 @@ async def get_current_user(request: Request, credentials: HTTPAuthorizationCrede
     if session_data is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication token"
+            detail="Invalid authentication token",
         )
 
     # datetime.min is naive; comparing it to the aware "now" would TypeError
     # if expires_at were ever absent, so the default must be tz-aware.
     if datetime.now(timezone.utc) > session_data.get(
-            'expires_at', datetime.min.replace(tzinfo=timezone.utc)):
+        "expires_at", datetime.min.replace(tzinfo=timezone.utc)
+    ):
         api_state.remove_session(session_id)
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Session expired"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired"
         )
 
-    session_secret = session_data.get('secret') or _derive_session_secret(session_data['username'], session_id)
-    expected_signature = session_data.get('token_signature')
+    session_secret = session_data.get("secret") or _derive_session_secret(
+        session_data["username"], session_id
+    )
+    expected_signature = session_data.get("token_signature")
     if not verify_token_signature(token, session_secret, expected_signature):
         api_state.remove_session(session_id)
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token signature invalid"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token signature invalid"
         )
 
-    session_data['secret'] = session_secret
-    session_data['last_seen_at'] = datetime.now(timezone.utc)
+    session_data["secret"] = session_secret
+    session_data["last_seen_at"] = datetime.now(timezone.utc)
 
     return {
-        'username': session_data['username'],
-        'clearance_level': session_data['clearance_level'],
-        'session_id': session_id
+        "username": session_data["username"],
+        "clearance_level": session_data["clearance_level"],
+        "session_id": session_id,
     }
+
 
 # Permission checking
 def require_permission(permission: str):
@@ -1029,11 +1137,15 @@ def require_permission(permission: str):
     user; adding real roles means adding a permission store, not re-reading
     this argument.
     """
+
     def permission_check(user: dict = Depends(get_current_user)):
         return user
+
     return permission_check
 
+
 # API Endpoints
+
 
 @app.get("/", response_class=JSONResponse)
 async def root():
@@ -1043,7 +1155,7 @@ async def root():
         "version": API_VERSION,
         "status": "operational",
         "documentation": DOCUMENTATION_REFERENCE,
-        "authentication_required": SECURITY_CONFIG['require_authentication'],
+        "authentication_required": SECURITY_CONFIG["require_authentication"],
     }
 
 
@@ -1056,11 +1168,12 @@ async def health_check():
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
+
 @app.post("/auth/login", response_model=AuthenticationResponse)
 async def login(request: AuthenticationRequest, http_request: Request):
     """Authenticate user and create session"""
     try:
-        api_state.stats['total_requests'] += 1
+        api_state.stats["total_requests"] += 1
         _cleanup_expired_sessions()
         _enforce_session_capacity()
         client_ip = _get_request_ip(http_request)
@@ -1068,13 +1181,14 @@ async def login(request: AuthenticationRequest, http_request: Request):
 
         # Single-user credential check against the configured environment.
         if not (_DEV_USERNAME and _DEV_PASSWORD_HASH):
-            logging.error("API credentials are not configured; refusing to authenticate")
+            logging.error(
+                "API credentials are not configured; refusing to authenticate"
+            )
             return AuthenticationResponse(
-                success=False,
-                error="Authentication unavailable"
+                success=False, error="Authentication unavailable"
             )
 
-        provided_hash = hashlib.sha256(request.password.encode('utf-8')).hexdigest()
+        provided_hash = hashlib.sha256(request.password.encode("utf-8")).hexdigest()
 
         if not (
             hmac.compare_digest(request.username, _DEV_USERNAME)
@@ -1089,83 +1203,97 @@ async def login(request: AuthenticationRequest, http_request: Request):
                 client_ip,
                 "",
             )
-            return AuthenticationResponse(
-                success=False,
-                error="Invalid credentials"
-            )
+            return AuthenticationResponse(success=False, error="Invalid credentials")
 
         # Create session
         session_id = str(uuid.uuid4())
         token = generate_secure_token()
         secret = _derive_session_secret(request.username, session_id)
         token_signature = _compute_token_signature(token, secret)
-        expires_at = datetime.now(timezone.utc) + timedelta(seconds=SECURITY_CONFIG['session_timeout'])
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            seconds=SECURITY_CONFIG["session_timeout"]
+        )
 
         session_data = {
-            'username': request.username,
+            "username": request.username,
             # The request's clearance is self-declared; honor it only up
             # to the deployment's configured ceiling.
-            'clearance_level': _cap_clearance(request.clearance_level),
-            'token': token,
-            'expires_at': expires_at,
-            'created_at': datetime.now(timezone.utc),
-            'secret': secret,
-            'token_signature': token_signature,
-            'last_seen_at': datetime.now(timezone.utc),
-            'client_ip': client_ip,
+            "clearance_level": _cap_clearance(request.clearance_level),
+            "token": token,
+            "expires_at": expires_at,
+            "created_at": datetime.now(timezone.utc),
+            "secret": secret,
+            "token_signature": token_signature,
+            "last_seen_at": datetime.now(timezone.utc),
+            "client_ip": client_ip,
         }
 
         api_state.add_session(session_id, session_data)
 
         log_audit_event(
-            request.username, "LOGIN", "API", "SUCCESS",
+            request.username,
+            "LOGIN",
+            "API",
+            "SUCCESS",
             f"User authenticated with {session_data['clearance_level']} clearance",
-            client_ip, session_id
+            client_ip,
+            session_id,
         )
 
         return AuthenticationResponse(
             success=True,
             token=token,
             user_info={
-                'username': request.username,
-                'clearance_level': session_data['clearance_level'],
-                'session_id': session_id
+                "username": request.username,
+                "clearance_level": session_data["clearance_level"],
+                "session_id": session_id,
             },
-            expires_at=expires_at
+            expires_at=expires_at,
         )
 
     except HTTPException as exc:
-        _audit_denied({'username': request.username, 'session_id': ''},
-                      "LOGIN", "API", exc, http_request)
+        _audit_denied(
+            {"username": request.username, "session_id": ""},
+            "LOGIN",
+            "API",
+            exc,
+            http_request,
+        )
         raise  # preserve 429 (rate limit) / 503 (capacity) status codes
     except Exception as e:
         logging.error(f"Login error: {e}")
         return AuthenticationResponse(
-            success=False,
-            error="Authentication service error"
+            success=False, error="Authentication service error"
         )
+
 
 @app.post("/auth/logout")
 async def logout(http_request: Request, user: dict = Depends(get_current_user)):
     """Logout user and invalidate session"""
-    session_id = user['session_id']
+    session_id = user["session_id"]
 
     api_state.remove_session(session_id)
 
     client_ip = _get_request_ip(http_request)
 
     log_audit_event(
-        user['username'], "LOGOUT", "API", "SUCCESS",
-        "User logged out", client_ip, session_id
+        user["username"],
+        "LOGOUT",
+        "API",
+        "SUCCESS",
+        "User logged out",
+        client_ip,
+        session_id,
     )
 
     return {"success": True, "message": "Logged out successfully"}
+
 
 @app.post("/audio/upload")
 async def upload_audio_file(
     http_request: Request,
     file: UploadFile = File(...),
-    user: dict = Depends(require_permission("process"))
+    user: dict = Depends(require_permission("process")),
 ):
     """Upload audio file for processing"""
     try:
@@ -1179,34 +1307,37 @@ async def upload_audio_file(
         # allowlisted extension is kept whole; the stem absorbs the trim.
         stem, ext = os.path.splitext(sanitized_name)
         stem_budget = 255 - 33 - len(ext.encode("utf-8"))
-        sanitized_name = (stem.encode("utf-8")[:max(0, stem_budget)]
-                          .decode("utf-8", "ignore") + ext)
+        sanitized_name = (
+            stem.encode("utf-8")[: max(0, stem_budget)].decode("utf-8", "ignore") + ext
+        )
         unique_name = f"{uuid.uuid4().hex}_{sanitized_name}"
         destination = (UPLOAD_DIRECTORY / unique_name).resolve(strict=False)
         upload_root = UPLOAD_DIRECTORY.resolve(strict=False)
         if destination.parent != upload_root:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid upload destination")
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, detail="Invalid upload destination"
+            )
 
         total_bytes = await _persist_upload(file, destination)
 
         api_state.register_uploaded_file(
             unique_name,
-            owner=user['username'],
+            owner=user["username"],
             size=total_bytes,
             original_name=sanitized_name,
-            session_id=user['session_id'],
+            session_id=user["session_id"],
         )
 
         client_ip = _get_request_ip(http_request)
 
         log_audit_event(
-            user['username'],
+            user["username"],
             "UPLOAD",
             unique_name,
             "SUCCESS",
             f"Stored {total_bytes} bytes",
             client_ip,
-            user['session_id'],
+            user["session_id"],
         )
 
         return {
@@ -1216,26 +1347,38 @@ async def upload_audio_file(
             "size": total_bytes,
         }
     except HTTPException as exc:
-        _audit_denied(user, "UPLOAD", sanitized_name if 'sanitized_name' in dir() else
-                      getattr(file, 'filename', '?'), exc, http_request)
+        _audit_denied(
+            user,
+            "UPLOAD",
+            (
+                sanitized_name
+                if "sanitized_name" in dir()
+                else getattr(file, "filename", "?")
+            ),
+            exc,
+            http_request,
+        )
         raise
     except Exception as exc:
         logging.error("Upload error: %s", exc)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Upload failed") from exc
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Upload failed"
+        ) from exc
+
 
 @app.post("/audio/analyze", response_model=AudioAnalysisResponse)
 async def process_audio(
     payload: AudioAnalysisRequest,
     http_request: Request,
-    user: dict = Depends(require_permission("process"))
+    user: dict = Depends(require_permission("process")),
 ):
     """Process audio analysis"""
     try:
         # Reject remote URLs; only previously uploaded files are processable.
-        if payload.file_name.lower().startswith(('http://', 'https://')):
+        if payload.file_name.lower().startswith(("http://", "https://")):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Remote URLs are not supported; upload the file first."
+                detail="Remote URLs are not supported; upload the file first.",
             )
 
         file_path = _get_authorized_file_path(payload.file_name, user)
@@ -1245,25 +1388,31 @@ async def process_audio(
         client_ip = _get_request_ip(http_request)
 
         log_audit_event(
-            user['username'], "ANALYZE", str(file_path),
-            "SUCCESS" if result.get('success') else "FAILED",
-            "Audio analysis completed", client_ip, user['session_id']
+            user["username"],
+            "ANALYZE",
+            str(file_path),
+            "SUCCESS" if result.get("success") else "FAILED",
+            "Audio analysis completed",
+            client_ip,
+            user["session_id"],
         )
 
-        if result.get('success'):
+        if result.get("success"):
             return AudioAnalysisResponse(
                 success=True,
-                duration=result.get('duration'),
-                sample_rate=result.get('sample_rate'),
-                channels=result.get('channels'),
-                bit_depth=result.get('bit_depth'),
-                peak_level=result.get('peak_level'),
-                rms_level=result.get('rms_level'),
-                file_size=result.get('file_size'),
-                processing_time=result.get('processing_time'),
-                processing_method=result.get('processing_method')
+                duration=result.get("duration"),
+                sample_rate=result.get("sample_rate"),
+                channels=result.get("channels"),
+                bit_depth=result.get("bit_depth"),
+                peak_level=result.get("peak_level"),
+                rms_level=result.get("rms_level"),
+                file_size=result.get("file_size"),
+                processing_time=result.get("processing_time"),
+                processing_method=result.get("processing_method"),
             )
-        return AudioAnalysisResponse(success=False, error=result.get('error', 'Analysis failed'))
+        return AudioAnalysisResponse(
+            success=False, error=result.get("error", "Analysis failed")
+        )
 
     except HTTPException:
         raise
@@ -1271,11 +1420,12 @@ async def process_audio(
         logging.error("Analysis error: %s", exc)
         return AudioAnalysisResponse(success=False, error="Analysis failed")
 
+
 @app.post("/audio/normalize", response_model=AudioNormalizationResponse)
 async def normalize_audio(
     payload: AudioNormalizationRequest,
     http_request: Request,
-    user: dict = Depends(require_permission("process"))
+    user: dict = Depends(require_permission("process")),
 ):
     """Normalize audio file"""
     try:
@@ -1285,7 +1435,9 @@ async def normalize_audio(
         output_path = (UPLOAD_DIRECTORY / output_name).resolve(strict=False)
         upload_root = UPLOAD_DIRECTORY.resolve(strict=False)
         if output_path.parent != upload_root:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid output destination")
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, detail="Invalid output destination"
+            )
 
         try:
             _REQUEST_VALIDATOR.validate_file_path(output_path, operation="create")
@@ -1300,12 +1452,16 @@ async def normalize_audio(
         client_ip = _get_request_ip(http_request)
 
         log_audit_event(
-            user['username'], "NORMALIZE", str(input_path),
-            "SUCCESS" if result.get('success') else "FAILED",
-            "Audio normalization completed", client_ip, user['session_id']
+            user["username"],
+            "NORMALIZE",
+            str(input_path),
+            "SUCCESS" if result.get("success") else "FAILED",
+            "Audio normalization completed",
+            client_ip,
+            user["session_id"],
         )
 
-        if result.get('success'):
+        if result.get("success"):
             try:
                 output_size = output_path.stat().st_size
             except FileNotFoundError:
@@ -1313,25 +1469,24 @@ async def normalize_audio(
 
             api_state.register_generated_file(
                 output_name,
-                owner=user['username'],
+                owner=user["username"],
                 size=output_size,
                 source_files=[payload.file_name],
-                operation='normalize',
-                session_id=user['session_id'],
+                operation="normalize",
+                session_id=user["session_id"],
             )
 
             return AudioNormalizationResponse(
                 success=True,
                 output_file=output_name,
-                scale_factor=result.get('scale_factor'),
-                original_peak=result.get('original_peak'),
-                target_peak=result.get('target_peak'),
-                processing_time=result.get('processing_time')
+                scale_factor=result.get("scale_factor"),
+                original_peak=result.get("original_peak"),
+                target_peak=result.get("target_peak"),
+                processing_time=result.get("processing_time"),
             )
         else:
             return AudioNormalizationResponse(
-                success=False,
-                error=result.get('error', 'Normalization failed')
+                success=False, error=result.get("error", "Normalization failed")
             )
 
     except HTTPException as exc:
@@ -1339,16 +1494,14 @@ async def normalize_audio(
         raise  # preserve 400 (invalid destination) / 404 / 403 status codes
     except Exception as e:
         logging.error(f"Normalization error: {e}")
-        return AudioNormalizationResponse(
-            success=False,
-            error="Normalization failed"
-        )
+        return AudioNormalizationResponse(success=False, error="Normalization failed")
+
 
 @app.get("/audio/download/{file_name}")
 async def download_file(
     file_name: str,
     http_request: Request,
-    user: dict = Depends(require_permission("read"))
+    user: dict = Depends(require_permission("read")),
 ):
     """Download processed audio file"""
     try:
@@ -1357,14 +1510,17 @@ async def download_file(
         client_ip = _get_request_ip(http_request)
 
         log_audit_event(
-            user['username'], "DOWNLOAD", str(file_path), "SUCCESS",
-            f"File downloaded: {file_name}", client_ip, user['session_id']
+            user["username"],
+            "DOWNLOAD",
+            str(file_path),
+            "SUCCESS",
+            f"File downloaded: {file_name}",
+            client_ip,
+            user["session_id"],
         )
 
         return FileResponse(
-            path=file_path,
-            filename=file_name,
-            media_type='application/octet-stream'
+            path=file_path, filename=file_name, media_type="application/octet-stream"
         )
 
     except HTTPException as exc:
@@ -1373,21 +1529,21 @@ async def download_file(
     except Exception as e:
         logging.error(f"Download error: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Download failed"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Download failed"
         )
+
 
 @app.post("/batch/submit", response_model=BatchJobResponse)
 async def submit_batch_job(
     payload: BatchJobRequest,
     http_request: Request,
-    user: dict = Depends(require_permission("process"))
+    user: dict = Depends(require_permission("process")),
 ):
     """Submit batch processing job"""
     try:
         job_id = str(uuid.uuid4())
 
-        queue_limit = SECURITY_CONFIG.get('max_job_queue_size')
+        queue_limit = SECURITY_CONFIG.get("max_job_queue_size")
         if queue_limit and len(api_state.job_queue) >= queue_limit:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -1400,22 +1556,22 @@ async def submit_batch_job(
 
         # Create job
         job_data = {
-            'job_id': job_id,
-            'user': user['username'],
-            'operation': payload.operation,
-            'files': payload.files,
-            'options': payload.options,
-            'status': 'queued',
-            'progress': 0.0,
-            'completed_files': 0,
-            'total_files': len(payload.files),
-            'created_at': datetime.now(timezone.utc),
-            'results': [],
-            'started_at': None,
-            'updated_at': None,
-            'completed_at': None,
-            'owner_clearance': user['clearance_level'],
-            'owner_session_id': user['session_id'],
+            "job_id": job_id,
+            "user": user["username"],
+            "operation": payload.operation,
+            "files": payload.files,
+            "options": payload.options,
+            "status": "queued",
+            "progress": 0.0,
+            "completed_files": 0,
+            "total_files": len(payload.files),
+            "created_at": datetime.now(timezone.utc),
+            "results": [],
+            "started_at": None,
+            "updated_at": None,
+            "completed_at": None,
+            "owner_clearance": user["clearance_level"],
+            "owner_session_id": user["session_id"],
         }
 
         api_state.active_jobs[job_id] = job_data
@@ -1424,9 +1580,13 @@ async def submit_batch_job(
         client_ip = _get_request_ip(http_request)
 
         log_audit_event(
-            user['username'], "BATCH_SUBMIT", job_id, "SUCCESS",
+            user["username"],
+            "BATCH_SUBMIT",
+            job_id,
+            "SUCCESS",
             f"Batch job submitted: {len(payload.files)} files",
-            client_ip, user['session_id']
+            client_ip,
+            user["session_id"],
         )
 
         # Start background processing
@@ -1436,59 +1596,72 @@ async def submit_batch_job(
             success=True,
             job_id=job_id,
             total_files=len(payload.files),
-            estimated_duration=len(payload.files) * 5.0  # Estimate 5 seconds per file
+            estimated_duration=len(payload.files) * 5.0,  # Estimate 5 seconds per file
         )
 
     except HTTPException as exc:
-        _audit_denied(user, "BATCH_SUBMIT",
-                      f"{len(payload.files)} files", exc, http_request)
+        _audit_denied(
+            user, "BATCH_SUBMIT", f"{len(payload.files)} files", exc, http_request
+        )
         raise  # preserve 404 (missing file) / 403 (unauthorized) / 503 (queue full)
     except Exception as e:
         logging.error(f"Batch job submission error: {e}")
-        return BatchJobResponse(
-            success=False,
-            error="Batch job submission failed"
-        )
+        return BatchJobResponse(success=False, error="Batch job submission failed")
+
 
 @app.get("/batch/status/{job_id}", response_model=BatchJobStatus)
 async def get_batch_status(
-    job_id: str,
-    http_request: Request,
-    user: dict = Depends(get_current_user)
+    job_id: str, http_request: Request, user: dict = Depends(get_current_user)
 ):
     """Get batch job status"""
     if job_id not in api_state.active_jobs:
-        _audit_denied(user, "BATCH_STATUS", job_id,
-                      HTTPException(status.HTTP_404_NOT_FOUND, "Job not found"),
-                      http_request)
+        _audit_denied(
+            user,
+            "BATCH_STATUS",
+            job_id,
+            HTTPException(status.HTTP_404_NOT_FOUND, "Job not found"),
+            http_request,
+        )
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Job not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Job not found"
         )
 
     job_data = api_state.active_jobs[job_id]
 
     # Check if user owns this job or has admin privileges
-    if (job_data['user'] != user['username'] and
-        user['clearance_level'] not in PRIVILEGED_CLEARANCE):
-        _audit_denied(user, "BATCH_STATUS", job_id,
-                      HTTPException(status.HTTP_403_FORBIDDEN, "Access denied"),
-                      http_request)
+    if (
+        job_data["user"] != user["username"]
+        and user["clearance_level"] not in PRIVILEGED_CLEARANCE
+    ):
+        _audit_denied(
+            user,
+            "BATCH_STATUS",
+            job_id,
+            HTTPException(status.HTTP_403_FORBIDDEN, "Access denied"),
+            http_request,
+        )
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Access denied"
         )
 
     client_ip = _get_request_ip(http_request)
     log_audit_event(
-        user['username'], "BATCH_STATUS", job_id, "SUCCESS",
-        "Batch status retrieved", client_ip, user.get('session_id', '')
+        user["username"],
+        "BATCH_STATUS",
+        job_id,
+        "SUCCESS",
+        "Batch status retrieved",
+        client_ip,
+        user.get("session_id", ""),
     )
 
     return BatchJobStatus(**job_data)
 
+
 @app.get("/system/status", response_model=SystemStatusResponse)
-async def get_system_status(http_request: Request, user: dict = Depends(require_permission("read"))):
+async def get_system_status(
+    http_request: Request, user: dict = Depends(require_permission("read"))
+):
     """Get system status and metrics"""
     uptime = time.time() - api_state.server_start_time
 
@@ -1500,7 +1673,7 @@ async def get_system_status(http_request: Request, user: dict = Depends(require_
             memory_usage = process.memory_info().rss / (1024 * 1024)
             cpu_usage = process.cpu_percent(interval=0.1)
 
-    histogram = api_state.stats['request_histogram_ms']
+    histogram = api_state.stats["request_histogram_ms"]
     p95_latency = None
     if histogram:
         sorted_hist = sorted(histogram)
@@ -1512,54 +1685,67 @@ async def get_system_status(http_request: Request, user: dict = Depends(require_
     response = SystemStatusResponse(
         status="operational",
         uptime=uptime,
-        active_jobs=len([j for j in api_state.active_jobs.values() if j['status'] == 'processing']),
+        active_jobs=len(
+            [j for j in api_state.active_jobs.values() if j["status"] == "processing"]
+        ),
         queued_jobs=len(api_state.job_queue),
-        completed_jobs=api_state.stats['completed_jobs'],
-        error_rate=api_state.stats['failed_jobs'] / max(1, api_state.stats['total_requests']),
+        completed_jobs=api_state.stats["completed_jobs"],
+        error_rate=api_state.stats["failed_jobs"]
+        / max(1, api_state.stats["total_requests"]),
         memory_usage=memory_usage,
         cpu_usage=cpu_usage,
         # Derived, not a constant: a hardcoded "secure" would keep
         # reporting secure while the circuit breaker is open.
-        security_status=(
-            "degraded" if api_state.circuit_breaker_open else "secure"
-        ),
+        security_status=("degraded" if api_state.circuit_breaker_open else "secure"),
         version=API_VERSION,
         active_sessions=len(api_state.active_sessions),
-        last_request_timestamp=api_state.stats['last_request_timestamp'],
-        last_job_error=api_state.stats['last_job_error'],
+        last_request_timestamp=api_state.stats["last_request_timestamp"],
+        last_job_error=api_state.stats["last_job_error"],
         circuit_breaker_open=api_state.circuit_breaker_open,
-        request_latency_ms=api_state.stats['request_latency_ewma_ms'],
+        request_latency_ms=api_state.stats["request_latency_ewma_ms"],
         request_latency_p95_ms=p95_latency,
         requests_per_minute=requests_per_minute,
     )
 
     client_ip = _get_request_ip(http_request)
     log_audit_event(
-        user['username'], "SYSTEM_STATUS", "system", "SUCCESS",
-        "System status inspected", client_ip, user['session_id']
+        user["username"],
+        "SYSTEM_STATUS",
+        "system",
+        "SUCCESS",
+        "System status inspected",
+        client_ip,
+        user["session_id"],
     )
 
     return response
+
 
 @app.get("/audit/log")
 async def get_audit_log(
     http_request: Request,
     limit: int = Query(100, ge=1),
-    user: dict = Depends(require_permission("audit"))
+    user: dict = Depends(require_permission("audit")),
 ):
     """Get audit log entries"""
     entries = list(api_state.audit_log)[-limit:]
 
     client_ip = _get_request_ip(http_request)
     log_audit_event(
-        user['username'], "AUDIT_READ", "audit_log", "SUCCESS",
-        f"Fetched last {len(entries)} entries", client_ip, user['session_id']
+        user["username"],
+        "AUDIT_READ",
+        "audit_log",
+        "SUCCESS",
+        f"Fetched last {len(entries)} entries",
+        client_ip,
+        user["session_id"],
     )
 
     return {
         "entries": [_model_to_dict(entry) for entry in entries],
-        "total": len(api_state.audit_log)
+        "total": len(api_state.audit_log),
     }
+
 
 # Background job processing
 async def process_batch_job(job_id: str):
@@ -1568,77 +1754,77 @@ async def process_batch_job(job_id: str):
         job_data = api_state.active_jobs[job_id]
 
         if api_state.circuit_breaker_open:
-            job_data['status'] = 'failed'
-            job_data['error'] = 'Circuit breaker open due to recent failures'
-            job_data['completed_at'] = datetime.now(timezone.utc)
-            api_state.stats['failed_jobs'] += 1
+            job_data["status"] = "failed"
+            job_data["error"] = "Circuit breaker open due to recent failures"
+            job_data["completed_at"] = datetime.now(timezone.utc)
+            api_state.stats["failed_jobs"] += 1
             if job_id in api_state.job_queue:
                 api_state.job_queue.remove(job_id)
             _record_job_completion(job_id)
             return
 
         async with JOB_WORKER_SEMAPHORE:
-            job_data['status'] = 'processing'
-            job_data['started_at'] = datetime.now(timezone.utc)
+            job_data["status"] = "processing"
+            job_data["started_at"] = datetime.now(timezone.utc)
 
-            for i, file_name in enumerate(job_data['files']):
+            for i, file_name in enumerate(job_data["files"]):
                 file_path = _resolve_uploaded_path(file_name)
-                job_data['current_file'] = file_name
-                job_data['updated_at'] = datetime.now(timezone.utc)
+                job_data["current_file"] = file_name
+                job_data["updated_at"] = datetime.now(timezone.utc)
 
                 # Process file based on operation
-                if job_data['operation'] == 'analyze':
+                if job_data["operation"] == "analyze":
                     result = await analyze_audio_fast(file_path)
-                elif job_data['operation'] == 'normalize':
+                elif job_data["operation"] == "normalize":
                     output_name = f"normalized_{uuid.uuid4().hex}_{file_name}"
                     sanitized_output = _sanitize_uploaded_name(output_name)
                     output_path = UPLOAD_DIRECTORY / sanitized_output
                     try:
-                        _REQUEST_VALIDATOR.validate_file_path(output_path, operation="create")
+                        _REQUEST_VALIDATOR.validate_file_path(
+                            output_path, operation="create"
+                        )
                     except ChameleonSecurityError as exc:
-                        result = {'success': False, 'error': str(exc)}
+                        result = {"success": False, "error": str(exc)}
                     else:
                         result = await normalize_audio_fast(
-                            file_path, output_path,
-                            target_peak=job_data['options'].get('target_peak', 0.95),
+                            file_path,
+                            output_path,
+                            target_peak=job_data["options"].get("target_peak", 0.95),
                         )
-                        if result.get('success'):
+                        if result.get("success"):
                             try:
                                 output_size = output_path.stat().st_size
                             except FileNotFoundError:
                                 output_size = 0
                             api_state.register_generated_file(
                                 sanitized_output,
-                                owner=job_data['user'],
+                                owner=job_data["user"],
                                 size=output_size,
                                 source_files=[file_name],
-                                operation='normalize',
-                                session_id=job_data.get('owner_session_id'),
+                                operation="normalize",
+                                session_id=job_data.get("owner_session_id"),
                             )
                             # Without this the output is registered for
                             # download under a name the client never learns.
-                            result['output_file'] = sanitized_output
+                            result["output_file"] = sanitized_output
                 else:
-                    result = {'success': False, 'error': 'Unknown operation'}
+                    result = {"success": False, "error": "Unknown operation"}
 
-                job_data['results'].append({
-                    'file': file_name,
-                    'result': result
-                })
-                _update_circuit_breaker(bool(result.get('success')))
+                job_data["results"].append({"file": file_name, "result": result})
+                _update_circuit_breaker(bool(result.get("success")))
 
-                job_data['completed_files'] = i + 1
-                job_data['progress'] = (i + 1) / job_data['total_files']
+                job_data["completed_files"] = i + 1
+                job_data["progress"] = (i + 1) / job_data["total_files"]
 
                 # Pace between files, not after the last one -- a trailing
                 # sleep delays the 'completed' write for no benefit (and
                 # under a request-driven loop may never resume at all).
-                if i + 1 < job_data['total_files']:
+                if i + 1 < job_data["total_files"]:
                     await asyncio.sleep(0.1)
 
-            job_data['status'] = 'completed'
-            job_data['completed_at'] = datetime.now(timezone.utc)
-            api_state.stats['completed_jobs'] += 1
+            job_data["status"] = "completed"
+            job_data["completed_at"] = datetime.now(timezone.utc)
+            api_state.stats["completed_jobs"] += 1
 
             # Remove from queue
             if job_id in api_state.job_queue:
@@ -1648,13 +1834,14 @@ async def process_batch_job(job_id: str):
 
     except Exception as e:
         logging.error(f"Batch job processing error: {e}")
-        job_data['status'] = 'failed'
-        job_data['error'] = str(e)
-        api_state.stats['failed_jobs'] += 1
+        job_data["status"] = "failed"
+        job_data["error"] = str(e)
+        api_state.stats["failed_jobs"] += 1
         if job_id in api_state.job_queue:
             api_state.job_queue.remove(job_id)
         _update_circuit_breaker(False)
         _record_job_completion(job_id)
+
 
 # Startup event
 @app.on_event("startup")
@@ -1684,5 +1871,5 @@ if __name__ == "__main__":
         reload=False,
         ssl_keyfile=None,  # In production: path to SSL key
         ssl_certfile=None,  # In production: path to SSL certificate
-        log_level="info"
+        log_level="info",
     )

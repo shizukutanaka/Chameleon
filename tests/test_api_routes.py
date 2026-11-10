@@ -33,7 +33,8 @@ def client(monkeypatch):
     # both of these set; patched directly since they're read once at import.
     monkeypatch.setattr(api_server, "_DEV_USERNAME", DEV_USERNAME)
     monkeypatch.setattr(
-        api_server, "_DEV_PASSWORD_HASH",
+        api_server,
+        "_DEV_PASSWORD_HASH",
         hashlib.sha256(DEV_PASSWORD.encode("utf-8")).hexdigest(),
     )
     # The fixed-window rate limiter is keyed on the client IP; TestClient
@@ -50,11 +51,16 @@ def client(monkeypatch):
 def _login(client, username=DEV_USERNAME, password=DEV_PASSWORD):
     return client.post(
         "/auth/login",
-        json={"username": username, "password": password, "clearance_level": "UNCLASSIFIED"},
+        json={
+            "username": username,
+            "password": password,
+            "clearance_level": "UNCLASSIFIED",
+        },
     )
 
 
 # ---------------------------------------------------------------- basics --
+
 
 def test_health_check(client):
     response = client.get("/health")
@@ -77,6 +83,7 @@ def test_root_endpoint_has_no_unbacked_marketing_claims(client):
 
 
 # -------------------------------------------------------------------- auth --
+
 
 def test_login_with_correct_credentials_succeeds(client):
     response = _login(client)
@@ -156,6 +163,7 @@ def test_authenticated_endpoint_rejects_garbage_token(client):
 
 # ------------------------------------------------- error-contract regressions --
 
+
 def test_download_missing_file_returns_404_not_500(client):
     """Regression: download_file's bare `except Exception` previously turned
     the 404 from _get_authorized_file_path into a 500 with the original
@@ -187,6 +195,7 @@ def test_batch_submit_missing_file_returns_404_not_200(client):
 
 # ------------------------------------------------------- FLAC claim removed --
 
+
 def test_normalize_rejects_flac_output_format(client):
     """Regression: output_format accepted 'flac' but the stdlib core can only
     write WAV — a file named .flac containing WAV bytes. Now rejected by
@@ -208,13 +217,16 @@ def test_upload_rejects_flac_extension(client):
 
     response = client.post(
         "/audio/upload",
-        files={"file": ("test.flac", b"not really flac data", "application/octet-stream")},
+        files={
+            "file": ("test.flac", b"not really flac data", "application/octet-stream")
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 400
 
 
 # ----------------------------------------- golden path + authorization gaps --
+
 
 def _wav_bytes() -> bytes:
     """Minimal valid mono WAV (0.05s silence) for upload tests."""
@@ -293,7 +305,9 @@ def test_upload_long_ascii_name_fits_component_budget(client, tmp_path, monkeypa
     assert stored.endswith(".wav")
 
 
-def test_upload_long_multibyte_name_fits_component_budget(client, tmp_path, monkeypatch):
+def test_upload_long_multibyte_name_fits_component_budget(
+    client, tmp_path, monkeypatch
+):
     """Same overflow via multi-byte UTF-8: 200 CJK characters are legal per
     sanitize_filename (scrub only strips ASCII specials) but encode to
     600+ bytes."""
@@ -324,7 +338,9 @@ def test_download_unregistered_name_returns_404(client):
     assert response.status_code in (400, 404)
 
 
-def test_batch_normalize_job_produces_a_downloadable_output(client, tmp_path, monkeypatch):
+def test_batch_normalize_job_produces_a_downloadable_output(
+    client, tmp_path, monkeypatch
+):
     """submit → status → download: the generated file's name must reach the
     client in the job results, otherwise the output is registered for
     download but can never be fetched."""
@@ -333,6 +349,7 @@ def test_batch_normalize_job_produces_a_downloadable_output(client, tmp_path, mo
     import struct
     import time
     import wave
+
     monkeypatch.setattr(api_server, "UPLOAD_DIRECTORY", tmp_path)
     login = _login(client)
     token = login.json()["token"]
@@ -345,10 +362,15 @@ def test_batch_normalize_job_produces_a_downloadable_output(client, tmp_path, mo
         w.setnchannels(1)
         w.setsampwidth(2)
         w.setframerate(44100)
-        w.writeframes(struct.pack(
-            "<4410h",
-            *[int(0.3 * 32767 * math.sin(2 * math.pi * 220 * i / 44100)) for i in range(4410)],
-        ))
+        w.writeframes(
+            struct.pack(
+                "<4410h",
+                *[
+                    int(0.3 * 32767 * math.sin(2 * math.pi * 220 * i / 44100))
+                    for i in range(4410)
+                ],
+            )
+        )
 
     up = client.post(
         "/audio/upload",
@@ -409,7 +431,9 @@ def test_cross_owner_download_denied(client):
     assert response.status_code == 403
 
 
-def test_batch_normalize_options_target_peak_reaches_the_output(client, tmp_path, monkeypatch):
+def test_batch_normalize_options_target_peak_reaches_the_output(
+    client, tmp_path, monkeypatch
+):
     """options.target_peak was stored in job_data and then dropped -- the
     normalize call ran at the default 0.95 regardless. The option must
     reach the DSP call and land on the written file."""
@@ -418,6 +442,7 @@ def test_batch_normalize_options_target_peak_reaches_the_output(client, tmp_path
     import struct
     import time
     import wave
+
     monkeypatch.setattr(api_server, "UPLOAD_DIRECTORY", tmp_path)
     login = _login(client)
     token = login.json()["token"]
@@ -428,10 +453,15 @@ def test_batch_normalize_options_target_peak_reaches_the_output(client, tmp_path
         w.setnchannels(1)
         w.setsampwidth(2)
         w.setframerate(44100)
-        w.writeframes(struct.pack(
-            "<4410h",
-            *[int(0.3 * 32767 * math.sin(2 * math.pi * 220 * i / 44100)) for i in range(4410)],
-        ))
+        w.writeframes(
+            struct.pack(
+                "<4410h",
+                *[
+                    int(0.3 * 32767 * math.sin(2 * math.pi * 220 * i / 44100))
+                    for i in range(4410)
+                ],
+            )
+        )
 
     up = client.post(
         "/audio/upload",
@@ -443,8 +473,11 @@ def test_batch_normalize_options_target_peak_reaches_the_output(client, tmp_path
 
     sub = client.post(
         "/batch/submit",
-        json={"files": [stored], "operation": "normalize",
-              "options": {"target_peak": 0.5}},
+        json={
+            "files": [stored],
+            "operation": "normalize",
+            "options": {"target_peak": 0.5},
+        },
         headers=auth,
     )
     assert sub.status_code == 200
@@ -471,6 +504,7 @@ def test_batch_normalize_options_target_peak_reaches_the_output(client, tmp_path
     out_path = tmp_path / result["output_file"]
     with wave.open(str(out_path), "rb") as w:
         import array
+
         samples = array.array("h", w.readframes(w.getnframes()))
     peak = max(abs(x) for x in samples) / 32768.0
     assert abs(peak - 0.5) < 0.02  # 0.5, not the default 0.95
@@ -484,8 +518,7 @@ def test_batch_submit_rejects_options_the_operation_cannot_use(client, monkeypat
     auth = {"Authorization": f"Bearer {token}"}
     sub = client.post(
         "/batch/submit",
-        json={"files": ["x.wav"], "operation": "analyze",
-              "options": {"speed": 2}},
+        json={"files": ["x.wav"], "operation": "analyze", "options": {"speed": 2}},
         headers=auth,
     )
     assert sub.status_code == 422
@@ -509,8 +542,11 @@ def test_login_clearance_is_capped_at_the_configured_maximum(client, monkeypatch
     monkeypatch.setattr(api_server, "_MAX_CLAIMABLE_CLEARANCE", "UNCLASSIFIED")
     login = client.post(
         "/auth/login",
-        json={"username": DEV_USERNAME, "password": DEV_PASSWORD,
-              "clearance_level": "TOP_SECRET"},
+        json={
+            "username": DEV_USERNAME,
+            "password": DEV_PASSWORD,
+            "clearance_level": "TOP_SECRET",
+        },
     )
     assert login.status_code == 200
     # Asked for TOP_SECRET, capped at UNCLASSIFIED -- and the response
@@ -522,16 +558,17 @@ def test_expired_session_is_rejected_and_removed(client, monkeypatch):
     """Expiry is enforced per-request, not just at cleanup time: a session
     whose expires_at is in the past must get 401 and be dropped."""
     from datetime import datetime, timedelta, timezone
+
     login = _login(client)
     token = login.json()["token"]
     session_id = login.json()["user_info"]["session_id"]
     session = api_server.api_state.active_sessions[session_id]
     monkeypatch.setitem(
-        session, "expires_at",
+        session,
+        "expires_at",
         datetime.now(timezone.utc) - timedelta(seconds=1),
     )
-    r = client.get("/system/status",
-                   headers={"Authorization": f"Bearer {token}"})
+    r = client.get("/system/status", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 401
     assert session_id not in api_server.api_state.active_sessions
 
@@ -545,15 +582,26 @@ def test_audit_log_records_real_operations(client, monkeypatch, tmp_path):
     auth = {"Authorization": f"Bearer {token}"}
 
     import io, math, struct, wave
+
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:
-        w.setnchannels(1); w.setsampwidth(2); w.setframerate(44100)
-        w.writeframes(struct.pack("<4410h",
-            *[int(0.3 * 32767 * math.sin(2 * math.pi * 220 * i / 44100))
-              for i in range(4410)]))
-    up = client.post("/audio/upload",
-                     files={"file": ("a.wav", buf.getvalue(), "audio/wav")},
-                     headers=auth)
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(44100)
+        w.writeframes(
+            struct.pack(
+                "<4410h",
+                *[
+                    int(0.3 * 32767 * math.sin(2 * math.pi * 220 * i / 44100))
+                    for i in range(4410)
+                ],
+            )
+        )
+    up = client.post(
+        "/audio/upload",
+        files={"file": ("a.wav", buf.getvalue(), "audio/wav")},
+        headers=auth,
+    )
     assert up.status_code == 200
 
     r = client.get("/audit/log", headers=auth)
@@ -561,8 +609,11 @@ def test_audit_log_records_real_operations(client, monkeypatch, tmp_path):
     ops = {e["operation"] for e in r.json()["entries"]}
     assert {"LOGIN", "UPLOAD"} <= ops, ops
     # Entries carry real fields, not placeholders
-    entry = next(e for e in r.json()["entries"]
-                 if e["operation"] == "UPLOAD" and e["result"] == "SUCCESS")
+    entry = next(
+        e
+        for e in r.json()["entries"]
+        if e["operation"] == "UPLOAD" and e["result"] == "SUCCESS"
+    )
     assert entry["result"] == "SUCCESS" and entry["user"] == DEV_USERNAME
     # The read itself is logged too -- visible on the next fetch.
     r2 = client.get("/audit/log", headers=auth)
@@ -580,8 +631,11 @@ def test_denied_requests_are_audited(client):
     assert r.status_code == 404
 
     log = client.get("/audit/log", headers=auth)
-    denied = [e for e in log.json()["entries"]
-              if e["operation"] == "DOWNLOAD" and e["result"] == "DENIED"]
+    denied = [
+        e
+        for e in log.json()["entries"]
+        if e["operation"] == "DOWNLOAD" and e["result"] == "DENIED"
+    ]
     assert denied, "denied download was not audited"
     assert "404" in denied[-1]["details"]
 
@@ -645,6 +699,7 @@ def test_audit_log_is_bounded():
     # in-memory buffer exists only to serve /audit/log reads -- it must
     # not grow without limit on a long-running server.
     from collections import deque
+
     assert isinstance(api_server.api_state.audit_log, deque)
     assert api_server.api_state.audit_log.maxlen is not None
     cap = api_server.api_state.audit_log.maxlen

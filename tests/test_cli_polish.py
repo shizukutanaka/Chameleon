@@ -90,6 +90,7 @@ def test_server_banner_not_printed_when_uvicorn_missing(tmp_path):
     # start at all. On a uvicorn-less install the banner was a lie followed
     # immediately by the real error.
     import importlib.util
+
     if importlib.util.find_spec("uvicorn") is not None:
         pytest.skip("uvicorn present; the failure path cannot be reached")
 
@@ -102,6 +103,7 @@ def test_server_banner_not_printed_when_uvicorn_missing(tmp_path):
 def test_midi_analyze_error_is_reported_not_swallowed(tmp_path):
     # "No musical content detected" used to print on stdout and still exit 0.
     from tests._helpers import write_wav_raw
+
     silence = tmp_path / "silence.wav"
     write_wav_raw(silence, frames=b"\x00\x00" * 22050)
     result = _run("midi", "analyze", "--input", str(silence), cwd=str(tmp_path))
@@ -197,6 +199,7 @@ def test_reverb_effect_on_stereo_input(tmp_path):
     assert result.returncode == 0
 
     import wave as _wave
+
     out = tmp_path / "stereo_processed.wav"
     assert out.exists()
     with _wave.open(str(out)) as w:
@@ -226,9 +229,12 @@ def test_reverb_does_not_amplify_the_mix(tmp_path):
     assert result.returncode == 0
 
     with _wave.open(str(tmp_path / "tone_processed.wav")) as w:
-        out = np_.frombuffer(w.readframes(w.getnframes()), dtype="<i2").astype(float) / 32768
-    in_rms = float(np_.sqrt(np_.mean(tone ** 2)))
-    out_rms = float(np_.sqrt(np_.mean(out ** 2)))
+        out = (
+            np_.frombuffer(w.readframes(w.getnframes()), dtype="<i2").astype(float)
+            / 32768
+        )
+    in_rms = float(np_.sqrt(np_.mean(tone**2)))
+    out_rms = float(np_.sqrt(np_.mean(out**2)))
     change_db = 20 * np_.log10(out_rms / in_rms)
     assert -3.0 < change_db < 3.0, f"reverb changed level by {change_db:+.1f} dB"
 
@@ -262,6 +268,7 @@ def test_invalid_parallel_env_warns_not_silently_coerced(monkeypatch):
     default -- an env knob you can't tell is broken isn't a knob."""
     import warnings
     import main
+
     monkeypatch.setenv("CHAMELEON_PARALLEL", "banana")
     monkeypatch.delenv("CHAMELEON_MAX_WORKERS", raising=False)
     with warnings.catch_warnings(record=True) as seen:
@@ -339,8 +346,7 @@ def test_midi_compose_unknown_key_prints_no_banner(tmp_path):
     banner: a 'Generating musical composition...' line that precedes the
     refusal claims work that never started (same contract as the stream and
     server banner fixes)."""
-    proc = _run("midi", "compose", "--key", "H", "--output",
-                str(tmp_path / "x.mid"))
+    proc = _run("midi", "compose", "--key", "H", "--output", str(tmp_path / "x.mid"))
     assert proc.returncode == 3
     assert "unknown key 'H'" in proc.stderr
     assert "Generating musical composition" not in proc.stdout
@@ -348,15 +354,13 @@ def test_midi_compose_unknown_key_prints_no_banner(tmp_path):
 
 def test_midi_generate_unknown_key_prints_no_banner(tmp_path):
     """Same pre-refusal banner defect on `midi generate`."""
-    proc = _run("midi", "generate", "--key", "XYZ", "--output",
-                str(tmp_path / "x.mid"))
+    proc = _run("midi", "generate", "--key", "XYZ", "--output", str(tmp_path / "x.mid"))
     assert proc.returncode == 3
     assert "unknown key 'XYZ'" in proc.stderr
     assert "Generating MIDI demo" not in proc.stdout
 
 
 def test_midi_compose_valid_key_still_prints_banner(tmp_path):
-    proc = _run("midi", "compose", "--key", "C", "--output",
-                str(tmp_path / "ok.mid"))
+    proc = _run("midi", "compose", "--key", "C", "--output", str(tmp_path / "ok.mid"))
     assert "Generating musical composition" in proc.stdout
     assert proc.returncode == 0

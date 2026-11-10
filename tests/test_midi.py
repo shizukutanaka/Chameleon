@@ -35,7 +35,7 @@ def test_detect_key_identifies_c_major():
 
     key = analyzer.detect_key(_c_major_progression())
 
-    assert key.tonic == 0          # C
+    assert key.tonic == 0  # C
     assert key.mode == "major"
     assert key.confidence > 0.5
 
@@ -54,12 +54,11 @@ def test_midi_varint_encodes_deltas_over_127_ticks(tmp_path):
     # that way is "generated" only in name.
     analyzer = MIDIAnalyzer()
     out = tmp_path / "n.mid"
-    note = MIDINote(pitch=69, velocity=100, start_time=0.0, duration=1.0,
-                    channel=0)
+    note = MIDINote(pitch=69, velocity=100, start_time=0.0, duration=1.0, channel=0)
     assert analyzer.generate_midi_file([note], str(out)) is True
 
     data = out.read_bytes()
-    track = data[data.find(b"MTrk") + 8:]
+    track = data[data.find(b"MTrk") + 8 :]
     # strict sequential parse: delta varint, then event
     i = 0
     deltas = []
@@ -100,7 +99,7 @@ def test_midi_duration_scales_with_tempo(tmp_path):
 
     def off_delta(path):
         track = path.read_bytes()
-        track = track[track.find(b"MTrk") + 8:]
+        track = track[track.find(b"MTrk") + 8 :]
         i = 0
         while i < len(track):
             delta = 0
@@ -123,7 +122,8 @@ def test_midi_duration_scales_with_tempo(tmp_path):
     for tempo, expected in ((60, 480), (120, 960), (240, 1920)):
         out = tmp_path / f"t{tempo}.mid"
         analyzer.generate_midi_file(
-            [MIDINote(69, 100, 0.0, 1.0)], str(out), tempo_bpm=tempo)
+            [MIDINote(69, 100, 0.0, 1.0)], str(out), tempo_bpm=tempo
+        )
         delta = off_delta(out)
         # playback seconds = delta / tpq * (60 / bpm) == 1.0 always
         assert delta == expected
@@ -137,11 +137,12 @@ def test_compose_writes_eighth_notes_at_any_tempo(tmp_path):
     import subprocess
     import sys
     from pathlib import Path
+
     main_py = str(Path(__file__).resolve().parent.parent / "main.py")
 
     def on_deltas(path):
         data = path.read_bytes()
-        track = data[data.find(b"MTrk") + 8:]
+        track = data[data.find(b"MTrk") + 8 :]
         i = 0
         out = []
         while i < len(track):
@@ -163,18 +164,36 @@ def test_compose_writes_eighth_notes_at_any_tempo(tmp_path):
         return out
 
     import midi_analysis as _m
+
     if not getattr(_m, "MIDIAnalyzer", None):
         raise AssertionError("unreachable")
 
     for tempo in (120, 240):
         out = tmp_path / f"c{tempo}.mid"
         proc = subprocess.run(
-            [sys.executable, main_py, "midi", "compose",
-             "--output", str(out), "--tempo", str(tempo),
-             "--length", "4", "--key", "C", "--mode", "major"],
-            capture_output=True, text=True, timeout=30)
+            [
+                sys.executable,
+                main_py,
+                "midi",
+                "compose",
+                "--output",
+                str(out),
+                "--tempo",
+                str(tempo),
+                "--length",
+                "4",
+                "--key",
+                "C",
+                "--mode",
+                "major",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
         if proc.returncode != 0:
             import pytest
+
             pytest.skip("midi compose unavailable in this environment")
         deltas = on_deltas(out)
         assert deltas and all(d == 240 for d in deltas), deltas
@@ -187,12 +206,16 @@ def test_midi_analyze_on_mid_file_explains_the_trap(tmp_path):
     import subprocess
     import sys
     from pathlib import Path
+
     main_py = str(Path(__file__).resolve().parent.parent / "main.py")
     mid = tmp_path / "x.mid"
     mid.write_bytes(b"MThd" + b"\x00" * 20)
     proc = subprocess.run(
         [sys.executable, main_py, "midi", "analyze", "--input", str(mid)],
-        capture_output=True, text=True, timeout=30)
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
     assert proc.returncode == 3  # INPUT
     assert "audio file" in proc.stderr
 
@@ -205,22 +228,33 @@ def test_midi_compose_rejects_nonfinite_tempo_and_length(tmp_path):
     import subprocess
     import sys
     from pathlib import Path
+
     main_py = str(Path(__file__).resolve().parent.parent / "main.py")
     out = tmp_path / "m.mid"
-    for extra in [["--tempo", "nan"], ["--tempo", "inf"],
-                  ["--length", "nan"], ["--length", "inf"]]:
+    for extra in [
+        ["--tempo", "nan"],
+        ["--tempo", "inf"],
+        ["--length", "nan"],
+        ["--length", "inf"],
+    ]:
         proc = subprocess.run(
-            [sys.executable, main_py, "midi", "compose",
-             *extra, "--output", str(out)],
-            capture_output=True, text=True, timeout=30)
+            [sys.executable, main_py, "midi", "compose", *extra, "--output", str(out)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
         assert proc.returncode == 3, (extra, proc.stderr)
         assert "finite" in proc.stderr.lower()
         assert not out.exists()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason=(
-    "a read-only attribute on a Windows directory does not prevent "
-    "creating files inside it, so the chmod-555 fixture stays writable"))
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason=(
+        "a read-only attribute on a Windows directory does not prevent "
+        "creating files inside it, so the chmod-555 fixture stays writable"
+    ),
+)
 def test_midi_output_into_unwritable_dir_exits_input(tmp_path):
     """`midi compose --output` into a chmod-555 dir used to build the whole
     MIDI file in memory, then surface PermissionError as ERROR(1). The
@@ -228,15 +262,27 @@ def test_midi_output_into_unwritable_dir_exits_input(tmp_path):
     import subprocess
     import sys
     from pathlib import Path
+
     main_py = str(Path(__file__).resolve().parent.parent / "main.py")
     locked = tmp_path / "locked"
     locked.mkdir()
     locked.chmod(0o555)
     try:
         proc = subprocess.run(
-            [sys.executable, main_py, "midi", "compose", "--length", "4",
-             "--output", str(locked / "x.mid")],
-            capture_output=True, text=True, timeout=30)
+            [
+                sys.executable,
+                main_py,
+                "midi",
+                "compose",
+                "--length",
+                "4",
+                "--output",
+                str(locked / "x.mid"),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
     finally:
         locked.chmod(0o755)
     assert proc.returncode == 3
@@ -262,16 +308,17 @@ def test_parse_midi_from_audio_propagates_analyzer_crash(monkeypatch):
     reported "No MIDI notes extracted" on an internal bug. Extraction
     failures propagate now; the caller decides how to surface them."""
     import math
+
     analyzer = MIDIAnalyzer()
 
     def _boom(*args, **kwargs):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(analyzer, "_estimate_pitch", _boom)
-    audio = [0.3 * math.sin(2 * math.pi * 440 * i / 44100)
-             for i in range(44100)]
+    audio = [0.3 * math.sin(2 * math.pi * 440 * i / 44100) for i in range(44100)]
 
     import pytest
+
     with pytest.raises(RuntimeError, match="boom"):
         analyzer.parse_midi_from_audio(audio, 44100)
 
@@ -283,6 +330,7 @@ def test_estimate_pitch_propagates_non_audio_input():
     analyzer = MIDIAnalyzer()
 
     import pytest
+
     with pytest.raises(TypeError):
         analyzer._estimate_pitch([None] * 2048, 44100)
 
@@ -301,6 +349,7 @@ def test_analyze_harmony_reports_each_template_types_real_quality():
     # same. Assert the full vocabulary maps to its true quality and the
     # roman numeral's case tracks triad quality (lower = minor-family).
     from midi_analysis import Chord, MusicalKey
+
     analyzer = MIDIAnalyzer()
     key = MusicalKey(tonic=0, mode="major", confidence=0.9)
 
@@ -321,8 +370,14 @@ def test_analyze_harmony_reports_each_template_types_real_quality():
         "min6": ("minor", "vi"),
     }
     for chord_type, (quality, roman) in expected.items():
-        chord = Chord(root=9, chord_type=chord_type, notes=[9, 12, 16],
-                      start_time=0.0, duration=2.0, confidence=0.9)
+        chord = Chord(
+            root=9,
+            chord_type=chord_type,
+            notes=[9, 12, 16],
+            start_time=0.0,
+            duration=2.0,
+            confidence=0.9,
+        )
         result = analyzer.analyze_harmony([chord], key)
         entry = result["progression"][0]
         assert entry["quality"] == quality, f"{chord_type}: {entry['quality']}"
@@ -336,6 +391,7 @@ def test_parse_midi_rejects_nonpositive_or_nonfinite_sample_rate():
     # nothing and reported "no notes"; nan/inf did the same via int().
     import math
     import pytest
+
     analyzer = MIDIAnalyzer()
     for bad in (0, -8000, -1, math.nan, math.inf, -math.inf):
         with pytest.raises(ValueError, match="sample_rate"):
@@ -355,6 +411,7 @@ def test_parse_midi_normal_rate_still_extracts_notes():
     # Regression guard: a 440 Hz sine at 44.1 kHz still yields an A4 note,
     # so the validation did not disturb the working path.
     import math
+
     analyzer = MIDIAnalyzer()
     sr = 44100
     audio = [0.5 * math.sin(2 * math.pi * 440 * i / sr) for i in range(sr // 4)]
@@ -369,11 +426,18 @@ def test_generate_melody_anchors_to_first_chord():
     # requested length before the first chord -- the shipped demo printed
     # "Generated Melody:" followed by silence.
     from midi_analysis import Chord, MusicalKey, MIDIComposer, MIDIConfig
+
     composer = MIDIComposer(MIDIConfig())
     key = MusicalKey(tonic=0, mode="major", confidence=1.0)
     chords = [
-        Chord(root=0, chord_type="major", notes=[0, 4, 7],
-              start_time=t, duration=2.0, confidence=1.0)
+        Chord(
+            root=0,
+            chord_type="major",
+            notes=[0, 4, 7],
+            start_time=t,
+            duration=2.0,
+            confidence=1.0,
+        )
         for t in (8.0, 10.0, 12.0, 14.0)
     ]
     melody = composer.generate_melody(chords, key, length=4.0)
@@ -384,21 +448,37 @@ def test_generate_melody_anchors_to_first_chord():
 
 def test_generate_melody_zero_anchored_unchanged():
     from midi_analysis import Chord, MusicalKey, MIDIComposer, MIDIConfig
+
     composer = MIDIComposer(MIDIConfig())
     key = MusicalKey(tonic=0, mode="major", confidence=1.0)
-    chords = [Chord(root=0, chord_type="major", notes=[0, 4, 7],
-                    start_time=0.0, duration=8.0, confidence=1.0)]
+    chords = [
+        Chord(
+            root=0,
+            chord_type="major",
+            notes=[0, 4, 7],
+            start_time=0.0,
+            duration=8.0,
+            confidence=1.0,
+        )
+    ]
     melody = composer.generate_melody(chords, key, length=2.0)
     assert [n.pitch for n in melody] == [60, 64, 67, 60]
 
 
 def test_generate_melody_anchors_on_unsorted_chords():
     from midi_analysis import Chord, MusicalKey, MIDIComposer, MIDIConfig
+
     composer = MIDIComposer(MIDIConfig())
     key = MusicalKey(tonic=0, mode="major", confidence=1.0)
     chords = [
-        Chord(root=0, chord_type="major", notes=[0, 4, 7],
-              start_time=t, duration=2.0, confidence=1.0)
+        Chord(
+            root=0,
+            chord_type="major",
+            notes=[0, 4, 7],
+            start_time=t,
+            duration=2.0,
+            confidence=1.0,
+        )
         for t in (14.0, 8.0)  # later chord listed first
     ]
     melody = composer.generate_melody(chords, key, length=2.0)
@@ -407,15 +487,18 @@ def test_generate_melody_anchors_on_unsorted_chords():
 
 # --- suggest_next_chord transition table -----------------------------------
 
+
 def test_suggest_next_chord_follows_standard_progressions():
     # The transition table's own comments promised I -> V, IV, vi; the
     # semitone entries actually emitted III, V, VI, IV -- indexing off by
     # the accidental rows of the roman table.
     from midi_analysis import MIDIComposer, Chord, MusicalKey
+
     composer = MIDIComposer()
     key = MusicalKey(tonic=0, mode="major", confidence=0.9)
-    i_chord = Chord(root=0, chord_type="major", notes=[0, 4, 7],
-                    start_time=0.0, duration=2.0)
+    i_chord = Chord(
+        root=0, chord_type="major", notes=[0, 4, 7], start_time=0.0, duration=2.0
+    )
     suggestions = composer.suggest_next_chord([i_chord], key)
     romans = [r for r, _p in suggestions]
     assert romans == ["V", "IV", "vi", "ii"]
@@ -423,10 +506,12 @@ def test_suggest_next_chord_follows_standard_progressions():
 
 def test_suggest_next_chord_after_dominant_resolves_to_tonic():
     from midi_analysis import MIDIComposer, Chord, MusicalKey
+
     composer = MIDIComposer()
     key = MusicalKey(tonic=0, mode="major", confidence=0.9)
-    v_chord = Chord(root=7, chord_type="major", notes=[7, 11, 2],
-                    start_time=0.0, duration=2.0)
+    v_chord = Chord(
+        root=7, chord_type="major", notes=[7, 11, 2], start_time=0.0, duration=2.0
+    )
     romans = [r for r, _p in composer.suggest_next_chord([v_chord], key)]
     assert romans[0] == "I"
 
@@ -434,10 +519,12 @@ def test_suggest_next_chord_after_dominant_resolves_to_tonic():
 def test_suggest_next_chord_marks_minor_targets_lowercase():
     # A minor-mode i is a minor tonic -- reporting it "I" would claim major.
     from midi_analysis import MIDIComposer, Chord, MusicalKey
+
     composer = MIDIComposer()
     key = MusicalKey(tonic=9, mode="minor", confidence=0.9)  # A minor
-    v_chord = Chord(root=9 + 7, chord_type="major", notes=[4, 8, 11],
-                    start_time=0.0, duration=2.0)
+    v_chord = Chord(
+        root=9 + 7, chord_type="major", notes=[4, 8, 11], start_time=0.0, duration=2.0
+    )
     romans = [r for r, _p in composer.suggest_next_chord([v_chord], key)]
     assert romans[0] == "i"
 
@@ -448,11 +535,14 @@ def test_generate_melody_rejects_non_finite_and_non_positive_length():
     melody. The CLI guards --length but the direct API did not."""
     import pytest
     from midi_analysis import MIDIComposer, Chord, MusicalKey
+
     composer = MIDIComposer()
-    key = MusicalKey(tonic=0, mode="major", confidence=1.0,
-                     scale_notes=[0, 2, 4, 5, 7, 9, 11])
-    chord = Chord(root=0, chord_type="major", notes=[0, 4, 7],
-                  start_time=0.0, duration=8.0)
+    key = MusicalKey(
+        tonic=0, mode="major", confidence=1.0, scale_notes=[0, 2, 4, 5, 7, 9, 11]
+    )
+    chord = Chord(
+        root=0, chord_type="major", notes=[0, 4, 7], start_time=0.0, duration=8.0
+    )
     for bad in (float("inf"), float("nan"), -1.0, 0.0):
         with pytest.raises(ValueError, match="positive finite"):
             composer.generate_melody([chord], key, length=bad)
@@ -460,9 +550,12 @@ def test_generate_melody_rejects_non_finite_and_non_positive_length():
 
 def test_generate_melody_still_generates_for_valid_length():
     from midi_analysis import MIDIComposer, Chord, MusicalKey
+
     composer = MIDIComposer()
-    key = MusicalKey(tonic=0, mode="major", confidence=1.0,
-                     scale_notes=[0, 2, 4, 5, 7, 9, 11])
-    chord = Chord(root=0, chord_type="major", notes=[0, 4, 7],
-                  start_time=0.0, duration=8.0)
+    key = MusicalKey(
+        tonic=0, mode="major", confidence=1.0, scale_notes=[0, 2, 4, 5, 7, 9, 11]
+    )
+    chord = Chord(
+        root=0, chord_type="major", notes=[0, 4, 7], start_time=0.0, duration=8.0
+    )
     assert len(composer.generate_melody([chord], key, length=8.0)) == 16
