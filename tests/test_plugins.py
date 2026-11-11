@@ -466,6 +466,41 @@ def test_execute_with_limits_times_out_off_main_thread():
     assert result == ["timeout"]
 
 
+def test_execute_with_limits_timeout_restores_memory_limit_immediately():
+    """Regression: a timed-out off-main-thread call must not leave the
+    process memory cap behind. The abandoned daemon keeps sleeping, but
+    the caller restores the pre-call RLIMIT_AS as soon as it raises --
+    previously the cap stayed at max_memory_mb for the callable's whole
+    remaining lifetime, and a later Thread.start() in a process whose
+    address space exceeded the cap then hung forever (the CI hang)."""
+    import plugin_system
+
+    if plugin_system.resource is None:
+        pytest.skip("resource module unavailable on this platform")
+    resource = plugin_system.resource
+
+    before = resource.getrlimit(resource.RLIMIT_AS)
+
+    import time
+
+    sandbox = PluginSandbox(PluginConfig(max_execution_time=1))
+    result = []
+
+    def run():
+        try:
+            sandbox.execute_with_limits(lambda: time.sleep(30))
+            result.append("no timeout")
+        except TimeoutError:
+            result.append("timeout")
+
+    worker = threading.Thread(target=run)
+    worker.start()
+    worker.join(10)
+
+    assert result == ["timeout"]
+    assert resource.getrlimit(resource.RLIMIT_AS) == before
+
+
 class _PosixRlimit:
     """resource stand-in with POSIX semantics: an unprivileged process may
     lower the hard limit but can never raise it again."""

@@ -298,6 +298,27 @@ class PluginSandbox:
                     "Unable to restore memory limit after sandbox execution"
                 )
 
+    def _snapshot_memory_limit(self):
+        """The current (soft, hard) RLIMIT_AS pair, or None when memory
+        limits are not in play on this platform/configuration."""
+        if resource is None or not self.config.max_memory_mb:
+            return None
+        try:
+            return resource.getrlimit(resource.RLIMIT_AS)
+        except (ValueError, AttributeError, OSError):
+            return None
+
+    def _restore_memory_limit(self, snapshot) -> None:
+        """Put back a pair saved by _snapshot_memory_limit (best effort)."""
+        if snapshot is None or resource is None:
+            return
+        try:
+            resource.setrlimit(resource.RLIMIT_AS, snapshot)
+        except Exception:  # pragma: no cover - best effort rollback
+            self.logger.warning(
+                "Unable to restore memory limit after sandbox execution"
+            )
+
     def is_safe_import(self, module_name: str) -> bool:
         """Check if module import is safe"""
         if not self.config.sandbox_mode:
@@ -369,29 +390,45 @@ class PluginSandbox:
         worker = threading.Thread(
             target=target, name="plugin-sandbox-exec", daemon=True
         )
-        worker.start()
 
-        if max_time > 0:
-            worker.join(max_time)
-        else:
-            worker.join()
-
-        if worker.is_alive():
-            self.logger.error(
-                "Plugin execution exceeded timeout of %.2f seconds; continuing with failure",
-                max_time,
-            )
-            raise TimeoutError("Plugin execution timed out")
-
+        # The worker applies the memory limit to the whole process, and on
+        # the timeout path it keeps that limit applied until the abandoned
+        # callable eventually returns -- a timed-out call used to leave the
+        # host process capped for the callable's remaining lifetime (30s in
+        # the wild), which can starve later thread creation and hang the
+        # host outright when its address space already exceeds the cap.
+        # The caller therefore restores the pre-call limits itself as soon
+        # as the join ends, whichever way the call went; the worker's own
+        # rollback writes the same values when it does finish.
+        saved_limit = self._snapshot_memory_limit()
         try:
-            success, payload = result_queue.get_nowait()
-        except queue.Empty:
-            raise RuntimeError("Plugin execution completed without returning a result")
+            worker.start()
 
-        if success:
-            return payload
+            if max_time > 0:
+                worker.join(max_time)
+            else:
+                worker.join()
 
-        raise payload
+            if worker.is_alive():
+                self.logger.error(
+                    "Plugin execution exceeded timeout of %.2f seconds; continuing with failure",
+                    max_time,
+                )
+                raise TimeoutError("Plugin execution timed out")
+
+            try:
+                success, payload = result_queue.get_nowait()
+            except queue.Empty:
+                raise RuntimeError(
+                    "Plugin execution completed without returning a result"
+                )
+
+            if success:
+                return payload
+
+            raise payload
+        finally:
+            self._restore_memory_limit(saved_limit)
 
 
 class PluginLoader:
