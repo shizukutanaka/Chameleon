@@ -143,8 +143,14 @@ def test_region_edges_are_not_halved(declipper):
 def test_the_crossfade_weights_sum_to_one(declipper):
     # Structural version of the same check, so a future edit that reintroduces
     # an unbalanced blend fails even if the sine happens to survive it.
+    # The comparison is done with all whitespace stripped: the blend
+    # expression wraps across lines in the source, and matching the literal
+    # "(1.0 - window)" broke purely on that formatting while the arithmetic
+    # was correct. (The blend weights themselves are not observable from
+    # outside without re-deriving the interpolation, so this pins the
+    # expression's shape rather than its layout.)
     import inspect
 
-    source = inspect.getsource(declipper.restore_clipped)
-    assert "(1 - window) * 0.5" not in source
-    assert "(1.0 - window)" in source
+    source = "".join(inspect.getsource(declipper.restore_clipped).split())
+    assert "(1-window)*0.5" not in source
+    assert "(1.0-window)" in source
