@@ -387,7 +387,6 @@ MIT License - See LICENSE for details
 - **Issues**: https://github.com/shizukutanaka/Chameleon/issues
 - **Documentation**: See `docs/` directory
 - **Security Issues**: Report via GitHub Security Advisories
-- **Support development**: Chameleon is free and MIT-licensed. If it saves you time, you can support its maintenance via [GitHub Sponsors](https://github.com/sponsors/shizukutanaka).
 
 ---
 

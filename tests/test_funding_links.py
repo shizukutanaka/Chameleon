@@ -24,5 +24,8 @@ def test_funding_url_matches_package_metadata():
     assert re.search(r'(?m)^\s*"Funding":\s*"([^"]+)"', setup).group(1) == SPONSORS_URL
 
 
-def test_readme_contains_funding_url():
-    assert SPONSORS_URL in (ROOT / "README.md").read_text(encoding="utf-8")
+def test_readme_has_no_funding_url():
+    # Display policy (2026-11-13): FUNDING.yml above stays as the Sponsors
+    # entry point, but the README must not solicit donations on the
+    # repository page itself.
+    assert SPONSORS_URL not in (ROOT / "README.md").read_text(encoding="utf-8")
