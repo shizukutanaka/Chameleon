@@ -62,13 +62,16 @@ real-time streaming require optional dependencies.
 
 ### Installation
 
+Chameleon is **not published on PyPI yet** — install from source:
+
 ```bash
-# Standard install (from PyPI)
-pip install chameleon-audio
+git clone https://github.com/shizukutanaka/Chameleon.git
+cd Chameleon
+pip install .            # core CLI only
 
 # With optional capabilities
-pip install "chameleon-audio[audio]"  # numpy/scipy/librosa/soundfile/pyaudio — full pipeline
-pip install "chameleon-audio[api]"    # fastapi/uvicorn/pydantic — REST API server
+pip install ".[audio]"  # numpy/scipy/librosa/soundfile/pyaudio — full pipeline
+pip install ".[api]"    # fastapi/uvicorn/pydantic — REST API server
 ```
 
 Requires Python 3.11 or newer. The core CLI needs no third-party packages
@@ -98,9 +101,9 @@ The core CLI runs on the standard library alone. Optional capabilities are
 grouped as installable extras (single source of truth in `pyproject.toml`):
 
 ```bash
-pip install chameleon-audio          # core CLI only
-pip install "chameleon-audio[audio]" # numpy/scipy/librosa/soundfile/pyaudio — full pipeline
-pip install "chameleon-audio[api]"   # fastapi/uvicorn/pydantic — REST API server
+pip install .          # core CLI only
+pip install ".[audio]" # numpy/scipy/librosa/soundfile/pyaudio — full pipeline
+pip install ".[api]"   # fastapi/uvicorn/pydantic — REST API server
 
 # From a source checkout, the same tiers install in editable mode:
 pip install -e .          # core CLI only
@@ -116,8 +119,8 @@ already-deleted modules). The extras above are the only supported path.
 
 ### Basic Usage
 
-After installing (either `pip install chameleon-audio` or, from source,
-`pip install -e .`) the `chameleon` console command is available
+After installing (from source, `pip install .` or `pip install -e .`)
+the `chameleon` console command is available
 (equivalent to `python main.py`):
 
 ```bash
