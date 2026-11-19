@@ -21,9 +21,15 @@ that is actually here.
 """
 
 import re
+import shlex
+import subprocess
+import sys
+import wave
 from pathlib import Path
 
 import pytest
+
+from tests._helpers import write_sine_wave
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -126,6 +132,43 @@ def test_no_doc_tells_you_to_run_a_script_that_does_not_exist():
     ), "Documentation invokes script(s) that do not exist:\n  " + "\n  ".join(
         violations
     )
+
+
+def test_readme_quick_start_normalizes_wavs_without_installing(tmp_path, monkeypatch):
+    readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+    quick_start = readme.split("## Quick Start\n", 1)[1].split("\n### ", 1)[0]
+    command = next(
+        (line for line in quick_start.splitlines() if line.startswith("python main.py ")),
+        None,
+    )
+    assert command, "Quick Start should lead with a command that runs from source"
+    assert "pip install" not in quick_start
+    _, script, *args = shlex.split(command)
+
+    inputs = tmp_path / "wavs"
+    inputs.mkdir()
+    sources = [
+        write_sine_wave(inputs / name, duration=0.05)
+        for name in ("first.wav", "second.wav")
+    ]
+    originals = [source.read_bytes() for source in sources]
+    monkeypatch.setenv("CHAMELEON_LOG_DIR", str(tmp_path / "logs"))
+    # Ignore Python environment overrides and omit site-packages.
+    result = subprocess.run(
+        [sys.executable, "-E", "-S", str(PROJECT_ROOT / script), *args],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "Processed 2/2 files successfully" in result.stdout
+    for source, original in zip(sources, originals):
+        output = tmp_path / "normalized" / f"{source.stem}_normalized.wav"
+        with wave.open(str(output)) as normalized:
+            assert normalized.getnframes() == 2205
+        assert output.read_bytes() != original
+        assert source.read_bytes() == original
 
 
 @pytest.mark.parametrize(
