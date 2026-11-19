@@ -60,22 +60,36 @@ real-time streaming require optional dependencies.
 
 ## Quick Start
 
-### Installation
-
-Chameleon is **not published on PyPI yet** — install from source:
+Once you have the source, you can run the core offline with Python 3.11 or
+newer, without pip or a virtual environment.
 
 ```bash
 git clone https://github.com/shizukutanaka/Chameleon.git
 cd Chameleon
+```
+
+Pass your existing PCM WAV folder and an output folder. This example reads
+`wavs/`, writes peak-normalized copies to `normalized/`, and leaves the
+originals in place. Quote paths that contain spaces.
+
+```bash
+python main.py batch wavs normalize --output-dir normalized
+```
+
+Use `python3` or `py -3` if that is how you invoke Python 3.11+ on your system.
+
+### Installation
+
+Chameleon is **not published on PyPI yet**. From the source checkout, install
+the console command or optional extras with pip.
+
+```bash
 pip install .            # core CLI only
 
 # With optional capabilities
 pip install ".[audio]"  # numpy/scipy/librosa/soundfile/pyaudio — full pipeline
 pip install ".[api]"    # fastapi/uvicorn/pydantic — REST API server
 ```
-
-Requires Python 3.11 or newer. The core CLI needs no third-party packages
-(standard library only), so the plain install above is fully functional.
 
 #### From source (for developers)
 

@@ -152,6 +152,15 @@ this section instead of re-litigating closed decisions.
 
 ### Resolved questions
 
+**Q (2026-11-19):** Does the first WAV batch need a package installation?
+
+**A:** Running `main.py` from a source checkout needs only Python 3.11+ for
+core WAV operations. In a fresh environment with the package index and pip
+cache disabled, `pip install .` failed while fetching build dependencies.
+Quick Start now leads with a batch that writes normalized copies to a
+separate folder. A test executes the README command with site-packages
+disabled and checks the outputs and originals.
+
 **Q: What does "auditable" concretely mean in this codebase?**
 A (2026-06): The audit trail is `SecurityValidator`: every file-access attempt is checked
 against a trusted-root allowlist, and rejections are logged. That is the full scope of
