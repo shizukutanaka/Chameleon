@@ -53,6 +53,20 @@
   ~11x vs flat TPDF on a sub-LSB input). Output lands exactly on the
   int16 grid so the PCM write stays transparent.
 
+### Performance
+
+- **Optional Rust accelerator for the BS.1770 loudness kernels** --
+  `bs1770_loudness`'s per-sample Python loops (K-weighting, block
+  energies, true-peak oversampling) put a 3-minute mono file's
+  integrated-loudness measurement at 6.7 s on the audit VM. A source
+  checkout can now build `rust/chameleon-accel/` into a local extension
+  served through `accel.py`'s guarded dispatch: bit-identical results
+  (pinned by golden values in `tests/test_accel.py`), measured
+  6.68 s -> 1.26 s for integrated loudness and 0.81 s -> 0.01 s for
+  true-peak over 65k samples. It is never required and never shipped --
+  absent the built module, or with `CHAMELEON_ACCEL=0`, the pure-Python
+  path runs exactly as before. See CHARTER.md §9 (2026-11-24).
+
 ### Fixed
 
 - **`--convert-bit-depth 32` wrote an IEEE-float WAV that Chameleon
