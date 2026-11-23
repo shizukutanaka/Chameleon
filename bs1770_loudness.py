@@ -27,6 +27,12 @@ Scope, stated honestly (this is not a certified loudness meter):
   `analyze --loudness`, which analyzes a bounded prefix of the file). The
   true-peak path costs ~0.4s per 65k samples in pure Python, so the same
   bound applies.
+- An optional Rust accelerator (see accel.py) can serve the four
+  sample-loop primitives below -- K-weighting, both block-energy sums,
+  and the oversampled peak -- bit-identically when it has been built
+  locally. It is never required, never shipped, and every call falls
+  back to the pure-Python implementation here when it is absent, disabled
+  (CHAMELEON_ACCEL=0), or fails.
 """
 
 from __future__ import annotations
@@ -34,6 +40,11 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from typing import List, Sequence
+
+try:
+    import accel as _accel
+except ImportError:
+    _accel = None  # type: ignore[assignment]
 
 # Absolute gate per BS.1770-4: blocks quieter than -70 LUFS are discarded
 # outright before the relative gate is computed.
@@ -137,8 +148,30 @@ def apply_k_weighting(samples: Sequence[float], sample_rate: int) -> List[float]
             f"sample_rate must be >= {_MIN_SAMPLE_RATE_HZ} Hz for stable "
             f"K-weighting (got {sample_rate})"
         )
-    stage1 = _apply_biquad(samples, _stage1_head_effects(sample_rate))
-    stage2 = _apply_biquad(stage1, _stage2_high_pass(sample_rate))
+    stage1_coeffs = _stage1_head_effects(sample_rate)
+    stage2_coeffs = _stage2_high_pass(sample_rate)
+    if _accel is not None:
+        weighted = _accel.k_weight(
+            samples,
+            (
+                stage1_coeffs.b0,
+                stage1_coeffs.b1,
+                stage1_coeffs.b2,
+                stage1_coeffs.a1,
+                stage1_coeffs.a2,
+            ),
+            (
+                stage2_coeffs.b0,
+                stage2_coeffs.b1,
+                stage2_coeffs.b2,
+                stage2_coeffs.a1,
+                stage2_coeffs.a2,
+            ),
+        )
+        if weighted is not None:
+            return weighted
+    stage1 = _apply_biquad(samples, stage1_coeffs)
+    stage2 = _apply_biquad(stage1, stage2_coeffs)
     return stage2
 
 
@@ -149,6 +182,11 @@ def _block_mean_squares(weighted: Sequence[float], sample_rate: int) -> List[flo
     hop = max(1, int(round(_HOP_SECONDS * sample_rate)))
     if len(weighted) < block_size:
         return []
+
+    if _accel is not None:
+        accelerated = _accel.block_mean_squares(weighted, block_size, hop)
+        if accelerated is not None:
+            return accelerated
 
     blocks: List[float] = []
     for start in range(0, len(weighted) - block_size + 1, hop):
@@ -223,6 +261,13 @@ def _block_summed_mean_squares(
     length = min(len(channel) for channel in weighted_channels)
     if length < block_size:
         return []
+
+    if _accel is not None:
+        accelerated = _accel.block_summed_mean_squares(
+            weighted_channels, weights, block_size, hop
+        )
+        if accelerated is not None:
+            return accelerated
 
     blocks: List[float] = []
     for start in range(0, length - block_size + 1, hop):
@@ -588,6 +633,10 @@ def _oversampled_abs_peak(samples: Sequence[float]) -> float:
     n = len(samples)
     if n == 0:
         return 0.0
+    if _accel is not None:
+        accelerated = _accel.oversampled_abs_peak(samples, _TRUE_PEAK_PHASES)
+        if accelerated is not None:
+            return accelerated
     peak = 0.0
     for i in range(n):
         for phase in _TRUE_PEAK_PHASES:

@@ -117,6 +117,7 @@ py-modules = [
     "audio_restoration", "mastering_chain",
     "ux_improvements",
     "bs1770_loudness",
+    "accel",
     "personal_config",
 ]
 include-package-data = true

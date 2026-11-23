@@ -68,3 +68,6 @@ processed/
 # Config overrides
 config.local.yaml
 settings.local.json
+
+# Rust accelerator build artifacts (the .so itself is covered by *.so)
+rust/chameleon-accel/target/
