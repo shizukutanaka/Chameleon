@@ -2083,6 +2083,37 @@ mention*. Pre-flight rejections are now appended to the results so the
 denominator is the input count and the exit code classifies them the
 same way the all-rejected sentinel already did.
 
+**Q (2026-11-24): Does an optional Rust accelerator for the BS.1770
+kernels violate §1/§3's zero-dependency core?**
+A: No -- provided it is layered exactly like the `[audio]` extra, which
+§7 already decided is convenience on top of an unchanged identity. The
+four sample-loop primitives of `bs1770_loudness` (K-weighting biquads,
+both block-energy sums, the oversampled true-peak scan) are per-sample
+Python; a 3-minute mono file's integrated-loudness measurement took
+6.7 s of pure loop on the audit VM (and ~25 s in the survey that
+proposed this). `accel.py` dispatches to a locally built Rust extension
+(`rust/chameleon-accel/`) only when it imports *and* `CHAMELEON_ACCEL`
+is not set to 0; the .so is a git-ignored build artifact, is not in any
+package, and every native call that fails degrades to the Python
+implementation. The default install's behavior is therefore unchanged
+-- including its numbers: the kernels replicate the Python primitives
+operation-for-operation (Neumaier summation matching CPython's float
+`sum()`; true-peak phases built by Python and passed in as data, since
+libm `sin`/`cos` may differ in the last ulp across languages), and
+`tests/test_accel.py` pins bit-identity against golden values recorded
+from the pre-accelerator implementation. One real bug was caught by
+that differential testing before it shipped: the weighted multichannel
+sum's operand order -- Python's `weight * sum / block_size` divides
+*after* the multiply, and replicating it as `weight * (sum /
+block_size)` differed by 1 ulp. Measured on the survey's signal
+(3 min mono, 44.1 kHz): integrated loudness 6.68 s -> 1.26 s,
+true-peak over 65k samples 0.81 s -> 0.01 s, all values identical.
+What was deliberately *not* accelerated: `core.py`'s file-level
+levels/gain paths (byte-decode-bound, capped at 1M samples, and moving
+WAV decoding into native code would grow the auditable surface §5
+cares about), and declipping (a numpy-path feature of the `[audio]`
+tier, not the stdlib core).
+
 ### Open questions (next contributor: decide before building)
 - **True-peak (4× oversampled) metering — RESOLVED (2026-07).** Implemented in
   both meters: `mastering_chain.LoudnessMeter.measure_true_peak` (scipy

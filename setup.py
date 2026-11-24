@@ -87,6 +87,7 @@ setup(
         "mastering_chain",
         "ux_improvements",
         "bs1770_loudness",
+        "accel",
         "personal_config",
     ],
     python_requires=">=3.11",

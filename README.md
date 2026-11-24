@@ -131,6 +131,22 @@ drifted from `pyproject.toml` (a stale `pydantic==2.5.0` pin that breaks
 `api_server.py`'s v1-only syntax, unused GPU/ML packages left over from
 already-deleted modules). The extras above are the only supported path.
 
+### Optional Rust accelerator (source checkouts only)
+
+The BS.1770 loudness meter's sample loops (K-weighting, block energies,
+true-peak oversampling) are pure Python, which makes a full-file
+measurement take seconds. A source checkout can build an optional Rust
+extension that serves those four primitives bit-identically:
+
+```bash
+rust/chameleon-accel/build.sh  # requires a Rust toolchain; not on PyPI
+```
+
+It is never required and never shipped: without the built module — or
+with `CHAMELEON_ACCEL=0` — every measurement runs the pure-Python path
+and produces exactly the same numbers, just slower. See `accel.py` and
+`rust/chameleon-accel/README.md`.
+
 ### Basic Usage
 
 After installing (from source, `pip install .` or `pip install -e .`)

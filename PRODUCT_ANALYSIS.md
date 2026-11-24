@@ -3,7 +3,17 @@
 **Snapshot date:** 2026-08-25 (claims re-verified against the code) ·
 **Version:** 1.1.0 · **Tests:** re-run 2026-11-03 on Python 3.12, green in
 all three configurations — **615 passed** on a bare install (stdlib only, 35 skipped), **729 passed** with numpy (scipy/librosa/soundfile blocked, 35
-skipped), **836 passed** with numpy + scipy + librosa + soundfile + fastapi (5 skipped). Skip totals follow which extras are installed — e.g. the two
+skipped), **836 passed** with numpy + scipy + librosa + soundfile + fastapi (5 skipped).
+Partial re-run 2026-11-24 (Rust-accelerator change, audit VM running as
+root): **622 passed** bare with the accelerator built (35 skipped;
+620 passed / 37 skipped without it — the 2 kernel-differential tests
+skip), **798 passed** with numpy + scipy (12 skipped). In this
+environment 3 permission tests fail identically on unmodified main
+(root ignores the read-only bits they set), and one
+`test_personal_config` alias test fails the same way in the
+numpy + scipy configuration; both were verified pre-existing against
+pristine main, not regressions. The full `[audio]`/`[api]` configuration
+was not re-run in that environment. Skip totals follow which extras are installed — e.g. the two
 fastapi-gated modules only run when the `[api]` extra is present, and
 `pyloudnorm` gates the reference-implementation check. Note the three
 configurations do not cover the `[audio]` extra's librosa path; installing
